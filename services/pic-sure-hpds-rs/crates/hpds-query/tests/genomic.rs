@@ -6,7 +6,9 @@ mod common;
 
 use std::path::Path;
 
-use common::genomic::{GroupVcfs, NodeVcf, RawVariant, load_genomic, rec, write_raw_store};
+use common::genomic::{
+    GroupVcfs, NodeVcf, RawNode, RawSpec, RawVariant, load_genomic, rec, write_raw, write_raw_store,
+};
 use common::{PartitionedDir, Row, filter_values, lenient, partitioned_rows, query, required};
 use hpds_format::GenoMode;
 use hpds_query::{
@@ -815,6 +817,74 @@ fn nested_scans_finish_under_a_one_block_budget() {
     assert_eq!(stats.held, 0, "every permit is released");
     assert!(stats.peak_held <= block, "{stats:?}, one block is {block}");
     assert!(stats.permits > 0, "{stats:?}");
+    assert!(
+        stats.waits > 0,
+        "two workers share one block, so one waited: {stats:?}"
+    );
     assert!(store.cache_stats().scan_reads > 0);
     assert_eq!(tight.partitions().cohort_guard_refusals(), 0);
+}
+
+/// A one-column categorical filter takes the carrier fast path on a node holding the column as
+/// categorical and falls back to reading masks on a node holding it as continuous, where Java
+/// matches the normalized numeric keys exactly; both nodes answer as Java does.
+#[test]
+fn the_fast_path_falls_back_to_masks_on_a_node_holding_the_column_as_continuous() {
+    let pheno = partitioned_rows(&[("pA", phenotype_rows(1..=10))]);
+    let genomic = tempfile::tempdir().unwrap();
+    let variant = |spec, gene, he: Vec<u32>| RawSpec {
+        spec,
+        record: true,
+        masks: [Some((he, false)), None, None, None],
+        gene,
+        metadata: vec![],
+    };
+    let store_dir = write_raw(
+        &genomic.path().join("store"),
+        &common::protection(),
+        GenoMode::LocalDistributed,
+        &[("", (1..=10).collect())],
+        &[
+            RawNode {
+                group: 0,
+                contig: "chr1",
+                continuous: false,
+                variants: vec![
+                    variant("chr1,100,A,G,g,c", "1.5", vec![0, 1]),
+                    variant("chr1,200,A,T,g,c", "2.5", vec![2]),
+                ],
+            },
+            RawNode {
+                group: 0,
+                contig: "chr2",
+                continuous: true,
+                variants: vec![
+                    variant("chr2,100,A,G,g,c", "1.5", vec![3]),
+                    variant("chr2,200,A,T,g,c", "3.5", vec![4]),
+                ],
+            },
+        ],
+    );
+    let key = pheno.out.join("encryption_key");
+    let e = pheno.open(&lenient()).unwrap().with_genomic(
+        GenomicStore::open_with_key_file(&store_dir, &key, &GenomicOptions::default()).unwrap(),
+    );
+    assert_eq!(patients(&e, vec![categorical(GENE, &["1.5"])]), [1, 2, 4]);
+    let store = e.genomic().unwrap();
+    assert_eq!(
+        store.cache_stats().loads,
+        3,
+        "two info blocks and the continuous node's mask chunk; the categorical node reads no mask"
+    );
+    assert_eq!(
+        patients(&e, vec![categorical(GENE, &["3.5", "2.5"])]),
+        [3, 5]
+    );
+    assert!(matches!(
+        e.count(&genomic_query(
+            ResultType::Count,
+            vec![numeric(GENE, 1.0, 2.0)]
+        )),
+        Err(QueryError::GenomicFilter(_))
+    ));
 }

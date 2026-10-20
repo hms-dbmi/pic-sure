@@ -138,18 +138,151 @@ pub struct RawVariant<'a> {
     pub gene: &'a str,
 }
 
-fn mask(positions: &[u32]) -> Option<VariantMask> {
-    (!positions.is_empty()).then(|| VariantMask {
-        bitmask_form: positions.len() > 5,
-        positions: positions.to_vec(),
-    })
+/// One variant of a hand-built node with every mask given: per kind (`he`, `ho`, `hen`,
+/// `hon`) its positions and whether Java holds it as a bitmask, `None` when absent; no mask
+/// record at all when `record` is false. Its metadata strings and categorical or numeric
+/// `Gene_with_variant` key are given too.
+#[derive(Clone, Debug, Default)]
+pub struct RawSpec<'a> {
+    pub spec: &'a str,
+    pub record: bool,
+    pub masks: [Option<(Vec<u32>, bool)>; 4],
+    pub gene: &'a str,
+    pub metadata: Vec<String>,
+}
+
+/// One node of a hand-built store: its group, its one contig (also its directory name), the
+/// kind of its `Gene_with_variant` column, and its variants in the store's spec order.
+pub struct RawNode<'a> {
+    pub group: u16,
+    pub contig: &'a str,
+    pub continuous: bool,
+    pub variants: Vec<RawSpec<'a>>,
+}
+
+/// Writes a store of `mode` into `out` with the genomic writer, sealed under `protection`:
+/// `groups` (name and patients in Java order) and `nodes`, ordered by group and directory,
+/// each holding one column, `Gene_with_variant`, categorical or continuous as the node says.
+pub fn write_raw(
+    out: &Path,
+    protection: &Protection,
+    mode: GenoMode,
+    groups: &[(&str, Vec<u32>)],
+    nodes: &[RawNode<'_>],
+) -> PathBuf {
+    std::fs::create_dir_all(out).unwrap();
+    let store_id = StoreId::random().unwrap();
+    let mut built = Vec::new();
+    for (n, node) in nodes.iter().enumerate() {
+        let codec = hpds_format::GenoBlockCodec::new(protection.clone(), store_id);
+        let patient_count = groups[usize::from(node.group)].1.len() as u32;
+        let dir_name = match mode {
+            GenoMode::Local | GenoMode::LocalPatientOnlyDistributed => String::new(),
+            _ => node.contig.to_owned(),
+        };
+        let mut builder = NodeBuilder::new(
+            n as u16,
+            node.group,
+            dir_name,
+            patient_count,
+            codec,
+            out.join(format!("node{n}.tmp")),
+        )
+        .unwrap();
+        let variants = &node.variants;
+        let mut genes: Vec<(String, Vec<u32>)> = Vec::new();
+        for (source, v) in variants.iter().enumerate() {
+            match genes.iter_mut().find(|(g, _)| g == v.gene) {
+                Some((_, ids)) => ids.push(source as u32),
+                None => genes.push((v.gene.to_owned(), vec![source as u32])),
+            }
+        }
+        genes.sort_by(|a, b| hpds_format::java_string_cmp(&a.0, &b.0));
+        let ranges = node.continuous.then(|| {
+            let keys: Vec<&str> = genes.iter().map(|(g, _)| g.as_str()).collect();
+            hpds_format::build_java_compressed_index(&keys).unwrap()
+        });
+        let mut info = InfoColumnsBuilder::new(
+            vec![InfoColumnInput {
+                column: 0,
+                name: "Gene_with_variant".into(),
+                description: "Description=\"The gene.\"".into(),
+                keys: genes,
+                ranges,
+            }],
+            variants.len() as u32,
+        )
+        .unwrap();
+        let bucket_of =
+            |spec: &str| -> i32 { spec.split(',').nth(1).unwrap().parse::<i32>().unwrap() / 1000 };
+        let positions = |v: &RawSpec<'_>, k: usize| -> Vec<u32> {
+            v.masks[k].as_ref().map(|m| m.0.clone()).unwrap_or_default()
+        };
+        let mut i = 0;
+        while i < variants.len() {
+            let bucket = bucket_of(variants[i].spec);
+            let mut in_bucket = Vec::new();
+            let mut carriers = std::collections::BTreeSet::new();
+            while i < variants.len() && bucket_of(variants[i].spec) == bucket {
+                let v = &variants[i];
+                info.assign(i as u32, builder.next_variant_id() + in_bucket.len() as u32)
+                    .unwrap();
+                if v.record {
+                    info.add_carriers(i as u32, &positions(v, 0), &positions(v, 1));
+                    for k in [0, 1, 2] {
+                        carriers.extend(positions(v, k));
+                    }
+                }
+                let kind = |k: usize| {
+                    v.masks[k].as_ref().map(|(p, form)| VariantMask {
+                        bitmask_form: *form,
+                        positions: p.clone(),
+                    })
+                };
+                in_bucket.push(BucketVariant {
+                    spec: v.spec.to_owned(),
+                    record: v.record.then(|| [kind(0), kind(1), kind(2), kind(3)]),
+                    metadata: v.metadata.clone(),
+                });
+                i += 1;
+            }
+            builder
+                .add_bucket(
+                    node.contig,
+                    bucket,
+                    in_bucket,
+                    carriers.into_iter().collect(),
+                )
+                .unwrap();
+        }
+        builder.finish_chunks().unwrap();
+        info.finish(&mut builder, patient_count).unwrap();
+        built.push(builder.finish().unwrap());
+    }
+    assemble(
+        out,
+        store_header(protection, store_id),
+        mode,
+        groups
+            .iter()
+            .map(|(name, patients)| GenoGroup {
+                name: (*name).to_owned(),
+                patients: patients.clone(),
+            })
+            .collect(),
+        built,
+        vec!["Gene_with_variant".into()],
+        protection,
+    )
+    .unwrap();
+    out.to_path_buf()
 }
 
 /// Writes a one-node `localDistributed` store of `patients` (in that order) into `out` with
 /// the genomic writer, sealed under `protection`: `variants` of contig `contig`, in the
 /// store's spec order and bucket by bucket, with one categorical column,
-/// `Gene_with_variant`. Specs Java cannot parse (short specs) are kept, as `genomic-migrate`
-/// keeps them.
+/// `Gene_with_variant`; a mask holding more than 5 patients is a bitmask. Specs Java cannot
+/// parse (short specs) are kept, as `genomic-migrate` keeps them.
 pub fn write_raw_store(
     out: &Path,
     protection: &Protection,
@@ -157,77 +290,27 @@ pub fn write_raw_store(
     contig: &str,
     variants: &[RawVariant<'_>],
 ) -> PathBuf {
-    std::fs::create_dir_all(out).unwrap();
-    let store_id = StoreId::random().unwrap();
-    let codec = hpds_format::GenoBlockCodec::new(protection.clone(), store_id);
-    let patient_count = patients.len() as u32;
-    let mut builder = NodeBuilder::new(
-        0,
-        0,
-        contig.to_owned(),
-        patient_count,
-        codec,
-        out.join("node.tmp"),
-    )
-    .unwrap();
-    let mut genes: Vec<(String, Vec<u32>)> = Vec::new();
-    for (source, v) in variants.iter().enumerate() {
-        match genes.iter_mut().find(|(g, _)| g == v.gene) {
-            Some((_, ids)) => ids.push(source as u32),
-            None => genes.push((v.gene.to_owned(), vec![source as u32])),
-        }
-    }
-    genes.sort_by(|a, b| hpds_format::java_string_cmp(&a.0, &b.0));
-    let mut info = InfoColumnsBuilder::new(
-        vec![InfoColumnInput {
-            column: 0,
-            name: "Gene_with_variant".into(),
-            description: "Description=\"The gene.\"".into(),
-            keys: genes,
-            ranges: None,
-        }],
-        variants.len() as u32,
-    )
-    .unwrap();
-    let bucket_of =
-        |spec: &str| -> i32 { spec.split(',').nth(1).unwrap().parse::<i32>().unwrap() / 1000 };
-    let mut i = 0;
-    while i < variants.len() {
-        let bucket = bucket_of(variants[i].spec);
-        let mut in_bucket = Vec::new();
-        let mut carriers = std::collections::BTreeSet::new();
-        while i < variants.len() && bucket_of(variants[i].spec) == bucket {
-            let v = &variants[i];
-            info.assign(i as u32, builder.next_variant_id() + in_bucket.len() as u32)
-                .unwrap();
-            info.add_carriers(i as u32, &v.he, &v.ho);
-            carriers.extend(v.he.iter().chain(&v.ho).copied());
-            in_bucket.push(BucketVariant {
-                spec: v.spec.to_owned(),
-                record: Some([mask(&v.he), mask(&v.ho), None, None]),
-                metadata: vec![format!("Gene_with_variant={}", v.gene)],
-            });
-            i += 1;
-        }
-        builder
-            .add_bucket(contig, bucket, in_bucket, carriers.into_iter().collect())
-            .unwrap();
-    }
-    builder.finish_chunks().unwrap();
-    info.finish(&mut builder, patient_count).unwrap();
-    let built = builder.finish().unwrap();
-    assemble(
+    let mask = |p: &[u32]| (!p.is_empty()).then(|| (p.to_vec(), p.len() > 5));
+    let variants = variants
+        .iter()
+        .map(|v| RawSpec {
+            spec: v.spec,
+            record: true,
+            masks: [mask(&v.he), mask(&v.ho), None, None],
+            gene: v.gene,
+            metadata: vec![format!("Gene_with_variant={}", v.gene)],
+        })
+        .collect();
+    write_raw(
         out,
-        store_header(protection, store_id),
-        GenoMode::LocalDistributed,
-        vec![GenoGroup {
-            name: String::new(),
-            patients: patients.to_vec(),
-        }],
-        vec![built],
-        vec!["Gene_with_variant".into()],
         protection,
+        GenoMode::LocalDistributed,
+        &[("", patients.to_vec())],
+        &[RawNode {
+            group: 0,
+            contig,
+            continuous: false,
+            variants,
+        }],
     )
-    .unwrap();
-    out.to_path_buf()
 }
