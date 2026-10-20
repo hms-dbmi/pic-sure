@@ -828,3 +828,61 @@ fn no_node_repeats_a_spec_string() {
         );
     }
 }
+
+fn pheno_values(
+    files: &BTreeMap<String, Vec<u8>>,
+    group: &str,
+    path: &str,
+) -> HashMap<u32, String> {
+    let text = String::from_utf8(files[&format!("pheno/{group}-allConcepts.csv")].clone()).unwrap();
+    let quoted = format!("\"{path}\"");
+    text.lines()
+        .filter_map(|line| {
+            let f: Vec<&str> = line.split(',').collect();
+            (f[1] == quoted).then(|| {
+                (
+                    f[0].trim_matches('"').parse().unwrap(),
+                    f[3].trim_matches('"').to_string(),
+                )
+            })
+        })
+        .collect()
+}
+
+#[test]
+fn topmed_consents_name_the_group_of_every_genotyped_patient() {
+    let files = generate(&small_shape(), 31, 2);
+    for group in ["tstA", "tstB", "tstC"] {
+        let genotyped: HashSet<u32> = index_lines(&files, group)
+            .iter()
+            .flat_map(|l| l.patients.iter().copied())
+            .collect();
+        let topmed = pheno_values(&files, group, "\\_topmed_consents\\");
+        let consents = pheno_values(&files, group, "\\_consents\\");
+        assert_eq!(topmed.keys().copied().collect::<HashSet<_>>(), genotyped);
+        assert!(topmed.values().all(|v| v == group));
+        assert_eq!(consents.len(), genotyped.len());
+    }
+}
+
+#[test]
+fn topmed_consents_skip_patients_without_genotypes() {
+    let files = generate_edge(33);
+    let mut without_genotype = 0;
+    for group in ["edgeA", "edgeB"] {
+        let genotyped: HashSet<u32> = index_lines(&files, group)
+            .iter()
+            .flat_map(|l| l.patients.iter().copied())
+            .collect();
+        let topmed = pheno_values(&files, group, "\\_topmed_consents\\");
+        let consents = pheno_values(&files, group, "\\_consents\\");
+        assert!(topmed.keys().all(|p| genotyped.contains(p)));
+        for patient in consents.keys() {
+            assert_eq!(topmed.contains_key(patient), genotyped.contains(patient));
+            if !genotyped.contains(patient) {
+                without_genotype += 1;
+            }
+        }
+    }
+    assert!(without_genotype >= 3);
+}

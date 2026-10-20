@@ -1,5 +1,6 @@
 //! Groups, samples and patients, the index file, and the matching phenotype CSV.
 
+use std::collections::HashSet;
 use std::io::{self, Write};
 
 use super::Shape;
@@ -134,11 +135,13 @@ const SEXES: [&str; 2] = ["Female", "Male"];
 const POPULATIONS: [&str; 5] = ["AFR", "AMR", "EAS", "EUR", "SAS"];
 
 /// Writes a group's phenotype CSV rows (no header, the harmonization loader's format): the
-/// consent value, sex, age, superpopulation, and for most patients a BMI and a smoker flag.
+/// consent value, for patients with genotypes the same value as their `\_topmed_consents\`,
+/// then sex, age, superpopulation, and for most patients a BMI and a smoker flag.
 ///
 /// # Errors
 /// Returns the writer's error.
 pub fn write_phenotypes(group: &Group, seed: u64, out: &mut impl Write) -> io::Result<()> {
+    let genotyped: HashSet<u32> = group.indexed.iter().map(|s| s.patient).collect();
     for patient in &group.phenotype_patients {
         let mut rng = Source::new(mix(seed ^ mix(0x9E7_0000_0000_0000 ^ u64::from(*patient))));
         let sex = SEXES[(rng.bits() & 1) as usize];
@@ -154,6 +157,9 @@ pub fn write_phenotypes(group: &Group, seed: u64, out: &mut impl Write) -> io::R
             )
         };
         row(out, "\\_consents\\", "", &group.name)?;
+        if genotyped.contains(patient) {
+            row(out, "\\_topmed_consents\\", "", &group.name)?;
+        }
         row(out, "\\gen\\demographics\\sex\\", "", sex)?;
         row(out, "\\gen\\demographics\\age\\", &age.to_string(), "")?;
         row(
