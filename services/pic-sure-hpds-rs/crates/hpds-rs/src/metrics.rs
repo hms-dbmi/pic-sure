@@ -262,6 +262,19 @@ pub fn render(state: &AppState) -> String {
         render_http(&mut family, metrics);
     }
     render_results(&mut family, state);
+    let (stalled, expired, aborted) = state.excerpt_counters().counts();
+    family.header(
+        "hpds_excerpts_ended_early_total",
+        "counter",
+        "Streamed excerpts ended before their last row: stalled (the client took no chunk within HPDS_EXCERPT_STALL_SECONDS), expired (not sent within HPDS_EXCERPT_STREAM_SECONDS), aborted (the client left or the write failed).",
+    );
+    for (end, count) in [
+        ("stalled", stalled),
+        ("expired", expired),
+        ("aborted", aborted),
+    ] {
+        family.sample("hpds_excerpts_ended_early_total", &[("end", end)], count);
+    }
     if let Ok(engine) = state.engine() {
         let partitions = engine.partitions();
         render_block_cache(&mut family, &partitions.block_cache_stats());

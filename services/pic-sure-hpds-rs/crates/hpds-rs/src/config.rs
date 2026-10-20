@@ -54,6 +54,12 @@ pub const DEFAULT_RESULT_MEMORY_BYTES: u64 = 64 << 20;
 /// Default seconds a sync query may run before the request is answered 503.
 pub const DEFAULT_SYNC_TIMEOUT_SECONDS: u64 = 300;
 
+/// Default seconds a streamed excerpt waits for its client to take the next chunk.
+pub const DEFAULT_EXCERPT_STALL_SECONDS: u64 = 30;
+
+/// Default seconds a streamed excerpt's body may take to be sent in full.
+pub const DEFAULT_EXCERPT_STREAM_SECONDS: u64 = 600;
+
 const DEFAULT_BLOCKING_THREADS: usize = 64;
 const BLOCKING_THREAD_HEADROOM: usize = 16;
 
@@ -96,6 +102,9 @@ const BLOCKING_THREAD_HEADROOM: usize = 16;
 /// | `HPDS_MAX_CONNECTIONS` | 512 | Most connections served at once; a connection past the cap is answered 503 and closed |
 /// | `HPDS_BLOCKING_THREADS` | 64, or the engine concurrency plus 16 when larger | Cap on tokio's blocking threads, which run every engine call; must exceed `HPDS_ENGINE_CONCURRENCY` |
 /// | `hpds.genomicProcessor.impl` or `HPDS_GENOMICPROCESSOR_IMPL` | unset | Genomic layout: `local`, `localDistributed`, `localPatientDistributed` or `localPatientOnlyDistributed`, checked against the store's; unset serves no genomic data; `remote` is refused |
+/// | `HPDS_EXCERPT_CONCURRENCY` | half the engine concurrency, at least 1 | Excerpts computed or streamed at once; must be below `HPDS_ENGINE_CONCURRENCY` when that is above 1 |
+/// | `HPDS_EXCERPT_STALL_SECONDS` | 30 | How long a streamed excerpt waits for its client to take the next chunk before it ends the stream |
+/// | `HPDS_EXCERPT_STREAM_SECONDS` | 600 | How long a streamed excerpt's body may take in full before the stream is ended |
 /// | `HPDS_GENOMIC_DATA_DIRECTORY` | `/opt/local/hpds/all/` | Directory of the Rust genomic store |
 /// | `HPDS_GENOMIC_CACHE_BYTES` | 2 GiB | Byte bound of the decoded genomic block cache |
 /// | `HPDS_GENOMIC_READ_BUDGET_BYTES` | 1 GiB | Bound on the genomic blocks every scan of the process holds at once outside the cache |
@@ -155,6 +164,12 @@ pub struct Config {
     pub metrics: bool,
     /// Compress `/search` answers for requests that accept gzip.
     pub search_gzip: bool,
+    /// Excerpts computed or streamed at once.
+    pub excerpt_concurrency: usize,
+    /// How long a streamed excerpt waits for its client to take the next chunk.
+    pub excerpt_stall: Duration,
+    /// How long a streamed excerpt's body may take in full.
+    pub excerpt_stream: Duration,
     /// The genomic settings.
     pub genomic: GenomicConfig,
     /// Settings that were read but have no effect, as messages for the log.
@@ -230,6 +245,25 @@ impl Config {
                  HPDS_BLOCKING_THREADS ({blocking_threads}); the difference is the headroom \
                  file reads need on tokio's blocking pool"
             ));
+        }
+        let excerpt_concurrency = positive(
+            &lookup,
+            "HPDS_EXCERPT_CONCURRENCY",
+            (engine_concurrency / 2).max(1),
+        )?;
+        if engine_concurrency > 1 && excerpt_concurrency >= engine_concurrency {
+            return Err(format!(
+                "HPDS_EXCERPT_CONCURRENCY ({excerpt_concurrency}) must be less than \
+                 HPDS_ENGINE_CONCURRENCY ({engine_concurrency}), so excerpts can never hold \
+                 every engine slot"
+            ));
+        }
+        if engine_concurrency == 1 {
+            warnings.push(
+                "HPDS_ENGINE_CONCURRENCY is 1, so one streaming excerpt holds the only engine \
+                 slot until it is sent or its stall or stream bound ends it"
+                    .to_owned(),
+            );
         }
         let result_max_age = match parse_or(&lookup, "HPDS_RESULT_MAX_AGE_SECONDS", 0u64)? {
             0 => None,
@@ -350,6 +384,17 @@ impl Config {
             result_cache_bytes,
             metrics,
             search_gzip,
+            excerpt_concurrency,
+            excerpt_stall: Duration::from_secs(positive_u64(
+                &lookup,
+                "HPDS_EXCERPT_STALL_SECONDS",
+                DEFAULT_EXCERPT_STALL_SECONDS,
+            )?),
+            excerpt_stream: Duration::from_secs(positive_u64(
+                &lookup,
+                "HPDS_EXCERPT_STREAM_SECONDS",
+                DEFAULT_EXCERPT_STREAM_SECONDS,
+            )?),
             genomic,
             warnings,
         })
@@ -565,6 +610,36 @@ mod tests {
         assert_eq!(c.query_limits.max_clause_nodes, 10_000);
         assert_eq!(c.query_limits.max_query_concepts, 20_000);
         assert!(config(&[("HPDS_MAX_CONNECTIONS", "0")]).is_err());
+    }
+
+    #[test]
+    fn excerpt_bounds_default_and_stay_below_the_engine_concurrency() {
+        let c = config(&[("HPDS_ENGINE_CONCURRENCY", "8")]).unwrap();
+        assert_eq!(c.excerpt_concurrency, 4);
+        assert_eq!(c.excerpt_stall, Duration::from_secs(30));
+        assert_eq!(c.excerpt_stream, Duration::from_secs(600));
+        let c = config(&[
+            ("HPDS_ENGINE_CONCURRENCY", "4"),
+            ("HPDS_EXCERPT_CONCURRENCY", "3"),
+            ("HPDS_EXCERPT_STALL_SECONDS", "5"),
+            ("HPDS_EXCERPT_STREAM_SECONDS", "60"),
+        ])
+        .unwrap();
+        assert_eq!(
+            (c.excerpt_concurrency, c.excerpt_stall, c.excerpt_stream),
+            (3, Duration::from_secs(5), Duration::from_secs(60))
+        );
+        assert!(
+            config(&[
+                ("HPDS_ENGINE_CONCURRENCY", "4"),
+                ("HPDS_EXCERPT_CONCURRENCY", "4")
+            ])
+            .is_err()
+        );
+        assert!(config(&[("HPDS_EXCERPT_STALL_SECONDS", "0")]).is_err());
+        let single = config(&[("HPDS_ENGINE_CONCURRENCY", "1")]).unwrap();
+        assert_eq!(single.excerpt_concurrency, 1);
+        assert_eq!(single.warnings.len(), 1);
     }
 
     #[test]
