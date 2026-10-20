@@ -21,11 +21,28 @@ const result = evaluate({ pr, files, policy });
 const review = reviewDecision({ pr, reviews, risk: result.risk, policy });
 
 // The required check, posted first so a label failure cannot leave the head commit without it.
-// A new run on every evaluation; GitHub uses the latest one per name. Only GitHub Apps can
-// create check runs, so a personal token cannot forge this one. The github-actions app can, so
-// no job in the existing workflows that runs PR code may hold checks: write. A PR that adds its own
-// workflow is stopped by code-owner review of .github/, not by this (see RISK_REVIEW.md).
-await gh.must('POST', `/repos/${repo}/check-runs`, checkRunPayload({ name: policy.review.checkName, sha: pr.head.sha, result, review }));
+// One run per commit and name: it is updated in place, because a run left in_progress by an earlier
+// evaluation is never completed and keeps the merge box waiting. Only GitHub Apps can create check
+// runs, so a personal token cannot forge this one. The github-actions app can, so no job in the
+// existing workflows that runs PR code may hold checks: write. A PR that adds its own workflow is
+// stopped by code-owner review of .github/, not by this (see RISK_REVIEW.md).
+const checkRun = checkRunPayload({ name: policy.review.checkName, sha: pr.head.sha, result, review });
+const update = { ...checkRun };
+delete update.head_sha; // not accepted on PATCH
+const existing = (
+  await gh.must(
+    'GET',
+    `/repos/${repo}/commits/${pr.head.sha}/check-runs?check_name=${encodeURIComponent(checkRun.name)}&filter=all&per_page=100`,
+  )
+).check_runs.filter((c) => c.app?.slug === 'github-actions');
+let posted = false;
+for (const run of existing) {
+  // Updating every run also completes any left in_progress by earlier evaluations.
+  const r = await gh.request('PATCH', `/repos/${repo}/check-runs/${run.id}`, update);
+  if (r.ok) posted = true;
+  else console.log(`::warning::Could not update check run ${run.id}: ${r.status}`);
+}
+if (!posted) await gh.must('POST', `/repos/${repo}/check-runs`, checkRun);
 
 const wanted = result.risk === 'low' ? policy.labels.low : policy.labels.review;
 const unwanted = result.risk === 'low' ? policy.labels.review : policy.labels.low;
