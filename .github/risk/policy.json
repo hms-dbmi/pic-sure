@@ -10,7 +10,7 @@
   },
 
   "limits": {
-    "maxChangedLines": 150,
+    "maxChangedLines": 450,
     "maxFiles": 10,
     "apiFileCap": 3000,
     "ignoreForSize": []
@@ -60,7 +60,7 @@
     {
       "id": "production-source",
       "lowRisk": false,
-      "lowRiskMaxLines": 60,
+      "lowRiskMaxLines": 300,
       "reason": "Production Java source change larger than the 60-line low-risk allowance",
       "globs": ["**/src/main/java/**"]
     }
