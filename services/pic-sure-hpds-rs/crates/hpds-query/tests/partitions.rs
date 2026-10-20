@@ -457,7 +457,11 @@ fn every_selection_caches_one_block_and_a_narrow_one_weighs_its_view_with_it() {
         assert_eq!(engine.count(&only_p1).unwrap(), 2);
         assert_eq!(engine.partitions().cached_block_count(), 1);
     }
-    assert_eq!(set.cached_views(), (0, 0), "p1 holds half the rows, not below 0.5");
+    assert_eq!(
+        set.cached_views(),
+        (0, 0),
+        "p1 holds half the rows, not below 0.5"
+    );
     let (count, bytes) = views.partitions().cached_views();
     assert_eq!(count, 1, "p1 reads its view below a share of 0.75");
     assert!(
