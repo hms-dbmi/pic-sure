@@ -301,6 +301,24 @@ async fn genomic_types_are_refused_on_the_async_route_and_exports_use_genomic_fi
     let mut rows: Vec<&str> = result.body.lines().skip(1).collect();
     rows.sort_unstable();
     assert_eq!(rows, ["197506", "197507", "197508", "200001"]);
+    for filters in [
+        json!([{"key": "chr1,100,A,G", "values": [null]}]),
+        json!([{"key": "AF", "min": 0.1}]),
+        json!([{"key": "rs123"}]),
+    ] {
+        let refused = post(
+            &f.app,
+            "/PIC-SURE/v3/query",
+            envelope(json!({"expectedResultType": "PATIENTS", "genomicFilters": filters})),
+        )
+        .await;
+        assert_eq!(
+            refused.status,
+            StatusCode::BAD_REQUEST,
+            "{filters}: {}",
+            refused.body
+        );
+    }
 }
 
 #[tokio::test]

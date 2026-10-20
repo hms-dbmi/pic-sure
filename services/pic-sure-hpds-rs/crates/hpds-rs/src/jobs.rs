@@ -1107,7 +1107,10 @@ pub fn genomic_type_on_async_route(result_type: ResultType) -> String {
 /// ([`Engine::check_limits`], which fails with "User consents are required for this query"
 /// when `hpds.requireAuthorizationFilter` is on and no consent value is given), then the
 /// concepts it touches in the selected partitions, then `QueryValidator` against the merged
-/// dictionary ([`Engine::validate`], whose consent rule follows the same flag). The query,
+/// dictionary ([`Engine::validate`], whose consent rule follows the same flag), then the
+/// genomic filters against the genomic index ([`Engine::read_plan`] runs the admission every
+/// export repeats), so a genomic filter Java fails on is a 400 at submission rather than an
+/// ERROR status. The query,
 /// `userConsents` included, travels with the job, so the export reads exactly the partitions
 /// those consents select.
 pub async fn submit(State(state): State<AppState>, body: Bytes) -> Result<Response, ApiError> {
@@ -1139,6 +1142,7 @@ fn submit_query(state: &AppState, query: Query) -> Result<Response, ApiError> {
     let engine = Arc::clone(state.engine()?);
     engine.check_limits(&query)?;
     engine.validate(&query)?;
+    engine.read_plan(&query)?;
     let status = state.results().submit(engine, query)?;
     Ok(axum::Json(status).into_response())
 }
