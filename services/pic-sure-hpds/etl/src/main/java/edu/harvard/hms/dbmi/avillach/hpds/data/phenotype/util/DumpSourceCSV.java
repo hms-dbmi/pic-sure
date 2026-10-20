@@ -1,6 +1,9 @@
 package edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.util;
 
 import java.io.*;
+import java.nio.channels.Channels;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Set;
 import java.util.TreeMap;
@@ -23,6 +26,12 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.etl.LoadingStore;
 
+/**
+ * Writes every observation of the store in {@code /opt/local/hpds} as plaintext CSV to {@code allConcepts.csv} in the same directory.
+ *
+ * <p>The output holds every observation in the clear, so it is created owner-only (mode {@code 0600}), an existing file is never
+ * overwritten, and nothing is created when the encryption key cannot be loaded. It is handled like the store itself.
+ */
 public class DumpSourceCSV {
 	protected static LoadingCache<String, PhenoCube<?>> store;
 
@@ -42,11 +51,14 @@ public class DumpSourceCSV {
 
 	public static void main(String[] args) throws ClassNotFoundException, FileNotFoundException, IOException {
 		Crypto.loadDefaultKey();
+		if (!Crypto.hasKey(Crypto.DEFAULT_KEY_NAME)) {
+			throw new IllegalStateException("no encryption key could be loaded; nothing was written");
+		}
 		Object[] metadata = loadMetadata();
 		metaStoreSource = (TreeMap<String, ColumnMeta>) metadata[0];
 		allIds = (TreeSet<Integer>) metadata[1];
 		store = initializeCache(); 
-		FileWriter fWriter = new FileWriter("/opt/local/hpds/allConcepts.csv");
+		Writer fWriter = new OutputStreamWriter(Channels.newOutputStream(ExportForMigration.createPrivateFile(Path.of("/opt/local/hpds/allConcepts.csv"))), StandardCharsets.UTF_8);
 		CSVPrinter writer = CSVFormat.DEFAULT.print(fWriter);
 		writer.printRecord(ImmutableList.of(new String[] {"PATIENT_NUM","CONCEPT_PATH","NUMERIC_VALUE","TEXT_VALUE","TIMESTAMP"}));
 		metaStoreSource.keySet().forEach((String key)->{
