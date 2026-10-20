@@ -69,8 +69,9 @@ const SPARSE_VARIANT_THRESHOLD: usize = 5;
 pub struct GenomicLoadOptions {
     /// The layout: `localDistributed` or `localPatientDistributed`.
     pub mode: GenoMode,
-    /// The groups: name (empty in `localDistributed`) and index file. VCF paths in an index
-    /// file resolve against the working directory, as Java resolves them.
+    /// The groups: name (empty in `localDistributed`) and index file, in any order; the store
+    /// orders them by name in Java `String.compareTo` order. VCF paths in an index file
+    /// resolve against the working directory, as Java resolves them.
     pub groups: Vec<(String, PathBuf)>,
     /// The store directory to create. It must not exist.
     pub out: PathBuf,
@@ -228,13 +229,19 @@ pub fn genomic_load(options: &GenomicLoadOptions) -> Result<GenomicLoadReport> {
     let protection = Protection::Encrypted(key);
     let mut groups = Vec::new();
     let mut nodes = Vec::new();
-    for (g, (name, index)) in options.groups.iter().enumerate() {
+    let mut ordered = options.groups.clone();
+    ordered.sort_by(|a, b| java_string_cmp(&a.0, &b.0));
+    for (g, (name, index)) in ordered.iter().enumerate() {
         let (group, group_nodes) = plan_group(g as u16, name, index, options.skip_missing_samples)?;
         groups.push(group);
         nodes.extend(group_nodes);
     }
     check_patients_once(&groups)?;
-    nodes.sort_by(|a, b| a.group.cmp(&b.group).then_with(|| java_string_cmp(&a.dir, &b.dir)));
+    nodes.sort_by(|a, b| {
+        a.group
+            .cmp(&b.group)
+            .then_with(|| java_string_cmp(&a.dir, &b.dir))
+    });
     let pool = thread_pool(options.threads)?;
 
     let staging = Staging::create(&options.out)?;
@@ -377,13 +384,6 @@ fn check_groups(options: &GenomicLoadOptions) -> Result<()> {
                     return Err(EtlError::Usage(format!("group {name:?} is named twice")));
                 }
             }
-            let mut sorted = names.clone();
-            sorted.sort_by(|a, b| java_string_cmp(a, b));
-            if sorted != names {
-                return Err(EtlError::Usage(
-                    "name the groups in Java String.compareTo order, the order of the store's group table".into(),
-                ));
-            }
         }
         other => {
             return Err(EtlError::Usage(format!(
@@ -418,7 +418,8 @@ fn plan_group(
     }
     let mut declared: Vec<String> = Vec::new();
     let mut descriptions: HashMap<String, (String, PathBuf)> = HashMap::new();
-    let unordered = lines.iter().any(|l| l.contig.is_none());
+    let unordered =
+        lines.iter().any(|l| l.contig.is_none()) && lines.iter().any(|l| l.contig.is_some());
     let mut headers = Vec::with_capacity(lines.len());
     for line in &lines {
         let mut vcf = VcfLines::open(&line.vcf, line.gzipped)?;
@@ -426,10 +427,17 @@ fn plan_group(
         let (n, text) = vcf
             .next_line()?
             .ok_or_else(|| refuse(&line.vcf, 0, "the VCF holds no record"))?;
-        let first = parse_record(text)
+        let first = parse_record(text, line.annotated)
             .map_err(|d| refuse(&line.vcf, n, d))?
             .contig
             .to_string();
+        if first.is_empty() || first == "." || first == ".." || first.contains('/') {
+            return Err(refuse(
+                &line.vcf,
+                n,
+                format!("CHROM {first:?} cannot name the node directory Java writes"),
+            ));
+        }
         for declaration in &header.info {
             match descriptions.get(&declaration.key) {
                 None => {
@@ -439,12 +447,14 @@ fn plan_group(
                         (declaration.description.clone(), line.vcf.clone()),
                     );
                 }
-                Some((description, from)) if unordered && *description != declaration.description => {
+                Some((description, from))
+                    if unordered && *description != declaration.description =>
+                {
                     return Err(refuse(
                         index,
                         line.line,
                         format!(
-                            "{} and {} describe INFO column {} differently, and with a chromosome of ALL in the index Java's choice between them is unspecified",
+                            "{} and {} describe INFO column {} differently, and with ALL and named chromosomes mixed in the index Java's choice between them is unspecified",
                             from.display(),
                             line.vcf.display(),
                             declaration.key
@@ -628,7 +638,7 @@ fn first_pass(node: &NodePlan, group: &GroupPlan, scratch: &Path, i: usize) -> R
         if text.is_empty() || text.starts_with('#') {
             return Err(refuse(path, n, "an empty or header line among the records"));
         }
-        let record = parse_record(text).map_err(|d| refuse(path, n, d))?;
+        let record = parse_record(text, node.line.annotated).map_err(|d| refuse(path, n, d))?;
         if contigs.last().is_none_or(|(c, _)| c != record.contig) {
             if contigs.iter().any(|(c, _)| c == record.contig) {
                 return Err(refuse(
@@ -705,7 +715,8 @@ fn first_pass(node: &NodePlan, group: &GroupPlan, scratch: &Path, i: usize) -> R
     }
     let columns = converted.iter().map(|c| c.name.clone()).collect();
     let file = columns_file(scratch, i);
-    let json = serde_json::to_vec(&converted).map_err(|e| EtlError::io("encoding", &file)(e.into()))?;
+    let json =
+        serde_json::to_vec(&converted).map_err(|e| EtlError::io("encoding", &file)(e.into()))?;
     private_fs::write_file(&file, &json).map_err(EtlError::io("writing", &file))?;
     Ok(FirstPass {
         contigs,
@@ -753,8 +764,8 @@ fn second_pass(context: &SecondPass<'_>) -> Result<(BuiltNode, NodeReport)> {
     let path = &node.line.vcf;
     let file = columns_file(context.scratch, usize::from(context.node_index));
     let json = std::fs::read(&file).map_err(EtlError::io("reading", &file))?;
-    let converted: Vec<ConvertedColumn> = serde_json::from_slice(&json)
-        .map_err(|e| EtlError::io("decoding", &file)(e.into()))?;
+    let converted: Vec<ConvertedColumn> =
+        serde_json::from_slice(&json).map_err(|e| EtlError::io("decoding", &file)(e.into()))?;
     std::fs::remove_file(&file).map_err(EtlError::io("removing", &file))?;
     let info_columns = converted.len() as u64;
     let mut inputs = Vec::with_capacity(converted.len());
@@ -762,7 +773,9 @@ fn second_pass(context: &SecondPass<'_>) -> Result<(BuiltNode, NodeReport)> {
         let index = context
             .columns
             .binary_search_by(|c| java_string_cmp(c, &column.name))
-            .map_err(|_| EtlError::Usage(format!("column {} is not in the column table", column.name)))?;
+            .map_err(|_| {
+                EtlError::Usage(format!("column {} is not in the column table", column.name))
+            })?;
         let ranges = if column.continuous {
             let keys: Vec<&str> = column.keys.iter().map(|(k, _)| k.as_str()).collect();
             Some(build_java_compressed_index(&keys).ok_or_else(|| {
@@ -809,11 +822,22 @@ fn second_pass(context: &SecondPass<'_>) -> Result<(BuiltNode, NodeReport)> {
     let mut contigs = context.first.contigs.clone();
     contigs.sort_by(|a, b| java_string_cmp(&a.0, &b.0));
     for (contig, first_id) in &contigs {
-        load_contig(context, contig, *first_id, &mut info, &mut builder, &mut report)?;
+        load_contig(
+            context,
+            contig,
+            *first_id,
+            &mut info,
+            &mut builder,
+            &mut report,
+        )?;
     }
     builder.finish_chunks()?;
     if let Some(id) = info.unassigned() {
-        return Err(refuse(path, 0, format!("spec {id} of the first pass was not read again")));
+        return Err(refuse(
+            path,
+            0,
+            format!("spec {id} of the first pass was not read again"),
+        ));
     }
     let differences = info.finish(&mut builder, patient_count)?;
     if !differences.is_empty() {
@@ -846,7 +870,7 @@ fn load_contig(
     let mut by_spec: HashMap<String, usize> = HashMap::new();
     let mut started = false;
     while let Some((n, text)) = vcf.next_line()? {
-        let record = parse_record(text).map_err(|d| refuse(path, n, d))?;
+        let record = parse_record(text, node.line.annotated).map_err(|d| refuse(path, n, d))?;
         if record.contig != contig {
             if started {
                 break;
@@ -857,7 +881,14 @@ fn load_contig(
         let record_bucket = record.position / BUCKET_WIDTH;
         if bucket != Some(record_bucket) {
             if let Some(done) = bucket {
-                add_bucket(contig, done, std::mem::take(&mut specs), info, builder, report)?;
+                add_bucket(
+                    contig,
+                    done,
+                    std::mem::take(&mut specs),
+                    info,
+                    builder,
+                    report,
+                )?;
                 by_spec.clear();
             }
             bucket = Some(record_bucket);
@@ -880,7 +911,9 @@ fn load_contig(
         let accumulator = &mut specs[slot];
         read_genotypes(&record, node, &mut accumulator.classes).map_err(|d| refuse(path, n, d))?;
         if node.line.annotated {
-            accumulator.metadata.push(java_trim(record.info).to_string());
+            accumulator
+                .metadata
+                .push(java_trim(record.info).to_string());
         }
     }
     if let Some(done) = bucket {
@@ -1010,16 +1043,22 @@ fn add_bucket(
             )
         })
         .collect();
-    variants.sort_by(|a, b| {
-        compare_specs(&a.1.spec, &b.1.spec).unwrap_or(std::cmp::Ordering::Equal)
-    });
+    variants
+        .sort_by(|a, b| compare_specs(&a.1.spec, &b.1.spec).unwrap_or(std::cmp::Ordering::Equal));
     let first = builder.next_variant_id();
     let mut carriers: Vec<u32> = Vec::new();
     for (offset, (source, variant)) in variants.iter().enumerate() {
         info.assign(*source, first + offset as u32)
-            .map_err(|detail| EtlError::Usage(format!("contig {contig} bucket {bucket}: {detail}")))?;
+            .map_err(|detail| {
+                EtlError::Usage(format!("contig {contig} bucket {bucket}: {detail}"))
+            })?;
         let record = variant.record.as_ref().map_or(&[][..], |r| &r[..]);
-        let positions = |slot: usize| record.get(slot).and_then(Option::as_ref).map_or(&[][..], |m| &m.positions[..]);
+        let positions = |slot: usize| {
+            record
+                .get(slot)
+                .and_then(Option::as_ref)
+                .map_or(&[][..], |m| &m.positions[..])
+        };
         info.add_carriers(*source, positions(0), positions(1));
         for slot in [0, 1, 2] {
             carriers.extend_from_slice(positions(slot));

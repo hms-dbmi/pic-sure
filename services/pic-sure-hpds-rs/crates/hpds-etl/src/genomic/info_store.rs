@@ -201,7 +201,9 @@ mod tests {
         assert!(is_numeric(["0.1,0.2", "x"].into_iter()));
         assert!(is_numeric([".", "1", "2"].into_iter()));
         assert!(!is_numeric([".", "1"].into_iter()));
-        assert!(is_numeric(["NaN", "-Infinity", "1e5", "0x1p3", "1f"].into_iter()));
+        assert!(is_numeric(
+            ["NaN", "-Infinity", "1e5", "0x1p3", "1f"].into_iter()
+        ));
         assert!(!is_numeric(["1", ""].into_iter()));
     }
 

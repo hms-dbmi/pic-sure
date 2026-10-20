@@ -69,8 +69,8 @@ struct GenomicLoadArgs {
     #[arg(long, value_enum)]
     mode: GenomicLoadMode,
     /// A VCF index file: `FILE` in localDistributed, `GROUP=FILE` per group in
-    /// localPatientDistributed, groups in Java String.compareTo order. VCF paths in the file
-    /// resolve against the working directory.
+    /// localPatientDistributed, in any order. VCF paths in the file resolve against the
+    /// working directory.
     #[arg(long = "index", required = true)]
     indexes: Vec<String>,
     /// Genomic store directory to create. It must not exist.
@@ -533,9 +533,7 @@ fn run_genomic_load(args: GenomicLoadArgs) -> Result<()> {
             (GenomicLoadMode::LocalPatientDistributed, Some((group, file))) => {
                 (group.to_string(), PathBuf::from(file))
             }
-            (GenomicLoadMode::LocalPatientDistributed, None) => {
-                (String::new(), PathBuf::from(arg))
-            }
+            (GenomicLoadMode::LocalPatientDistributed, None) => (String::new(), PathBuf::from(arg)),
         })
         .collect();
     let options = hpds_etl::genomic::vcf_load::GenomicLoadOptions {

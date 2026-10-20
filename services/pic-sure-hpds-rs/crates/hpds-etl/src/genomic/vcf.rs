@@ -61,8 +61,10 @@ pub fn refuse(path: &Path, line: u64, detail: impl Into<String>) -> EtlError {
     }
 }
 
-/// Reads an index file as `VcfIndexFileParser` does, in Java's line order: by chromosome
-/// (`ALL` lines after the others), then by VCF path.
+/// Reads an index file as `VcfIndexFileParser` does, in Java's line order: by chromosome,
+/// then by VCF path. Java's comparator puts a line whose chromosome is `ALL` after every line
+/// it is compared with, so when every line is `ALL` the file order stands; a mix of `ALL` and
+/// named lines has no consistent Java order, and they come here after the named ones.
 ///
 /// # Errors
 /// [`EtlError::Input`] naming the line for a missing column, a flag that is not an `int`, a
@@ -117,7 +119,10 @@ pub fn read_index(path: &Path) -> Result<Vec<IndexLine>> {
                     refuse(
                         path,
                         line,
-                        format!("patient id {} is not an integer from 0 to 2147483647", i + 1),
+                        format!(
+                            "patient id {} is not an integer from 0 to 2147483647",
+                            i + 1
+                        ),
                     )
                 })?;
             patients.push(id);
@@ -156,14 +161,15 @@ pub fn read_index(path: &Path) -> Result<Vec<IndexLine>> {
             ));
         }
     }
+    if lines.iter().all(|l| l.contig.is_none()) {
+        return Ok(lines);
+    }
     lines.sort_by(|a, b| {
         let contigs = match (&a.contig, &b.contig) {
             (Some(x), Some(y)) => java_string_cmp(x, y),
             (x, y) => y.is_none().cmp(&x.is_none()).reverse(),
         };
-        contigs.then_with(|| {
-            java_string_cmp(&a.vcf.to_string_lossy(), &b.vcf.to_string_lossy())
-        })
+        contigs.then_with(|| java_string_cmp(&a.vcf.to_string_lossy(), &b.vcf.to_string_lossy()))
     });
     Ok(lines)
 }
@@ -219,9 +225,16 @@ impl VcfLines {
         self.line += 1;
         if self.buf.last() == Some(&b'\n') {
             self.buf.pop();
-            if self.buf.last() == Some(&b'\r') {
-                self.buf.pop();
-            }
+        }
+        if self.buf.last() == Some(&b'\r') {
+            self.buf.pop();
+        }
+        if self.buf.contains(&b'\r') {
+            return Err(refuse(
+                &self.path,
+                self.line,
+                "a carriage return inside the line, which Java reads as a line end",
+            ));
         }
         std::str::from_utf8(&self.buf)
             .map(|text| Some((self.line, text)))
@@ -341,31 +354,42 @@ pub struct Record<'a> {
 }
 
 /// Splits a data record and checks what both Java loaders need of it: at least ten
-/// tab-separated fields, no fixed field starting with a quote (the metadata loader reads the
-/// VCF as quoted CSV), a CHROM and REF without commas, a biallelic ALT, and a POS that is a
-/// Java `int` from 0 written as Java writes it back (the metadata loader re-renders it).
+/// tab-separated fields, a CHROM and REF without commas, a biallelic ALT, and a POS that is a
+/// Java `int` from 0 written as Java writes it back (the metadata loader re-renders it). When
+/// `read_as_csv` (the record of an annotated VCF, which the metadata loader reads as quoted
+/// CSV), no field may start with a quote.
 ///
 /// # Errors
 /// The refusal's text.
-pub fn parse_record(line: &str) -> std::result::Result<Record<'_>, String> {
+pub fn parse_record(line: &str, read_as_csv: bool) -> std::result::Result<Record<'_>, String> {
+    if read_as_csv && (line.starts_with('"') || line.contains("\t\"")) {
+        let at = if line.starts_with('"') {
+            0
+        } else {
+            line.find("\t\"").unwrap_or_default() + 1
+        };
+        return Err(format!(
+            "field {} starts with a quote, and the metadata loader reads the VCF as quoted CSV",
+            line[..at].matches('\t').count() + 1
+        ));
+    }
     let mut fields = [""; 9];
     let mut rest = line;
     for (i, slot) in fields.iter_mut().enumerate() {
-        let (field, tail) = rest
-            .split_once('\t')
-            .ok_or_else(|| format!("the record has {} tab-separated fields, fewer than ten", i + 1))?;
+        let (field, tail) = rest.split_once('\t').ok_or_else(|| {
+            format!(
+                "the record has {} tab-separated fields, fewer than ten",
+                i + 1
+            )
+        })?;
         *slot = field;
         rest = tail;
     }
-    if let Some(i) = fields[..8].iter().position(|f| f.starts_with('"')) {
-        return Err(format!(
-            "field {} starts with a quote, which the metadata loader reads as quoted CSV",
-            i + 1
-        ));
-    }
     let [contig, pos, _, reference, alt, _, _, info, format] = fields;
     if contig.contains(',') {
-        return Err(format!("CHROM {contig:?} holds a comma, which breaks the spec"));
+        return Err(format!(
+            "CHROM {contig:?} holds a comma, which breaks the spec"
+        ));
     }
     if reference.contains(',') {
         return Err("REF holds a comma, which breaks the spec".into());
@@ -409,7 +433,9 @@ pub fn spec_notation(record: &Record<'_>) -> std::result::Result<String, String>
         for (key, slot) in [(GENE_KEY, &mut gene), (CONSEQUENCE_KEY, &mut consequence)] {
             if tokens[i] == key {
                 *slot = tokens.get(i + 1).ok_or_else(|| {
-                    format!("INFO ends with the key {key} and no value; Java reads past it and fails")
+                    format!(
+                        "INFO ends with the key {key} and no value; Java reads past it and fails"
+                    )
                 })?;
             }
         }
@@ -480,17 +506,17 @@ mod tests {
     #[test]
     fn spec_pairs_info_tokens_as_java_does() {
         let line = record("Gene_with_variant=G;Variant_consequence_calculated=c");
-        let r = parse_record(&line).unwrap();
+        let r = parse_record(&line, true).unwrap();
         assert_eq!(spec_notation(&r).unwrap(), "chr1,100,A,G,G,c");
         let line = record("FLAG;Gene_with_variant=G;Variant_consequence_calculated=c");
-        let r = parse_record(&line).unwrap();
+        let r = parse_record(&line, true).unwrap();
         assert_eq!(spec_notation(&r).unwrap(), "chr1,100,A,G,NULL,NULL");
         let line = record("Gene_with_variant=A&B;X=1");
-        let r = parse_record(&line).unwrap();
+        let r = parse_record(&line, true).unwrap();
         assert_eq!(spec_notation(&r).unwrap(), "chr1,100,A,G,A&B,NULL");
         let line = record(".");
         assert_eq!(
-            spec_notation(&parse_record(&line).unwrap()).unwrap(),
+            spec_notation(&parse_record(&line, true).unwrap()).unwrap(),
             "chr1,100,A,G,NULL,NULL"
         );
     }
@@ -498,27 +524,33 @@ mod tests {
     #[test]
     fn spec_refusals() {
         let line = record("X=1;Gene_with_variant");
-        assert!(spec_notation(&parse_record(&line).unwrap()).is_err());
+        assert!(spec_notation(&parse_record(&line, true).unwrap()).is_err());
         let line = record("Gene_with_variant=g;Variant_consequence_calculated=");
-        assert!(spec_notation(&parse_record(&line).unwrap()).is_err());
+        assert!(spec_notation(&parse_record(&line, true).unwrap()).is_err());
         let line = record("Gene_with_variant=;Variant_consequence_calculated=c");
         assert_eq!(
-            spec_notation(&parse_record(&line).unwrap()).unwrap(),
+            spec_notation(&parse_record(&line, true).unwrap()).unwrap(),
             "chr1,100,A,G,,c"
         );
     }
 
     #[test]
     fn record_refusals() {
-        assert!(parse_record("chr1\t100\t.\tA\tG,T\t.\tPASS\t.\tGT\t0|1").is_err());
-        assert!(parse_record("chr1\t0100\t.\tA\tG\t.\tPASS\t.\tGT\t0|1").is_err());
-        assert!(parse_record("chr1\t+100\t.\tA\tG\t.\tPASS\t.\tGT\t0|1").is_err());
-        assert!(parse_record("chr1\t-1\t.\tA\tG\t.\tPASS\t.\tGT\t0|1").is_err());
-        assert!(parse_record("chr1\tx\t.\tA\tG\t.\tPASS\t.\tGT\t0|1").is_err());
-        assert!(parse_record("chr1\t100\t.\tA\tG\t.\tPASS\t.\tGT").is_err());
-        assert!(parse_record("c,1\t100\t.\tA\tG\t.\tPASS\t.\tGT\t0|1").is_err());
-        assert!(parse_record("chr1\t100\t.\tA\tG\t.\tPASS\t\"x\tGT\t0|1").is_err());
-        let r = parse_record("chr1\t0\t.\tA\tG\t.\tPASS\t.\tGT\t0|1\t1|1").unwrap();
+        assert!(parse_record("chr1\t100\t.\tA\tG,T\t.\tPASS\t.\tGT\t0|1", true).is_err());
+        assert!(parse_record("chr1\t0100\t.\tA\tG\t.\tPASS\t.\tGT\t0|1", true).is_err());
+        assert!(parse_record("chr1\t+100\t.\tA\tG\t.\tPASS\t.\tGT\t0|1", true).is_err());
+        assert!(parse_record("chr1\t-1\t.\tA\tG\t.\tPASS\t.\tGT\t0|1", true).is_err());
+        assert!(parse_record("chr1\tx\t.\tA\tG\t.\tPASS\t.\tGT\t0|1", true).is_err());
+        assert!(parse_record("chr1\t100\t.\tA\tG\t.\tPASS\t.\tGT", true).is_err());
+        assert!(parse_record("c,1\t100\t.\tA\tG\t.\tPASS\t.\tGT\t0|1", true).is_err());
+        assert!(parse_record("chr1\t100\t.\tA\tG\t.\tPASS\t\"x\tGT\t0|1", true).is_err());
+        let quoted = "chr1\t100\t.\tA\tG\t.\tPASS\t.\tGT:X\t0|1:\"a\t\"0|1";
+        assert_eq!(
+            parse_record(quoted, true).unwrap_err(),
+            "field 11 starts with a quote, and the metadata loader reads the VCF as quoted CSV"
+        );
+        assert!(parse_record(quoted, false).is_ok());
+        let r = parse_record("chr1\t0\t.\tA\tG\t.\tPASS\t.\tGT\t0|1\t1|1", true).unwrap();
         assert_eq!(r.samples, "0|1\t1|1");
         assert_eq!(r.position, 0);
     }
