@@ -1,16 +1,19 @@
 //! The variant result types against the Java answers the genomic equivalence corpora
-//! recorded on `edge` and `g1kg`, which the oracle checked (Java correct, or Java throwing
-//! where the oracle says it does). Every VARIANT_COUNT_FOR_QUERY, VARIANT_LIST_FOR_QUERY,
-//! VCF_EXCERPT, AGGREGATE_VCF_EXCERPT and INFO_COLUMN_LISTING sync request of the chosen
-//! layers is answered by the engine over the migrated genomic store and a phenotype store
-//! loaded from the dataset's CSVs, with the settings Java ran with (`VCF_EXCERPT_ENABLED`,
-//! consents not required), and compared:
+//! recorded on `edge`, `g1kg`, `g1kg2` and `gfx` in both layouts (`gfx-ld`, `gfx-lpd`), which
+//! the oracle checked (Java correct, or Java throwing where the oracle says it does). Every
+//! VARIANT_COUNT_FOR_QUERY, VARIANT_LIST_FOR_QUERY, VCF_EXCERPT, AGGREGATE_VCF_EXCERPT and
+//! INFO_COLUMN_LISTING sync request of every recorded layer is answered by the engine over the
+//! migrated genomic store and a phenotype store loaded from the dataset's CSVs, with the
+//! settings Java ran with, and compared. Java ran each layer with `VCF_EXCERPT_ENABLED` on and
+//! consents not required; a layer recorded as `<layer>-<setting>` ran with one setting
+//! changed, which the engine takes too: the two gates (`vcffalse-aggfalse`,
+//! `vcffalse-aggtrue`), `variant.info_column_order` (`order-*`) or `ID_CUBE_NAME` (`cube-*`).
 //!
 //! - VARIANT_COUNT_FOR_QUERY byte for byte; variant lists and listings as sets and multisets;
 //! - excerpts as the `gfx` test compares them (INFO columns in bucket order, patient columns
 //!   as a map from header to column), except that a row Java collapsed from two specs is
-//!   compared on its key fields and counts are not, since which spec survives is unspecified
-//!   in Java;
+//!   compared on its key fields, and its counts and genotype cells are not, since which spec
+//!   survives is unspecified in Java; every other row's genotype cells are compared;
 //! - a request Java fails on (a 500, an ERROR job or an empty 200) must be refused;
 //! - a spec filter invalid as sent (a null zygosity, an `rs` key, a position that is not an
 //!   `int`) in a request with no INFO filter is refused at admission, where Java's variant
@@ -23,7 +26,7 @@
 //!
 //! Runs when `HPDS_GENOMIC_EQUIVALENCE` names the bench data directory
 //! (`.worktrees/bench-data`); `HPDS_GENOMIC_CORPUS_LIMIT` caps the requests per layer on
-//! `g1kg` (default 300).
+//! `g1kg` and `g1kg2` (default 300).
 
 mod common;
 
@@ -237,33 +240,101 @@ fn excerpt_form(body: &str) -> ExcerptForm {
     (kept, columns)
 }
 
+/// The chromosome and position of a spec, which Java's `TreeMap` row key starts with.
+type RowPosition = (String, Option<i64>);
+
+fn position_of(spec: &str) -> RowPosition {
+    let f: Vec<&str> = spec.split(',').collect();
+    (
+        f[0].to_owned(),
+        f.get(1).and_then(|p| p.parse::<i64>().ok()),
+    )
+}
+
+/// The positions at which `list` holds two or more specs, whose excerpt rows Java may have
+/// collapsed.
+fn collapsed_positions(list: &[String]) -> BTreeSet<RowPosition> {
+    let mut seen = BTreeMap::new();
+    for s in list {
+        *seen.entry(position_of(s)).or_insert(0) += 1;
+    }
+    seen.into_iter()
+        .filter(|(_, n)| *n > 1)
+        .map(|(k, _)| k)
+        .collect()
+}
+
 /// True when two excerpts differ only in rows whose spec Java collapsed with another: equal
-/// row counts, and every differing row's chromosome and position agree.
-fn differ_only_in_collapsed_rows(rust: &ExcerptForm, java: &ExcerptForm, list: &[String]) -> bool {
-    let positions = |s: &str| {
-        let f: Vec<&str> = s.split(',').collect();
-        (
-            f[0].to_owned(),
-            f.get(1).and_then(|p| p.parse::<i64>().ok()),
-        )
-    };
-    let collapsed: BTreeSet<_> = {
-        let mut seen = BTreeMap::new();
-        for s in list {
-            *seen.entry(positions(s)).or_insert(0) += 1;
-        }
-        seen.into_iter()
-            .filter(|(_, n)| *n > 1)
-            .map(|(k, _)| k)
-            .collect()
-    };
-    rust.0.len() == java.0.len()
+/// row counts, every differing row's chromosome and position agree and are `collapsed`, the
+/// same patient columns, and equal genotype cells in every row that is not collapsed.
+fn differ_only_in_collapsed_rows(
+    rust: &ExcerptForm,
+    java: &ExcerptForm,
+    collapsed: &BTreeSet<RowPosition>,
+) -> bool {
+    let position = |r: &[String]| (r[0].clone(), r[1].parse::<i64>().ok());
+    let rows_agree = rust.0.len() == java.0.len()
         && rust.0.iter().zip(&java.0).skip(1).all(|(r, j)| {
-            r == j
-                || (r[0] == j[0]
-                    && r[1].parse::<i64>().ok() == j[1].parse::<i64>().ok()
-                    && collapsed.contains(&(r[0].clone(), r[1].parse().ok())))
-        })
+            r == j || (position(r) == position(j) && collapsed.contains(&position(r)))
+        });
+    let kept: Vec<bool> = rust.0[1..]
+        .iter()
+        .map(|r| !collapsed.contains(&position(r)))
+        .collect();
+    let cells_agree = rust.1.keys().eq(java.1.keys())
+        && rust.1.iter().zip(&java.1).all(|((_, r), (_, j))| {
+            r.len() == kept.len()
+                && j.len() == kept.len()
+                && (0..kept.len()).all(|i| !kept[i] || r[i] == j[i])
+        });
+    rows_agree && cells_agree
+}
+
+/// The settings Java ran layer `label` with: `VCF_EXCERPT_ENABLED` on, with the setting a
+/// `<layer>-<setting>` label names changed.
+fn settings_of(label: &str) -> VariantResultSettings {
+    let on = VariantResultSettings {
+        vcf_excerpt_enabled: true,
+        ..VariantResultSettings::default()
+    };
+    let order = |columns: &str| VariantResultSettings {
+        info_column_order: columns.to_owned(),
+        ..on.clone()
+    };
+    let cube = |concept: &str| VariantResultSettings {
+        id_cube_name: Some(concept.to_owned()),
+        ..on.clone()
+    };
+    match label.split_once('-').map_or("", |(_, setting)| setting) {
+        "" => on.clone(),
+        "vcffalse-aggfalse" => VariantResultSettings::default(),
+        "vcffalse-aggtrue" => VariantResultSettings {
+            aggregate_vcf_excerpt_enabled: true,
+            ..VariantResultSettings::default()
+        },
+        "order-subset" => order("Variant_severity,Gene_with_variant"),
+        "order-unknown" => order("Gene_with_variant,No_such_column,Variant_class"),
+        "order-repeated" => order("Variant_class,Gene_with_variant,Variant_class"),
+        "cube-biosample" => cube("\\open_access-1000Genomes\\data\\BIOSAMPLE ID\\"),
+        "cube-popcode" => cube("\\open_access-1000Genomes\\data\\POPULATION CODE\\"),
+        "cube-age" => cube("\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\"),
+        "cube-unknown" => cube("\\no_such_study\\no_such_concept\\"),
+        other => panic!("layer {label} ran with setting {other}, which this test does not know"),
+    }
+}
+
+/// The layers recorded for dataset `name`, from its `<layer>-java.jsonl.gz` files, sorted.
+fn recorded_layers(bench: &Path, name: &str) -> Vec<String> {
+    let mut layers: Vec<String> =
+        std::fs::read_dir(bench.join(format!("equivalence-genomic/out/{name}")))
+            .unwrap()
+            .filter_map(|e| {
+                let file = e.unwrap().file_name().into_string().unwrap();
+                file.strip_suffix("-java.jsonl.gz").map(str::to_owned)
+            })
+            .collect();
+    layers.sort();
+    layers
 }
 
 #[test]
@@ -285,13 +356,12 @@ fn variant_results_equal_the_java_answers_of_the_genomic_corpora() {
         ResultType::AggregateVcfExcerpt,
         ResultType::InfoColumnListing,
     ];
-    for (name, layers, cap) in [
-        (
-            "edge",
-            vec!["G0", "G1", "G1P", "G2", "GC", "GF", "GS", "GX"],
-            usize::MAX,
-        ),
-        ("g1kg", vec!["GT", "R501", "R511"], limit),
+    for (name, store_dir, key_dir, cap) in [
+        ("edge", "edge/rust", "edge/pheno", usize::MAX),
+        ("g1kg", "g1kg/rust", "g1kg/pheno", limit),
+        ("g1kg2", "g1kg2/rust", "g1kg/pheno", limit),
+        ("gfx-ld", "gfx/ld/rust", "gfx/pheno", usize::MAX),
+        ("gfx-lpd", "gfx/lpd/rust", "gfx/pheno", usize::MAX),
     ] {
         let dataset: Value = serde_json::from_str(
             &std::fs::read_to_string(workspace.join(format!(
@@ -302,29 +372,25 @@ fn variant_results_equal_the_java_answers_of_the_genomic_corpora() {
         .unwrap();
         let pheno = pheno_of(&workspace, &dataset);
         let store = GenomicStore::open_with_key_file(
-            &bench.join(format!("genomic/{name}/rust")),
-            &bench.join(format!("genomic/{name}/pheno/encryption_key")),
+            &bench.join(format!("genomic/{store_dir}")),
+            &bench.join(format!("genomic/{key_dir}/encryption_key")),
             &GenomicOptions::default(),
         )
         .unwrap();
-        let engine: Engine = pheno
-            .open(&common::lenient())
-            .unwrap()
-            .with_genomic(store)
-            .with_variant_settings(VariantResultSettings {
-                vcf_excerpt_enabled: true,
-                ..VariantResultSettings::default()
-            });
+        let mut engine: Engine = pheno.open(&common::lenient()).unwrap().with_genomic(store);
         let mut tally: BTreeMap<&str, usize> = BTreeMap::new();
         let mut problems = Vec::new();
-        for layer in layers {
-            let corpus = bench.join(format!("equivalence-genomic/corpora/{name}/{layer}"));
+        for layer in recorded_layers(&bench, name) {
+            let corpus_layer = layer.split('-').next().unwrap();
+            let corpus = bench.join(format!("equivalence-genomic/corpora/{name}/{corpus_layer}"));
+            if !corpus.is_dir() {
+                eprintln!("{name} {layer}: no corpus, skipped");
+                continue;
+            }
             let java_path = bench.join(format!(
                 "equivalence-genomic/out/{name}/{layer}-java.jsonl.gz"
             ));
-            if !java_path.exists() {
-                continue;
-            }
+            engine = engine.with_variant_settings(settings_of(&layer));
             let java: HashMap<String, Value> = gz_lines(&java_path)
                 .into_iter()
                 .map(|d| (d["name"].as_str().unwrap().to_owned(), d["outcome"].clone()))
@@ -371,7 +437,7 @@ fn variant_results_equal_the_java_answers_of_the_genomic_corpora() {
                     break;
                 }
                 taken += 1;
-                let what = format!("{name} {}", entry["name"]);
+                let what = format!("{name} {layer} {}", entry["name"]);
                 let java_body = outcome["body"].as_str().unwrap_or_default();
                 let java_failed = outcome["status"] != 200 || java_body.is_empty();
                 let rust = engine.answer_sync(&query);
@@ -455,13 +521,14 @@ fn variant_results_equal_the_java_answers_of_the_genomic_corpora() {
                                 .and_then(|b| spec_set(&b))
                                 .map(|s| s.into_iter().collect())
                                 .unwrap_or_default();
-                            let collapsed = differ_only_in_collapsed_rows(&r, &j, &list);
+                            let collapsed =
+                                differ_only_in_collapsed_rows(&r, &j, &collapsed_positions(&list));
                             if collapsed {
                                 *tally
                                     .entry("excerpt equal but for collapsed rows")
                                     .or_default() += 1;
                             }
-                            collapsed && r.1.keys().eq(j.1.keys())
+                            collapsed
                         }
                     }
                     _ => rust == java_body,
