@@ -163,11 +163,7 @@ fn excerpt_equals_oracle(result_type: ResultType, rust: &str, oracle: &Value) ->
             let cell = row[4 + c];
             match o["info"][*column].as_array() {
                 None => cell == "null",
-                Some(values) => {
-                    let oracle: BTreeSet<&str> =
-                        values.iter().map(|v| v.as_str().unwrap()).collect();
-                    cell.split(',').collect::<BTreeSet<&str>>() == oracle
-                }
+                Some(values) => cell_holds(cell, values),
             }
         });
         let counts_equal =
@@ -180,6 +176,18 @@ fn excerpt_equals_oracle(result_type: ResultType, rust: &str, oracle: &Value) ->
                 && o["cells"].as_object().map_or(0, |m| m.len()) == header.len() - fixed;
         fixed_equal && info_equal && counts_equal && cells_equal
     })
+}
+
+/// True when the INFO cell `cell` is the oracle's distinct `values` joined with `,` in some
+/// order. A value may hold a comma itself, so the cell is matched against the values rather
+/// than split.
+fn cell_holds(cell: &str, values: &[Value]) -> bool {
+    let values: Vec<&str> = values.iter().map(|v| v.as_str().unwrap()).collect();
+    if values.len() == 1 {
+        return cell == values[0];
+    }
+    let joined_len: usize = values.iter().map(|v| v.len()).sum::<usize>() + values.len() - 1;
+    cell.len() == joined_len && values.iter().all(|v| cell.contains(v))
 }
 
 fn spec_set(body: &str) -> Option<BTreeSet<String>> {
