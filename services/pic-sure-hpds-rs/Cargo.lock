@@ -810,6 +810,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "csv",
+ "flate2",
  "hpds-bench",
  "hpds-etl",
  "hpds-format",

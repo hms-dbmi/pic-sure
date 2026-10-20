@@ -32,5 +32,6 @@ hpds-bench = { path = "../hpds-bench" }
 hpds-etl = { path = "../hpds-etl" }
 hpds-gen = { path = "../hpds-gen" }
 csv.workspace = true
+flate2 = { version = "=1.1.10", default-features = false, features = ["zlib-rs"] }
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt", "macros"] }
