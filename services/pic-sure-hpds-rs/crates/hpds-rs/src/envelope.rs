@@ -2,7 +2,7 @@
 //! share.
 
 use hpds_format::{jackson_uuid, java_trim};
-use hpds_query::{Query, parse_request_body, parse_strict};
+use hpds_query::{ConsentContract, Query, parse_request_body_for, parse_strict_for};
 use serde_json::{Map, Value};
 
 use crate::error::ApiError;
@@ -22,7 +22,20 @@ use crate::error::ApiError;
 /// A 400 [`ApiError`] when the body is not JSON, holds a duplicate key, is not an object, or
 /// has an invalid `resourceUUID`.
 pub fn read_envelope(body: &[u8]) -> Result<Map<String, Value>, ApiError> {
-    let value = parse_request_body(body)
+    read_envelope_for(body, ConsentContract::Harmonization)
+}
+
+/// [`read_envelope`] for a service answering by `contract`: under the main contract a
+/// repeated `authorizationFilters` keeps its last value, as Jackson keeps it
+/// ([`hpds_query::parse_request_body_for`]); every other repeated key is refused.
+///
+/// # Errors
+/// As [`read_envelope`].
+pub fn read_envelope_for(
+    body: &[u8],
+    contract: ConsentContract,
+) -> Result<Map<String, Value>, ApiError> {
+    let value = parse_request_body_for(body, contract)
         .map_err(|e| ApiError::bad_request(format!("the request body is not valid JSON: {e}")))?;
     let Value::Object(fields) = value else {
         return Err(ApiError::bad_request(
@@ -63,11 +76,11 @@ fn invalid_query(error: &serde_json::Error) -> ApiError {
     ApiError::bad_request(format!("the query is not valid: {error}"))
 }
 
-fn query_from_value(value: Value) -> Result<Query, ApiError> {
+fn query_from_value(value: Value, contract: ConsentContract) -> Result<Query, ApiError> {
     if has_v1_keys(&value) {
         return Err(ApiError::bad_request(V1_QUERY_MESSAGE));
     }
-    serde_json::from_value(value).map_err(|e| invalid_query(&e))
+    Query::from_value(value, contract).map_err(|e| invalid_query(&e))
 }
 
 /// Reads a request body as a `QueryRequest` and its `query` as a v3 [`Query`]. The query may
@@ -83,14 +96,26 @@ fn query_from_value(value: Value) -> Result<Query, ApiError> {
 /// `query`, a `query` that is neither an object nor a string, a query with v1 keys
 /// ([`V1_QUERY_MESSAGE`]), a duplicate key, and a query the model refuses.
 pub fn read_query(body: &[u8]) -> Result<Query, ApiError> {
-    let mut fields = read_envelope(body)?;
+    read_query_for(body, ConsentContract::Harmonization)
+}
+
+/// [`read_query`] with the request model of `contract`: under the main contract the seven
+/// fields of Java main's `Query`, so `userConsents` is an unknown field, refused with 400
+/// naming it, and a repeated `authorizationFilters` keeps its last value, in the body and in
+/// a string `query` alike ([`read_envelope_for`], [`hpds_query::parse_strict_for`]).
+///
+/// # Errors
+/// As [`read_query`].
+pub fn read_query_for(body: &[u8], contract: ConsentContract) -> Result<Query, ApiError> {
+    let mut fields = read_envelope_for(body, contract)?;
     match fields.remove("query") {
         None | Some(Value::Null) => Err(ApiError::bad_request("the request has no query")),
         Some(Value::String(text)) => {
-            let value = parse_strict(text.as_bytes()).map_err(|e| invalid_query(&e))?;
-            query_from_value(value)
+            let value =
+                parse_strict_for(text.as_bytes(), contract).map_err(|e| invalid_query(&e))?;
+            query_from_value(value, contract)
         }
-        Some(object @ Value::Object(_)) => query_from_value(object),
+        Some(object @ Value::Object(_)) => query_from_value(object, contract),
         Some(_) => Err(ApiError::bad_request(
             "query must be a JSON object or a string holding one",
         )),

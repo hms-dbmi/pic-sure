@@ -10,7 +10,7 @@ use axum::http::header::{CONTENT_ENCODING, CONTENT_TYPE, VARY};
 use axum::http::{HeaderMap, HeaderValue};
 use axum::response::{IntoResponse, Response};
 use hpds_format::java_double_to_string;
-use hpds_query::{InfoSearchEntry, SummaryColumnMeta};
+use hpds_query::{ColumnMeta, InfoSearchEntry, SummaryColumnMeta};
 use serde_json::Value;
 
 use crate::encoding::{GZIP_LEVEL, MIN_GZIP_BYTES, STORED_GZIP_LEVEL, accepts_gzip, gzip};
@@ -79,22 +79,44 @@ impl SearchIndex {
     /// concept with a `DATETIME` column differ from Java. The rendered concepts are kept
     /// only inside the answer to the empty term, which holds them all in order.
     pub fn build(dictionary: &[SummaryColumnMeta]) -> Self {
+        Self::build_rendered(dictionary.iter().map(|concept| {
+            (concept, |out: &mut String| {
+                SummaryColumnMeta {
+                    timestamp_min: None,
+                    timestamp_max: None,
+                    ..concept.clone()
+                }
+                .write_json(out);
+            })
+        }))
+    }
+
+    /// The index over a main-contract dictionary, each concept rendered as Java main's
+    /// `ColumnMeta` ([`ColumnMeta::write_json`]): `name`, `categorical`, `categoryValues` or
+    /// `min` and `max`, `observationCount`, `patientCount`. Matching and the two stored
+    /// answers are as for [`SearchIndex::build`].
+    pub fn build_main<'a>(dictionary: impl Iterator<Item = ColumnMeta<'a>>) -> Self {
+        Self::build_rendered(
+            dictionary.map(|meta| (meta.summary(), move |out: &mut String| meta.write_json(out))),
+        )
+    }
+
+    /// The index over `concepts`, each a concept's metadata and the function that renders
+    /// its JSON value.
+    fn build_rendered<'a, F: Fn(&mut String)>(
+        concepts: impl Iterator<Item = (&'a SummaryColumnMeta, F)>,
+    ) -> Self {
         let mut every_concept = String::from(BODY_START);
         every_concept.push('{');
-        let mut entries = Vec::with_capacity(dictionary.len());
-        for (i, concept) in dictionary.iter().enumerate() {
+        let mut entries = Vec::with_capacity(concepts.size_hint().0);
+        for (i, (concept, render)) in concepts.enumerate() {
             if i > 0 {
                 every_concept.push(',');
             }
             let start = every_concept.len();
             push_string(&mut every_concept, &concept.name);
             every_concept.push(':');
-            SummaryColumnMeta {
-                timestamp_min: None,
-                timestamp_max: None,
-                ..concept.clone()
-            }
-            .write_json(&mut every_concept);
+            render(&mut every_concept);
             entries.push(SearchEntry {
                 path: concept.name.to_lowercase(),
                 categories: if concept.categorical {
@@ -265,7 +287,8 @@ pub fn render_info(entries: &[InfoSearchEntry]) -> String {
 /// lowercased path contains the term, or when it is categorical and one of its lowercased
 /// category values equals the term; the empty string therefore matches every concept. The
 /// body is `{"results":{"phenotypes":{<path>:<SummaryColumnMeta>...},"info":{}},
-/// "searchQuery":<term as sent>}`, each concept as [`SearchIndex::build`] renders it. The
+/// "searchQuery":<term as sent>}`, each concept as [`SearchIndex::build`] renders it, or under
+/// the main consent contract `<ColumnMeta>` as [`SearchIndex::build_main`] renders it. The
 /// scan, the rendering and any compression run on tokio's blocking pool.
 ///
 /// With a genomic store served and a term given (the empty one included), `info` holds each

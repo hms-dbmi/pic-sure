@@ -46,6 +46,7 @@ use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use hpds_query::ConsentContract;
 use http_body_util::{BodyExt, LengthLimitError, Limited};
 use hyper_util::rt::{TokioExecutor, TokioIo, TokioTimer};
 use hyper_util::server::conn::auto;
@@ -135,9 +136,18 @@ pub struct Health {
         skip_serializing_if = "std::ops::Not::not"
     )]
     pub genomic_store_superseded: bool,
+    /// `main` when the service answers by the main consent contract, so a deployment can
+    /// check which contract scopes its queries. Left out under the harmonization contract,
+    /// whose health body is unchanged; `/metrics` and the startup log name both.
+    #[serde(rename = "consentContract", skip_serializing_if = "Option::is_none")]
+    pub consent_contract: Option<&'static str>,
 }
 
 async fn health(State(state): State<AppState>) -> (StatusCode, Json<Health>) {
+    let consent_contract = match state.contract() {
+        ConsentContract::Main => Some(ConsentContract::Main.name()),
+        ConsentContract::Harmonization => None,
+    };
     match state.down_reason() {
         None => (
             StatusCode::OK,
@@ -146,6 +156,7 @@ async fn health(State(state): State<AppState>) -> (StatusCode, Json<Health>) {
                 reason: None,
                 store_superseded: state.store_superseded(),
                 genomic_store_superseded: state.genomic_store_superseded(),
+                consent_contract,
             }),
         ),
         Some(reason) => (
@@ -155,6 +166,7 @@ async fn health(State(state): State<AppState>) -> (StatusCode, Json<Health>) {
                 reason: Some(reason),
                 store_superseded: state.store_superseded(),
                 genomic_store_superseded: state.genomic_store_superseded(),
+                consent_contract,
             }),
         ),
     }

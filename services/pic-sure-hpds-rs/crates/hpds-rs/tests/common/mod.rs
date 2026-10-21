@@ -60,10 +60,13 @@ pub fn java_fixture_dir() -> PathBuf {
     workspace().join("../pic-sure-hpds/service/src/test/resources/phenotypic")
 }
 
-/// Settings with defaults, the results directory inside `dir`, exports enabled, and
-/// consents not required (the Java integration profile).
+/// Settings with defaults, the harmonization consent contract, the results directory inside
+/// `dir`, exports enabled, and consents not required (the Java integration profile).
 pub fn config(dir: &Path) -> Config {
-    let mut config = Config::from_lookup(|_| None).unwrap();
+    let mut config = Config::from_lookup(|name| {
+        (name == "HPDS_CONSENT_CONTRACT").then(|| "harmonization".into())
+    })
+    .unwrap();
     config.results_dir = dir.join("results");
     config.partitions.require_consents = false;
     config.id_batch_size = 1000;

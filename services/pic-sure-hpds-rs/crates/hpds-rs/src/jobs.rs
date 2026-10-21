@@ -28,12 +28,12 @@ use axum::http::header::{CONTENT_LENGTH, CONTENT_TYPE};
 use axum::response::{IntoResponse, Response};
 use bytes::BytesMut;
 use hpds_format::push_decimal_u32;
-use hpds_query::{Engine, PATIENTS_HEADER, Query, QueryError, ResultType};
+use hpds_query::{ConsentContract, Engine, PATIENTS_HEADER, Query, QueryError, ResultType};
 use serde::Serialize;
 use tokio::sync::Semaphore;
 
 use crate::config::Config;
-use crate::envelope::{canonical_uuid, random_uuid, read_query};
+use crate::envelope::{canonical_uuid, random_uuid, read_query_for};
 use crate::error::{ApiError, SERVER_ERROR_MESSAGE};
 use crate::metrics::label_result_type;
 use crate::state::AppState;
@@ -303,8 +303,6 @@ impl ResultRegistry {
     /// # Errors
     /// A 503 [`ApiError`] when the registry is full of pending and running queries.
     pub fn submit(&self, engine: Arc<Engine>, query: Query) -> Result<QueryStatus, ApiError> {
-        let id = random_uuid();
-        let now = now_ms();
         let refusal = match query.expected_result_type {
             ResultType::DataframeTimeseries | ResultType::DataframePfb => Some(format!(
                 "{} exports are not supported by this phenotype-only HPDS",
@@ -315,6 +313,35 @@ impl ResultRegistry {
             }
             _ => None,
         };
+        let (id, status) = self.register(&query, refusal.clone())?;
+        match refusal {
+            None => self.spawn_export(id, engine, query),
+            Some(message) => self.finished.count(&ResultState::Error { message }),
+        }
+        Ok(status)
+    }
+
+    /// Registers `query` already failed with `message`, as Java ends a job its validator
+    /// refuses: the job exists, its status is ERROR, and it never runs. Returns the status
+    /// right after registration.
+    ///
+    /// # Errors
+    /// A 503 [`ApiError`] when the registry is full of pending and running queries.
+    pub fn submit_refused(&self, query: &Query, message: String) -> Result<QueryStatus, ApiError> {
+        let (_, status) = self.register(query, Some(message.clone()))?;
+        self.finished.count(&ResultState::Error { message });
+        Ok(status)
+    }
+
+    /// Registers `query` under a new id, pending, or failed with `refusal` when one is given,
+    /// making room first. Returns the id and the status right after registration.
+    fn register(
+        &self,
+        query: &Query,
+        refusal: Option<String>,
+    ) -> Result<(String, QueryStatus), ApiError> {
+        let id = random_uuid();
+        let now = now_ms();
         let entry = StoredResult {
             picsure_query_id: query.id.clone().unwrap_or_else(random_uuid),
             queued_ms: now,
@@ -339,11 +366,7 @@ impl ResultRegistry {
         };
         remove_files(&removed);
         admitted?;
-        match refusal {
-            None => self.spawn_export(id, engine, query),
-            Some(message) => self.finished.count(&ResultState::Error { message }),
-        }
-        Ok(status)
+        Ok((id, status))
     }
 
     fn spawn_export(&self, id: String, engine: Arc<Engine>, query: Query) {
@@ -1114,8 +1137,19 @@ pub fn genomic_type_on_async_route(result_type: ResultType) -> String {
 /// block that cannot be read) still ends the export in ERROR. The query,
 /// `userConsents` included, travels with the job, so the export reads exactly the partitions
 /// those consents select.
+///
+/// Under the main consent contract the request model is Java main's (`userConsents` is an
+/// unknown field) and Java main's validator runs right after the shape check
+/// ([`hpds_query::QueryLimits::check_shape`]) and before the concept bounds, in Java's order
+/// ([`hpds_query::MainQueryValidator`]): every rule Java refuses with an
+/// `IllegalArgumentException` (with `hpds.requireAuthorizationFilter` on, an empty
+/// `authorizationFilters`; a phenotypic filter Java's validator refuses; an authorization
+/// filter with empty values or on an unknown or numeric concept) registers the job already in
+/// ERROR, as Java does, and Java's message is kept on it. A `null` authorization filter or a
+/// `null` `conceptPath`, where Java's validator throws another exception and creates no job,
+/// is a 400 naming it. The export's cohort is then scoped by the authorization filters.
 pub async fn submit(State(state): State<AppState>, body: Bytes) -> Result<Response, ApiError> {
-    let query = read_query(&body)?;
+    let query = read_query_for(&body, state.contract())?;
     let result_type = query.expected_result_type;
     let response = submit_query(&state, query).into_response();
     Ok(label_result_type(&state, result_type, response))
@@ -1141,6 +1175,17 @@ fn submit_query(state: &AppState, query: Query) -> Result<Response, ApiError> {
     }
     state.check_genomic(!query.genomic_filters.is_empty())?;
     let engine = Arc::clone(state.engine()?);
+    if state.contract() == ConsentContract::Main {
+        engine.limits().check_shape(&query)?;
+        match engine.validate(&query) {
+            Ok(()) => {}
+            Err(QueryError::Invalid(message)) => {
+                let status = state.results().submit_refused(&query, message)?;
+                return Ok(axum::Json(status).into_response());
+            }
+            Err(other) => return Err(other.into()),
+        }
+    }
     engine.check_limits(&query)?;
     engine.validate(&query)?;
     engine.read_plan(&query)?;

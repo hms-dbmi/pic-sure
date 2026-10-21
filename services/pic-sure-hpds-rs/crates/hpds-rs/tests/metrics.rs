@@ -345,6 +345,7 @@ async fn labels_hold_only_fixed_values() {
                     ["stalled", "expired", "aborted", "store_changed"].contains(&label.as_str())
                 }
                 "le" => label == "+Inf" || label.parse::<f64>().is_ok(),
+                "contract" => hpds_query::CONSENT_CONTRACT_NAMES.contains(&label.as_str()),
                 _ => false,
             };
             assert!(allowed, "{name} {key}={label}");

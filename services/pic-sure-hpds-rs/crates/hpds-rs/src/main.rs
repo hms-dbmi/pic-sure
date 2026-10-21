@@ -136,6 +136,12 @@ fn main() -> ExitCode {
 }
 
 async fn run(config: Config) -> ExitCode {
+    tracing::info!(
+        consent_contract = %config.partitions.contract,
+        require_authorization_filter = config.partitions.require_consents,
+        "serving the {} consent contract",
+        config.partitions.contract
+    );
     let mut genomic = GenomicStatus::Off;
     let engine = match Engine::open(&config.data_dir, &config.partitions) {
         Ok(engine) => {

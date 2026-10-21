@@ -9,10 +9,12 @@ use axum::body::{Body, Bytes};
 use axum::extract::State;
 use axum::http::header::{CONTENT_LENGTH, CONTENT_TYPE};
 use axum::response::{IntoResponse, Response};
-use hpds_query::{Engine, ExcerptAnswer, GenomicStore, Query, QueryError, ResultType, SyncAnswer};
+use hpds_query::{
+    ConsentContract, Engine, ExcerptAnswer, GenomicStore, Query, QueryError, ResultType, SyncAnswer,
+};
 use tokio::sync::{OwnedSemaphorePermit, mpsc, oneshot};
 
-use crate::envelope::{random_uuid, read_query};
+use crate::envelope::{random_uuid, read_query_for};
 use crate::error::ApiError;
 use crate::genomic::GenomicStatus;
 use crate::metrics::label_result_type;
@@ -82,11 +84,22 @@ const EXCERPT_CHUNKS_IN_FLIGHT: usize = 4;
 ///   looked up in the result cache ([`hpds_query::Engine::cached_sync`]) and a hit is
 ///   answered at once, with the same body and headers as a computed answer. A miss is
 ///   computed and stored.
+/// - Under the main consent contract the request model is Java main's (`userConsents` is an
+///   unknown field, refused with 400 naming it, and a repeated `authorizationFilters` keeps
+///   its last value), and every cohort is scoped by the query's authorization filters: each
+///   is a `FILTER` clause ANDed with the phenotypic clause, over every partition, for every
+///   result type, genomic ones included. No validator runs, as in Java: an unknown
+///   authorization concept counts 0. With `hpds.requireAuthorizationFilter` on, a query of
+///   any type answered here but INFO_COLUMN_LISTING whose `authorizationFilters` is missing,
+///   `null` or empty is a 400 ([`hpds_query::AUTHORIZATION_FILTER_REQUIRED_MESSAGE`]) before
+///   anything else is checked, where Java answers it over every patient. A `null` filter, a
+///   `null` path or `values`, and a `null` value looked up in a categorical concept are a 400
+///   starting "an authorization filter", where Java fails with an empty 200.
 /// - At most `HPDS_ENGINE_CONCURRENCY` engine computations run at once; the rest wait. A query
 ///   that has not answered within `HPDS_SYNC_TIMEOUT_SECONDS`, waiting included, is a 503; its
 ///   computation finishes in the background and releases its slot then.
 pub async fn query_sync(State(state): State<AppState>, body: Bytes) -> Result<Response, ApiError> {
-    let query = read_query(&body)?;
+    let query = read_query_for(&body, state.contract())?;
     let result_type = query.expected_result_type;
     let response = answer_query(&state, query).await.into_response();
     Ok(label_result_type(&state, result_type, response))
@@ -94,6 +107,12 @@ pub async fn query_sync(State(state): State<AppState>, body: Bytes) -> Result<Re
 
 async fn answer_query(state: &AppState, query: Query) -> Result<Response, ApiError> {
     let result_type = query.expected_result_type;
+    if state.contract() == ConsentContract::Main
+        && result_type.is_sync()
+        && result_type != ResultType::InfoColumnListing
+    {
+        state.engine()?.check_consents(&query)?;
+    }
     let gate_closed = state
         .engine()
         .is_ok_and(|engine| gate_closed(engine, result_type));

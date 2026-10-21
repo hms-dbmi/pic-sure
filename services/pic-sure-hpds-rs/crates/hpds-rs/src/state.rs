@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use hpds_query::Engine;
+use hpds_query::{ConsentContract, Engine};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::config::Config;
@@ -39,6 +39,7 @@ pub struct AppState {
 
 struct Shared {
     engine: Option<Arc<Engine>>,
+    contract: ConsentContract,
     engine_slots: Arc<Semaphore>,
     results: ResultRegistry,
     search_index: Arc<SearchIndex>,
@@ -125,8 +126,9 @@ impl ExcerptCounters {
 impl AppState {
     /// State over `engine`, which is `None` when the data directory could not be opened
     /// (every query route then answers 503 and health reports DOWN), with the registry
-    /// settings of `config`. The lowercase search index over the merged dictionary is built
-    /// here, once. Metrics are kept when `config.metrics` is set.
+    /// settings of `config`. The consent contract is the engine's, or `config`'s without
+    /// one. The lowercase search index over the merged dictionary, in the contract's search
+    /// shape, is built here, once. Metrics are kept when `config.metrics` is set.
     ///
     /// # Errors
     /// The I/O error of [`ResultRegistry::new`] when the results directory cannot be prepared.
@@ -149,12 +151,26 @@ impl AppState {
         genomic: GenomicStatus,
     ) -> std::io::Result<Self> {
         let engine_slots = Arc::new(Semaphore::new(config.engine_concurrency));
-        let search_index = Arc::new(engine.as_ref().map_or_else(SearchIndex::default, |e| {
-            SearchIndex::build(e.partitions().dictionary())
-        }));
+        let contract = engine
+            .as_ref()
+            .map_or(config.partitions.contract, |e| e.partitions().contract());
+        let search_index =
+            Arc::new(
+                engine
+                    .as_ref()
+                    .map_or_else(SearchIndex::default, |e| match contract {
+                        ConsentContract::Harmonization => {
+                            SearchIndex::build(e.partitions().dictionary())
+                        }
+                        ConsentContract::Main => {
+                            SearchIndex::build_main(e.partitions().column_meta())
+                        }
+                    }),
+            );
         Ok(AppState {
             inner: Arc::new(Shared {
                 engine,
+                contract,
                 results: ResultRegistry::new(config, Arc::clone(&engine_slots))?,
                 search_index,
                 sync_timeout: config.sync_timeout,
@@ -170,6 +186,12 @@ impl AppState {
                 excerpts: ExcerptCounters::default(),
             }),
         })
+    }
+
+    /// The consent contract requests are read and scoped by: the engine's, or the
+    /// configured one when no store was opened.
+    pub fn contract(&self) -> ConsentContract {
+        self.inner.contract
     }
 
     /// The engine, while the data directory still holds the store it opened.

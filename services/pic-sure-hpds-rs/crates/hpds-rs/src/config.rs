@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use hpds_format::GenoMode;
 use hpds_query::{
-    DEFAULT_CACHE_BYTES, DEFAULT_DATA_DIRECTORY, DEFAULT_GENOMIC_CACHE_BYTES,
+    ConsentContract, DEFAULT_CACHE_BYTES, DEFAULT_DATA_DIRECTORY, DEFAULT_GENOMIC_CACHE_BYTES,
     DEFAULT_GENOMIC_READ_BUDGET_BYTES, DEFAULT_MAX_CLAUSE_DEPTH, DEFAULT_MAX_CLAUSE_NODES,
     DEFAULT_MAX_CROSS_COUNT_ENTRIES, DEFAULT_MAX_EXCERPT_BYTES, DEFAULT_MAX_QUERY_CONCEPTS,
     DEFAULT_MAX_SELECT_PATHS, DEFAULT_PREFIX_READ_BUDGET_BYTES, DEFAULT_PREFIX_READ_BYTES,
@@ -79,7 +79,8 @@ const BLOCKING_THREAD_HEADROOM: usize = 16;
 /// | `HPDS_RESULT_CACHE_BYTES` | 0 (off) | Byte bound of the cache of COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT and OBSERVATION_CROSS_COUNT answers |
 /// | `CACHE_SIZE` | ignored | Java's cache size in cubes; logged and ignored |
 /// | `HPDS_ALLOW_PLAIN` | false | Open a store without a key file (benchmarks only) |
-/// | `HPDS_REQUIRE_AUTHORIZATION_FILTER` or `hpds.requireAuthorizationFilter` | true | Refuse every sync and async query without a `userConsents` value, and refuse to open an unpartitioned data directory |
+/// | `HPDS_CONSENT_CONTRACT` | required, no default | `main` (Java HPDS main's `authorizationFilters`, applied as clauses to every result type; the contract BDC runs) or `harmonization` (the consent-partitioned branch's `userConsents`, which select partitions); the service refuses to start without it |
+/// | `HPDS_REQUIRE_AUTHORIZATION_FILTER` or `hpds.requireAuthorizationFilter` | true | Harmonization: refuse every sync and async query without a `userConsents` value, and refuse to open an unpartitioned data directory. Main: refuse a sync query whose `authorizationFilters` is empty with 400 (INFO_COLUMN_LISTING excepted), and end such a `POST /query` job in ERROR, as Java's validator does |
 /// | `HPDS_COMBINED_STORE`, `HPDS_PER_PARTITION_COUNTS` | ignored | Settings of the previous store layout; logged and ignored |
 /// | `HPDS_RESULTS_DIRECTORY` | `/tmp/hpds-rs-results` | Where export results are written |
 /// | `HPDS_RESULT_LIMIT` | 1000 | Most async results held at once |
@@ -128,7 +129,7 @@ pub struct Config {
     /// The listen port.
     pub port: u16,
     /// How the partitions are opened, with `require_consents` from
-    /// `hpds.requireAuthorizationFilter`.
+    /// `hpds.requireAuthorizationFilter` and `contract` from `HPDS_CONSENT_CONTRACT`.
     pub partitions: PartitionOptions,
     /// Directory for export result files.
     pub results_dir: PathBuf,
@@ -201,9 +202,12 @@ impl Config {
     /// is unset. Every variable falls back to the default in the table above.
     ///
     /// # Errors
-    /// A message naming the first variable whose value cannot be parsed, or the pair of
-    /// settings that conflict (`HPDS_ENGINE_CONCURRENCY` must be below `HPDS_BLOCKING_THREADS`).
+    /// A message naming `HPDS_CONSENT_CONTRACT` and both its values when it is unset or holds
+    /// another value, a message naming the first variable whose value cannot be parsed, or
+    /// the pair of settings that conflict (`HPDS_ENGINE_CONCURRENCY` must be below
+    /// `HPDS_BLOCKING_THREADS`).
     pub fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> Result<Self, String> {
+        let contract = consent_contract(&lookup)?;
         let mut warnings = Vec::new();
         for retired in ["HPDS_COMBINED_STORE", "HPDS_PER_PARTITION_COUNTS"] {
             if lookup(retired).is_some() {
@@ -318,6 +322,7 @@ impl Config {
                     allow_plain,
                 },
                 require_consents,
+                contract,
                 prefix_read_bytes: positive_u64(
                     &lookup,
                     "HPDS_PREFIX_READ_BYTES",
@@ -592,6 +597,26 @@ fn parse_switch(name: &str, value: &str) -> Result<bool, String> {
     }
 }
 
+/// `HPDS_CONSENT_CONTRACT`, which has no default.
+///
+/// # Errors
+/// A message naming the variable and both values when it is unset or holds another value.
+fn consent_contract(lookup: &impl Fn(&str) -> Option<String>) -> Result<ConsentContract, String> {
+    match lookup(CONSENT_CONTRACT_VARIABLE) {
+        None => Err(format!(
+            "{CONSENT_CONTRACT_VARIABLE} is required and has no default: set it to main (Java \
+             HPDS main's authorizationFilters, the contract BDC runs) or harmonization (the \
+             consent-partitioned branch's userConsents)"
+        )),
+        Some(value) => value
+            .parse()
+            .map_err(|error| format!("{CONSENT_CONTRACT_VARIABLE}: {error}")),
+    }
+}
+
+/// The setting that names the consent contract.
+pub const CONSENT_CONTRACT_VARIABLE: &str = "HPDS_CONSENT_CONTRACT";
+
 fn parse_bool(name: &str, value: &str) -> Result<bool, String> {
     match value.trim().to_ascii_lowercase().as_str() {
         "true" | "1" | "yes" => Ok(true),
@@ -606,11 +631,41 @@ mod tests {
     use std::collections::HashMap;
 
     fn config(vars: &[(&str, &str)]) -> Result<Config, String> {
-        let map: HashMap<String, String> = vars
+        let mut map: HashMap<String, String> = vars
             .iter()
             .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
             .collect();
+        map.entry(CONSENT_CONTRACT_VARIABLE.to_owned())
+            .or_insert_with(|| "harmonization".to_owned());
         Config::from_lookup(|name| map.get(name).cloned())
+    }
+
+    #[test]
+    fn the_consent_contract_is_required_and_named() {
+        let missing = Config::from_lookup(|_| None).unwrap_err();
+        for name in [CONSENT_CONTRACT_VARIABLE, "main", "harmonization"] {
+            assert!(missing.contains(name), "{missing}");
+        }
+        let wrong = config(&[(CONSENT_CONTRACT_VARIABLE, "consent")]).unwrap_err();
+        for name in [
+            CONSENT_CONTRACT_VARIABLE,
+            "main",
+            "harmonization",
+            "consent",
+        ] {
+            assert!(wrong.contains(name), "{wrong}");
+        }
+        assert_eq!(
+            config(&[(CONSENT_CONTRACT_VARIABLE, "main")])
+                .unwrap()
+                .partitions
+                .contract,
+            ConsentContract::Main
+        );
+        assert_eq!(
+            config(&[]).unwrap().partitions.contract,
+            ConsentContract::Harmonization
+        );
     }
 
     #[test]

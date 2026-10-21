@@ -2,9 +2,9 @@
 //! only when `HPDS_METRICS=on`.
 //!
 //! Every label value comes from a fixed set: route templates as the router declares them,
-//! result type names, error kinds, histogram bounds and export outcomes. No label or value
-//! carries a patient id, concept path, consent name, result id or anything else from a
-//! request body or the store.
+//! result type names, error kinds, histogram bounds, export outcomes and the consent
+//! contract. No label or value carries a patient id, concept path, consent name, result id or
+//! anything else from a request body or the store.
 
 use std::fmt::Write as _;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -300,6 +300,16 @@ pub fn render(state: &AppState) -> String {
     }
     render_results(&mut family, state);
     render_excerpts(&mut family, state);
+    family.header(
+        "hpds_consent_contract",
+        "gauge",
+        "1, labelled with HPDS_CONSENT_CONTRACT: main (authorizationFilters scope every query) or harmonization (userConsents select partitions).",
+    );
+    family.sample(
+        "hpds_consent_contract",
+        &[("contract", state.contract().name())],
+        1,
+    );
     if let Ok(engine) = state.engine() {
         let partitions = engine.partitions();
         render_block_cache(&mut family, &partitions.block_cache_stats());
@@ -313,7 +323,7 @@ pub fn render(state: &AppState) -> String {
         family.single(
             "hpds_cohort_guard_refusals_total",
             "counter",
-            "Queries refused because a cohort held patients outside the selected partitions.",
+            "Queries refused because a cohort held patients outside the selected partitions, or under the main consent contract outside the authorized set.",
             partitions.cohort_guard_refusals(),
         );
         if state.genomic_status() != GenomicStatus::Off {
