@@ -3,7 +3,7 @@ package edu.harvard.hms.dbmi.avillach.operations.dataset;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.sql.Date;
+import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
@@ -31,7 +31,7 @@ class NamedDatasetMapperTest {
         Query query = new Query();
         query.setUuid(queryId);
         query.setQuery("{\"categoryFilters\":{}}");
-        query.setStartTime(new Date(1690000000000L));
+        query.setStartTime(Instant.ofEpochMilli(1690000000000L));
         query.setStatus(PicSureStatus.AVAILABLE);
         NamedDataset entity =
             new NamedDataset().setUser("alice@example.com").setName("d1").setQuery(query).setArchived(true).setMetadata(Map.of("k", "v"));
@@ -54,7 +54,7 @@ class NamedDatasetMapperTest {
         assertThat(dto.query().status()).isEqualTo(PicSureStatus.AVAILABLE);
     }
 
-    /** An un-run query has no start time; the wire value must be null rather than blowing up on {@code Date#getTime()}. */
+    /** An un-run query has no start time; the wire value must be null rather than blowing up on {@code Instant#toEpochMilli()}. */
     @Test
     void toDtoHandlesQueryWithoutStartTime() {
         Query query = new Query();
