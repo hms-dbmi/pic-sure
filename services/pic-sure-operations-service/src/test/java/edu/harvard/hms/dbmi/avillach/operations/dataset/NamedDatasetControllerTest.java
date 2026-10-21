@@ -205,7 +205,7 @@ class NamedDatasetControllerTest {
     void listReturnsTheNestedQueryShapeTheFrontendMaps() throws Exception {
         Query query = new Query();
         query.setQuery(QUERY_BODY);
-        query.setStartTime(new java.sql.Date(1690000000000L));
+        query.setStartTime(java.time.Instant.ofEpochMilli(1690000000000L));
         query.setStatus(PicSureStatus.AVAILABLE);
         Query savedQuery = queryRepo.save(query);
         namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("alice-1").setQuery(savedQuery));
@@ -217,7 +217,7 @@ class NamedDatasetControllerTest {
             ).andExpect(status().isOk()).andExpect(jsonPath("$[0].user").value(ALICE))
             .andExpect(jsonPath("$[0].query.uuid").value(savedQuery.getUuid().toString()))
             .andExpect(jsonPath("$[0].query.query").value(isA(String.class))).andExpect(jsonPath("$[0].query.startTime").isNumber())
-            .andExpect(jsonPath("$[0].query.startTime").value(savedQuery.getStartTime().getTime()))
+            .andExpect(jsonPath("$[0].query.startTime").value(savedQuery.getStartTime().toEpochMilli()))
             .andExpect(jsonPath("$[0].query.status").value("AVAILABLE"));
     }
 

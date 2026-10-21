@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.operations.query;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Instant;
 import java.util.Base64;
 import java.util.UUID;
 
@@ -148,19 +149,20 @@ class QueryPersistenceServiceTest {
     }
 
     @Test
-    void timingFieldsOnMigratedRowsRoundTripThroughGet() {
-        // The internal API returns timing already stored on persisted rows.
-        Query legacy = new Query();
-        legacy.setQuery("{}");
-        legacy.setStartTime(java.sql.Date.valueOf("2024-01-02"));
-        legacy.setReadyTime(java.sql.Date.valueOf("2024-01-03"));
-        UUID picsureId = repo.save(legacy).getUuid();
+    void timingFieldsKeepTheirTimeOfDayThroughGet() {
+        Instant start = Instant.parse("2024-01-02T15:30:45.123Z");
+        Instant ready = Instant.parse("2024-01-02T15:31:02.456Z");
+        Query query = new Query();
+        query.setQuery("{}");
+        query.setStartTime(start);
+        query.setReadyTime(ready);
+        UUID picsureId = repo.save(query).getUuid();
         entityManager.flush();
         entityManager.clear();
 
         StoredQuery stored = service.get(picsureId);
-        assertThat(stored.startTime()).isEqualTo(java.sql.Date.valueOf("2024-01-02").getTime());
-        assertThat(stored.readyTime()).isEqualTo(java.sql.Date.valueOf("2024-01-03").getTime());
+        assertThat(stored.startTime()).isEqualTo(start.toEpochMilli());
+        assertThat(stored.readyTime()).isEqualTo(ready.toEpochMilli());
     }
 
     @Test
