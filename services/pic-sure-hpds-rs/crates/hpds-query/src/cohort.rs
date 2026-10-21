@@ -1306,7 +1306,7 @@ fn any_record_of_chunk(
         drop(pairs);
         drop(holds);
         drop(permit);
-        crate::store::reclaim_unlinked();
+        selection.set().reclaim_unlinked();
         return Ok(exact);
     };
     if partials.is_empty() {
@@ -1320,7 +1320,7 @@ fn any_record_of_chunk(
     drop(pairs);
     drop(holds);
     drop(permit);
-    crate::store::reclaim_unlinked();
+    selection.set().reclaim_unlinked();
     Ok(exact)
 }
 

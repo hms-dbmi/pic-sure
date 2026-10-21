@@ -416,6 +416,8 @@ pub struct PartitionSet {
     chunk_threads: std::sync::Mutex<test_support::ChunkThreads>,
     #[cfg(test)]
     clause_results: test_support::ClauseResults,
+    #[cfg(test)]
+    reclamation: Arc<test_support::Reclamation>,
 }
 
 impl std::fmt::Debug for PartitionSet {
@@ -613,6 +615,8 @@ impl PartitionSet {
             chunk_threads: std::sync::Mutex::default(),
             #[cfg(test)]
             clause_results: test_support::ClauseResults::default(),
+            #[cfg(test)]
+            reclamation: Arc::default(),
         })
     }
 
@@ -931,6 +935,34 @@ impl PartitionSet {
     pub(crate) fn spare_parallelism(&self) -> usize {
         let running = self.evaluating.load(Ordering::Relaxed).max(1);
         (rayon::current_num_threads() / running).max(1)
+    }
+
+    /// Lets deferred reclamation free the decoded entries the block cache has unlinked but
+    /// still keeps alive; a multi-concept read runs it after each chunk. `moka` unlinks through
+    /// `crossbeam-epoch`: an entry it evicts, and the copy a load shares with concurrent
+    /// loaders of the same concept, stay alive in a thread's bag of deferred frees until that
+    /// bag is pushed to the global queue and the global epoch has advanced twice past it. A
+    /// bag holds up to 64 frees and is pushed only when full, when its thread flushes, or every
+    /// 128th pin of that thread, so after a burst of reads the copies could outlive the reads
+    /// by any length of time while the service is idle.
+    ///
+    /// Every worker of the rayon pool pushes its own bag when it is next free (a broadcast
+    /// that does not wait for them), and the calling thread then collects
+    /// ([`crate::store::collect_unlinked`]). What may stay alive after a read returns is
+    /// therefore bounded by the bags of pool workers that have not run the broadcast yet, at
+    /// most 63 unlinked frees each, and the bags pushed in the last two epochs, until the next
+    /// collection anywhere in the process.
+    pub(crate) fn reclaim_unlinked(&self) {
+        #[cfg(test)]
+        let reclamation = Arc::clone(&self.reclamation);
+        rayon::spawn_broadcast(move |_| {
+            crossbeam_epoch::pin().flush();
+            #[cfg(test)]
+            reclamation.pool_flushes.fetch_add(1, Ordering::SeqCst);
+        });
+        crate::store::collect_unlinked();
+        #[cfg(test)]
+        self.reclamation.collected(self.live.live());
     }
 
     /// Drops every cached block and view.
@@ -1481,7 +1513,7 @@ impl<'a> Selection<'a> {
     /// each of them ([`CachedHolds`]), so one the cache drops before the read lets it go is
     /// charged to the budget from the drop until then, and the read never holds a block
     /// that neither the cache nor the budget counts. What deferred reclamation keeps alive
-    /// once the read has let go is bounded apart ([`crate::store::reclaim_unlinked`]), which
+    /// once the read has let go is bounded apart ([`PartitionSet::reclaim_unlinked`]), which
     /// the caller runs after each chunk. They are never held while the read
     /// waits: when the permit is not granted at once, the entries
     /// found are dropped, the read waits for its permit, and then looks the chunk up again.
@@ -1817,6 +1849,35 @@ pub(crate) mod test_support {
     pub(crate) fn take_chunk_threads(set: &PartitionSet) -> (usize, usize) {
         let seen = std::mem::take(&mut *set.chunk_threads.lock().unwrap());
         (seen.threads.len(), seen.on_workers)
+    }
+
+    /// What [`PartitionSet::reclaim_unlinked`] has done for one set: how many times it ran,
+    /// the tracked entries alive right after its last collection, and the flushes pool
+    /// workers have run for it.
+    #[derive(Debug, Default)]
+    pub(crate) struct Reclamation {
+        runs: AtomicUsize,
+        live_after_last: AtomicUsize,
+        pub(super) pool_flushes: AtomicUsize,
+    }
+
+    impl Reclamation {
+        /// Records one run, with `live` tracked entries alive right after its collections.
+        pub(super) fn collected(&self, live: usize) {
+            self.live_after_last.store(live, Ordering::SeqCst);
+            self.runs.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    /// The runs of [`PartitionSet::reclaim_unlinked`] on `set`, the tracked entries alive right
+    /// after the last one collected, and the pool worker flushes run for it.
+    pub(crate) fn reclamation(set: &PartitionSet) -> (usize, usize, usize) {
+        let r = &set.reclamation;
+        (
+            r.runs.load(Ordering::SeqCst),
+            r.live_after_last.load(Ordering::SeqCst),
+            r.pool_flushes.load(Ordering::SeqCst),
+        )
     }
 
     /// Results of clauses holding an `ANY_RECORD_OF` that subqueries over `set` have

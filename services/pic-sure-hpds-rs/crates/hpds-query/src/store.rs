@@ -83,27 +83,15 @@ pub(crate) fn block_cache(
         .build()
 }
 
-/// Collections [`reclaim_unlinked`] runs on the calling thread. Memory unlinked in epoch `e`
-/// is freed once the global epoch reaches `e + 2`, and each collection advances it at most
-/// once, so the last two may free what the first two let expire.
+/// Collections [`collect_unlinked`] runs. Memory unlinked in epoch `e` is freed once the
+/// global epoch reaches `e + 2`, and each collection advances it at most once, so the last two
+/// may free what the first two let expire.
 const RECLAIM_COLLECTIONS: usize = 4;
 
-/// Lets deferred reclamation free the decoded entries the block cache has unlinked but still
-/// keeps alive. `moka` unlinks through `crossbeam-epoch`: an entry it evicts, and the copy a
-/// load shares with concurrent loaders of the same concept, stay alive in a thread's bag of
-/// deferred frees until that bag is pushed to the global queue and the global epoch has
-/// advanced twice past it. A bag holds up to 64 frees and is pushed only when full, when its
-/// thread flushes, or every 128th pin of that thread, so after a burst of reads the copies
-/// could outlive the reads by any length of time while the service is idle.
-///
-/// Every worker of the rayon pool pushes its own bag when it is next free (a broadcast that
-/// does not wait for them), and the calling thread then collects [`RECLAIM_COLLECTIONS`]
-/// times, freeing every expired bag in the queue up to the collector's eight per collection.
-/// What may stay alive after a read returns is therefore bounded by the bags of pool workers
-/// that have not run the broadcast yet, at most 63 unlinked frees each, and the bags pushed
-/// in the last two epochs, until the next collection anywhere in the process.
-pub(crate) fn reclaim_unlinked() {
-    rayon::spawn_broadcast(|_| crossbeam_epoch::pin().flush());
+/// Pushes the calling thread's bag of deferred frees to `crossbeam-epoch`'s global queue and
+/// collects [`RECLAIM_COLLECTIONS`] times, freeing every expired bag in the queue up to the
+/// collector's eight per collection ([`crate::PartitionSet::reclaim_unlinked`]).
+pub(crate) fn collect_unlinked() {
     for _ in 0..RECLAIM_COLLECTIONS {
         crossbeam_epoch::pin().flush();
     }
