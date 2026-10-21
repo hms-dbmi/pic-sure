@@ -373,10 +373,10 @@ pub(crate) mod fault {
 
     static CHECK_RECENT_HITS: std::sync::atomic::AtomicBool =
         std::sync::atomic::AtomicBool::new(false);
-    static RECENT_HITS: std::sync::Mutex<Option<RecentHits>> = std::sync::Mutex::new(None);
+    static RECENT_HITS: std::sync::Mutex<Option<(usize, RecentHits)>> = std::sync::Mutex::new(None);
 
-    /// What [`checking_recent_hits`] saw of the concepts multi-concept reads took from their
-    /// table of recent entries.
+    /// What [`checking_recent_hits`] saw of the concepts multi-concept reads of one partition
+    /// set took from its table of recent entries.
     #[derive(Debug, Default)]
     pub(crate) struct RecentHits {
         /// Concepts taken from the table.
@@ -399,13 +399,15 @@ pub(crate) mod fault {
             .then(crate::store::test_support::drop_clock)
     }
 
-    /// Records the entry of the concept at `index` that the table of recent entries served
-    /// to a read that looked it up after the drop clock read `clock`, and whether the block
-    /// cache held it right after. An entry whose drop was marked at or before `clock` was
+    /// Records the entry of the concept at `index` that the table of recent entries of `set`
+    /// served to a read that looked it up after the drop clock read `clock`, and whether the
+    /// block cache held it right after; nothing for a set [`checking_recent_hits`] does not
+    /// check, since tests running beside it read sets of their own. An entry whose drop was marked at or before `clock` was
     /// already dropped when served. One the cache did not hold is confirmed when its drop is
     /// marked by now (an eviction right after serving, which a lookup through the cache
     /// could equally have returned) and kept for the caller to check otherwise.
     pub(crate) fn note_recent_hit(
+        set: &crate::PartitionSet,
         index: usize,
         served: &std::sync::Arc<crate::store::CachedConcept>,
         clock: u64,
@@ -414,9 +416,12 @@ pub(crate) mod fault {
         let mut hits = RECENT_HITS
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let Some(hits) = hits.as_mut() else {
+        let Some((checked, hits)) = hits.as_mut() else {
             return;
         };
+        if *checked != std::ptr::from_ref(set) as usize {
+            return;
+        }
         hits.served += 1;
         if served.dropped_at().is_some_and(|at| at <= clock) {
             hits.dropped_before_serving += 1;
@@ -426,14 +431,18 @@ pub(crate) mod fault {
         }
     }
 
-    /// Runs `work`, on any number of threads, with every concept a multi-concept read takes
-    /// from its table of recent entries checked against the block cache, and returns what the
-    /// checks saw.
-    pub(crate) fn checking_recent_hits(work: impl FnOnce()) -> RecentHits {
+    /// Runs `work`, on any number of threads, with every concept a multi-concept read of
+    /// `set` takes from its table of recent entries checked against the block cache, and
+    /// returns what the checks saw.
+    pub(crate) fn checking_recent_hits(
+        set: &crate::PartitionSet,
+        work: impl FnOnce(),
+    ) -> RecentHits {
         use std::sync::atomic::Ordering::SeqCst;
         *RECENT_HITS
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(RecentHits::default());
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            Some((std::ptr::from_ref(set) as usize, RecentHits::default()));
         CHECK_RECENT_HITS.store(true, SeqCst);
         work();
         CHECK_RECENT_HITS.store(false, SeqCst);
@@ -441,6 +450,7 @@ pub(crate) mod fault {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take()
+            .map(|(_, hits)| hits)
             .unwrap_or_default()
     }
 
@@ -549,6 +559,7 @@ pub(crate) mod fault {
     }
 
     pub(crate) fn note_recent_hit(
+        _set: &crate::PartitionSet,
         _index: usize,
         _served: &std::sync::Arc<crate::store::CachedConcept>,
         _clock: u64,

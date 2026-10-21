@@ -2498,7 +2498,7 @@ mod tests {
             let (_dir, out) = store(&paths("s", concepts));
             let weight = entry_weight(&out, concepts);
             let engine = engine(&out, weight * 3, 2.0);
-            let hits = fault::checking_recent_hits(|| {
+            let hits = fault::checking_recent_hits(engine.partitions(), || {
                 std::thread::scope(|scope| {
                     for consents in [&[][..], &["p1"][..]] {
                         let engine = &engine;

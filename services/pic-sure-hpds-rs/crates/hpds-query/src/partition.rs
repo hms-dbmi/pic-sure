@@ -986,7 +986,7 @@ impl PartitionSet {
                         .cache
                         .iter()
                         .any(|(key, held)| *key == index as u32 && Arc::ptr_eq(&held, served));
-                    crate::cohort::fault::note_recent_hit(index, served, clock, held);
+                    crate::cohort::fault::note_recent_hit(self, index, served, clock, held);
                 }
             }
         }
