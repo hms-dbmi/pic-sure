@@ -5,14 +5,15 @@ use std::time::Duration;
 use hpds_query::Engine;
 use hpds_rs::genomic::{GenomicStatus, attach_genomic};
 use hpds_rs::{
-    AppState, Config, ServerTimeouts, log_block_cache_stats, log_result_cache_stats, port_from_env,
-    probe_health, router, serve, spawn_result_cache_reporter, spawn_result_reaper,
+    AppState, Config, LogFormat, ServerTimeouts, format_layer, log_block_cache_stats,
+    log_result_cache_stats, port_from_env, probe_health, router, serve,
+    spawn_result_cache_reporter, spawn_result_reaper,
 };
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{EnvFilter, fmt};
 
 /// The process allocator: jemalloc. glibc's malloc keeps most of what a broad query frees
 /// in its per-thread arenas, so resident memory stays gigabytes above live memory after the
@@ -34,9 +35,9 @@ const RESULT_CACHE_REPORT_PERIOD: Duration = Duration::from_secs(60);
 const RUNTIME_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Starts logging to a non-blocking stdout writer and, when `directory` is given, to a daily
-/// rotated `hpds-rs.<date>.log` file there. The returned guards flush the writers when
+/// rotated `hpds-rs.<date>.log` file there, both in `format`. The returned guards flush the writers when
 /// dropped, so they must live until the process ends.
-fn init_logging(directory: Option<&std::path::Path>) -> Vec<WorkerGuard> {
+fn init_logging(format: &LogFormat, directory: Option<&std::path::Path>) -> Vec<WorkerGuard> {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     let (stdout, stdout_guard) = tracing_appender::non_blocking(std::io::stdout());
     let mut guards = vec![stdout_guard];
@@ -51,7 +52,7 @@ fn init_logging(directory: Option<&std::path::Path>) -> Vec<WorkerGuard> {
             Ok(appender) => {
                 let (writer, guard) = tracing_appender::non_blocking(appender);
                 guards.push(guard);
-                Some(fmt::layer().with_ansi(false).with_writer(writer))
+                Some(format_layer(format, writer, Some(false)))
             }
             Err(error) => {
                 file_problem = Some(format!(
@@ -64,7 +65,7 @@ fn init_logging(directory: Option<&std::path::Path>) -> Vec<WorkerGuard> {
     });
     tracing_subscriber::registry()
         .with(filter)
-        .with(fmt::layer().with_writer(stdout))
+        .with(format_layer(format, stdout, None))
         .with(file_layer)
         .init();
     if let Some(problem) = file_problem {
@@ -103,7 +104,12 @@ fn main() -> ExitCode {
         };
     }
     let config = Config::from_env();
+    let log_format = config
+        .as_ref()
+        .map(|config| config.log_format.clone())
+        .unwrap_or_default();
     let _log_guards = init_logging(
+        &log_format,
         config
             .as_ref()
             .ok()

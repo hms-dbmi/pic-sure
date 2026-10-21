@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use crate::logging::LogFormat;
 use hpds_format::GenoMode;
 use hpds_query::{
     ConsentContract, DEFAULT_CACHE_BYTES, DEFAULT_DATA_DIRECTORY, DEFAULT_GENOMIC_CACHE_BYTES,
@@ -99,6 +100,8 @@ const BLOCKING_THREAD_HEADROOM: usize = 16;
 /// | `HPDS_MAX_CROSS_COUNT_ENTRIES` | 5,000,000 | Most entries in a categorical or continuous cross count |
 /// | `HPDS_SYNC_TIMEOUT_SECONDS` | 300 | A sync query running longer is answered 503 |
 /// | `HPDS_LOG_DIRECTORY` | unset | When set, the log is also written to a daily-rotated file there |
+/// | `HPDS_LOG_FORMAT` | `default` | `logback` writes Java HPDS's `log.pattern` layout; anything but `default` or `logback` fails startup |
+/// | `HPDS_LOG_NAME` | `hpds` | The service tag in the bracketed field of the `logback` format |
 /// | `HPDS_SEARCH_GZIP` | off | `on` compresses `/search` answers for requests that accept gzip |
 /// | `HPDS_METRICS` | off | `on` serves `GET /metrics` in the Prometheus text format; off, that route is a 404 |
 /// | `SMALL_JOB_LIMIT` | 100 | An export with more `select` paths than this runs on the large pool |
@@ -153,6 +156,8 @@ pub struct Config {
     pub sync_timeout: Duration,
     /// Directory for the rotated log file, when set.
     pub log_directory: Option<PathBuf>,
+    /// The layout of log lines.
+    pub log_format: LogFormat,
     /// An export with more `select` paths than this runs on the large pool.
     pub small_job_limit: usize,
     /// Exports run at once on the small pool.
@@ -397,6 +402,10 @@ impl Config {
             log_directory: lookup("HPDS_LOG_DIRECTORY")
                 .filter(|dir| !dir.trim().is_empty())
                 .map(PathBuf::from),
+            log_format: LogFormat::from_values(
+                lookup("HPDS_LOG_FORMAT").as_deref(),
+                lookup("HPDS_LOG_NAME").as_deref(),
+            )?,
             small_job_limit: parse_or(&lookup, "SMALL_JOB_LIMIT", 100)?,
             small_task_threads: positive(&lookup, "SMALL_TASK_THREADS", 1)?,
             large_task_threads: positive(&lookup, "LARGE_TASK_THREADS", 1)?,
@@ -699,6 +708,7 @@ mod tests {
         assert_eq!(c.result_max_file_bytes, 4 << 30);
         assert_eq!(c.result_memory_bytes, 64 << 20);
         assert!(!c.metrics);
+        assert_eq!(c.log_format, LogFormat::Default);
         assert!(!c.search_gzip);
         assert_eq!(c.query_limits, QueryLimits::default());
         assert_eq!(c.query_limits.max_select_paths, 5_000);
@@ -910,6 +920,23 @@ mod tests {
         assert!(!config(&[("HPDS_SEARCH_GZIP", "off")]).unwrap().search_gzip);
         assert!(config(&[("HPDS_SEARCH_GZIP", "on")]).unwrap().search_gzip);
         assert!(config(&[("HPDS_SEARCH_GZIP", "sometimes")]).is_err());
+    }
+
+    #[test]
+    fn log_format_is_read_and_an_unknown_one_is_refused() {
+        assert_eq!(
+            config(&[
+                ("HPDS_LOG_FORMAT", "logback"),
+                ("HPDS_LOG_NAME", "auth-hpds")
+            ])
+            .unwrap()
+            .log_format,
+            LogFormat::Logback {
+                name: "auth-hpds".to_owned()
+            }
+        );
+        let error = config(&[("HPDS_LOG_FORMAT", "json")]).unwrap_err();
+        assert!(error.contains("HPDS_LOG_FORMAT"), "{error}");
     }
 
     #[test]
