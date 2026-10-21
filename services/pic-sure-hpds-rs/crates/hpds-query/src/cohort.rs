@@ -402,10 +402,11 @@ pub(crate) mod fault {
     /// Records the entry of the concept at `index` that the table of recent entries of `set`
     /// served to a read that looked it up after the drop clock read `clock`, and whether the
     /// block cache held it right after; nothing for a set [`checking_recent_hits`] does not
-    /// check, since tests running beside it read sets of their own. An entry whose drop was marked at or before `clock` was
-    /// already dropped when served. One the cache did not hold is confirmed when its drop is
-    /// marked by now (an eviction right after serving, which a lookup through the cache
-    /// could equally have returned) and kept for the caller to check otherwise.
+    /// check, since tests running beside it read sets of their own. An entry whose drop was
+    /// marked at or before `clock` was already dropped when served. One the cache did not
+    /// hold is confirmed when its drop is marked by now (an eviction right after serving,
+    /// which a lookup through the cache could equally have returned) and kept for the caller
+    /// to check otherwise.
     pub(crate) fn note_recent_hit(
         set: &crate::PartitionSet,
         index: usize,
