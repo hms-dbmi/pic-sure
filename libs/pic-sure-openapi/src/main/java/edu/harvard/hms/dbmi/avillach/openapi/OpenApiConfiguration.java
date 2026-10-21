@@ -89,6 +89,19 @@ public class OpenApiConfiguration {
         return new EnumDescriptionCustomizer();
     }
 
+    /**
+     * Resolves {@code ${key:default}} placeholders in the document's descriptions and examples against the service's environment.
+     *
+     * @param environment the service's environment
+     * @return the customizer springdoc applies to the finished document
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(name = "springdoc.api-docs.enabled", matchIfMissing = true)
+    public ExamplePlaceholderCustomizer examplePlaceholderCustomizer(Environment environment) {
+        return new ExamplePlaceholderCustomizer(environment);
+    }
+
     private static String firstNonBlank(String... candidates) {
         for (String candidate : candidates) {
             if (candidate != null && !candidate.isBlank()) {
