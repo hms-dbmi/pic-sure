@@ -161,7 +161,7 @@ class ToolUseLoopService implements ChatOrchestrator {
             toolsCalled.add(call.name() + "(" + chars + " chars)");
             log.info("Tool call: name={} id={} error={} chars={}", call.name(), call.id(), result.error(), chars);
             log.debug("Tool result content: name={} id={} {}", call.name(), call.id(), result.content());
-            history.add(new ToolResultEntry(call.id(), call.name(), result.content()));
+            history.add(new ToolResultEntry(call.id(), call.name(), result.content(), result.error()));
         }
     }
 

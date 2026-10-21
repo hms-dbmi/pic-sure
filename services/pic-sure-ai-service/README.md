@@ -69,7 +69,7 @@ touching the dispatch loop, the controller, or anything else in the service).
 | --- | --- | --- |
 | `AI_MODEL_PROVIDER` | no, default `aws-sdk` | `aws-sdk` or `http` — which `ConverseModelClient` is active. |
 | `BEDROCK_REGION` | no, default `us-east-1` | AWS region, `aws-sdk` provider only. |
-| `BEDROCK_MODEL_ID` | no, default `amazon.nova-lite-v1:0` | Bedrock model id, `aws-sdk` provider only. |
+| `BEDROCK_MODEL_ID` | no, default `openai.gpt-oss-120b-1:0` | Bedrock model id, `aws-sdk` provider only. |
 | `BEDROCK_MAX_TOKENS` | no, default `1024` | Max output tokens per Converse call, `aws-sdk` provider only. |
 | `AI_MODEL_HTTP_BASE_URL` | yes, if `AI_MODEL_PROVIDER=http` | Base URL the Converse POST is sent to. |
 | `AI_MODEL_HTTP_API_TOKEN` | yes, if `AI_MODEL_PROVIDER=http` | Bearer token sent as `Authorization`. |
