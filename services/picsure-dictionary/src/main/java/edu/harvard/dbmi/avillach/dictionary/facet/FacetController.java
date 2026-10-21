@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.dictionary.facet;
 
+import edu.harvard.dbmi.avillach.dictionary.ExampleValues;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import edu.harvard.dbmi.avillach.dictionary.filter.FilterExamples;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
@@ -50,8 +51,8 @@ public class FacetController {
         null here. No PIC-SURE client calls it; the facet lists from `POST /facets` already carry each facet's names and \
         description.
 
-            curl "https://<host>/picsure/dictionary/facets/dataset_id/Synthea" -H "Authorization: Bearer $TOKEN"
-        """;
+        """ + "    curl \"https://<host>/picsure/dictionary/facets/" + ExampleValues.DATASET_FACET_CATEGORY + "/" + ExampleValues.DATASET
+        + "\" -H \"Authorization: Bearer $TOKEN\"\n";
 
     private final FacetService facetService;
 
@@ -70,9 +71,12 @@ public class FacetController {
             content = @Content(
                 mediaType = "application/json", schema = @Schema(implementation = Filter.class),
                 examples = {@ExampleObject(name = "Everything", summary = "Counts over every concept", value = FilterExamples.EVERYTHING),
-                    @ExampleObject(name = "Search", summary = "Counts for concepts matching \"age\"", value = FilterExamples.SEARCH),
                     @ExampleObject(
-                        name = "Search one dataset", summary = "Counts with the Synthea dataset selected",
+                        name = "Search", summary = "Counts for concepts matching \"" + ExampleValues.SEARCH_TERM + "\"",
+                        value = FilterExamples.SEARCH
+                    ),
+                    @ExampleObject(
+                        name = "Search one dataset", summary = "Counts with " + ExampleValues.DATASET + " selected",
                         value = FilterExamples.SEARCH_IN_DATASET
                     ),
                     @ExampleObject(
@@ -91,9 +95,9 @@ public class FacetController {
     @GetMapping(path = "/facets/{facetCategory}/{facet}")
     public ResponseEntity<Facet> facetDetails(
         @Parameter(
-            description = "The facet's `category`, as `POST /facets` returns it.", example = "dataset_id"
+            description = "The facet's `category`, as `POST /facets` returns it.", example = ExampleValues.DATASET_FACET_CATEGORY
         ) @PathVariable String facetCategory,
-        @Parameter(description = "The facet's `name` within that category.", example = "Synthea") @PathVariable String facet
+        @Parameter(description = "The facet's `name` within that category.", example = ExampleValues.DATASET) @PathVariable String facet
     ) {
         return facetService.facetDetails(facetCategory, facet).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }

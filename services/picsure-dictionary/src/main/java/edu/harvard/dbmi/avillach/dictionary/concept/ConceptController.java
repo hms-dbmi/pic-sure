@@ -1,6 +1,7 @@
 package edu.harvard.dbmi.avillach.dictionary.concept;
 
 import edu.harvard.dbmi.avillach.dictionary.AuditAttributes;
+import edu.harvard.dbmi.avillach.dictionary.ExampleValues;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptPage;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
@@ -33,7 +34,8 @@ import java.util.concurrent.Future;
 @Tag(
     name = "Concepts",
     description = "Find the concepts (variables) a query is built from: search them, look one up, and walk the concept "
-        + "tree. A concept path such as `\\Synthea\\ACT Demographics\\Age\\` names one concept, and its first segment is its dataset."
+        + "tree. A concept path such as `" + ExampleValues.CONTINUOUS_CONCEPT_PATH
+        + "` names one concept, and its first segment is its dataset."
 )
 public class ConceptController {
 
@@ -42,20 +44,20 @@ public class ConceptController {
             + "Content-Type. The frontend sends the path unquoted under application/json, so a JSON-quoted string is not unquoted and would not "
             + "match any concept.";
 
-    static final String EXAMPLE_PATH = "\\Synthea\\ACT Demographics\\Sex\\";
+    static final String EXAMPLE_PATH = ExampleValues.CATEGORICAL_CONCEPT_PATH;
 
-    static final String EXAMPLE_PARENT_PATH = "\\Synthea\\ACT Demographics\\";
+    static final String EXAMPLE_PARENT_PATH = ExampleValues.PARENT_CONCEPT_PATH;
+
+    private static final String CURL_AUTH = "      -H \"Authorization: Bearer $TOKEN\"";
 
     private static final String RAW_PATH_GUIDE = """
-        **Body**: the concept path itself as the raw request body, not a JSON string. Send `\\Synthea\\ACT Demographics\\Sex\\` \
-        with `Content-Type: text/plain`. The PIC-SURE frontend sends the same bytes with `application/json`, and the service \
-        reads the body as it is either way. A JSON-quoted path matches no concept, and a request with no Content-Type \
-        answers 400.
+        **Body**: the concept path itself as the raw request body, not a JSON string, sent with `Content-Type: text/plain`. \
+        The PIC-SURE frontend sends the same bytes with `application/json`, and the service reads the body as it is either \
+        way. A JSON-quoted path matches no concept, and a request with no Content-Type answers 400.
         """;
 
-    private static final String DATASET =
-        "The concept's dataset: its `dataset` field, which is also the first segment of its path, such as "
-            + "`Synthea` for `\\Synthea\\ACT Demographics\\Sex\\`.";
+    private static final String DATASET_PARAMETER = "The concept's dataset: its `dataset` field, which is also the first segment of its "
+        + "path, such as `" + ExampleValues.DATASET + "` for `" + ExampleValues.CATEGORICAL_CONCEPT_PATH + "`.";
 
     private static final String PAGE_NUMBER = "Zero-based index of the page to return. Defaults to 0.";
 
@@ -78,10 +80,8 @@ public class ConceptController {
         Use `conceptPath` in an HPDS query's `select` or `phenotypicClause`, and `values`, `min` and `max` to offer the user \
         valid filter values.
 
-            curl -X POST "https://<host>/picsure/dictionary/concepts?page_number=0&page_size=20" \\
-              -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \\
-              -d '{"search": "age"}'
-        """;
+        """ + "    curl -X POST \"https://<host>/picsure/dictionary/concepts?page_number=0&page_size=20\" \\\n" + CURL_AUTH
+        + " -H \"Content-Type: application/json\" \\\n      -d '{\"search\": \"" + ExampleValues.SEARCH_TERM + "\"}'\n";
 
     private static final String DUMP_DESCRIPTION = """
         Pages through every concept in the dictionary with full detail, with no search, facet or consent restriction. No \
@@ -102,10 +102,8 @@ public class ConceptController {
 
         Answers 404 when no concept has that path in that dataset.
 
-            curl -X POST "https://<host>/picsure/dictionary/concepts/detail/Synthea" \\
-              -H "Authorization: Bearer $TOKEN" -H "Content-Type: text/plain" \\
-              --data-binary '\\Synthea\\ACT Demographics\\Sex\\'
-        """;
+        """ + "    curl -X POST \"https://<host>/picsure/dictionary/concepts/detail/" + ExampleValues.DATASET + "\" \\\n" + CURL_AUTH
+        + " -H \"Content-Type: text/plain\" \\\n      --data-binary '" + ExampleValues.CATEGORICAL_CONCEPT_PATH + "'\n";
 
     private static final String DETAILS_DESCRIPTION = """
         Looks up several concepts at once by path, without naming their datasets. Each result has the concept's names, \
@@ -113,11 +111,12 @@ public class ConceptController {
         those. HPDS calls this to write the data dictionary into a PFB export.
 
         **Body**: a JSON array of concept paths, with each backslash escaped as `\\\\` the way JSON requires. A path that \
-        matches no concept is left out, so the response can be shorter than the request.
+        matches no concept is left out, so the response can be shorter than the request. Paste the request body example in \
+        place of `<example>`:
 
             curl -X POST "https://<host>/picsure/dictionary/concepts/detail" \\
               -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \\
-              -d '["\\\\Synthea\\\\ACT Demographics\\\\Sex\\\\", "\\\\Synthea\\\\ACT Demographics\\\\Age\\\\"]'
+              -d '<example>'
         """;
 
     private static final String TREE_DESCRIPTION = """
@@ -130,10 +129,8 @@ public class ConceptController {
 
         Answers 404 when no concept has that path in that dataset.
 
-            curl -X POST "https://<host>/picsure/dictionary/concepts/tree/Synthea?depth=1" \\
-              -H "Authorization: Bearer $TOKEN" -H "Content-Type: text/plain" \\
-              --data-binary '\\Synthea\\ACT Demographics\\'
-        """;
+        """ + "    curl -X POST \"https://<host>/picsure/dictionary/concepts/tree/" + ExampleValues.DATASET + "?depth=1\" \\\n" + CURL_AUTH
+        + " -H \"Content-Type: text/plain\" \\\n      --data-binary '" + ExampleValues.PARENT_CONCEPT_PATH + "'\n";
 
     private static final String HIERARCHY_DESCRIPTION = """
         Returns the chain of concepts from the dataset's root down to the requested concept: the root first and the \
@@ -144,10 +141,8 @@ public class ConceptController {
 
         Answers 404 when no concept has that path in that dataset.
 
-            curl -X POST "https://<host>/picsure/dictionary/concepts/hierarchy/Synthea" \\
-              -H "Authorization: Bearer $TOKEN" -H "Content-Type: text/plain" \\
-              --data-binary '\\Synthea\\ACT Demographics\\Sex\\'
-        """;
+        """ + "    curl -X POST \"https://<host>/picsure/dictionary/concepts/hierarchy/" + ExampleValues.DATASET + "\" \\\n" + CURL_AUTH
+        + " -H \"Content-Type: text/plain\" \\\n      --data-binary '" + ExampleValues.CATEGORICAL_CONCEPT_PATH + "'\n";
 
     private static final String ALL_TREES_DESCRIPTION = """
         Returns the top of every dataset's concept tree: one root concept per dataset, each with `depth` levels of `children`. \
@@ -179,18 +174,26 @@ public class ConceptController {
         @io.swagger.v3.oas.annotations.parameters.RequestBody(
             content = @Content(
                 mediaType = "application/json", schema = @Schema(implementation = Filter.class),
-                examples = {@ExampleObject(name = "Search", summary = "Concepts matching \"age\"", value = FilterExamples.SEARCH),
+                examples = {
                     @ExampleObject(
-                        name = "Search one dataset", summary = "\"age\" in the Synthea dataset", value = FilterExamples.SEARCH_IN_DATASET
+                        name = "Search", summary = "Concepts matching \"" + ExampleValues.SEARCH_TERM + "\"", value = FilterExamples.SEARCH
                     ),
                     @ExampleObject(
-                        name = "Either dataset", summary = "Every concept in Synthea or Nhanes", value = FilterExamples.EITHER_DATASET
+                        name = "Search one dataset", summary = "\"" + ExampleValues.SEARCH_TERM + "\" in " + ExampleValues.DATASET,
+                        value = FilterExamples.SEARCH_IN_DATASET
                     ),
                     @ExampleObject(
-                        name = "Two categories", summary = "Continuous concepts in Synthea", value = FilterExamples.CONTINUOUS_IN_DATASET
+                        name = "Either dataset",
+                        summary = "Every concept in " + ExampleValues.DATASET + " or " + ExampleValues.SECOND_DATASET,
+                        value = FilterExamples.EITHER_DATASET
                     ),
                     @ExampleObject(
-                        name = "With consents", summary = "\"age\" within a user's consents", value = FilterExamples.SEARCH_WITH_CONSENTS
+                        name = "Two categories", summary = "Continuous concepts in " + ExampleValues.DATASET,
+                        value = FilterExamples.CONTINUOUS_IN_DATASET
+                    ),
+                    @ExampleObject(
+                        name = "With consents", summary = "\"" + ExampleValues.SEARCH_TERM + "\" within a user's consents",
+                        value = FilterExamples.SEARCH_WITH_CONSENTS
                     )}
             )
         ) @RequestBody Filter filter,
@@ -245,7 +248,7 @@ public class ConceptController {
     @AuditEvent(type = "SEARCH", action = "concept.detail")
     @PostMapping(path = "/concepts/detail/{dataset}")
     public ResponseEntity<Concept> conceptDetail(
-        @Parameter(description = DATASET, example = "Synthea") @PathVariable(name = "dataset") String dataset,
+        @Parameter(description = DATASET_PARAMETER, example = ExampleValues.DATASET) @PathVariable(name = "dataset") String dataset,
         @io.swagger.v3.oas.annotations.parameters.RequestBody(
             content = {
                 @Content(
@@ -268,7 +271,8 @@ public class ConceptController {
         @ArraySchema(
             arraySchema = @Schema(
                 description = "The concept paths to look up, as a JSON array of strings. A path that matches no concept is left out of the response.",
-                example = "[\"\\\\Synthea\\\\ACT Demographics\\\\Sex\\\\\", \"\\\\Synthea\\\\ACT Demographics\\\\Age\\\\\"]"
+                example = "[\"" + ExampleValues.CATEGORICAL_CONCEPT_PATH_IN_JSON + "\", \"" + ExampleValues.CONTINUOUS_CONCEPT_PATH_IN_JSON
+                    + "\"]"
             ), schema = @Schema(description = "One concept path, backslash delimited.", example = EXAMPLE_PATH)
         ) @RequestBody() List<String> conceptPaths
     ) {
@@ -284,7 +288,7 @@ public class ConceptController {
     @AuditEvent(type = "SEARCH", action = "concept.tree")
     @PostMapping(path = "/concepts/tree/{dataset}")
     public ResponseEntity<Concept> conceptTree(
-        @Parameter(description = DATASET, example = "Synthea") @PathVariable(name = "dataset") String dataset,
+        @Parameter(description = DATASET_PARAMETER, example = ExampleValues.DATASET) @PathVariable(name = "dataset") String dataset,
         @io.swagger.v3.oas.annotations.parameters.RequestBody(
             content = {
                 @Content(
@@ -310,7 +314,7 @@ public class ConceptController {
     @AuditEvent(type = "SEARCH", action = "concept.hierarchy")
     @PostMapping(path = "/concepts/hierarchy/{dataset}")
     public ResponseEntity<List<Concept>> conceptHierarchy(
-        @Parameter(description = DATASET, example = "Synthea") @PathVariable(name = "dataset") String dataset,
+        @Parameter(description = DATASET_PARAMETER, example = ExampleValues.DATASET) @PathVariable(name = "dataset") String dataset,
         @io.swagger.v3.oas.annotations.parameters.RequestBody(
             content = {
                 @Content(
