@@ -131,13 +131,6 @@ with `cargo deny` against `deny.toml`, uploads a CycloneDX SBOM for each binary 
 offline from a freshly vendored `vendor/` so the offline build cannot regress. A weekly run only
 audits and checks the supply chain, so a new advisory shows up without a code change.
 
-The workspace test step skips two `hpds-query` engine tests that fail intermittently under
-parallel load: `peak_live_entries_stay_under_the_chunk_bound` (a bookkeeping count in the test,
-not a wrong answer) and `concurrent_study_level_reads_on_a_small_cache_serve_only_cached_entries`.
-A separate non-blocking step in each job still runs both, so their results stay visible. Run
-alone, the two tests are a weak signal, because the failure appears under parallel load. Remove
-the skips from the test and release jobs once the tests are fixed.
-
 `hpds-rs` allocates with jemalloc, which fixes its page size when it is compiled. A binary
 built for 4 KiB pages fails to start on a kernel with larger ones, which some arm64
 distributions use (16 KiB on Asahi Linux; 64 KiB on RHEL 8 for arm64 and on RHEL 9's
