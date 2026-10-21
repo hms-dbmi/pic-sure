@@ -61,7 +61,7 @@
       "id": "production-source",
       "lowRisk": false,
       "lowRiskMaxLines": 300,
-      "reason": "Production Java source change larger than the 60-line low-risk allowance",
+      "reason": "Production Java source change larger than the 300-line low-risk allowance",
       "globs": ["**/src/main/java/**"]
     }
   ],
