@@ -12,6 +12,7 @@ use rayon::prelude::*;
 use roaring::{MultiOps, RoaringBitmap};
 
 use crate::cohort::{evaluate_cohort_cow, for_each_row_of};
+use crate::contract::ConsentContract;
 use crate::error::{QueryError, Result};
 use crate::fan_out;
 use crate::genomic::{
@@ -29,7 +30,7 @@ use crate::results::{
     DataframeColumn, DataframeRows, PATIENT_ID_FIELD_NAME, SyncResult,
 };
 use crate::store::CachedConcept;
-use crate::validate::{QueryValidator, path_is_variant_spec};
+use crate::validate::{MainQueryValidator, QueryValidator, path_is_variant_spec};
 use crate::view::View;
 
 /// Default cap on the summed decoded size of the blocks one DATAFRAME export may hold at
@@ -200,22 +201,30 @@ impl Engine {
         })
     }
 
-    /// Validates `query` against the merged dictionary with the [`QueryValidator`] the
-    /// partition set's flag gives: consents are required exactly when
-    /// [`PartitionSet::requires_consents`] (the Java property
-    /// `hpds.requireAuthorizationFilter`) says so.
+    /// Validates `query` against the merged dictionary with the validator of the partition
+    /// set's contract and flag: under the harmonization contract the [`QueryValidator`], with
+    /// consents required exactly when [`PartitionSet::requires_consents`] (the Java property
+    /// `hpds.requireAuthorizationFilter`) says so; under the main contract the
+    /// [`MainQueryValidator`], with authorization filters required on the same flag.
     ///
     /// Genomic filters are not validated here, as Java's validator does not look at them;
     /// they are refused when no genomic store is attached.
     ///
     /// # Errors
-    /// The errors of [`QueryValidator::validate`], and [`QueryError::Unsupported`] for
-    /// genomic filters without a genomic store.
+    /// The errors of [`QueryValidator::validate`] or [`MainQueryValidator::validate`], and
+    /// [`QueryError::Unsupported`] for genomic filters without a genomic store.
     pub fn validate(&self, query: &Query) -> Result<()> {
-        QueryValidator {
-            require_consents: self.partitions.requires_consents(),
+        let required = self.partitions.requires_consents();
+        match self.partitions.contract() {
+            ConsentContract::Harmonization => QueryValidator {
+                require_consents: required,
+            }
+            .validate(query, &self.partitions)?,
+            ConsentContract::Main => MainQueryValidator {
+                require_authorization_filter: required,
+            }
+            .validate(query, &self.partitions)?,
         }
-        .validate(query, &self.partitions)?;
         self.check_genomic_store(query)
     }
 
@@ -286,7 +295,9 @@ impl Engine {
     }
 
     /// The cohort of an admitted query: the phenotypic cohort, narrowed by the genomic
-    /// filters.
+    /// filters. Under the main contract the narrowed cohort must lie inside the phenotypic
+    /// one, which lies inside the authorized set, so the genomic result types answer over
+    /// the authorized set as every other type does.
     fn evaluate<'s>(&'s self, checked: &CheckedQuery<'_, 's>) -> Result<Cow<'s, RoaringBitmap>> {
         let cohort = evaluate_cohort_cow(checked)?;
         let query = checked.query();
@@ -301,6 +312,9 @@ impl Engine {
         }
         let found = genomic_cohort(store, filters, &cohort)?;
         crate::cohort::guard(checked.selection(), &found)?;
+        if self.partitions.contract() == ConsentContract::Main {
+            crate::cohort::guard_within(checked.selection(), &cohort, &found)?;
+        }
         Ok(Cow::Owned(found))
     }
 
@@ -1696,6 +1710,7 @@ mod tests {
         ) -> Engine {
             let options = PartitionOptions {
                 require_consents: false,
+                contract: crate::ConsentContract::Harmonization,
                 narrow_view_share: share,
                 prefix_read_bytes: chunk,
                 prefix_read_budget_bytes: budget,
@@ -2173,6 +2188,51 @@ mod tests {
                 );
                 assert!(!error.is_client_error());
                 assert!(!error.to_string().contains("11"), "no patient id: {error}");
+            }
+            assert_eq!(engine.partitions().cohort_guard_refusals(), 7);
+        }
+
+        #[test]
+        fn under_the_main_contract_a_cohort_outside_the_authorized_set_fails_every_result_type() {
+            let (_dir, out) = two_partitions();
+            let options = PartitionOptions {
+                require_consents: true,
+                contract: crate::ConsentContract::Main,
+                ..PartitionOptions::default()
+            };
+            let engine = Engine::open(&out, &options).unwrap();
+            let query = |result_type| Query {
+                authorization_filters: vec![crate::AuthorizationFilter {
+                    concept_path: Some("\\consent\\".into()),
+                    values: Some(vec![Some("c1".into())]),
+                }],
+                ..required_in_p1(result_type)
+            };
+            assert_eq!(engine.count(&query(ResultType::Count)).unwrap(), 0);
+            for result_type in [
+                ResultType::Count,
+                ResultType::CrossCount,
+                ResultType::CategoricalCrossCount,
+                ResultType::ContinuousCrossCount,
+                ResultType::ObservationCrossCount,
+                ResultType::Patients,
+                ResultType::Dataframe,
+            ] {
+                let query = query(result_type);
+                let broken = fault::skipping_authorization(|| match result_type {
+                    ResultType::Patients => engine.patients(&query).map(|_| ()),
+                    ResultType::Dataframe => engine.dataframe(&query).map(|_| ()),
+                    _ => engine.answer_sync(&query).map(|_| ()),
+                });
+                let error = broken.unwrap_err();
+                assert!(
+                    matches!(
+                        error,
+                        QueryError::CohortOutsideAuthorizedSet { patients: 20 }
+                    ),
+                    "{result_type:?}: {error}"
+                );
+                assert!(!error.is_client_error());
             }
             assert_eq!(engine.partitions().cohort_guard_refusals(), 7);
         }

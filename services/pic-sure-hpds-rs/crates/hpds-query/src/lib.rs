@@ -15,7 +15,11 @@
 //!   [`Engine`], after the query passes its [`QueryLimits`] and its consents select the
 //!   partitions. Every cohort is checked against the selected partitions' patients before
 //!   any count or export uses it.
-//! - [`QueryValidator`] is `QueryValidator` with `PhenotypicFilterValidator`.
+//! - [`QueryValidator`] is `QueryValidator` with `PhenotypicFilterValidator`, and
+//!   [`MainQueryValidator`] Java main's.
+//! - A [`ConsentContract`] chooses how a query is read and scoped: Java main's authorization
+//!   filters, ANDed into every cohort as `FILTER` clauses, or the harmonization branch's
+//!   `userConsents`, which select partitions ([`PartitionOptions::contract`]).
 //! - A [`GenomicStore`] attached with [`Engine::with_genomic`] answers `genomicFilters`: the
 //!   engine narrows each cohort to the patients the filters keep, node by node as Java's
 //!   genomic processors do, before any count or export uses it.
@@ -28,6 +32,7 @@
 
 mod budget;
 mod cohort;
+mod contract;
 mod counters;
 mod engine;
 mod error;
@@ -44,9 +49,10 @@ pub mod validate;
 mod view;
 
 pub use budget::{GenomicReadStats, PrefixReadStats, ReadBudgetStats};
+pub use contract::{CONSENT_CONTRACT_NAMES, ConsentContract};
 pub use counters::BlockCacheStats;
 pub use engine::{DEFAULT_EXPORT_PIN_BYTES, Engine, ReadPlan};
-pub use error::{QueryError, Result};
+pub use error::{AUTHORIZATION_FILTER_REQUIRED_MESSAGE, QueryError, Result};
 pub use genomic::{
     DEFAULT_GENOMIC_CACHE_BYTES, DEFAULT_GENOMIC_READ_BUDGET_BYTES, DEFAULT_MAX_EXCERPT_BYTES,
     ExcerptAnswer, GenomicCacheStats, GenomicOptions, GenomicShape, GenomicStore, InfoColumnMeta,
@@ -60,12 +66,13 @@ pub use model::{
     AuthorizationFilter, GenomicFilter, NULL_CLAUSE_MESSAGE, NULL_CONCEPT_PATH_MESSAGE,
     NULL_FILTER_TYPE_MESSAGE, NULL_RESULT_TYPE_MESSAGE, NULL_SELECT_MESSAGE, NULL_VALUE_MESSAGE,
     Operator, PhenotypicClause, PhenotypicFilter, PhenotypicFilterType, PhenotypicSubquery, Query,
-    ResultType, UserConsent, parse_request_body, parse_strict,
+    ResultType, UserConsent, parse_request_body, parse_request_body_for, parse_strict,
+    parse_strict_for,
 };
 pub use partition::{
-    COMBINED_DIR_NAME, DEFAULT_PREFIX_READ_BUDGET_BYTES, DEFAULT_PREFIX_READ_BYTES, Layout,
-    NARROW_VIEW_SHARE, Partition, PartitionOptions, PartitionSet, Selection, SummaryColumnMeta,
-    UNPARTITIONED_NAME,
+    COMBINED_DIR_NAME, ColumnMeta, DEFAULT_PREFIX_READ_BUDGET_BYTES, DEFAULT_PREFIX_READ_BYTES,
+    Layout, NARROW_VIEW_SHARE, Partition, PartitionOptions, PartitionSet, Selection,
+    SummaryColumnMeta, UNPARTITIONED_NAME,
 };
 pub use result_cache::{MIN_RESULT_CACHE_BYTES, ResultCacheStats, SyncAnswer};
 pub use results::{
@@ -74,8 +81,10 @@ pub use results::{
 };
 pub use store::{DEFAULT_CACHE_BYTES, KEY_FILE_NAME, StoreOptions};
 pub use validate::{
-    ConceptLookup, NULL_AUTHORIZATION_CONCEPT_PATH_MESSAGE, NULL_AUTHORIZATION_FILTER_MESSAGE,
-    QueryValidator, path_is_variant_spec,
+    AUTHORIZATION_FILTER_REQUIRED_JAVA_MESSAGE, ConceptLookup, MainQueryValidator,
+    NULL_AUTHORIZATION_CONCEPT_PATH_MESSAGE, NULL_AUTHORIZATION_FILTER_MESSAGE,
+    NULL_AUTHORIZATION_VALUE_MESSAGE, NULL_AUTHORIZATION_VALUES_MESSAGE, QueryValidator,
+    path_is_variant_spec, validate_main_authorization_filter,
 };
 
 /// Directory used when `HPDS_DATA_DIRECTORY` is not set. Matches the Java service, so the

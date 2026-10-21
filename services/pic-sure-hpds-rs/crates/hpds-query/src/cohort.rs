@@ -18,6 +18,12 @@
 //!
 //! Before anything uses the cohort, it is checked against the selected partitions' members
 //! ([`Selection::check_members`]); a patient outside them fails the query.
+//!
+//! Under the main consent contract the selection is every partition, and the query's
+//! authorization filters scope it instead, as Java main's `PhenotypicQueryExecutor` does:
+//! each is a `FILTER` on its path and values, and their AND is the authorized set. The
+//! cohort is the phenotypic clause's patients within that set, or the set itself without a
+//! clause, and is checked against it as well before anything uses it.
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -26,20 +32,26 @@ use hpds_format::{Block, ConceptType};
 use rayon::prelude::*;
 use roaring::{MultiOps, RoaringBitmap};
 
+use crate::contract::ConsentContract;
 use crate::error::{QueryError, Result};
 use crate::fan_out;
 use crate::limits::CheckedQuery;
 use crate::model::{
     NULL_VALUE_MESSAGE, Operator, PhenotypicClause, PhenotypicFilter, PhenotypicFilterType,
-    PhenotypicSubquery,
+    PhenotypicSubquery, Query,
 };
 use crate::partition::{ConceptRead, ReadMode, Selection};
+use crate::validate::{
+    NULL_AUTHORIZATION_CONCEPT_PATH_MESSAGE, NULL_AUTHORIZATION_FILTER_MESSAGE,
+    NULL_AUTHORIZATION_VALUE_MESSAGE, NULL_AUTHORIZATION_VALUES_MESSAGE,
+};
 use crate::view::View;
 
 /// The patients matching `checked`'s phenotypic clause within the partitions its consents
 /// select, borrowing the partitions' patient set instead of copying it when there is no
 /// clause and one partition or all of them are selected. With no clause, the cohort is
-/// every patient of those partitions. Authorization filters are never applied.
+/// every patient of those partitions. Authorization filters are never applied. Under the
+/// main contract, the cohort of [`main_cohort`] instead.
 ///
 /// Genomic filters are not applied here; the engine narrows this cohort with them.
 ///
@@ -55,6 +67,9 @@ pub(crate) fn evaluate_cohort_cow<'s>(
 ) -> Result<Cow<'s, RoaringBitmap>> {
     let selection = checked.selection();
     let _evaluating = selection.set().begin_evaluation();
+    if selection.set().contract() == ConsentContract::Main {
+        return main_cohort(selection, checked.query());
+    }
     let cohort = match &checked.query().phenotypic_clause {
         None => selection.patients(),
         Some(clause) => {
@@ -65,6 +80,123 @@ pub(crate) fn evaluate_cohort_cow<'s>(
     };
     guard(selection, &cohort)?;
     Ok(cohort)
+}
+
+/// Java main's `PhenotypicQueryExecutor.getPatientSet` over `selection`, which is every
+/// partition: the authorized set ([`authorized_set`]) narrowed by the phenotypic clause, or
+/// the authorized set itself without one, which with no authorization filter either is every
+/// patient. Every structure check runs before any block is read, the authorization
+/// filters' first. The cohort is checked against the selection's members and against the
+/// authorized set.
+///
+/// # Errors
+/// [`QueryError::AuthorizationFilterNull`] for a `null` in an authorization filter, the
+/// errors of [`evaluate_cohort_cow`], and [`QueryError::CohortOutsideAuthorizedSet`] when the
+/// cohort holds a patient the authorization filters do not authorize.
+fn main_cohort<'s>(selection: &Selection<'s>, query: &Query) -> Result<Cow<'s, RoaringBitmap>> {
+    let authorization = authorization_clauses(query)?;
+    authorization
+        .iter()
+        .chain(query.phenotypic_clause.as_ref())
+        .try_for_each(|clause| check_structure(selection, clause))?;
+    let authorized = authorized_set(selection, &authorization)?;
+    let cohort = match &query.phenotypic_clause {
+        None => authorized.clone(),
+        Some(clause) => {
+            let found = evaluate_checked(selection, clause)?;
+            let mut patients = within_selection(selection, found);
+            if !fault::skips_authorization() {
+                patients &= authorized.as_ref();
+            }
+            Cow::Owned(patients)
+        }
+    };
+    guard(selection, &cohort)?;
+    guard_within(selection, &authorized, &cohort)?;
+    Ok(cohort)
+}
+
+/// Each authorization filter of `query` as the `FILTER` Java main's
+/// `authorizationFiltersToPhenotypicClause` makes of it, in request order. A `null` value is
+/// dropped and marked on the filter ([`PhenotypicFilter::null_values`]), so the evaluator
+/// refuses it only where Java looks it up.
+///
+/// # Errors
+/// [`QueryError::AuthorizationFilterNull`] for a `null` filter, then, filter by filter, for
+/// `null` or missing `values` and a `null` or missing `conceptPath`, where Java's executor
+/// throws before it reads anything.
+fn authorization_clauses(query: &Query) -> Result<Vec<PhenotypicClause>> {
+    if query.first_null_authorization_filter.is_some() {
+        return Err(QueryError::AuthorizationFilterNull(
+            NULL_AUTHORIZATION_FILTER_MESSAGE,
+        ));
+    }
+    query
+        .authorization_filters
+        .iter()
+        .map(|filter| {
+            let values = filter
+                .values
+                .as_ref()
+                .ok_or(QueryError::AuthorizationFilterNull(
+                    NULL_AUTHORIZATION_VALUES_MESSAGE,
+                ))?;
+            let path = filter
+                .concept_path
+                .as_ref()
+                .ok_or(QueryError::AuthorizationFilterNull(
+                    NULL_AUTHORIZATION_CONCEPT_PATH_MESSAGE,
+                ))?;
+            Ok(PhenotypicClause::Filter(PhenotypicFilter {
+                values: Some(values.iter().flatten().cloned().collect()),
+                null_values: values.iter().any(Option::is_none),
+                ..PhenotypicFilter::new(PhenotypicFilterType::Filter, path.clone())
+            }))
+        })
+        .collect()
+}
+
+/// The authorized set: the AND of `authorization`'s filters over `selection`, or every
+/// patient of the selection when there is none. A `null` value looked up in a categorical
+/// concept is refused as [`NULL_AUTHORIZATION_VALUE_MESSAGE`].
+fn authorized_set<'s>(
+    selection: &Selection<'s>,
+    authorization: &[PhenotypicClause],
+) -> Result<Cow<'s, RoaringBitmap>> {
+    if authorization.is_empty() {
+        return Ok(selection.patients());
+    }
+    let found = combine(selection, authorization, Operator::And).map_err(|error| match error {
+        QueryError::Invalid(message) if message == NULL_VALUE_MESSAGE => {
+            QueryError::AuthorizationFilterNull(NULL_AUTHORIZATION_VALUE_MESSAGE)
+        }
+        other => other,
+    })?;
+    Ok(Cow::Owned(within_selection(selection, found)))
+}
+
+/// Fails the query when `cohort` holds a patient outside `authorized`, logging how many
+/// without naming any. Under the main contract every cohort, a genomic one included, must
+/// lie inside the authorized set it was computed from.
+///
+/// # Errors
+/// [`QueryError::CohortOutsideAuthorizedSet`] for such a cohort.
+pub(crate) fn guard_within(
+    selection: &Selection<'_>,
+    authorized: &RoaringBitmap,
+    cohort: &RoaringBitmap,
+) -> Result<()> {
+    let outside = cohort.difference_len(authorized);
+    if outside == 0 {
+        return Ok(());
+    }
+    selection.set().count_guard_refusal();
+    tracing::error!(
+        outside,
+        cohort = cohort.len(),
+        "a cohort holds patients outside the authorized set; the query is refused"
+    );
+    Err(QueryError::CohortOutsideAuthorizedSet { patients: outside })
 }
 
 /// The cohort of a clause whose patients are `found`: as found when exact, otherwise only
@@ -104,6 +236,7 @@ pub(crate) mod fault {
     use std::thread::LocalKey;
 
     thread_local! {
+        static SKIP_AUTHORIZATION: Cell<bool> = const { Cell::new(false) };
         static SKIP_REACH: Cell<bool> = const { Cell::new(false) };
         static VIEWS_BETWEEN_READS: Cell<bool> = const { Cell::new(false) };
         static FORGET_VIEWS: Cell<bool> = const { Cell::new(false) };
@@ -152,6 +285,17 @@ pub(crate) mod fault {
         flag.with(|f| f.set(true));
         let _clear = Clear(flag);
         work()
+    }
+
+    /// True while the calling thread skips, under the main contract, the intersection of the
+    /// phenotypic clause's patients with the authorized set.
+    pub(crate) fn skips_authorization() -> bool {
+        SKIP_AUTHORIZATION.with(Cell::get)
+    }
+
+    /// Runs `work` on the calling thread with that intersection skipped.
+    pub(crate) fn skipping_authorization<R>(work: impl FnOnce() -> R) -> R {
+        with_flag(&SKIP_AUTHORIZATION, work)
     }
 
     /// True while the calling thread skips the final intersection of a narrow selection's
@@ -288,6 +432,10 @@ pub(crate) mod fault {
 
 #[cfg(not(test))]
 pub(crate) mod fault {
+    pub(crate) fn skips_authorization() -> bool {
+        false
+    }
+
     pub(crate) fn skips_reach() -> bool {
         false
     }

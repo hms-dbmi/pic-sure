@@ -30,6 +30,7 @@ use roaring::{MultiOps, RoaringBitmap};
 use serde_json::Value;
 
 use crate::budget::{BudgetPermit, ByteBudget, PrefixReadStats};
+use crate::contract::ConsentContract;
 use crate::counters::{BlockCacheCounters, BlockCacheStats};
 use crate::error::{QueryError, Result};
 use crate::model::Query;
@@ -92,10 +93,16 @@ pub struct PartitionOptions {
     /// Cache budget and key rules. `cache_bytes` bounds the one cache of blocks and their
     /// partition views.
     pub store: StoreOptions,
-    /// The Java property `hpds.requireAuthorizationFilter`. When set, an unpartitioned data
-    /// directory is refused at open, and every query must carry at least one consent value.
-    /// The [`PartitionSet`] keeps it, and [`crate::Engine::validate`] reads it from there.
+    /// The Java property `hpds.requireAuthorizationFilter`. Under the harmonization contract,
+    /// an unpartitioned data directory is refused at open, and every query must carry at
+    /// least one consent value. Under the main contract, every query must carry an
+    /// authorization filter (see [`PartitionSet::select`]). The [`PartitionSet`] keeps it,
+    /// and [`crate::Engine::validate`] reads it from there.
     pub require_consents: bool,
+    /// The consent contract queries are scoped by. [`ConsentContract::Harmonization`] by
+    /// default, so code written before the main contract keeps its behavior; the service
+    /// always sets it from its required setting.
+    pub contract: ConsentContract,
     /// The share of a concept's rows below which a narrow selection reads partition views.
     /// [`NARROW_VIEW_SHARE`] unless a test or a measurement sets another: 0 reads whole
     /// blocks for every concept, and any share above 1 reads views for every concept a
@@ -118,12 +125,13 @@ pub struct PartitionOptions {
 }
 
 impl Default for PartitionOptions {
-    /// The default store options, consents required (the Java default), and
-    /// [`NARROW_VIEW_SHARE`].
+    /// The default store options, consents required (the Java default), the harmonization
+    /// contract, and [`NARROW_VIEW_SHARE`].
     fn default() -> Self {
         PartitionOptions {
             store: StoreOptions::default(),
             require_consents: true,
+            contract: ConsentContract::Harmonization,
             narrow_view_share: NARROW_VIEW_SHARE,
             prefix_read_bytes: DEFAULT_PREFIX_READ_BYTES,
             prefix_read_budget_bytes: DEFAULT_PREFIX_READ_BUDGET_BYTES,
@@ -273,6 +281,77 @@ impl SummaryColumnMeta {
     }
 }
 
+/// One concept as Java main's `ColumnMeta` serializes it ([`PartitionSet::column_meta`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ColumnMeta<'a> {
+    summary: &'a SummaryColumnMeta,
+    observation_count: u32,
+    patient_count: u32,
+}
+
+impl<'a> ColumnMeta<'a> {
+    /// The concept path.
+    pub fn name(&self) -> &'a str {
+        &self.summary.name
+    }
+
+    /// The concept's metadata, the counts aside.
+    pub fn summary(&self) -> &'a SummaryColumnMeta {
+        self.summary
+    }
+
+    /// `ColumnMeta.observationCount`.
+    pub fn observation_count(&self) -> u32 {
+        self.observation_count
+    }
+
+    /// `ColumnMeta.patientCount`: the distinct patients with a value over the whole store.
+    pub fn patient_count(&self) -> u32 {
+        self.patient_count
+    }
+
+    /// Appends the concept as Jackson writes Java main's `ColumnMeta`, which is
+    /// `@JsonInclude(NON_NULL)` with the storage getters ignored: `name`, `categorical`, then
+    /// `categoryValues` for a categorical concept, then `min` and `max` when set, then
+    /// `observationCount` and `patientCount`. `timestampMin` and `timestampMax` are left out:
+    /// no Java loader sets them, so Java never writes them. Doubles are written as
+    /// `Double.toString` writes them, NaN and the infinities as strings, and category values
+    /// in Java string order, a `TreeSet`'s.
+    pub fn write_json(&self, out: &mut String) {
+        let summary = self.summary;
+        out.push_str(r#"{"name":"#);
+        push_json_string(out, &summary.name);
+        let _ = write!(out, r#","categorical":{}"#, summary.categorical);
+        if summary.categorical {
+            out.push_str(r#","categoryValues":["#);
+            for (i, value) in summary.category_values.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                push_json_string(out, value);
+            }
+            out.push(']');
+        }
+        for (name, value) in [("min", summary.min), ("max", summary.max)] {
+            match value {
+                Some(v) if v.is_finite() => {
+                    let _ = write!(out, r#","{name}":{}"#, java_double_to_string(v));
+                }
+                Some(v) => {
+                    let _ = write!(out, r#","{name}":"#);
+                    push_json_string(out, &java_double_to_string(v));
+                }
+                None => {}
+            }
+        }
+        let _ = write!(
+            out,
+            r#","observationCount":{},"patientCount":{}}}"#,
+            self.observation_count, self.patient_count
+        );
+    }
+}
+
 fn push_json_string(out: &mut String, value: &str) {
     out.push_str(&Value::String(value.to_owned()).to_string());
 }
@@ -307,8 +386,10 @@ pub struct PartitionSet {
     dir: PathBuf,
     layout: Layout,
     require_consents: bool,
+    contract: ConsentContract,
     partitions: Vec<Partition>,
     dictionary: Vec<SummaryColumnMeta>,
+    column_counts: Vec<(u32, u32)>,
     holder_ends: Vec<u32>,
     holders: Vec<PartitionHolder>,
     index_holders: bool,
@@ -341,6 +422,7 @@ impl std::fmt::Debug for PartitionSet {
             .field("dir", &self.dir)
             .field("layout", &self.layout)
             .field("require_consents", &self.require_consents)
+            .field("contract", &self.contract)
             .field(
                 "partitions",
                 &self.partitions.iter().map(|p| &p.name).collect::<Vec<_>>(),
@@ -419,7 +501,10 @@ impl PartitionSet {
         let store_id = files.index().store_id();
         check_generation(dir, &store_id.to_string())?;
         let partitioned = !files.index().partition_table().is_empty();
-        if !partitioned && options.require_consents {
+        if !partitioned
+            && options.require_consents
+            && options.contract == ConsentContract::Harmonization
+        {
             return Err(open_error(
                 dir,
                 format!(
@@ -430,6 +515,7 @@ impl PartitionSet {
             ));
         }
         let mut dictionary = Vec::with_capacity(files.index().concept_count());
+        let mut column_counts = Vec::with_capacity(files.index().concept_count());
         let mut entries = Vec::with_capacity(files.index().concept_count());
         let mut holder_ends = Vec::with_capacity(files.index().concept_count());
         let mut holders = Vec::new();
@@ -448,6 +534,7 @@ impl PartitionSet {
             holder_ends.push(holders.len() as u32);
             entries.push(ConceptEntry::of(&concept));
             dictionary.push(SummaryColumnMeta::from_concept(&meta));
+            column_counts.push((concept.observation_count, concept.patient_count));
         }
         let (store, table) = files.into_store(entries);
         serving.bind(
@@ -485,6 +572,7 @@ impl PartitionSet {
                 Layout::Unpartitioned
             },
             require_consents: options.require_consents,
+            contract: options.contract,
             partitions,
             cache: block_cache(
                 options.store.cache_bytes,
@@ -494,6 +582,7 @@ impl PartitionSet {
             recent,
             turns: AtomicUsize::new(0),
             dictionary,
+            column_counts,
             holder_ends,
             holders,
             index_holders: partitioned,
@@ -563,10 +652,29 @@ impl PartitionSet {
         self.layout
     }
 
-    /// True when every query must carry a consent value (the Java property
-    /// `hpds.requireAuthorizationFilter`).
+    /// The Java property `hpds.requireAuthorizationFilter`: under the harmonization contract
+    /// every query must carry a consent value, under the main contract an authorization
+    /// filter.
     pub fn requires_consents(&self) -> bool {
         self.require_consents
+    }
+
+    /// The consent contract queries are scoped by.
+    pub fn contract(&self) -> ConsentContract {
+        self.contract
+    }
+
+    /// The dictionary as Java main's `ColumnMeta` serializes it, one entry per concept in
+    /// Java string order of the paths: each concept's metadata with its observation and
+    /// distinct patient counts over the whole store.
+    pub fn column_meta(&self) -> impl ExactSizeIterator<Item = ColumnMeta<'_>> + '_ {
+        self.dictionary.iter().zip(&self.column_counts).map(
+            |(summary, &(observations, patients))| ColumnMeta {
+                summary,
+                observation_count: observations,
+                patient_count: patients,
+            },
+        )
     }
 
     /// The partition names, in Java string order.
@@ -650,7 +758,9 @@ impl PartitionSet {
         !self.dictionary.is_empty()
     }
 
-    /// The partitions `query` may read (`partitionsFor(query.consentValues())`):
+    /// The partitions `query` may read.
+    ///
+    /// Under the harmonization contract, `partitionsFor(query.consentValues())`:
     ///
     /// | Consent values | Consents required | Layout | Selected |
     /// |---|---|---|---|
@@ -659,10 +769,21 @@ impl PartitionSet {
     /// | some | any | unpartitioned | the one partition |
     /// | some | any | partitioned | those named by a value; unknown values are skipped |
     ///
+    /// Under the main contract every partition, read as their union, since the query's
+    /// authorization filters scope it as clauses; a query without one is refused while
+    /// they are required ([`PartitionSet::check_consents`]).
+    ///
     /// # Errors
-    /// [`QueryError::UserConsentsRequired`] in the first row.
+    /// [`QueryError::UserConsentsRequired`] in the first row, and
+    /// [`QueryError::AuthorizationFilterRequired`] under the main contract.
     pub fn select(&self, query: &Query) -> Result<Selection<'_>> {
-        self.select_consents(&query.consent_values())
+        match self.contract {
+            ConsentContract::Harmonization => self.select_consents(&query.consent_values()),
+            ConsentContract::Main => {
+                self.check_consents(query)?;
+                Ok(self.selection_of(vec![true; self.partitions.len()]))
+            }
+        }
     }
 
     /// [`PartitionSet::select`] for an explicit list of consent values.
@@ -685,6 +806,11 @@ impl PartitionSet {
                 .map(|p| sorted.binary_search(&p.name.as_str()).is_ok())
                 .collect()
         };
+        Ok(self.selection_of(mask))
+    }
+
+    /// The selection of the partitions `mask` marks, in partition order.
+    fn selection_of(&self, mask: Vec<bool>) -> Selection<'_> {
         let members: Vec<&Partition> = self
             .partitions
             .iter()
@@ -692,25 +818,35 @@ impl PartitionSet {
             .filter_map(|(partition, &selected)| selected.then_some(partition))
             .collect();
         let full = members.len() == self.partitions.len();
-        Ok(Selection {
+        Selection {
             set: self,
             members,
             mask,
             full,
             scope: OnceLock::new(),
-        })
+        }
     }
 
-    /// Fails exactly when [`PartitionSet::select`] would: consents are required and `query`
-    /// carries no consent value.
+    /// Fails exactly when [`PartitionSet::select`] would: under the harmonization contract,
+    /// consents are required and `query` carries no consent value; under the main contract,
+    /// authorization filters are required and `query` has none (a `null` element counts as
+    /// one, as Java's `authorizationFilters().isEmpty()` counts it).
     ///
     /// # Errors
-    /// [`QueryError::UserConsentsRequired`].
+    /// [`QueryError::UserConsentsRequired`] and [`QueryError::AuthorizationFilterRequired`].
     pub fn check_consents(&self, query: &Query) -> Result<()> {
-        if self.require_consents && query.consent_values().is_empty() {
-            return Err(QueryError::UserConsentsRequired);
+        if !self.require_consents {
+            return Ok(());
         }
-        Ok(())
+        match self.contract {
+            ConsentContract::Harmonization if query.consent_values().is_empty() => {
+                Err(QueryError::UserConsentsRequired)
+            }
+            ConsentContract::Main if !query.has_authorization_filters() => {
+                Err(QueryError::AuthorizationFilterRequired)
+            }
+            _ => Ok(()),
+        }
     }
 
     /// Number of cached blocks, after applying the cache's pending inserts and evictions.

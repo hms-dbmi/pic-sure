@@ -36,6 +36,20 @@ pub enum QueryError {
     #[error("User consents are required for this query")]
     UserConsentsRequired,
 
+    /// Main consent contract only: `hpds.requireAuthorizationFilter` is on and the query's
+    /// `authorizationFilters` is missing, `null` or empty. Java main answers such a sync
+    /// query over every patient; the service refuses it rather than answer unscoped.
+    #[error("{AUTHORIZATION_FILTER_REQUIRED_MESSAGE}")]
+    AuthorizationFilterRequired,
+
+    /// Main consent contract only: an authorization filter Java main fails on while reading
+    /// it, a `null` filter, a `null` or missing `conceptPath` or `values`, or a `null` value
+    /// looked up in a categorical concept. Java throws (a `NullPointerException` or an
+    /// `IllegalArgumentException`), which it answers 200 with an empty body under BDC's
+    /// configuration. The message starts with "an authorization filter".
+    #[error("{0}")]
+    AuthorizationFilterNull(&'static str),
+
     /// A `FILTER` with neither `values` nor `min`/`max`, which Java's executor refuses with
     /// "Either values or one of min/max must be set for a filter".
     #[error("Either values or one of min/max must be set for a filter on {concept_path}")]
@@ -107,6 +121,15 @@ pub enum QueryError {
         patients: u64,
     },
 
+    /// Main consent contract only: a cohort held patients outside the set its authorization
+    /// filters authorize, which only a fault in the engine can cause. The query is refused.
+    /// The message counts them and names none.
+    #[error("the cohort holds {patients} patients outside the authorized set")]
+    CohortOutsideAuthorizedSet {
+        /// How many patients were outside.
+        patients: u64,
+    },
+
     /// A concept's block could not be read, authenticated, or decoded.
     #[error("cannot load the block of {concept_path}: {source}")]
     Block {
@@ -163,7 +186,7 @@ pub enum QueryError {
 impl QueryError {
     /// True when the request is at fault and retrying it unchanged cannot succeed: every
     /// variant except [`QueryError::Open`], [`QueryError::CohortOutsideSelection`],
-    /// [`QueryError::Block`], [`QueryError::GenomicBlock`], [`QueryError::StoreInconsistent`],
+    /// [`QueryError::CohortOutsideAuthorizedSet`], [`QueryError::Block`], [`QueryError::GenomicBlock`], [`QueryError::StoreInconsistent`],
     /// [`QueryError::Output`], [`QueryError::Task`], [`QueryError::StoreChanged`] and
     /// [`QueryError::GenomicStoreChanged`].
     pub fn is_client_error(&self) -> bool {
@@ -171,6 +194,7 @@ impl QueryError {
             self,
             QueryError::Open { .. }
                 | QueryError::CohortOutsideSelection { .. }
+                | QueryError::CohortOutsideAuthorizedSet { .. }
                 | QueryError::Block { .. }
                 | QueryError::GenomicBlock { .. }
                 | QueryError::StoreInconsistent { .. }
@@ -181,6 +205,11 @@ impl QueryError {
         )
     }
 }
+
+/// The refusal of [`QueryError::AuthorizationFilterRequired`]. It names `authorizationFilters`
+/// and the setting, so a caller can tell it from Java's own validator message.
+pub const AUTHORIZATION_FILTER_REQUIRED_MESSAGE: &str = "Authorization filter is required for this query: \
+     authorizationFilters is missing or empty and hpds.requireAuthorizationFilter is on";
 
 /// Result alias used throughout the crate.
 pub type Result<T> = std::result::Result<T, QueryError>;

@@ -68,6 +68,7 @@ use serde::de::{self, Deserializer, Visitor};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::{Map, Value};
 
+use crate::contract::ConsentContract;
 use crate::json_number::Source;
 
 macro_rules! java_enum {
@@ -293,6 +294,10 @@ pub struct Query {
     /// consent branch; `POST /query`'s validator refuses them
     /// ([`crate::NULL_AUTHORIZATION_FILTER_MESSAGE`]), where Java's throws.
     pub null_authorization_filters: usize,
+    /// The position in the request's `authorizationFilters` of its first `null` element, or
+    /// `None` when it held none. Java's validator walks the list in order and fails on the
+    /// first `null` it reaches, after any filter before it.
+    pub first_null_authorization_filter: Option<usize>,
 }
 
 /// The JSON fields of a [`Query`] as read, before the `null` elements of `select` are
@@ -316,6 +321,42 @@ struct QueryFields {
     picsure_id: Option<String>,
     #[serde(default, deserialize_with = "java_uuid")]
     id: Option<String>,
+}
+
+/// The JSON fields of main's `Query`, the seven Java main declares: [`QueryFields`] without
+/// `userConsents`, which is unknown here as it is to Java main's mapper.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MainQueryFields {
+    #[serde(default, deserialize_with = "null_as_default")]
+    select: Vec<Option<String>>,
+    #[serde(default, deserialize_with = "null_as_default")]
+    authorization_filters: Vec<Option<AuthorizationFilter>>,
+    #[serde(default)]
+    phenotypic_clause: Option<StrictValue>,
+    #[serde(default, deserialize_with = "null_as_default")]
+    genomic_filters: Vec<Option<GenomicFilter>>,
+    #[serde(default)]
+    expected_result_type: Option<ResultType>,
+    #[serde(default, deserialize_with = "java_uuid")]
+    picsure_id: Option<String>,
+    #[serde(default, deserialize_with = "java_uuid")]
+    id: Option<String>,
+}
+
+impl From<MainQueryFields> for QueryFields {
+    fn from(fields: MainQueryFields) -> Self {
+        QueryFields {
+            select: fields.select,
+            authorization_filters: fields.authorization_filters,
+            user_consents: Vec::new(),
+            phenotypic_clause: fields.phenotypic_clause,
+            genomic_filters: fields.genomic_filters,
+            expected_result_type: fields.expected_result_type,
+            picsure_id: fields.picsure_id,
+            id: fields.id,
+        }
+    }
 }
 
 /// Refusal of a query whose `select` holds `null` ([`Query::select_nulls`]) where Java fails
@@ -443,6 +484,10 @@ impl TryFrom<QueryFields> for Query {
             .iter()
             .filter(|filter| filter.is_none())
             .count();
+        let first_null_authorization_filter = fields
+            .authorization_filters
+            .iter()
+            .position(Option::is_none);
         let (phenotypic_clause, java_failure) = match fields.phenotypic_clause {
             None | Some(StrictValue(Value::Null)) => (None, None),
             Some(StrictValue(mut clause)) => {
@@ -470,6 +515,7 @@ impl TryFrom<QueryFields> for Query {
             id: fields.id,
             java_failure: java_failure.map(str::to_owned),
             null_authorization_filters,
+            first_null_authorization_filter,
         })
     }
 }
@@ -495,6 +541,7 @@ impl Query {
             select_nulls: 0,
             java_failure: None,
             null_authorization_filters: 0,
+            first_null_authorization_filter: None,
             authorization_filters: Vec::new(),
             user_consents: Vec::new(),
             phenotypic_clause: None,
@@ -533,6 +580,29 @@ impl Query {
         values.sort_unstable();
         values.dedup();
         values
+    }
+
+    /// Whether the request's `authorizationFilters` held any element, `null` included, as
+    /// Java's `authorizationFilters().isEmpty()` is false for `[null]`.
+    pub fn has_authorization_filters(&self) -> bool {
+        !self.authorization_filters.is_empty() || self.null_authorization_filters > 0
+    }
+
+    /// Reads a query from a JSON value with the request model of `contract`: under the
+    /// harmonization contract the eight fields of the consent branch's `Query`, under the
+    /// main contract the seven fields of main's (`userConsents` is then an unknown field,
+    /// refused naming it). Every other rule of this module applies to both.
+    ///
+    /// # Errors
+    /// The `serde_json` error for a query the model refuses.
+    pub fn from_value(value: Value, contract: ConsentContract) -> serde_json::Result<Query> {
+        match contract {
+            ConsentContract::Harmonization => serde_json::from_value(value),
+            ConsentContract::Main => {
+                let fields: MainQueryFields = serde_json::from_value(value)?;
+                Query::try_from(QueryFields::from(fields)).map_err(de::Error::custom)
+            }
+        }
     }
 
     /// Every [`PhenotypicFilter`] in the phenotypic clause, depth first in clause order,
@@ -826,10 +896,20 @@ impl<'de> Deserialize<'de> for PhenotypicClause {
                     .map(PhenotypicClause::Filter)
                     .map_err(de::Error::custom)
             }
-            (true, true) => Err(de::Error::custom(
-                "a phenotypic clause cannot mix subquery fields (phenotypicClauses, operator) \
-                 with filter fields (phenotypicFilterType, conceptPath, values, min, max)",
-            )),
+            (true, true) => {
+                let mut mixed: Vec<&str> = fields
+                    .keys()
+                    .map(String::as_str)
+                    .filter(|k| SUBQUERY_ONLY_FIELDS.contains(k))
+                    .collect();
+                mixed.sort_unstable();
+                Err(de::Error::custom(format_args!(
+                    "a phenotypic clause cannot mix subquery fields (phenotypicClauses, operator) \
+                     with filter fields (phenotypicFilterType, conceptPath, values, min, max): \
+                     unknown field `{}` for a filter",
+                    mixed[0]
+                )))
+            }
             (false, false) => Err(de::Error::custom(
                 "cannot deduce the phenotypic clause type: expected phenotypicClauses or \
                  operator for a subquery, or phenotypicFilterType, conceptPath, values, min or \
@@ -846,12 +926,35 @@ struct StrictValue(Value);
 impl<'de> Deserialize<'de> for StrictValue {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         deserializer
-            .deserialize_any(StrictValueVisitor)
+            .deserialize_any(StrictValueVisitor { last_wins: &[] })
             .map(StrictValue)
     }
 }
 
-struct StrictValueVisitor;
+/// The keys an object may repeat, keeping the last value as Jackson does, under `contract`:
+/// `authorizationFilters` under the main contract, where Java main and the query service
+/// read the last copy, and none under the harmonization contract.
+fn repeatable_keys(contract: ConsentContract) -> &'static [&'static str] {
+    match contract {
+        ConsentContract::Main => &["authorizationFilters"],
+        ConsentContract::Harmonization => &[],
+    }
+}
+
+/// Reads a JSON value as [`StrictValue`] does, except that the keys in `last_wins` may repeat
+/// in an object and keep their last value.
+#[derive(Clone, Copy)]
+struct StrictValueVisitor {
+    last_wins: &'static [&'static str],
+}
+
+impl<'de> de::DeserializeSeed<'de> for StrictValueVisitor {
+    type Value = Value;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Value, D::Error> {
+        deserializer.deserialize_any(self)
+    }
+}
 
 impl<'de> Visitor<'de> for StrictValueVisitor {
     type Value = Value;
@@ -898,7 +1001,7 @@ impl<'de> Visitor<'de> for StrictValueVisitor {
 
     fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<Value, A::Error> {
         let mut items = Vec::new();
-        while let Some(StrictValue(item)) = seq.next_element()? {
+        while let Some(item) = seq.next_element_seed(self)? {
             items.push(item);
         }
         Ok(Value::Array(items))
@@ -907,10 +1010,10 @@ impl<'de> Visitor<'de> for StrictValueVisitor {
     fn visit_map<A: de::MapAccess<'de>>(self, mut map: A) -> Result<Value, A::Error> {
         let mut fields = Map::new();
         while let Some(key) = map.next_key::<String>()? {
-            if fields.contains_key(&key) {
+            if fields.contains_key(&key) && !self.last_wins.contains(&key.as_str()) {
                 return Err(de::Error::custom(format_args!("duplicate key {key:?}")));
             }
-            let StrictValue(value) = map.next_value()?;
+            let value = map.next_value_seed(self)?;
             fields.insert(key, value);
         }
         Ok(Value::Object(fields))
@@ -932,7 +1035,17 @@ impl<'de> Visitor<'de> for StrictValueVisitor {
 /// and `NaN` literals included), a number with more than 1,000 counted digits, or a duplicate
 /// key.
 pub fn parse_strict(json: &[u8]) -> serde_json::Result<Value> {
-    parse_strict_from(json, Source::QueryText)
+    parse_strict_from(json, Source::QueryText, ConsentContract::Harmonization)
+}
+
+/// [`parse_strict`] for a service answering by `contract`: under the main contract a
+/// repeated `authorizationFilters` keeps its last value, as Jackson keeps it, and every other
+/// repeated key is refused.
+///
+/// # Errors
+/// As [`parse_strict`].
+pub fn parse_strict_for(json: &[u8], contract: ConsentContract) -> serde_json::Result<Value> {
+    parse_strict_from(json, Source::QueryText, contract)
 }
 
 /// [`parse_strict`] for a whole request body, envelope included. A body parsed with plain
@@ -945,13 +1058,31 @@ pub fn parse_strict(json: &[u8]) -> serde_json::Result<Value> {
 /// # Errors
 /// As [`parse_strict`].
 pub fn parse_request_body(json: &[u8]) -> serde_json::Result<Value> {
-    parse_strict_from(json, Source::RequestBody)
+    parse_strict_from(json, Source::RequestBody, ConsentContract::Harmonization)
 }
 
-fn parse_strict_from(json: &[u8], source: Source) -> serde_json::Result<Value> {
+/// [`parse_request_body`] for a service answering by `contract`, with the repeated keys of
+/// [`parse_strict_for`].
+///
+/// # Errors
+/// As [`parse_strict`].
+pub fn parse_request_body_for(json: &[u8], contract: ConsentContract) -> serde_json::Result<Value> {
+    parse_strict_from(json, Source::RequestBody, contract)
+}
+
+fn parse_strict_from(
+    json: &[u8],
+    source: Source,
+    contract: ConsentContract,
+) -> serde_json::Result<Value> {
     let json = java_number_text(json, source)?;
     let mut deserializer = serde_json::Deserializer::from_slice(&json);
-    let StrictValue(value) = StrictValue::deserialize(&mut deserializer)?;
+    let value = de::DeserializeSeed::deserialize(
+        StrictValueVisitor {
+            last_wins: repeatable_keys(contract),
+        },
+        &mut deserializer,
+    )?;
     deserializer.end()?;
     Ok(value)
 }

@@ -4,7 +4,8 @@
 //! Java runs `QueryValidator` only when an asynchronous query is submitted (`POST /query`).
 //! `/query/sync` validates nothing, but the store still refuses a query without consent
 //! values when `hpds.requireAuthorizationFilter` is true; [`crate::Engine::check_consents`]
-//! is that check on its own.
+//! is that check on its own. [`QueryValidator`] is the harmonization branch's validator,
+//! [`MainQueryValidator`] Java main's, for the main consent contract.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -134,6 +135,96 @@ impl QueryValidator {
         Ok(())
     }
 }
+
+/// Java main's `QueryValidator` with `PhenotypicFilterValidator`, for the main consent
+/// contract, where `POST /query` runs it before the job starts.
+///
+/// [`crate::Engine::validate`] builds one from its partition set's flag under the main
+/// contract.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MainQueryValidator {
+    /// The Java property `hpds.requireAuthorizationFilter`: refuse a query whose
+    /// `authorizationFilters` is empty.
+    pub require_authorization_filter: bool,
+}
+
+impl MainQueryValidator {
+    /// Validates `query` against `concepts` in Java main's order: the requirement (with the
+    /// flag on, an empty `authorizationFilters`, where `[null]` is not empty), then every
+    /// filter of the phenotypic clause ([`validate_filter`]), then every authorization
+    /// filter in request order ([`validate_main_authorization_filter`]). Unknown `select`
+    /// paths are allowed (Java only logs them).
+    ///
+    /// Java ends the job in ERROR for every `IllegalArgumentException` its validator throws,
+    /// and creates no job when another exception escapes it: a `null` authorization filter or
+    /// a `null` `conceptPath` there. The two are told apart by the error.
+    ///
+    /// # Errors
+    /// [`QueryError::Invalid`] with Java's message for the first rule broken, where Java ends
+    /// the job in ERROR, and [`QueryError::AuthorizationFilterNull`] for a `null` filter or
+    /// path reached first, where Java creates no job.
+    pub fn validate(&self, query: &Query, concepts: &impl ConceptLookup) -> Result<()> {
+        if self.require_authorization_filter && !query.has_authorization_filters() {
+            return Err(QueryError::Invalid(
+                AUTHORIZATION_FILTER_REQUIRED_JAVA_MESSAGE.into(),
+            ));
+        }
+        for filter in query.all_filters() {
+            validate_filter(filter, concepts)?;
+        }
+        for (position, filter) in query.authorization_filters.iter().enumerate() {
+            if query.first_null_authorization_filter == Some(position) {
+                return Err(QueryError::AuthorizationFilterNull(
+                    NULL_AUTHORIZATION_FILTER_MESSAGE,
+                ));
+            }
+            validate_main_authorization_filter(filter, concepts)?;
+        }
+        if query.first_null_authorization_filter.is_some() {
+            return Err(QueryError::AuthorizationFilterNull(
+                NULL_AUTHORIZATION_FILTER_MESSAGE,
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// The message of Java main's validator for an empty `authorizationFilters` while
+/// `hpds.requireAuthorizationFilter` is on.
+pub const AUTHORIZATION_FILTER_REQUIRED_JAVA_MESSAGE: &str =
+    "Authorization filter is required for this query";
+
+/// Java main's `PhenotypicFilterValidator.validate(AuthorizationFilter, metaStore)`: values
+/// must be non-empty (a list holding only `null` counts as non-empty, as in Java), and the
+/// concept must exist and be categorical. A `null` concept path is refused with
+/// [`NULL_AUTHORIZATION_CONCEPT_PATH_MESSAGE`] as [`QueryError::AuthorizationFilterNull`],
+/// where Java's lookup of it in the dictionary throws.
+///
+/// # Errors
+/// [`QueryError::Invalid`] with Java's message, or [`QueryError::AuthorizationFilterNull`].
+pub fn validate_main_authorization_filter(
+    filter: &AuthorizationFilter,
+    concepts: &impl ConceptLookup,
+) -> Result<()> {
+    match validate_authorization_filter(filter, concepts) {
+        Err(QueryError::Invalid(message)) if message == NULL_AUTHORIZATION_CONCEPT_PATH_MESSAGE => {
+            Err(QueryError::AuthorizationFilterNull(
+                NULL_AUTHORIZATION_CONCEPT_PATH_MESSAGE,
+            ))
+        }
+        other => other,
+    }
+}
+
+/// Refusal, under the main contract, of an authorization filter whose `values` is `null` or
+/// missing, where Java main's executor throws "Either values or one of min/max must be set
+/// for a filter".
+pub const NULL_AUTHORIZATION_VALUES_MESSAGE: &str = "an authorization filter's values are null";
+
+/// Refusal, under the main contract, of an authorization filter whose `values` hold `null` on
+/// a categorical concept, where Java main's executor looks the `null` up in the concept's
+/// category map, which throws.
+pub const NULL_AUTHORIZATION_VALUE_MESSAGE: &str = "an authorization filter's values hold null";
 
 /// `PhenotypicFilterValidator.validate(PhenotypicFilter, metaStore)`.
 ///
