@@ -333,7 +333,7 @@ expect_equal "qs back on java" "$(env_of ${QS_T} | sed -n 's/^HPDS_AUTH_URL=//p'
 
 echo "--- down with no query service container restores the file"
 grep -v '^HPDS_CONSENT_CONTRACT=' "$DOCKER_CONFIG_DIR/hpds-rs/hpds-rs.env" > "$WORK/hpds-rs.env.old"
-cp "$WORK/hpds-rs.env.old" "$DOCKER_CONFIG_DIR/hpds-rs/hpds-rs.env"
+printf '%s' "$(cat "$WORK/hpds-rs.env.old")" > "$DOCKER_CONFIG_DIR/hpds-rs/hpds-rs.env"
 "$AIO/up.sh"
 grep -qx 'HPDS_CONSENT_CONTRACT=main' "$DOCKER_CONFIG_DIR/hpds-rs/hpds-rs.env" && pass "up added the missing consent contract line" || check_failed "up added the missing consent contract line"
 expect_equal "up kept the rest of hpds-rs.env" "$(grep -v '^HPDS_CONSENT_CONTRACT=' "$DOCKER_CONFIG_DIR/hpds-rs/hpds-rs.env")" "$(cat "$WORK/hpds-rs.env.old")"

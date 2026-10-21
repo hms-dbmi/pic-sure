@@ -127,7 +127,11 @@ HPDS_CACHE_BYTES=4294967296
 RUST_LOG=info
 ENV
 elif ! grep -q '^[[:space:]]*HPDS_CONSENT_CONTRACT=' "$RS_ENV"; then
-  { cat "$RS_ENV"; echo "HPDS_CONSENT_CONTRACT=main"; } | put_file "$RS_ENV" 600
+  {
+    cat "$RS_ENV"
+    [[ ! -s "$RS_ENV" || -z "$(tail -c 1 "$RS_ENV")" ]] || echo
+    echo "HPDS_CONSENT_CONTRACT=main"
+  } | put_file "$RS_ENV" 600
 fi
 
 new_name="$HPDS_RS_CONTAINER-new"
