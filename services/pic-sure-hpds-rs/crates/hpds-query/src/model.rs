@@ -591,7 +591,9 @@ impl Query {
     /// Reads a query from a JSON value with the request model of `contract`: under the
     /// harmonization contract the eight fields of the consent branch's `Query`, under the
     /// main contract the seven fields of main's (`userConsents` is then an unknown field,
-    /// refused naming it). Every other rule of this module applies to both.
+    /// refused naming it, and a clause mixing subquery and filter fields is refused naming its
+    /// first subquery field as an unknown field, as Jackson's failure there names it). Every
+    /// other rule of this module applies to both.
     ///
     /// # Errors
     /// The `serde_json` error for a query the model refuses.
@@ -599,8 +601,18 @@ impl Query {
         match contract {
             ConsentContract::Harmonization => serde_json::from_value(value),
             ConsentContract::Main => {
-                let fields: MainQueryFields = serde_json::from_value(value)?;
-                Query::try_from(QueryFields::from(fields)).map_err(de::Error::custom)
+                let mixed = mixed_clause_field(&value).map(str::to_owned);
+                let read = serde_json::from_value::<MainQueryFields>(value).and_then(|fields| {
+                    Query::try_from(QueryFields::from(fields)).map_err(de::Error::custom)
+                });
+                read.map_err(|error| match mixed {
+                    Some(field) if error.to_string().contains(MIXED_CLAUSE_MESSAGE) => {
+                        de::Error::custom(format_args!(
+                            "{MIXED_CLAUSE_MESSAGE}: unknown field `{field}` for a filter"
+                        ))
+                    }
+                    _ => error,
+                })
             }
         }
     }
@@ -861,6 +873,38 @@ pub struct PhenotypicSubquery {
     pub operator: Option<Operator>,
 }
 
+/// The refusal of a phenotypic clause holding both subquery and filter fields.
+const MIXED_CLAUSE_MESSAGE: &str = "a phenotypic clause cannot mix subquery fields \
+     (phenotypicClauses, operator) with filter fields (phenotypicFilterType, conceptPath, values, \
+     min, max)";
+
+/// The first subquery field, in name order, of the first phenotypic clause of `query` that
+/// mixes subquery and filter fields, walking the clause tree depth first in clause order, as
+/// the reader meets it.
+fn mixed_clause_field(query: &Value) -> Option<&str> {
+    fn walk(clause: &Value) -> Option<&str> {
+        let fields = clause.as_object()?;
+        let filter = fields
+            .keys()
+            .any(|k| FILTER_ONLY_FIELDS.contains(&k.as_str()));
+        let mut subquery: Vec<&str> = fields
+            .keys()
+            .map(String::as_str)
+            .filter(|k| SUBQUERY_ONLY_FIELDS.contains(k))
+            .collect();
+        subquery.sort_unstable();
+        if filter && !subquery.is_empty() {
+            return Some(subquery[0]);
+        }
+        fields
+            .get("phenotypicClauses")
+            .and_then(Value::as_array)?
+            .iter()
+            .find_map(walk)
+    }
+    walk(query.get("phenotypicClause")?)
+}
+
 const SUBQUERY_ONLY_FIELDS: [&str; 2] = ["phenotypicClauses", "operator"];
 const FILTER_ONLY_FIELDS: [&str; 5] = [
     "phenotypicFilterType",
@@ -896,20 +940,7 @@ impl<'de> Deserialize<'de> for PhenotypicClause {
                     .map(PhenotypicClause::Filter)
                     .map_err(de::Error::custom)
             }
-            (true, true) => {
-                let mut mixed: Vec<&str> = fields
-                    .keys()
-                    .map(String::as_str)
-                    .filter(|k| SUBQUERY_ONLY_FIELDS.contains(k))
-                    .collect();
-                mixed.sort_unstable();
-                Err(de::Error::custom(format_args!(
-                    "a phenotypic clause cannot mix subquery fields (phenotypicClauses, operator) \
-                     with filter fields (phenotypicFilterType, conceptPath, values, min, max): \
-                     unknown field `{}` for a filter",
-                    mixed[0]
-                )))
-            }
+            (true, true) => Err(de::Error::custom(MIXED_CLAUSE_MESSAGE)),
             (false, false) => Err(de::Error::custom(
                 "cannot deduce the phenotypic clause type: expected phenotypicClauses or \
                  operator for a subquery, or phenotypicFilterType, conceptPath, values, min or \

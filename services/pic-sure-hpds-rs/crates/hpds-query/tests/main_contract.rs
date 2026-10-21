@@ -555,6 +555,24 @@ fn the_request_model_is_mains() {
             "{query}: {message}"
         );
     }
+    let mixed = json!({"expectedResultType": "COUNT", "phenotypicClause": {"phenotypicClauses": [{"conceptPath": "a", "operator": "AND"}], "operator": "OR"}});
+    let harmonization = Query::from_value(mixed.clone(), ConsentContract::Harmonization)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        harmonization.starts_with(
+            "a phenotypic clause cannot mix subquery fields (phenotypicClauses, operator) with \
+             filter fields (phenotypicFilterType, conceptPath, values, min, max)"
+        ) && !harmonization.contains("unknown field"),
+        "{harmonization}"
+    );
+    let main = Query::from_value(mixed, ConsentContract::Main)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        main.contains("unknown field `operator` for a filter"),
+        "{main}"
+    );
     let text = format!(
         r#"{{"expectedResultType":0,"authorizationFilters":[{{"conceptPath":{},"values":[7,1.50,true]}}]}}"#,
         serde_json::to_string(CONSENTS).unwrap()
