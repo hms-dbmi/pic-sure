@@ -164,7 +164,8 @@ pub enum Condition {
     /// The entry's query is sent as a JSON string holding an object with a repeated key; the
     /// Java side answered (Jackson keeps the last value: a sync 200 with a body, or an accepted
     /// async submit), and the Rust side refused with 400 `the query is not valid: duplicate
-    /// key "<key>" at line <n> column <m>` naming that key.
+    /// key "<key>" at line <n> column <m>` naming that key. Under the main contract the key
+    /// is not `authorizationFilters`, whose last value main keeps.
     DuplicateKeyInStringQuery,
     /// The entry's query names an `expectedResultType` string Jackson's enum coercion refuses
     /// (not a name of Java's `ResultType`, trimmed or not, nor its ordinal); the Java side
@@ -266,10 +267,15 @@ pub enum Condition {
     SearchValuesBucketSet,
     /// Main consent contract only. A `/query/sync` entry of any result type but
     /// INFO_COLUMN_LISTING whose query carries no authorization filter (`authorizationFilters`
-    /// missing, `null` or `[]`, a repeated key keeping its last value); the Rust side refused
-    /// with a 400 naming `authorizationFilters`, and the Java side (which must be known)
+    /// missing, `null` or `[]`, a repeated key keeping its last value), with the Rust side
+    /// running with `HPDS_REQUIRE_AUTHORIZATION_FILTER` on; the Rust side refused
+    /// with a 400 naming `authorizationFilters` that is not a refusal of the query reader, and the Java side (which must be known)
     /// answered 200 with a body over every patient.
     SyncFlagRefusal,
+    /// Always under the harmonization contract. Under the main contract, the entry's raw body
+    /// or string query repeats a key other than `authorizationFilters`, whose repetition main
+    /// accepts as Jackson does, keeping the last value.
+    RepeatedKeyRefusable,
     /// Main consent contract only. The entry's query holds a field that main's `Query`,
     /// `AuthorizationFilter`, `PhenotypicFilter`, `PhenotypicSubquery` or `GenomicFilter` does
     /// not declare, or a clause mixing filter and subquery fields; the Rust side refused with a
@@ -282,11 +288,6 @@ pub enum Condition {
     /// must be known) failed while evaluating: a sync 200 with an empty body or a sync 500, or
     /// an async submit answered 200 or 500 with no status.
     NullAuthorizationFilterMainRefused,
-    /// Both sides failed the way the Java service fails, one in each form: a sync 200 with an
-    /// empty body against a sync 500, or an async submit answered 200 with
-    /// no status against one answered 500. Java answers the first with its audit logging
-    /// client off and the second with it on.
-    JavaFailureClass,
 }
 
 /// Which Java service a comparison runs against, for rules that hold for one branch only.
@@ -329,6 +330,8 @@ pub struct JavaService {
     pub branch: JavaBranch,
     /// The consent contract the Rust side serves.
     pub contract: ConsentContract,
+    /// Whether the Rust side runs with `HPDS_REQUIRE_AUTHORIZATION_FILTER` on.
+    pub require_authorization_filter: bool,
 }
 
 /// When a rule applies: one condition, or a list of body normalizations
@@ -1475,7 +1478,7 @@ fn duplicate_key_in_string_query(
     else {
         return false;
     };
-    let keys = repeated_keys(&text);
+    let keys = refusable_repeated_keys(&text, java);
     let names_a_repeated_key = |body: &str| {
         keys.iter().any(|key| {
             serde_json::to_string(key).is_ok_and(|quoted| {
@@ -1494,6 +1497,32 @@ fn duplicate_key_in_string_query(
     };
     !keys.is_empty()
         && rust_refused_java_failed(a, b, java, names_a_repeated_key, answered_with_body)
+}
+
+/// The keys repeated in the JSON `text` that the Rust side may refuse: every one under the
+/// harmonization contract, every one but `authorizationFilters` under the main contract, which
+/// keeps its last value as Jackson does.
+fn refusable_repeated_keys(text: &str, java: Option<JavaService>) -> Vec<String> {
+    let main = java.is_some_and(|java| java.contract == ConsentContract::Main);
+    repeated_keys(text)
+        .into_iter()
+        .filter(|key| !main || key != "authorizationFilters")
+        .collect()
+}
+
+/// See [`Condition::RepeatedKeyRefusable`].
+fn repeated_key_refusable(entry: &CorpusEntry, java: Option<JavaService>) -> bool {
+    if java.is_none_or(|java| java.contract != ConsentContract::Main) {
+        return true;
+    }
+    let text = match &entry.raw_body {
+        Some(text) => Some(text.clone()),
+        None => match entry.request.get("query") {
+            Some(Value::String(text)) => Some(text.clone()),
+            _ => None,
+        },
+    };
+    text.is_some_and(|text| !refusable_repeated_keys(&text, java).is_empty())
 }
 
 /// Whether Jackson's enum coercion reads `text` as one of Java's `ResultType` constants: a
@@ -1807,13 +1836,13 @@ impl Condition {
             Condition::SearchInfoValuesSet => equal_after(a, b, &[self]),
             Condition::SearchValuesBucketSet => genomic::search_values_bucket_set(entry, a, b),
             Condition::SyncFlagRefusal => main_contract::sync_flag_refusal(entry, a, b, java),
+            Condition::RepeatedKeyRefusable => repeated_key_refusable(entry, java),
             Condition::UnknownFieldRefused => {
                 main_contract::unknown_field_refused(entry, a, b, java)
             }
             Condition::NullAuthorizationFilterMainRefused => {
                 main_contract::null_authorization_filter_refused(entry, a, b, java)
             }
-            Condition::JavaFailureClass => main_contract::java_failure_class(a, b),
         }
     }
 }
@@ -1919,6 +1948,7 @@ impl Divergences {
                 side,
                 branch,
                 contract: ConsentContract::default(),
+                require_authorization_filter: true,
             }),
             ..self
         }
@@ -1931,6 +1961,17 @@ impl Divergences {
     pub fn with_contract(mut self, contract: ConsentContract) -> Self {
         if let Some(java) = &mut self.java {
             java.contract = contract;
+        }
+        self
+    }
+
+    /// These rules for a comparison whose Rust side runs with
+    /// `HPDS_REQUIRE_AUTHORIZATION_FILTER` set to `required` (on unless said otherwise). With
+    /// it off, the main contract's refusal of an unscoped sync query is never accepted. Like the
+    /// contract, it takes effect only after [`Divergences::for_java`].
+    pub fn with_required_authorization_filter(mut self, required: bool) -> Self {
+        if let Some(java) = &mut self.java {
+            java.require_authorization_filter = required;
         }
         self
     }
@@ -3519,7 +3560,6 @@ mod tests {
             "sync-requires-authorization-filter-main",
             "unknown-field-main",
             "null-authorization-filter-main-status",
-            "java-failure-empty-200-or-500",
         ] {
             let rule = set.rules.iter().find(|r| r.name == name).unwrap();
             assert_eq!(rule.consent_contract, Some(ConsentContract::Main), "{name}");
@@ -3890,55 +3930,190 @@ mod tests {
     }
 
     #[test]
-    fn the_two_forms_of_a_java_failure_are_one_class_under_main() {
+    fn a_rust_500_is_never_accepted_under_main() {
+        let entries = [
+            query_entry(
+                "plain-count",
+                Kind::Sync,
+                json!({"expectedResultType": "COUNT"}),
+            ),
+            query_entry(
+                "authz-null-count",
+                Kind::Sync,
+                json!({"expectedResultType": "COUNT", "authorizationFilters": [null]}),
+            ),
+            query_entry(
+                "unknown-field-count",
+                Kind::Sync,
+                json!({"expectedResultType": "COUNT", "userConsents": {}}),
+            ),
+            query_entry(
+                "error-path-null-count",
+                Kind::Sync,
+                json!({"expectedResultType": "COUNT", "phenotypicClause": {"phenotypicFilterType": "REQUIRED", "conceptPath": null}}),
+            ),
+        ];
+        for e in &entries {
+            for java in [sync(200, ""), sync(200, "3"), sync(400, "refused")] {
+                for rust in [sync(500, ""), sync(500, "panic")] {
+                    assert_eq!(
+                        rule_name(&main_contract(), e, &java, &rust),
+                        None,
+                        "{}",
+                        e.name
+                    );
+                }
+            }
+        }
+        let submit = query_entry(
+            "authz-null-patients",
+            Kind::Async,
+            json!({"expectedResultType": "PATIENTS", "authorizationFilters": [null]}),
+        );
+        for java in [
+            bodiless_submit(),
+            async_outcome(200, Some("ERROR"), None),
+            async_outcome(200, Some("SUCCESS"), Some("PATIENT_NUM\n1\n")),
+        ] {
+            assert_eq!(
+                rule_name(
+                    &main_contract(),
+                    &submit,
+                    &java,
+                    &async_outcome(500, None, None)
+                ),
+                None
+            );
+        }
+        assert!(
+            !checked_in()
+                .rules
+                .iter()
+                .any(|r| r.name == "java-failure-empty-200-or-500")
+        );
+    }
+
+    #[test]
+    fn an_unscoped_sync_refusal_is_accepted_only_with_the_flag_on() {
         let e = query_entry(
-            "failure-count",
+            "unscoped-count",
             Kind::Sync,
             json!({"expectedResultType": "COUNT"}),
         );
+        let refusal = sync(400, "authorizationFilters are required for this query");
+        let answer = sync(200, "3");
         assert_eq!(
-            rule_name(&main_contract(), &e, &sync(200, ""), &sync(500, "")).as_deref(),
-            Some("java-failure-empty-200-or-500")
+            rule_name(
+                &main_contract().with_required_authorization_filter(true),
+                &e,
+                &answer,
+                &refusal
+            )
+            .as_deref(),
+            Some("sync-requires-authorization-filter-main")
         );
         assert_eq!(
-            rule_name(&main_contract(), &e, &sync(500, ""), &sync(200, "")).as_deref(),
-            Some("java-failure-empty-200-or-500")
-        );
-        assert_eq!(
-            rule_name(&main_contract(), &e, &sync(200, "3"), &sync(500, "")),
+            rule_name(
+                &main_contract().with_required_authorization_filter(false),
+                &e,
+                &answer,
+                &refusal
+            ),
             None
         );
+    }
+
+    fn raw_body_entry(name: &str, body: &str) -> CorpusEntry {
+        CorpusEntry {
+            raw_body: Some(body.into()),
+            ..entry(name, "COUNT")
+        }
+    }
+
+    #[test]
+    fn a_refused_repetition_of_authorization_filters_is_reported_under_main() {
+        let answer = sync(200, "3");
+        let string_query = |key: &str| {
+            raw_entry(
+                "repeated-string-count",
+                json!({"query": format!(r#"{{"expectedResultType": "COUNT", "{key}": [], "{key}": []}}"#)}),
+            )
+        };
+        let refusal = |key: &str| {
+            sync(
+                400,
+                &format!("the query is not valid: duplicate key \"{key}\" at line 1 column 60"),
+            )
+        };
+        let authz = string_query("authorizationFilters");
         assert_eq!(
             rule_name(
                 &harmonization_contract(),
-                &e,
-                &sync(200, ""),
-                &sync(500, "")
+                &authz,
+                &answer,
+                &refusal("authorizationFilters")
+            )
+            .as_deref(),
+            Some("duplicate-key-in-string-query")
+        );
+        assert_eq!(
+            rule_name(
+                &main_contract(),
+                &authz,
+                &answer,
+                &refusal("authorizationFilters")
             ),
             None
         );
-        let submit = query_entry(
-            "failure-patients",
-            Kind::Async,
-            json!({"expectedResultType": "PATIENTS"}),
+        let select = string_query("select");
+        assert_eq!(
+            rule_name(&main_contract(), &select, &answer, &refusal("select")).as_deref(),
+            Some("duplicate-key-in-string-query")
+        );
+        let body = |key: &str| {
+            format!(r#"{{"query": {{"expectedResultType": "COUNT", "{key}": [], "{key}": []}}}}"#)
+        };
+        let raw_authz = raw_body_entry("error-duplicate-key-authz", &body("authorizationFilters"));
+        let any_refusal = sync(400, "duplicate key");
+        assert_eq!(
+            rule_name(&harmonization_contract(), &raw_authz, &answer, &any_refusal).as_deref(),
+            Some("duplicate-key-last-wins")
         );
         assert_eq!(
-            rule_name(
-                &main_contract(),
-                &submit,
-                &bodiless_submit(),
-                &async_outcome(500, None, None)
-            )
-            .as_deref(),
-            Some("java-failure-empty-200-or-500")
+            rule_name(&main_contract(), &raw_authz, &answer, &any_refusal),
+            None
+        );
+        let raw_select = raw_body_entry("error-duplicate-key-select", &body("select"));
+        assert_eq!(
+            rule_name(&main_contract(), &raw_select, &answer, &any_refusal).as_deref(),
+            Some("duplicate-key-last-wins")
+        );
+    }
+
+    #[test]
+    fn the_user_consents_and_harmonization_search_rules_stop_applying_under_main() {
+        let set = checked_in();
+        for name in [
+            "missing-consents-sync-empty-200",
+            "missing-consents-async-error",
+            "consent-extra-field-status",
+            "search-order-and-double-min-value",
+        ] {
+            let rule = set.rules.iter().find(|r| r.name == name).unwrap();
+            assert_eq!(
+                rule.consent_contract,
+                Some(ConsentContract::Harmonization),
+                "{name}"
+            );
+        }
+        let e = consent_entry("0001-x-count-c-none", Kind::Sync, None);
+        let required = sync(400, CONSENTS_REQUIRED);
+        assert_eq!(
+            rule_name(&harmonization_contract(), &e, &sync(200, ""), &required).as_deref(),
+            Some("missing-consents-sync-empty-200")
         );
         assert_eq!(
-            rule_name(
-                &main_contract(),
-                &submit,
-                &async_outcome(200, Some("ERROR"), None),
-                &async_outcome(500, None, None)
-            ),
+            rule_name(&main_contract(), &e, &sync(200, ""), &required),
             None
         );
     }

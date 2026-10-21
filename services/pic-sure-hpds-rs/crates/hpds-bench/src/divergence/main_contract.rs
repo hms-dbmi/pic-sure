@@ -1,6 +1,6 @@
 //! The conditions of the main consent contract's divergence rules: Rust's refusals where Java
 //! main answers an unscoped sync query, fails in Jackson on a field its model does not declare,
-//! or fails on a `null` in an authorization filter, and the two forms of one Java failure.
+//! or fails on a `null` in an authorization filter.
 //! Every condition here holds only when the comparison knows its Java side and the Rust side
 //! serves [`ConsentContract::Main`].
 
@@ -45,6 +45,10 @@ const GENOMIC_FILTER_FIELDS: [&str; 4] = ["key", "values", "min", "max"];
 
 /// The start of every refusal main mode answers a `null` in an authorization filter with.
 const NULL_AUTHORIZATION_FILTER_PREFIX: &str = "an authorization filter";
+
+/// The start of every refusal of the query reader, which a refusal of an unscoped sync query
+/// never is.
+const QUERY_READER_REFUSAL: &str = "the query is not valid:";
 
 /// The field a refusal of an unscoped sync query must name.
 const AUTHORIZATION_FILTERS: &str = "authorizationFilters";
@@ -98,7 +102,7 @@ pub(super) fn sync_flag_refusal(
     b: &Outcome,
     java: Option<JavaService>,
 ) -> bool {
-    let Some(java) = main_java(java) else {
+    let Some(java) = main_java(java).filter(|java| java.require_authorization_filter) else {
         return false;
     };
     if entry.kind != Kind::Sync || entry.result_type == "INFO_COLUMN_LISTING" {
@@ -111,7 +115,9 @@ pub(super) fn sync_flag_refusal(
     });
     let (java_outcome, rust_outcome) = sides(a, b, java);
     unscoped
-        && refusal(rust_outcome).is_some_and(|body| body.contains(AUTHORIZATION_FILTERS))
+        && refusal(rust_outcome).is_some_and(|body| {
+            body.contains(AUTHORIZATION_FILTERS) && !body.starts_with(QUERY_READER_REFUSAL)
+        })
         && matches!(java_outcome, Outcome::Sync(s) if s.status == 200 && !s.body.is_empty())
 }
 
@@ -225,13 +231,4 @@ pub(super) fn null_authorization_filter_refused(
         |body| body.starts_with(NULL_AUTHORIZATION_FILTER_PREFIX),
         |o| empty_sync_200(o) || submit_failed(o),
     )
-}
-
-/// See [`super::Condition::JavaFailureClass`].
-pub(super) fn java_failure_class(a: &Outcome, b: &Outcome) -> bool {
-    let one_way = |x: &Outcome, y: &Outcome| {
-        (empty_sync_200(x) && matches!(y, Outcome::Sync(s) if s.status == 500))
-            || (submit_failed(x) && submit_500(y))
-    };
-    one_way(a, b) || one_way(b, a)
 }

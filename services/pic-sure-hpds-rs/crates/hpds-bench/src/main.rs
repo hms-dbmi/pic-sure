@@ -108,6 +108,11 @@ enum Command {
         /// it. Needs --java.
         #[arg(long, value_enum, requires = "java")]
         consent_contract: Option<ConsentContractArg>,
+        /// Whether the Rust service runs with HPDS_REQUIRE_AUTHORIZATION_FILTER on: `on` (the
+        /// default) or `off`. With it off, the main contract never accepts a refusal of a sync
+        /// query that carries no authorization filter. Needs --java.
+        #[arg(long, value_enum, requires = "java")]
+        require_authorization_filter: Option<Switch>,
     },
     /// Replay a corpus against one server and report latency and throughput.
     ///
@@ -274,6 +279,7 @@ async fn run(cli: Cli) -> Result<bool> {
             java,
             java_branch,
             consent_contract,
+            require_authorization_filter,
         } => {
             if corpus.is_none() && golden.is_none() {
                 return Err(BenchError::Invalid(
@@ -303,6 +309,10 @@ async fn run(cli: Cli) -> Result<bool> {
                 }
                 if let Some(contract) = consent_contract {
                     rules = rules.with_contract(contract.into());
+                }
+                if let Some(required) = require_authorization_filter {
+                    rules =
+                        rules.with_required_authorization_filter(matches!(required, Switch::On));
                 }
                 let found = compare_corpus(
                     &client_a,
@@ -413,6 +423,15 @@ enum JavaBranchArg {
     Main,
     /// The consent-partitioned HPDS, `feature-harmonization`.
     Consent,
+}
+
+/// An `on` or `off` setting.
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+enum Switch {
+    /// Enabled.
+    On,
+    /// Disabled.
+    Off,
 }
 
 /// `--consent-contract`: the consent contract the Rust service serves.

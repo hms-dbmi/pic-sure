@@ -6,7 +6,7 @@
       "statuses": [200, 400],
       "javaBranch": "main",
       "consentContract": "main",
-      "reason": "Decision 2 (spec-v6-bdc-readiness.md), main consent contract only: with HPDS_REQUIRE_AUTHORIZATION_FILTER on (Java's hpds.requireAuthorizationFilter, on by default and on at BDC), Rust refuses /query/sync with 400 when authorizationFilters is missing, null or empty, or becomes empty because a repeated key keeps its last value []. Java main runs no validator on sync and answers over every patient (QueryV3Service runs QueryValidator only on POST /query). INFO_COLUMN_LISTING is exempt, as the harmonization contract exempts it from the consent requirement, since it reads no patient data. BDC's query service always sends \\_consents\\ on the auth backend, so no BDC answer changes. Accepted only on sync, only for a query with no authorization filter, and only with Rust's 400 naming authorizationFilters against Java's 200 with a body."
+      "reason": "Decision 2 (spec-v6-bdc-readiness.md), main consent contract only: with HPDS_REQUIRE_AUTHORIZATION_FILTER on (Java's hpds.requireAuthorizationFilter, on by default and on at BDC), Rust refuses /query/sync with 400 when authorizationFilters is missing, null or empty, or becomes empty because a repeated key keeps its last value []. Java main runs no validator on sync and answers over every patient (QueryV3Service runs QueryValidator only on POST /query). INFO_COLUMN_LISTING is exempt, as the harmonization contract exempts it from the consent requirement, since it reads no patient data. BDC's query service always sends \\_consents\\ on the auth backend, so no BDC answer changes. Accepted only on sync, only when the comparison says the flag is on (--require-authorization-filter, on by default), only for a query with no authorization filter, and only with Rust's 400 naming authorizationFilters, not a query-reader refusal such as a repeated key, against Java's 200 with a body. Matching any 400 that names authorizationFilters is provisional until the main mode defines its exact message."
     },
     {
       "name": "unknown-field-main",
@@ -21,15 +21,7 @@
       "when": "null-authorization-filter-main-refused",
       "javaBranch": "main",
       "consentContract": "main",
-      "reason": "Decision 2 (spec-v6-bdc-readiness.md), main consent contract only: a null element of authorizationFilters, a null or missing conceptPath, or null or missing values makes Java main throw while evaluating (a NullPointerException in authorizationFiltersToPhenotypicClause or the cube cache, or IllegalArgumentException 'Either values or one of min/max must be set for a filter'), which AuditLoggingFilter answers 200 with an empty body with audit logging off (BDC's configuration) and 500 with it on. On POST /query a null element or null path throws a NullPointerException in QueryValidator that escapes runQuery: 200 with an empty body (or 500) and no job. Null or empty values there end the job in ERROR, which Rust matches. Rust refuses the sync request and the submit with 400 and a message starting \"an authorization filter\". Accepted only when the query holds such a null, with that refusal against Java's empty 200, its 500, or its submit answered 200 or 500 with no status. In main mode it replaces null-authorization-filter-main."
-    },
-    {
-      "name": "java-failure-empty-200-or-500",
-      "when": "java-failure-class",
-      "statuses": [200, 500],
-      "javaBranch": "main",
-      "consentContract": "main",
-      "reason": "Comparer normalization, main consent contract only: Java answers an uncaught exception 200 with an empty body when HPDS's audit logging client is off (AuditLoggingFilter returns from its finally block, BDC's configuration) and 500 when it is on, and an async submit 200 or 500 with no status. Both forms are one failure class, so one corpus judges both configurations: this rule accepts the two forms against each other, and under the main contract every rule that names Java's quiet failure accepts the 500 form too. A body Jackson cannot map is answered 500 by convertIncomingQuery in both configurations, so unknown-field-main accepts only the 500."
+      "reason": "Decision 2 (spec-v6-bdc-readiness.md), main consent contract only: a null element of authorizationFilters, a null or missing conceptPath, or null or missing values makes Java main throw while evaluating (a NullPointerException in authorizationFiltersToPhenotypicClause or the cube cache, or IllegalArgumentException 'Either values or one of min/max must be set for a filter'), which AuditLoggingFilter answers 200 with an empty body with audit logging off (BDC's configuration) and 500 with it on. On POST /query a null element or null path throws a NullPointerException in QueryValidator that escapes runQuery: 200 with an empty body (or 500) and no job. Null or empty values there end the job in ERROR, which Rust matches. Rust refuses the sync request and the submit with 400 and a message starting \"an authorization filter\". The prefix match is provisional: it becomes the exact messages once the main mode defines them. Accepted only when the query holds such a null, with that refusal against Java's empty 200, its 500, or its submit answered 200 or 500 with no status. In main mode it replaces null-authorization-filter-main."
     },
     {
       "name": "invalid-request-status",
@@ -80,12 +72,14 @@
     },
     {
       "name": "missing-consents-sync-empty-200",
+      "consentContract": "harmonization",
       "statuses": [200, 400],
       "when": "missing-consents-empty-200",
       "reason": "Decision 7 (plan-v2.md) and README, Differences from Java: 'With HPDS_REQUIRE_AUTHORIZATION_FILTER true, a query with no consent value is a 400 \"User consents are required for this query\" on both query routes. Java answers /query/sync 200 with an empty body and no queryMetadata header'. Accepted only when the entry's query carries no userConsents value, the 400 body is exactly that message (which Rust sends only with the flag on), and the 200 side's body is empty. A 400 for any other reason, such as values on a numeric concept on an unpartitioned store, does not match."
     },
     {
       "name": "missing-consents-async-error",
+      "consentContract": "harmonization",
       "when": "missing-consents-async-error",
       "reason": "Decision 7 (plan-v2.md) and README, Differences from Java: with the flag on and no consent value Rust refuses POST /query with 400 \"User consents are required for this query\", where Java answers 'POST /query 200 with a status of ERROR'. Accepted only when the entry's query carries no userConsents value and the refused submit's body is exactly that message, so a sync type submitted on the async route or any other refusal does not match."
     },
@@ -109,6 +103,7 @@
     },
     {
       "name": "search-order-and-double-min-value",
+      "consentContract": "harmonization",
       "entry": "search-*",
       "when": ["search-concept-order", "category-values-order", "numeric-max-double-min-value"],
       "reason": "README, Differences from Java ('/search writes concepts in path order and categoryValues sorted') together with the Spec divergence that LoadingStore starts max at Double.MIN_VALUE, which CSVLoader also uses per partition (harmonization-delta.md section 1, 'The Double.MIN_VALUE max quirk ... apply per partition'). Accepted only when the three normalizations together make the bodies equal."
@@ -128,7 +123,8 @@
       "name": "duplicate-key-last-wins",
       "entry": "error-duplicate-key-*",
       "statuses": [200, 400],
-      "reason": "README, Differences from Java: 'Request bodies holding the same key twice in any object, the envelope, the query, a clause or a userConsents entry included ... are a 400. Jackson keeps the last copy.' Accepted only for the duplicate-key entries."
+      "when": "repeated-key-refusable",
+      "reason": "README, Differences from Java: 'Request bodies holding the same key twice in any object, the envelope, the query, a clause or a userConsents entry included ... are a 400. Jackson keeps the last copy.' Accepted only for the duplicate-key entries. Under the main consent contract the entry must repeat a key other than authorizationFilters: main keeps the last authorizationFilters value as Jackson does (Decision 6), so a refusal of that repetition stays reported."
     },
     {
       "name": "values-on-numeric-status",
@@ -228,7 +224,7 @@
     {
       "name": "duplicate-key-in-string-query",
       "when": "duplicate-key-in-string-query",
-      "reason": "Spec, v4 hardening: a query sent as a JSON string with a key repeated in one object is refused by Rust (400 \"the query is not valid: duplicate key \\\"<key>\\\" at line <n> column <m>\"), because a proxy that rewrote the first copy (userConsents) must not be bypassed by a second; Jackson keeps the last value and Java answers. Accepted only when the string query holds that repeated key, Rust names it in that exact form, and Java answered."
+      "reason": "Spec, v4 hardening: a query sent as a JSON string with a key repeated in one object is refused by Rust (400 \"the query is not valid: duplicate key \\\"<key>\\\" at line <n> column <m>\"), because a proxy that rewrote the first copy (userConsents) must not be bypassed by a second; Jackson keeps the last value and Java answers. Accepted only when the string query holds that repeated key, Rust names it in that exact form, and Java answered. Under the main consent contract the named key must not be authorizationFilters, whose last value main keeps (Decision 6)."
     },
     {
       "name": "unknown-result-type-status",
@@ -247,6 +243,7 @@
     },
     {
       "name": "consent-extra-field-status",
+      "consentContract": "harmonization",
       "when": "consent-extra-field-refused",
       "reason": "Jackson error, invalid input: a userConsents object with a field other than value is refused by Jackson on the consent branch (and the main branch knows no userConsents field at all), so convertIncomingQuery answers 500 with an empty body. Rust refuses it with 400 and exactly \"the query is not valid: unknown field `<name>`, expected `value`\". Accepted only when a consent holds such a field, Rust names one of them in that exact form, and Java answered an empty 500."
     },
