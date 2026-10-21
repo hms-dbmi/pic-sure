@@ -34,8 +34,8 @@ use crate::counters::{BlockCacheCounters, BlockCacheStats};
 use crate::error::{QueryError, Result};
 use crate::model::Query;
 use crate::store::{
-    BlockCache, CachedConcept, ConceptEntry, KEY_FILE_NAME, RECORD_EVERY, RecentEntries,
-    ServingLock, Store, StoreFiles, StoreOptions, block_cache,
+    BlockCache, CachedConcept, ConceptEntry, KEY_FILE_NAME, PHENOTYPE_FILES, RECORD_EVERY,
+    RecentEntries, ServingLock, Store, StoreFiles, StoreOptions, block_cache,
 };
 use crate::validate::ConceptLookup;
 use crate::view::View;
@@ -402,7 +402,7 @@ impl PartitionSet {
                 ));
             }
         };
-        let (mut serving, index_bytes) = ServingLock::open(dir)?;
+        let (mut serving, index_bytes) = ServingLock::open(dir, &PHENOTYPE_FILES)?;
         if std::fs::symlink_metadata(dir.join(PUBLISH_JOURNAL_FILE_NAME)).is_ok() {
             return Err(open_error(
                 dir,

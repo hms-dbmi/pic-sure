@@ -171,7 +171,7 @@ fn run_golden(engine: &Engine, golden: &GoldenFile) -> Vec<String> {
         let outcome = match case.entry.kind {
             Kind::Search => run_search(engine, &case.entry.request),
             Kind::Async => run_async(engine, &parse_query(&case.entry.request)),
-            Kind::UnknownStatus | Kind::UnknownResult => {
+            Kind::UnknownStatus | Kind::UnknownResult | Kind::SearchValues => {
                 panic!("{}: no in-process support", case.entry.name)
             }
             Kind::Sync => {
@@ -210,7 +210,7 @@ fn case_outcome(engine: &Engine, case: &GoldenCase) -> Outcome {
         Kind::Search => run_search(engine, &case.entry.request),
         Kind::Async => run_async(engine, &parse_query(&case.entry.request)),
         Kind::Sync => run_sync(engine, &parse_query(&case.entry.request)),
-        Kind::UnknownStatus | Kind::UnknownResult => {
+        Kind::UnknownStatus | Kind::UnknownResult | Kind::SearchValues => {
             panic!("{}: no in-process support", case.entry.name)
         }
     }

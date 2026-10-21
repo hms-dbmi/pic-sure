@@ -6,20 +6,23 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Schema(description = "A PIC-SURE v3 query: which patients to match and what to return about them.")
 public record Query(
     @Schema(
-        description = "A list of concept paths to select. Ignored for expectedResultType that do not return fields, such as COUNT"
-    ) List<String> select,
-    @Deprecated
+        description = "A list of concept paths to select. Ignored for expectedResultType that do not return fields, such as COUNT.",
+        example = "[\"\\\\demographics\\\\AGE\\\\\", \"\\\\demographics\\\\SEX\\\\\"]"
+    ) List<String> select, @Deprecated @Schema(hidden = true) List<AuthorizationFilter> authorizationFilters,
     @Schema(
-        description = "A list of filters specifically applied for authorization purposes", deprecated = true
-    ) List<AuthorizationFilter> authorizationFilters,
-    Set<UserConsent> userConsents,
-    @Schema(description = "An object specifying phenotypic filters") PhenotypicClause phenotypicClause,
-    @Schema(description = "A list of genomic filters") List<GenomicFilter> genomicFilters,
-    @Schema(description = "An object specifying the result type") ResultType expectedResultType,
-    @Schema(description = "An externally passed UUID to assign to this query") UUID picsureId,
-    @Schema(description = "An internally generated UUID identifying this query") UUID id
+        description = "The consents the query is scoped to. On the authorized backend the query service replaces whatever the caller sends with the caller's own consents."
+    ) Set<UserConsent> userConsents, @Schema(description = "An object specifying phenotypic filters.") PhenotypicClause phenotypicClause,
+    @Schema(description = "A list of genomic filters.") List<GenomicFilter> genomicFilters,
+    @Schema(
+        description = "An object specifying the result type.", requiredMode = Schema.RequiredMode.REQUIRED
+    ) ResultType expectedResultType,
+    @Schema(
+        description = "An externally passed UUID to assign to this query.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6"
+    ) UUID picsureId,
+    @Schema(description = "An internally generated UUID identifying this query.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6") UUID id
 ) {
 
     @Override
@@ -35,8 +38,8 @@ public record Query(
 
     public Query setAuthorizationFilters(List<AuthorizationFilter> authorizationFilters) {
         return new Query(
-            this.select, authorizationFilters == null ? List.of() : authorizationFilters, this.userConsents, this.phenotypicClause, this.genomicFilters,
-            this.expectedResultType, this.picsureId, this.id
+            this.select, authorizationFilters == null ? List.of() : authorizationFilters, this.userConsents, this.phenotypicClause,
+            this.genomicFilters, this.expectedResultType, this.picsureId, this.id
         );
     }
 
@@ -45,7 +48,7 @@ public record Query(
     public Set<UserConsent> userConsents() {
         return userConsents == null ? Set.of() : userConsents;
     }
-    
+
     public Set<String> consentValues() {
         return userConsents().stream().filter(Objects::nonNull).map(UserConsent::value).filter(Objects::nonNull)
             .collect(Collectors.toUnmodifiableSet());
@@ -53,8 +56,8 @@ public record Query(
 
     public Query setUserConsents(Set<UserConsent> userConsents) {
         return new Query(
-                this.select, this.authorizationFilters, userConsents != null ? userConsents : Set.of(), this.phenotypicClause, this.genomicFilters,
-                this.expectedResultType, this.picsureId, this.id
+            this.select, this.authorizationFilters, userConsents != null ? userConsents : Set.of(), this.phenotypicClause,
+            this.genomicFilters, this.expectedResultType, this.picsureId, this.id
         );
     }
 
@@ -99,6 +102,8 @@ public record Query(
         if (id != null) {
             return this;
         }
-        return new Query(select, authorizationFilters, userConsents, phenotypicClause, genomicFilters, expectedResultType, picsureId, UUID.randomUUID());
+        return new Query(
+            select, authorizationFilters, userConsents, phenotypicClause, genomicFilters, expectedResultType, picsureId, UUID.randomUUID()
+        );
     }
 }

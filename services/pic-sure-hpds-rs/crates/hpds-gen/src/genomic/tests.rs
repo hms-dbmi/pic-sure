@@ -57,6 +57,7 @@ struct Record {
     reference: String,
     alternate: String,
     info: String,
+    format: String,
     cells: Vec<String>,
 }
 
@@ -110,7 +111,11 @@ fn parse_vcf(name: &str, bytes: &[u8]) -> Vcf {
                 reference: f[3].to_string(),
                 alternate: f[4].to_string(),
                 info: f[7].to_string(),
-                cells: f[9..].iter().map(|c| c.to_string()).collect(),
+                format: f[8].to_string(),
+                cells: f[9..]
+                    .iter()
+                    .map(|c| c.split(':').next().unwrap_or_default().to_string())
+                    .collect(),
             });
         }
     }
@@ -640,6 +645,27 @@ fn edge_checks(d: &EdgeData) -> Vec<(&'static str, bool)> {
             indexed.difference(&phenotyped).count() >= 1
                 && phenotyped.difference(&indexed).count() >= 3,
         ),
+        (EDGE_ITEMS[20], {
+            let gt_dp = |group: &str| {
+                let vcf = d.file(group, "chr5");
+                let line = index_lines(&d.files, group)
+                    .into_iter()
+                    .find(|l| l.path.contains(".chr5."))
+                    .unwrap();
+                let missing = line.samples.iter().any(|s| !vcf.samples.contains(s));
+                let records = vcf.records.iter().filter(|r| r.format == "GT:DP").count();
+                let last = vcf.samples.len() - 1;
+                let last_carries = vcf
+                    .records
+                    .iter()
+                    .filter(|r| r.format == "GT:DP")
+                    .any(|r| !r.cells[last].starts_with("0/0"));
+                (missing, records >= 3 && last_carries)
+            };
+            let (a_missing, a_ok) = gt_dp("edgeA");
+            let (b_missing, b_ok) = gt_dp("edgeB");
+            a_missing && a_ok && !b_missing && b_ok
+        }),
     ]
 }
 
@@ -667,10 +693,12 @@ fn edge_groups_hold_disjoint_patients_and_the_listed_sites_have_carriers() {
     let by_group: HashMap<&str, usize> = data
         .vcfs
         .iter()
+        .filter(|v| v.chromosome == "chr1")
         .map(|v| (v.group.as_str(), v.samples.len()))
         .collect();
     assert_eq!(by_group["edgeA"], 24);
     assert_eq!(by_group["edgeB"], 17);
+    assert_eq!(data.file("edgeB", "chr5").samples.len(), 16);
     for vcf in data.vcfs.iter().filter(|v| v.group == "edgeA") {
         let last = vcf.samples.len() - 1;
         assert_eq!(vcf.samples[last], "EDGEA24");

@@ -18,7 +18,9 @@
 //! | `GET /search/values/` (and without the slash) | [`search::search_values`] |
 //!
 //! `GET /actuator/health` is at the root: 200 `{"status":"UP"}` when the merged dictionary of
-//! the partitions holds a concept, otherwise 503 `{"status":"DOWN","reason":...}`. With
+//! the partitions holds a concept (or, with a genomic store, the store holds an INFO column),
+//! otherwise 503 `{"status":"DOWN","reason":...}` ([`AppState::down_reason`]), a genomic
+//! store configured but not served or changed on disk included. With
 //! `HPDS_METRICS=on`, `GET /metrics` is at the root too ([`metrics::metrics`]); otherwise
 //! it is a 404 like any unknown path. Every
 //! request is logged at info under the `hpds_rs::access` target with its method, path, status
@@ -59,11 +61,15 @@ pub mod config;
 pub mod encoding;
 pub mod envelope;
 pub mod error;
+pub mod genomic;
 pub mod jobs;
 pub mod metrics;
 pub mod search;
 pub mod state;
 pub mod sync;
+pub mod write_stall;
+
+pub use write_stall::connections_write_stalled;
 
 pub use config::{Config, DEFAULT_PORT, port_from_env};
 pub use error::ApiError;
@@ -86,6 +92,9 @@ pub struct ServerTimeouts {
     /// that sits idle between requests is closed by `header_read`, since hyper starts the header
     /// timer when it waits for the next request on a kept-alive connection.
     pub max_connections: usize,
+    /// How long a write to a connection may stay pending, the client making no room in its
+    /// socket buffer, before the connection is closed ([`write_stall::WriteStall`]).
+    pub write_stall: Duration,
 }
 
 /// Default for [`ServerTimeouts::max_connections`].
@@ -97,6 +106,7 @@ impl Default for ServerTimeouts {
             header_read: Duration::from_secs(10),
             shutdown_grace: Duration::from_secs(5),
             max_connections: DEFAULT_MAX_CONNECTIONS,
+            write_stall: Duration::from_secs(config::DEFAULT_WRITE_STALL_SECONDS),
         }
     }
 }
@@ -117,6 +127,14 @@ pub struct Health {
     /// store. Left out when false.
     #[serde(rename = "storeSuperseded", skip_serializing_if = "std::ops::Not::not")]
     pub store_superseded: bool,
+    /// True while another genomic store has been moved into the genomic directory and the
+    /// service goes on serving the one it opened ([`AppState::genomic_store_superseded`]).
+    /// Left out when false.
+    #[serde(
+        rename = "genomicStoreSuperseded",
+        skip_serializing_if = "std::ops::Not::not"
+    )]
+    pub genomic_store_superseded: bool,
 }
 
 async fn health(State(state): State<AppState>) -> (StatusCode, Json<Health>) {
@@ -127,6 +145,7 @@ async fn health(State(state): State<AppState>) -> (StatusCode, Json<Health>) {
                 status: "UP",
                 reason: None,
                 store_superseded: state.store_superseded(),
+                genomic_store_superseded: state.genomic_store_superseded(),
             }),
         ),
         Some(reason) => (
@@ -135,6 +154,7 @@ async fn health(State(state): State<AppState>) -> (StatusCode, Json<Health>) {
                 status: "DOWN",
                 reason: Some(reason),
                 store_superseded: state.store_superseded(),
+                genomic_store_superseded: state.genomic_store_superseded(),
             }),
         ),
     }
@@ -333,7 +353,9 @@ pub fn spawn_result_cache_reporter(
 /// connections finish for at most `timeouts.shutdown_grace`, and returns.
 ///
 /// A connection that has not delivered a request's headers within `timeouts.header_read` is
-/// closed. Every accepted connection has Nagle's algorithm turned off ([`disable_nagle`]).
+/// closed, and so is one whose client makes no room in its socket buffer while a write to it
+/// stays pending for `timeouts.write_stall` ([`write_stall::WriteStall`]). Every accepted
+/// connection has Nagle's algorithm turned off ([`disable_nagle`]).
 /// At most `timeouts.max_connections` connections are served at once; a connection
 /// accepted past that cap is answered 503 and closed (see [`OVER_CAPACITY_RESPONSE`]). HTTP/1 and
 /// HTTP/2 are both served.
@@ -378,7 +400,7 @@ pub async fn serve(
             Err(TryAcquireError::Closed) => break,
         };
         let connection = builder.serve_connection_with_upgrades(
-            TokioIo::new(stream),
+            write_stall::WriteStall::new(TokioIo::new(stream), timeouts.write_stall),
             TowerToHyperService::new(app.clone()),
         );
         let watched = graceful.watch(connection.into_owned());

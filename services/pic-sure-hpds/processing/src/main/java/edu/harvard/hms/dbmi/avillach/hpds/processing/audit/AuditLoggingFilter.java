@@ -65,7 +65,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
                 String eventType = (String) request.getAttribute(AuditAttributes.EVENT_TYPE);
                 String action = (String) request.getAttribute(AuditAttributes.ACTION);
                 if (eventType == null) {
-                    eventType = "OTHER";
+                    eventType = "UNLABELED";
                 }
                 if (action == null) {
                     action = method;

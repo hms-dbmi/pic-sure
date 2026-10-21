@@ -1,11 +1,14 @@
-//! The process-wide budget of decoded bytes that reads of many concepts hold outside the block
-//! cache: a weighted semaphore every `ANY_RECORD_OF` chunk takes before it loads and gives
-//! back once it is merged.
+//! The process-wide budgets of bytes that large reads hold outside a cache: weighted
+//! semaphores a reader takes before it loads and gives back once it has merged what it read.
+//! The phenotype store has one, which every `ANY_RECORD_OF` chunk takes; the genomic store has
+//! another, which a genomic scan takes for each block the genomic cache does not hold.
 //!
-//! A reader takes one permit at a time and releases it before it asks for the next, and the
-//! engine takes permits only on the threads that run the query's clauses, never on a rayon
-//! worker (see [`crate::cohort`]), so no thread waits for bytes while it holds some. That rules out
-//! a cycle of readers each waiting on the others. A permit asks for at most the whole budget,
+//! A reader takes one permit at a time and releases it before it asks for the next, so no
+//! thread waits for bytes while it holds some. The phenotype engine takes permits only on the
+//! threads that run the query's clauses, never on a rayon worker (see [`crate::cohort`]); the
+//! genomic engine takes them only on the workers of its own pool, never in a frame that calls
+//! into rayon (see [`crate::genomic`]). Each budget's debug assertion checks where it is asked
+//! ([`PermitThreads`]). That rules out a cycle of readers each waiting on the others. A permit asks for at most the whole budget,
 //! so a request larger than the budget waits for every other permit to end and then runs
 //! alone.
 //!
@@ -22,9 +25,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Condvar, Mutex, PoisonError};
 use std::time::Instant;
 
-/// What the prefix read budget holds and has done since the store was opened.
+/// What a read budget holds and has done since its store was opened.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub struct PrefixReadStats {
+pub struct ReadBudgetStats {
     /// The budget in bytes.
     pub budget: u64,
     /// Bytes held by permits now.
@@ -69,10 +72,36 @@ impl State {
     }
 }
 
+/// What the phenotype store's prefix read budget holds and has done.
+pub type PrefixReadStats = ReadBudgetStats;
+
+/// What the genomic store's read budget holds and has done.
+pub type GenomicReadStats = ReadBudgetStats;
+
+/// The threads a [`ByteBudget`] grants permits on, which its debug assertion checks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PermitThreads {
+    /// Only threads outside every rayon pool: the phenotype prefix read budget, whose
+    /// clauses run on threads of their own.
+    OutsideRayon,
+    /// Workers of the genomic pool, and threads outside every rayon pool: the genomic read
+    /// budget. A worker of any other pool is refused.
+    GenomicWorkers,
+}
+
+impl PermitThreads {
+    /// True when the calling thread may ask for a permit.
+    fn allow_here(self) -> bool {
+        rayon::current_thread_index().is_none()
+            || (self == PermitThreads::GenomicWorkers && crate::genomic::on_genomic_worker())
+    }
+}
+
 /// A weighted semaphore over bytes, granting in arrival order. See the module docs.
 #[derive(Debug)]
 pub(crate) struct ByteBudget {
     capacity: u64,
+    threads: PermitThreads,
     state: Mutex<State>,
     released: Condvar,
     peak: AtomicU64,
@@ -82,10 +111,16 @@ pub(crate) struct ByteBudget {
 }
 
 impl ByteBudget {
-    /// A budget of `capacity` bytes, at least 1.
+    /// A budget of `capacity` bytes, at least 1, granted only outside every rayon pool.
     pub(crate) fn new(capacity: u64) -> Self {
+        Self::on_threads(capacity, PermitThreads::OutsideRayon)
+    }
+
+    /// A budget of `capacity` bytes, at least 1, granted on the threads `threads` names.
+    pub(crate) fn on_threads(capacity: u64, threads: PermitThreads) -> Self {
         ByteBudget {
             capacity: capacity.max(1),
+            threads,
             state: Mutex::new(State::default()),
             released: Condvar::new(),
             peak: AtomicU64::new(0),
@@ -128,13 +163,10 @@ impl ByteBudget {
             });
         }
         let nested = HELD_HERE.with(Cell::get) > 0;
+        debug_assert!(!nested, "a thread holding a read permit asked for another");
         debug_assert!(
-            !nested,
-            "a thread holding a prefix read permit asked for another"
-        );
-        debug_assert!(
-            rayon::current_thread_index().is_none(),
-            "a prefix read permit was asked for on a rayon worker"
+            self.threads.allow_here(),
+            "a read permit was asked for on a rayon worker outside the pool its budget allows"
         );
         let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         if !nested && (state.queued() || !self.fits(&state, bytes)) {
@@ -189,8 +221,8 @@ impl ByteBudget {
     }
 
     /// The budget's capacity, what it holds and what it has done.
-    pub(crate) fn stats(&self) -> PrefixReadStats {
-        PrefixReadStats {
+    pub(crate) fn stats(&self) -> ReadBudgetStats {
+        ReadBudgetStats {
             budget: self.capacity,
             held: self
                 .state

@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.dictionary.concept;
 
+import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptPage;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.CategoricalConcept;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.ContinuousConcept;
@@ -12,7 +13,6 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -53,10 +53,10 @@ class ConceptControllerTest {
         Mockito.when(conceptService.listConcepts(filter, Pageable.ofSize(10).withPage(1))).thenReturn(expected);
         Mockito.when(conceptService.countConcepts(filter)).thenReturn(100L);
 
-        Page<Concept> actual = subject.listConcepts(filter, 1, 10).getBody();
+        ConceptPage actual = subject.listConcepts(filter, 1, 10).getBody();
 
-        Assertions.assertEquals(expected, actual.get().toList());
-        Assertions.assertEquals(100L, actual.getTotalElements());
+        Assertions.assertEquals(expected, actual.content());
+        Assertions.assertEquals(100L, actual.totalElements());
     }
 
     @Test
@@ -98,18 +98,10 @@ class ConceptControllerTest {
 
     @Test
     void shouldGetNotConceptTreeForLargeDepth() {
-        Concept fooBar =
-            new CategoricalConcept("/foo//bar", "bar", "Bar", "my_dataset", "foo!", List.of("a", "b"), true, "", List.of(), Map.of());
-        Concept fooBaz = new ContinuousConcept("/foo//baz", "baz", "Baz", "my_dataset", "foo!", true, 0D, 100D, "", Map.of());
-        CategoricalConcept foo =
-            new CategoricalConcept("/foo", "foo", "Foo", "my_dataset", "foo!", List.of(), true, "", List.of(fooBar, fooBaz), Map.of());
-
-        Mockito.when(conceptService.conceptTree("my_dataset", "/foo", 1)).thenReturn(Optional.of(foo));
-
-        // concept.tree.max_depth=1
         ResponseEntity<Concept> actual = subject.conceptTree("my_dataset", "/foo//bar", 2);
 
         Assertions.assertEquals(HttpStatus.BAD_REQUEST, actual.getStatusCode());
+        Mockito.verifyNoInteractions(conceptService);
     }
 
     @Test
@@ -139,9 +131,9 @@ class ConceptControllerTest {
         Mockito.when(conceptService.listDetailedConcepts(new Filter(List.of(), "", List.of()), Pageable.ofSize(10).withPage(0)))
             .thenReturn(concepts);
 
-        ResponseEntity<Page<Concept>> actual = subject.dumpConcepts(0, 10);
+        ResponseEntity<ConceptPage> actual = subject.dumpConcepts(0, 10);
 
-        Assertions.assertEquals(concepts, actual.getBody().getContent());
+        Assertions.assertEquals(concepts, actual.getBody().content());
         Assertions.assertEquals(HttpStatus.OK, actual.getStatusCode());
     }
 

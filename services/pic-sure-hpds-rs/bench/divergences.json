@@ -17,12 +17,11 @@
       "name": "invalid-request-empty-200",
       "entries": [
         "error-filter-without-values-or-range",
-        "error-empty-subquery",
-        "error-genomic-filters-without-genotype-data"
+        "error-empty-subquery"
       ],
       "statuses": [200, 400],
       "when": "success-body-empty",
-      "reason": "Spec divergence, HTTP errors: Java answers a FILTER with neither values nor a range, an empty subquery, or non-empty genomicFilters with 200 and an empty body; Rust returns 400 with a text message. The rule covers only these entries and only when the 200 side's body is empty."
+      "reason": "Spec divergence, HTTP errors: Java answers a FILTER with neither values nor a range, or an empty subquery, with 200 and an empty body; Rust returns 400 with a text message. The rule covers only these entries and only when the 200 side's body is empty. Genomic filters sent to an HPDS without genomic data are genomic-no-store-refused."
     },
     {
       "name": "unknown-async-id-status-empty-200",
@@ -123,17 +122,7 @@
     {
       "name": "genomic-type-on-async-route",
       "when": "genomic-type-on-async-route",
-      "reason": "Spec, phenotype-only scope: Rust serves no genomic result type and no INFO_COLUMN_LISTING on POST /query. Java has no processor for them in initializeResult either (QueryV3Service.java:118, the switch default throws RuntimeException outside the IllegalArgumentException catch), so its submit answers 200 with no body. Rust refuses the submit with 400 \"result type <type> is not supported by this phenotype-only HPDS\". Accepted only for async entries with that exact message for the entry's result type, against Java's bodiless 200."
-    },
-    {
-      "name": "genomic-type-on-sync-route",
-      "when": "genomic-type-on-sync-route",
-      "reason": "Spec, phenotype-only scope: genomic result types are out of scope. Java answers some of them on /query/sync with 200 and a text such as \"VARIANT_LIST query type not allowed\"; Rust answers 400 \"result type <type> is not supported by this phenotype-only HPDS\". Accepted only for sync entries with that exact message for the entry's result type, against a Java 200."
-    },
-    {
-      "name": "variant-spec-path-status",
-      "when": "variant-spec-path-refused",
-      "reason": "Spec, phenotype-only scope: a concept path shaped like a variant spec (an rs number or chromosome,position,ref,alt) names genomic data. Java looks it up as a phenotype concept, finds none, and answers as for an unknown path (a count of 0, an empty cross count, an export with no rows). Rust refuses it with 400 \"variant-spec concept path \\\"<path>\\\" is not supported by this phenotype-only HPDS\". Accepted only for that message against a Java answer (a sync 200 or an accepted async submit)."
+      "reason": "Spec section 1 and the plan-v5.md decision of 2026-10-20 on the oracle: genomic result types and INFO_COLUMN_LISTING on POST /query stay unsupported in Rust, as in Java. Java has no processor for them in initializeResult (QueryV3Service.java:118, the switch default throws RuntimeException outside the IllegalArgumentException catch), so its submit answers 200 with no body or the job ends in ERROR. Rust refuses the submit with 400 \"result type <type> is not supported by POST /query; send it to POST /query/sync\". Accepted only for async entries with that exact message for the entry's result type, against Java's bodiless 200 or ERROR."
     },
     {
       "name": "request-limit-status",
@@ -238,6 +227,119 @@
       "when": "null-authorization-filter-ignored",
       "javaBranch": "main",
       "reason": "Java error, deprecated field: the main branch applies authorizationFilters, and a null element, a null conceptPath or a null value in one makes it fail, answering /query/sync 200 with an empty body and ending POST /query in ERROR. Rust never applies authorizationFilters, as the consent branch does not on /query/sync, and answers the query. Accepted only on main, only when the query holds such a null, and only with Java's failure against Rust's answer."
+    },
+    {
+      "name": "empty-subquery-status",
+      "when": "empty-subquery-refused",
+      "reason": "Java error, invalid input: a subquery whose phenotypicClauses is empty makes Java's executor fail, so Java answers /query/sync 200 with an empty body (and ends POST /query in ERROR, as Rust does). Rust refuses the sync request with 400 and exactly \"a phenotypic subquery must contain at least one clause\". invalid-request-empty-200 covers hpds-bench's own error entry for this; this rule covers any entry whose query holds such a subquery, with that exact refusal against Java's empty 200."
+    },
+    {
+      "name": "genomic-no-store-refused",
+      "when": "genomic-no-store-refused",
+      "reason": "spec-v5-genomic.md section 7, divergences by design: Java with no genomic data (the no-op genomic processor) fails on genomicFilters and answers /query/sync 200 with an empty body or ends POST /query in ERROR; Rust refuses with 400 \"genomicFilters is not supported: this HPDS serves no genomic store\". Accepted only for that exact message against Java's failure."
+    },
+    {
+      "name": "genomic-null-refused",
+      "when": "genomic-null-refused",
+      "reason": "spec-v5-genomic.md section 7, divergences by design: a genomicFilters entry that is null, a filter whose key is null, or a null inside values makes Java throw a NullPointerException once the genomic step runs (Arrays.sort or binarySearch over the values, zygosity.equals, VariantUtils on a null key); the sync route answers 200 with an empty body and an async query ends in ERROR. Rust answers 400 naming the null. Accepted only when the request's genomic filters hold such a null, Rust's message is its null refusal, and Java failed."
+    },
+    {
+      "name": "genomic-range-refused",
+      "when": "genomic-range-refused",
+      "reason": "spec-v5-genomic.md section 7, divergences by design: a numeric genomic filter with only one of min and max (Range.closed throws a NullPointerException), with min above max by Float.compare (Range.closed throws IllegalArgumentException), or on a column some node holds as categorical (continuousValueIndex is null) makes Java fail; Rust answers 400. Accepted only for those refusals against Java's failure."
+    },
+    {
+      "name": "genomic-spec-key-refused",
+      "when": "genomic-spec-key-refused",
+      "reason": "spec-v5-genomic.md section 7, divergences by design: a spec key matching VariantUtils' patterns whose position is not a Java int (an rs key, a decimal or out of range position) throws in VariantStore.getMasksForDbSnpSpec; Java fails, Rust answers 400 naming the key."
+    },
+    {
+      "name": "genomic-short-spec-refused",
+      "when": "genomic-short-spec-refused",
+      "reason": "v5-genomic-format.md, specs Java cannot parse: when a selected variant's spec has fewer than six fields, new VariantSpec throws in the bucket grouping or the excerpt's TreeMap; Java fails and Rust answers 400."
+    },
+    {
+      "name": "genomic-duplicate-metadata-refused",
+      "when": "genomic-duplicate-metadata-refused",
+      "reason": "spec-v5-genomic.md section 7, divergences by design: a variant whose metadata array holds one string twice makes Set.of throw in VariantMetadataIndex.findBySingleVariantSpec, so Java fails the excerpt; Rust answers 400."
+    },
+    {
+      "name": "excerpt-masks-missing-refused",
+      "when": "excerpt-masks-missing-refused",
+      "reason": "v5-genomic-format.md, excerpts per variant: in local and localDistributed modes a listed variant no node holds masks for makes Optional.get() throw; Java fails the excerpt, Rust answers 400."
+    },
+    {
+      "name": "info-key-delimiter-refused",
+      "when": "info-key-delimiter-refused",
+      "reason": "v5-genomic-format.md, \"_____\": VariantIndexCache looks a selected key up through (column + \"_____\" + key).split(\"_____\"); a key or column that does not split back into itself either throws or silently reads another key's variants. Rust refuses with 400; Java's answer is then unchecked."
+    },
+    {
+      "name": "id-cube-numeric-refused",
+      "when": "id-cube-numeric-refused",
+      "reason": "v5-genomic-format.md, ID_CUBE_NAME: when ID_CUBE_NAME names a numeric concept, Java's VCF_EXCERPT casts its values to String for the patient column headers and throws ClassCastException, answering 200 with an empty body; Rust answers 400 naming the setting. Accepted only for VCF_EXCERPT."
+    },
+    {
+      "name": "invalid-genomic-filter-not-evaluated",
+      "when": "invalid-genomic-filter-not-evaluated",
+      "reason": "spec-v5-genomic.md section 7, divergences by design: Rust decides a genomic filter's validity from the request alone, so it refuses an invalid genomic filter even where Java never evaluates it and answers: an empty phenotype cohort (QueryExecutor skips the genomic step and answers 0 or an empty export) or a variant result type with no INFO filter (the variant list skips spec filters and answers empty). Accepted only when Rust's 400 is one of its refusals of a genomic filter and Java's answer is the answer over no patients or no variants."
+    },
+    {
+      "name": "search-values-refused",
+      "when": "search-values-refused",
+      "reason": "Spec section 1, /search/values: page or size below 1 (IllegalArgumentException), a page whose (page - 1) * size overflows Java int (subList throws), a missing or non-integer parameter, an unknown column or a column missing on some node (NullPointerException in getInfoStoreValues) make Java answer 500 or 200 with an empty body; Rust answers 400."
+    },
+    {
+      "name": "search-info-column-missing-refused",
+      "when": "search-info-column-missing-refused",
+      "reason": "v5-genomic-format.md, /search refusal: when a search term matches a categorical info column that some node lacks, Java's searchInfoConceptValues dereferences a null info store and answers 200 with an empty body; Rust answers 400."
+    },
+    {
+      "name": "genomic-result-size-limit",
+      "when": "genomic-result-size-limit",
+      "reason": "spec-v5-genomic.md section 7, divergences by design: excerpt and variant list size limits. Rust refuses an excerpt or a variant list larger than HPDS_MAX_EXCERPT_BYTES with 400 naming the setting; Java builds the answer in memory."
+    },
+    {
+      "name": "variant-list-order",
+      "resultType": "VARIANT_LIST_FOR_QUERY",
+      "statuses": [200, 200],
+      "when": "variant-list-set",
+      "reason": "plan-v5.md decision of 2026-10-19 and spec section 6: Java's variant list follows a skip list on one node below the threshold and HashSet order otherwise and after parent merges, which differs between layouts and runs; Rust lists specs in store order. Equal when the two lists hold the same specs."
+    },
+    {
+      "name": "excerpt-order",
+      "statuses": [200, 200],
+      "when": "excerpt-normalized",
+      "reason": "Spec section 6: VCF_EXCERPT and AGGREGATE_VCF_EXCERPT INFO header columns follow a Java HashSet (ColumnSorter keeps the set's order), each INFO cell joins a HashSet with ',', and the patient-merging parent concatenates groups' patient columns in File.listFiles order. Equal when the INFO columns match as a set, each INFO cell as a multiset of its values, the patient columns as a multiset of (header, column), and every other cell exactly."
+    },
+    {
+      "name": "info-column-listing-order",
+      "resultType": "INFO_COLUMN_LISTING",
+      "statuses": [200, 200],
+      "when": "info-listing-multiset",
+      "reason": "Spec section 6: INFO_COLUMN_LISTING concatenates node or group lists collected in parallel, so its order is unspecified. Equal as a multiset of entries, min and max compared as floats."
+    },
+    {
+      "name": "search-info-values-order",
+      "entry": "*search*",
+      "when": "search-info-values-set",
+      "reason": "Spec section 6: the values of /search's info block come from a HashSet built by a parallel collector; compared as sets."
+    },
+    {
+      "name": "search-info-values-and-category-values-order",
+      "entry": "*search*",
+      "when": ["search-info-values-set", "category-values-order"],
+      "reason": "Spec section 6 together with the v4 rule search-category-values-order: a /search answer whose info values and categoryValues both follow Java hash orders. Equal once both are sorted."
+    },
+    {
+      "name": "search-concept-info-and-category-values-order",
+      "entry": "*search*",
+      "when": ["search-concept-order", "category-values-order", "search-info-values-set"],
+      "reason": "Spec section 6 with the v4 rule search-concept-and-category-values-order: the null-term /search answer lists concepts in an unspecified order with categoryValues in hash order, and its info block's values come from a HashSet. Equal once the concept array is sorted by path, every categoryValues array and every info values array sorted."
+    },
+    {
+      "name": "search-values-bucket-order",
+      "when": "search-values-bucket-set",
+      "reason": "Spec section 6: /search/values pages follow Java's HashSet order, which Rust reproduces; within one hash bucket the parents' parallel collection leaves the order unspecified. Equal when page and total match, the pages hold the same values, and every position where they differ holds two values of one bucket."
     }
   ]
 }

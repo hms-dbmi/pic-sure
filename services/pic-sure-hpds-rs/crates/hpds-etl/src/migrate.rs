@@ -686,7 +686,7 @@ impl<R: Read> ExportDecryptor<R> {
         }
         if plaintext[EXPORT_ID_LEN] != self.kind as u8 {
             return Err(invalid(&format!(
-                "frame {} belongs to the other export file",
+                "frame {} belongs to another export file",
                 self.next_index
             )));
         }

@@ -22,6 +22,7 @@ import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionResponse;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionTokenRejectedException;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.ShippedPublicRoutes;
@@ -53,7 +54,7 @@ class PsamaIntrospectionFilterTest {
         PsamaClient client = mock(PsamaClient.class);
         when(client.introspect(eq("user-token"), any()))
             .thenReturn(new IntrospectionResponse(true, "u-1", "s-1", "alice@example.com", "ADMIN", List.of("QUERY"), false, null, null));
-        BufferedRequestWrapper request = wrap("Bearer user-token", new byte[0], "/hpds/auth/v3/query/sync");
+        BufferedRequestWrapper request = wrap("Bearer user-token", new byte[0], "/hpds/auth/query/sync");
         FilterChain chain = mock(FilterChain.class);
 
         filter(client, new AuditContext()).doFilter(request, mock(HttpServletResponse.class), chain);
@@ -71,14 +72,34 @@ class PsamaIntrospectionFilterTest {
         byte[] body = "{\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"query\":{\"a\":1}}".getBytes();
 
         filter(client, new AuditContext()).doFilter(
-            wrap("Bearer user-token", body, "/hpds/%61uth//v3/query/sync"), mock(HttpServletResponse.class), mock(FilterChain.class)
+            wrap("Bearer user-token", body, "/hpds/%61uth//query/sync"), mock(HttpServletResponse.class), mock(FilterChain.class)
         );
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> request = ArgumentCaptor.forClass(Map.class);
         verify(client).introspect(eq("user-token"), request.capture());
-        assertThat(request.getValue()).containsExactly(Map.entry("Target Service", "/hpds/auth/v3/query/sync"));
+        assertThat(request.getValue()).containsExactly(Map.entry("Target Service", "/hpds/auth/query/sync"));
         assertThat(request.getValue().toString()).doesNotContain("secret");
+    }
+
+    @Test
+    void rejectedServiceTokenFailsClosedWithItsOwnAuditReason() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.introspect(any(), any()))
+            .thenThrow(new IntrospectionTokenRejectedException("http://psama/token/inspect", "application_token_expired"));
+        AuditContext audit = new AuditContext();
+        StringWriter body = new StringWriter();
+        HttpServletResponse response = mock(HttpServletResponse.class);
+        when(response.getWriter()).thenReturn(new PrintWriter(body));
+        FilterChain chain = mock(FilterChain.class);
+
+        filter(client, audit).doFilter(wrap("Bearer user-token", new byte[0], "/dictionary/concepts"), response, chain);
+
+        verify(response).setStatus(502);
+        assertThat(body.toString()).contains("\"errorType\":\"introspection_unreachable\"");
+        verify(chain, never()).doFilter(any(), any());
+        assertThat(audit.getMetadata()).containsEntry("auth_result", "failure")
+            .containsEntry("auth_failure_reason", "introspection_token_rejected");
     }
 
     @Test

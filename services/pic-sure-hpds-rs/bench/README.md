@@ -106,6 +106,17 @@ hpds-bench compare --a http://127.0.0.1:18081/PIC-SURE --b http://rust:8080/PIC-
   --corpus /tmp/corpus --divergences bench/divergences.json --java a --java-branch main
 ```
 
+The genomic rules work the same way, from the two answers and the request alone, without the
+equivalence oracle: Rust's refusals where Java fails on a genomic filter (an empty 200, a 500,
+an ERROR job or a bodiless submit), Rust's refusals of a genomic filter Java never evaluates
+(Java's answer is then the one over no patients or no variants), and the normalizations of
+VARIANT_LIST_FOR_QUERY (a set of specs), the excerpts (INFO columns as a set, INFO cells as
+multisets, patient columns as a multiset of header and column), INFO_COLUMN_LISTING (a
+multiset, bounds as `f32`), the `/search` info values (sets) and `/search/values` pages (values
+of one Java hash bucket in any order). A corpus entry of kind `search-values` is sent as
+`GET /v3/search/values/` with its request's `genomicConceptPath`, `query`, `page` and `size` as
+query parameters.
+
 `--retries N` retries other differences; an
 entry that recovers is listed as `FLAKY` with the side that answered differently between
 attempts.

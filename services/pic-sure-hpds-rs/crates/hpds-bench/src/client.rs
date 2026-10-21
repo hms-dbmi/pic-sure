@@ -331,6 +331,11 @@ impl Client {
                 &format!("query/{UNKNOWN_QUERY_ID}/result"),
                 &Payload::Json(&empty),
             ),
+            Kind::SearchValues => self.http.get(format!(
+                "{}/v3/search/values/?{}",
+                self.base,
+                search_values_query(&entry.request)
+            )),
             Kind::Sync | Kind::Async => self.post("query/sync", &payload),
         };
         let response = request.timeout(self.poll_timeout).send().await?;
@@ -447,6 +452,43 @@ impl Client {
             bytes,
         })
     }
+}
+
+/// The query parameters of a [`Kind::SearchValues`] request: `genomicConceptPath`, `query`,
+/// `page` and `size` in that order, a string as it is and any other value as its JSON text,
+/// leaving out a `null` or missing one.
+pub fn search_values_params(request: &Value) -> Vec<(&'static str, String)> {
+    ["genomicConceptPath", "query", "page", "size"]
+        .into_iter()
+        .filter_map(|name| match request.get(name) {
+            None | Some(Value::Null) => None,
+            Some(Value::String(text)) => Some((name, text.clone())),
+            Some(other) => Some((name, other.to_string())),
+        })
+        .collect()
+}
+
+/// The query string of a [`Kind::SearchValues`] request: [`search_values_params`] joined as
+/// `name=value` pairs with `&`, every byte of a value outside the RFC 3986 unreserved set
+/// percent-encoded.
+pub fn search_values_query(request: &Value) -> String {
+    search_values_params(request)
+        .into_iter()
+        .map(|(name, value)| {
+            let encoded: String = value
+                .bytes()
+                .map(|b| {
+                    if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~') {
+                        (b as char).to_string()
+                    } else {
+                        format!("%{b:02X}")
+                    }
+                })
+                .collect();
+            format!("{name}={encoded}")
+        })
+        .collect::<Vec<_>>()
+        .join("&")
 }
 
 fn payload_for<'a>(entry: &'a CorpusEntry, request: &'a Value) -> Payload<'a> {

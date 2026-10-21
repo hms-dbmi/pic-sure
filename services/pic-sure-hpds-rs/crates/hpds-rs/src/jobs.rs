@@ -28,7 +28,7 @@ use axum::http::header::{CONTENT_LENGTH, CONTENT_TYPE};
 use axum::response::{IntoResponse, Response};
 use bytes::BytesMut;
 use hpds_format::push_decimal_u32;
-use hpds_query::{Engine, PATIENTS_HEADER, Query, QueryError, ResultType, check_supported};
+use hpds_query::{Engine, PATIENTS_HEADER, Query, QueryError, ResultType};
 use serde::Serialize;
 use tokio::sync::Semaphore;
 
@@ -1081,11 +1081,21 @@ fn not_ready_response(name: &str) -> Response {
         .into_response()
 }
 
+/// The refusal of a genomic result type submitted to `POST /query`. Java has no processor for
+/// them there (`QueryV3Service.initializeResult` throws in its switch default, so its submit
+/// answers 200 without a body and the query never runs); this service refuses the submit.
+pub fn genomic_type_on_async_route(result_type: ResultType) -> String {
+    format!(
+        "result type {result_type} is not supported by POST /query; send it to POST /query/sync"
+    )
+}
+
 /// `POST /query`: validates an export query and starts it, answering its [`QueryStatus`].
 ///
 /// PATIENTS and DATAFRAME are exported; DATAFRAME_TIMESERIES and DATAFRAME_PFB are accepted
-/// and end in ERROR, as does DATAFRAME while `ID_BATCH_SIZE` is 0. Any other result type, a
-/// validation failure, or a malformed request is a 400 text error, where Java answers 200 with
+/// and end in ERROR, as does DATAFRAME while `ID_BATCH_SIZE` is 0. A genomic result type is
+/// refused with [`genomic_type_on_async_route`], as Java never runs it there. Any other
+/// result type, a validation failure, or a malformed request is a 400 text error, where Java answers 200 with
 /// an ERROR status or 500. Java accepts COUNT, CATEGORICAL_CROSS_COUNT and
 /// CONTINUOUS_CROSS_COUNT here and COUNT then ends in ERROR; this service refuses all sync
 /// types up front.
@@ -1097,7 +1107,11 @@ fn not_ready_response(name: &str) -> Response {
 /// ([`Engine::check_limits`], which fails with "User consents are required for this query"
 /// when `hpds.requireAuthorizationFilter` is on and no consent value is given), then the
 /// concepts it touches in the selected partitions, then `QueryValidator` against the merged
-/// dictionary ([`Engine::validate`], whose consent rule follows the same flag). The query,
+/// dictionary ([`Engine::validate`], whose consent rule follows the same flag), then the
+/// genomic filters against the genomic index ([`Engine::read_plan`] runs the admission every
+/// export repeats). Refusals decided from the request and the index are therefore a 400 at
+/// submission; a refusal found only while the export is evaluated (an empty subquery, a
+/// block that cannot be read) still ends the export in ERROR. The query,
 /// `userConsents` included, travels with the job, so the export reads exactly the partitions
 /// those consents select.
 pub async fn submit(State(state): State<AppState>, body: Bytes) -> Result<Response, ApiError> {
@@ -1117,7 +1131,7 @@ fn submit_query(state: &AppState, query: Query) -> Result<Response, ApiError> {
         | ResultType::DataframeTimeseries
         | ResultType::DataframePfb => {}
         other if other.is_genomic() => {
-            check_supported(&query)?;
+            return Err(ApiError::bad_request(genomic_type_on_async_route(other)));
         }
         other => {
             return Err(ApiError::bad_request(format!(
@@ -1125,9 +1139,11 @@ fn submit_query(state: &AppState, query: Query) -> Result<Response, ApiError> {
             )));
         }
     }
+    state.check_genomic(!query.genomic_filters.is_empty())?;
     let engine = Arc::clone(state.engine()?);
     engine.check_limits(&query)?;
     engine.validate(&query)?;
+    engine.read_plan(&query)?;
     let status = state.results().submit(engine, query)?;
     Ok(axum::Json(status).into_response())
 }

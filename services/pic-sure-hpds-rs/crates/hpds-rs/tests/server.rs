@@ -39,6 +39,7 @@ fn quick() -> ServerTimeouts {
         header_read: Duration::from_millis(200),
         shutdown_grace: Duration::from_millis(300),
         max_connections: 64,
+        write_stall: Duration::from_secs(60),
     }
 }
 
@@ -87,6 +88,7 @@ async fn shutdown_returns_within_the_grace_period_with_a_connection_open() {
             header_read: Duration::from_secs(60),
             shutdown_grace: Duration::from_millis(300),
             max_connections: 64,
+            write_stall: Duration::from_secs(60),
         },
     )
     .await;
@@ -165,6 +167,7 @@ async fn connections_past_the_cap_are_answered_503_at_once() {
             header_read: Duration::from_secs(60),
             shutdown_grace: Duration::from_millis(300),
             max_connections: 2,
+            write_stall: Duration::from_secs(60),
         },
     )
     .await;
@@ -219,6 +222,7 @@ async fn the_health_probe_fails_fast_at_the_connection_cap() {
             header_read: Duration::from_secs(60),
             shutdown_grace: Duration::from_millis(300),
             max_connections: 1,
+            write_stall: Duration::from_secs(60),
         },
     )
     .await;

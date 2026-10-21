@@ -187,6 +187,20 @@ JEMALLOC_SYS_WITH_LG_PAGE=16 cargo build --release -p hpds-rs
 | `HPDS_LOG_DIRECTORY` | unset | When set, the log is also written to a daily-rotated `hpds-rs.<date>.log` in that directory, so a mounted log directory is useful. Logging goes through a non-blocking writer; under extreme load it drops lines rather than slowing requests. |
 | `HPDS_SEARCH_GZIP` | `off` | `on` compresses `POST /search` answers for requests whose `Accept-Encoding` accepts gzip (see [Search compression](#search-compression)). Off, every answer has the bytes and headers it had before compression existed, whatever the request accepts. Read like `HPDS_METRICS`. |
 | `HPDS_METRICS` | `off` | `on` serves `GET /metrics` in the Prometheus text format and counts requests (see [Metrics](#metrics)). Off, `/metrics` is a 404 like any unknown path. `true`, `false`, `1`, `0`, `yes` and `no` are also read; anything else fails startup. |
+| `HPDS_EXCERPT_CONCURRENCY` | half `HPDS_ENGINE_CONCURRENCY`, at least 1 | VCF_EXCERPT, AGGREGATE_VCF_EXCERPT and VARIANT_LIST_FOR_QUERY requests computed or sent at once. An excerpt holds its excerpt slot and an engine slot until its last row is sent; a variant list holds an engine slot while it is built and its excerpt slot until it is sent. The cap must be below `HPDS_ENGINE_CONCURRENCY`, and 1 when that is 1 (startup fails otherwise; an engine concurrency of 1 logs a warning), so excerpts can never hold every engine slot and other queries keep running while they stream. A request over the cap waits up to `HPDS_EXCERPT_QUEUE_SECONDS` for a slot and is otherwise a 503 with `Retry-After`, counted in `hpds_excerpts_refused_total`; callers going through the query service see a 502 instead, without the header, since it answers 502 for any HPDS 5xx. A type whose setting is off answers its text without a slot. |
+| `HPDS_EXCERPT_QUEUE_SECONDS` | `5` | How long an excerpt or variant list over `HPDS_EXCERPT_CONCURRENCY` waits for a slot before it is a 503 (`Retry-After` of this many seconds, at least 1). `0` refuses at once. |
+| `HPDS_EXCERPT_STALL_SECONDS` | `30` | How long a streamed excerpt or variant list waits for its client to take the next 64 KiB chunk. A client that stops reading for longer has its stream ended (the response stops short of its `Content-Length`) and its slots released. |
+| `HPDS_WRITE_STALL_SECONDS` | `60` | How long a write to any connection may stay pending, its client making no room in its socket buffer, before the connection is closed and counted in `hpds_connections_write_stalled_total`. It frees the socket and everything the response holds, which the excerpt stall bound alone cannot do once the client's buffers are full. |
+| `HPDS_EXCERPT_STREAM_SECONDS` | `600` | How long a streamed excerpt's or variant list's whole body may take once its headers are sent; past it the stream is ended the same way. `HPDS_SYNC_TIMEOUT_SECONDS` bounds the wait for the engine slot and the measuring pass before the headers. |
+| `hpds.genomicProcessor.impl` | unset | Java's genomic layout setting, also read as `HPDS_GENOMICPROCESSOR_IMPL` (Spring's relaxed name; the dotted name wins when both are set). `local`, `localDistributed`, `localPatientDistributed` or `localPatientOnlyDistributed`, compared ignoring case as Spring's `havingValue` compares, opens the genomic store in `HPDS_GENOMIC_DATA_DIRECTORY` and requires it to have been built in that layout; unset or blank serves no genomic data, as Java's no-op processor does. `remote` and any other value fail startup: there is no separate genomic service (see [Genomic store](#genomic-store)). |
+| `HPDS_GENOMIC_DATA_DIRECTORY` | `/opt/local/hpds/all/` | Directory of the Rust genomic store (`geno.index`, `geno.blocks`, `.generation`). Java's default. Read only when `hpds.genomicProcessor.impl` is set. |
+| `HPDS_GENOMIC_CACHE_BYTES` | 2 GiB | Byte bound of the decoded genomic block cache, separate from `HPDS_CACHE_BYTES` so a genomic scan cannot evict phenotype blocks. Every genomic block kind shares it. A query planning to read more than a quarter of it scans instead (next row). |
+| `HPDS_GENOMIC_READ_BUDGET_BYTES` | 1 GiB | Bound on the bytes every genomic scan of the process holds at once outside the cache, each block counted at its stored plus decoded length. A block that does not fit waits. |
+| `VCF_EXCERPT_ENABLED` | `false` | Allows VCF_EXCERPT, and with it AGGREGATE_VCF_EXCERPT and VARIANT_LIST_FOR_QUERY, as in Java. Off, those answer Java's `<TYPE> query type not allowed` with 200, checked before the genomic filters and the genomic store's state, as Java checks it first. Read with Spring's boolean words, ignoring case: `true`, `on`, `yes`, `1` or `false`, `off`, `no`, `0`; any other value, empty included, fails startup. |
+| `AGGREGATE_VCF_EXCERPT_ENABLED` | `false` | Allows AGGREGATE_VCF_EXCERPT and VARIANT_LIST_FOR_QUERY. Read like `VCF_EXCERPT_ENABLED`. |
+| `ID_CUBE_NAME` | `NONE` | Concept whose value heads each patient column of VCF_EXCERPT, found as Java's `getValueForKey` finds it; `NONE` heads the columns with the patient id. A numeric concept some subset patient holds is a 400, where Java fails. |
+| `variant.info_column_order` | empty | Comma-separated INFO columns of the excerpts; when it names any, the excerpts hold exactly the listed columns that exist, in that order. Also read as `VARIANT_INFO_COLUMN_ORDER`. Empty keeps Java's `HashSet` order of every column. |
+| `HPDS_MAX_EXCERPT_BYTES` | 1 GiB | Largest VCF_EXCERPT, AGGREGATE_VCF_EXCERPT or VARIANT_LIST_FOR_QUERY body answered; a larger one is a 400 naming the setting, measured before anything is sent. Java builds excerpts in memory without a bound. |
 | `_RJEM_MALLOC_CONF` | unset | Options for the service's allocator, jemalloc, in its `MALLOC_CONF` syntax. The service sets `background_thread:true,dirty_decay_ms:1000,muzzy_decay_ms:1000`, so memory a broad query frees goes back to the system within about a second; this variable is applied after those and overrides them. glibc's `MALLOC_ARENA_MAX` and `MALLOC_TRIM_THRESHOLD_` have no effect. Idle, the service holds about 120 MiB under a kernel whose transparent huge pages are set to `always` (the default of Docker Desktop's VM), against about 55 MiB with glibc's allocator: jemalloc maps memory in 2 MiB-aligned extents, and the kernel backs each one it touches with a whole huge page, so about 110 MiB of the 120 is huge pages over some 55 MiB of live data. Fewer arenas (`narenas:1` to `narenas:8`), faster decay and jemalloc's own `thp:never` do not change it. Turning huge pages off for the whole process with `prctl(PR_SET_THP_DISABLE)` brings idle to about 55 MiB but costs 3 to 6% of throughput on single-request loads, so the service leaves them on. With `transparent_hugepage` set to `madvise` or `never` on the host the difference goes away. |
 
 A query over a limit is a 400 naming the setting, before any block is read. Checks run in
@@ -203,6 +217,67 @@ error, health reports DOWN with a reason, and query routes answer 503. The start
 `store opened` carries `overlap_patients`, the size of the overlap set (see
 [Partition layout](#partition-layout)). At shutdown the service logs what its block cache
 holds: blocks, partition views, and the bytes of each.
+
+### Genomic store
+
+The genomic store is its own directory, `HPDS_GENOMIC_DATA_DIRECTORY`, built by
+`hpds-etl genomic-migrate` (from a Java genomic store exported with `ExportGenomicForMigration`,
+the production path) or `hpds-etl genomic-load` (from VCF index files and VCFs). It holds
+`geno.index`, `geno.blocks` and `.generation`, and keeps Java's node structure: the layout
+(`local`, `localDistributed`, `localPatientDistributed`, `localPatientOnlyDistributed`) is
+recorded in `geno.index` and must equal `hpds.genomicProcessor.impl`. The service evaluates
+each node as Java's `GenomicProcessorNodeImpl` does and combines nodes as that layout's parent
+processors do, in the same process: there is no `remote` mode and no separate genomic service.
+The directory is never written by the service (Java writes index caches into its node
+directories at startup) and can be mounted read-only.
+
+- **Key.** The store is sealed with the phenotype store's key,
+  `<HPDS_DATA_DIRECTORY>/encryption_key`. Rotating the phenotype key therefore requires
+  resealing the genomic store in the same change (rerun `genomic-migrate` or `genomic-load`
+  with the new key); otherwise the service refuses the genomic store with an authentication
+  error and reports DOWN. A separate genomic key is reserved in the format for a later
+  version.
+- **Startup.** The store opens after the phenotype store, read under a shared lock on
+  `geno.index`. A directory holding Java genomic javabins and no `geno.index` is refused,
+  naming `hpds-etl genomic-migrate`; so are a missing store, an interrupted publish, a
+  `.generation` naming another store, a store sealed with another key and a store of another
+  layout. In every case the service still starts, logs why, reports DOWN on
+  `/actuator/health` with a genomic reason, answers every request that needs genomic data with
+  503, and goes on answering phenotype-only requests. Java fails to start instead. The
+  startup line `genomic store opened` logs the layout, groups, nodes, patients, variants, INFO
+  columns, the cache and budget, and the largest chunk set.
+- **Changes on disk.** As for the phenotype store, a genomic file changed in place, a publish
+  journal in the directory, or `geno.index` replaced within the same store refuses every
+  genomic request with 503 and reports DOWN until a restart; phenotype requests go on. A
+  `geno.index` of another store moved in (a directory swap) leaves the open store serving and
+  adds `"genomicStoreSuperseded":true` to health and `hpds_genomic_store_superseded 1` to
+  `/metrics`; a restart serves the new store.
+- **Memory.** On top of the phenotype bound, the process holds at most
+  `HPDS_GENOMIC_CACHE_BYTES` plus `HPDS_GENOMIC_READ_BUDGET_BYTES`, plus per genomic thread
+  (one per core) the largest chunk set and the info blocks a query reads, plus per-query
+  state: an excerpt streams row by row, holding a chunk per node of the contig it walks, never
+  the body. The genomic index is in memory (0.2 MB for the 1000 Genomes store), and the
+  value lists of categorical INFO columns are kept once listed for search (about 0.3 MB for
+  genes on 1000 Genomes). Size the container for the phenotype settings plus both genomic
+  bounds.
+- **Health.** With a genomic store served, the service is UP when the partitions hold a
+  concept or the genomic store holds an INFO column, Java's readiness rule.
+
+Java behaviors reproduced on purpose, because users compare genomic counts across systems
+(each is a Java defect to fix in both services together later): numeric INFO ranges
+intersect one variant set per distinct stored value; the last value of each 1,000-value
+`CompressedIndex` partition, the column maximum included, never matches; a spec filter
+matches every stored spec of its 1,000-bp bucket that starts with the request text, so a
+four-field spec matches every gene and consequence annotation at the site; `0/0` and any
+zygosity other than `0/1`, `1/1` and `""` select nothing; heterozygous no-calls count in
+variant lists and not in patient filters; in the distributed layouts a filter on one node AND
+a filter on another answers empty; the 100,000-variant threshold of the variant list is per
+node and returns the node's unfiltered INFO seed above it; the excerpt counts carry Java's
+padding errors (4 too high for a mask Java holds as a bitmask, a column 2 denominator of 4);
+INFO_COLUMN_LISTING repeats a column per node or per group with `min` `3.4028235E38` and
+`max` `1.4E-45`. A `min` or `max` bound is read as Jackson reads a `Float`: in a query sent as
+a JSON object it is `Float.parseFloat(Double.toString(Double.parseDouble(text)))`, in a query
+sent as a JSON string `Float.parseFloat(text)` directly, and the two differ on some inputs.
 
 ### Partition layout
 
@@ -406,6 +481,7 @@ runs on the blocking pool.
 | `hpds_http_request_duration_seconds{route}` | histogram | Time from receiving a request to sending its response head; a streamed download's body is not timed. Bounds 0.5 ms to 60 s |
 | `hpds_http_errors_total{kind}` | counter | 4xx and 5xx answers: `bad_request`, `not_found`, `request_timeout`, `payload_too_large`, `internal`, `unavailable`, `other_client`, `other_server` |
 | `hpds_connections_refused_total` | counter | Connections refused at `HPDS_MAX_CONNECTIONS`, answered 503 when possible (closed at once when as many refusals are already being answered) |
+| `hpds_connections_write_stalled_total` | counter | Connections closed because a write to them stayed pending for `HPDS_WRITE_STALL_SECONDS` |
 | `hpds_block_cache_hits_total`, `hpds_block_cache_misses_total` | counter | Block cache lookups, one per concept read; a concept a study-level `ANY_RECORD_OF` takes from its table of recent entries (see `HPDS_CACHE_BYTES`) counts as a hit |
 | `hpds_block_cache_evictions_total` | counter | Entries dropped (or never admitted) to stay within `HPDS_CACHE_BYTES` |
 | `hpds_block_cache_entries`, `hpds_block_cache_bytes`, `hpds_block_cache_capacity_bytes` | gauge | Concepts and bytes held, blocks and views, and the bound |
@@ -420,6 +496,17 @@ runs on the blocking pool.
 | `hpds_async_results` | gauge | Async results held, pending, running and finished |
 | `hpds_exports_finished_total{outcome}` | counter | Async queries finished: `memory`, `file` or `error` (refusals at submission included) |
 | `hpds_result_memory_bytes`, `hpds_result_memory_budget_bytes` | gauge | Export results held in memory, downloads in progress included, and `HPDS_RESULT_MEMORY_BYTES` |
+| `hpds_excerpts_ended_early_total{end}` | counter | Streamed excerpts and variant lists ended before their last byte: `stalled` (the client took no chunk within `HPDS_EXCERPT_STALL_SECONDS`), `expired` (not sent within `HPDS_EXCERPT_STREAM_SECONDS`), `aborted` (the client left, a read failed, or the body would have differed from its measured length), `store_changed` (the genomic store changed on disk between the measuring pass and the last chunk) |
+| `hpds_excerpts_refused_total` | counter | Excerpts and variant lists answered 503 because no `HPDS_EXCERPT_CONCURRENCY` slot came free within `HPDS_EXCERPT_QUEUE_SECONDS` |
+| `hpds_excerpts_in_progress`, `hpds_excerpt_concurrency` | gauge | Excerpt slots in use (an excerpt holds one while it is computed and streamed, a variant list while it is built and sent), and `HPDS_EXCERPT_CONCURRENCY` |
+| `hpds_genomic_store_up` | gauge | 1 while the genomic store is served, 0 while one is configured and could not be served; absent without `hpds.genomicProcessor.impl` |
+| `hpds_genomic_cache_hits_total`, `_misses_total`, `_loads_total`, `_evictions_total`, `_scan_reads_total` | counter | Genomic block lookups, blocks admitted, blocks dropped to stay within `HPDS_GENOMIC_CACHE_BYTES`, and blocks scans read under the budget without admitting them |
+| `hpds_genomic_cache_entries`, `_bytes`, `_capacity_bytes` | gauge | Genomic blocks held, their bytes, and `HPDS_GENOMIC_CACHE_BYTES` |
+| `hpds_genomic_read_budget_bytes`, `hpds_genomic_read_held_bytes`, `hpds_genomic_read_held_peak_bytes` | gauge | `HPDS_GENOMIC_READ_BUDGET_BYTES`, the bytes scans hold under it now, and the most held at once |
+| `hpds_genomic_read_permits_total`, `_waits_total`, `_wait_seconds_total` | counter | Genomic blocks granted bytes of the budget, blocks that waited, and the seconds they waited |
+| `hpds_genomic_largest_chunk_set_bytes`, `hpds_genomic_threads` | gauge | What one genomic thread may hold reading a block before it is cached, and the genomic pool's threads |
+| `hpds_genomic_search_values`, `hpds_genomic_search_value_bytes` | gauge | INFO values kept in the categorical columns' search lists, and their bytes |
+| `hpds_genomic_store_superseded` | gauge | 1 while another genomic store has been moved into the genomic directory and the service serves the one it opened |
 
 ### Routes
 
@@ -430,15 +517,15 @@ off, and a connection that takes more than 10 seconds to send a request's header
 
 | Route | Answer |
 |---|---|
-| `POST /query/sync` | COUNT (`text/plain`) and the four cross counts (`application/json`), byte for byte as Java, with a `queryMetadata` header, over the partitions `userConsents` selects; INFO_COLUMN_LISTING is `[]` |
-| `POST /query` | `QueryStatus` for a PATIENTS or DATAFRAME export over the partitions `userConsents` selects; DATAFRAME_TIMESERIES and DATAFRAME_PFB end in ERROR |
+| `POST /query/sync` | COUNT (`text/plain`) and the four cross counts (`application/json`), byte for byte as Java, with a `queryMetadata` header, over the partitions `userConsents` selects and narrowed by `genomicFilters`; VARIANT_COUNT_FOR_QUERY and INFO_COLUMN_LISTING (`application/json`), VARIANT_LIST_FOR_QUERY, VCF_EXCERPT and AGGREGATE_VCF_EXCERPT (`text/plain`) from the genomic store. Excerpts carry their exact `Content-Length` and stream row by row. INFO_COLUMN_LISTING is `[]` without genomic data |
+| `POST /query` | `QueryStatus` for a PATIENTS or DATAFRAME export over the partitions `userConsents` selects, narrowed by `genomicFilters`; DATAFRAME_TIMESERIES and DATAFRAME_PFB end in ERROR; genomic result types are a 400 |
 | `POST /query/{id}/status` | `QueryStatus`, with Java's status mapping |
 | `POST /query/{id}/result` | The CSV export as `text/plain`; 400 `Status : <state>` before it succeeds |
 | `POST /query/{id}/signed-url` | 400, S3 upload is out of scope |
 | `POST /query/format`, `POST /write/{dataType}` | 400, not supported |
-| `POST /search` | The merged dictionary as `SummaryColumnMeta` (`name`, `widthInBytes`, `categorical`, `categoryValues`, `min`, `max`, `patientCount`, `timestampMin`, `timestampMax`, nulls written), not consent-scoped. A string term, `""` included, answers an object keyed by path, matched by case-insensitive path substring or exact category value; a null or missing term answers Java's array of one-entry objects for every concept. `info: {}`. See the locale note in `search.rs`. gzip on request, see [Search compression](#search-compression). |
-| `GET /search/values/` | An empty page |
-| `GET /actuator/health` | 200 `{"status":"UP"}` when the store's dictionary holds a concept, with `"storeSuperseded":true` added while a store of another id has been moved in (see [Partition layout](#partition-layout)); else 503 `{"status":"DOWN","reason":...}` |
+| `POST /search` | The merged dictionary as `SummaryColumnMeta` (`name`, `widthInBytes`, `categorical`, `categoryValues`, `min`, `max`, `patientCount`, `timestampMin`, `timestampMax`, nulls written), not consent-scoped. A string term, `""` included, answers an object keyed by path, matched by case-insensitive path substring or exact category value; a null or missing term answers Java's array of one-entry objects for every concept. `info` holds, for a string term, each INFO column whose description or key contains it ignoring case, keyed in Java string order, as `{description, values, continuous}` with the values in Java's `HashSet` order (none for a continuous column); `{}` for a null term or without genomic data. See the locale note in `search.rs`. gzip on request, see [Search compression](#search-compression). |
+| `GET /search/values/` | `{"results","page","total"}`: the values of INFO column `genomicConceptPath` containing `query` ignoring case, in Java's `HashSet` order, paged with Java's `int` arithmetic; an empty page without genomic data |
+| `GET /actuator/health` | 200 `{"status":"UP"}` when the store's dictionary holds a concept (or the genomic store an INFO column), with `"storeSuperseded":true` or `"genomicStoreSuperseded":true` added while a store of another id has been moved in (see [Partition layout](#partition-layout) and [Genomic store](#genomic-store)); else 503 `{"status":"DOWN","reason":...}` |
 | `GET /metrics` | With `HPDS_METRICS=on`, the counters of [Metrics](#metrics) as Prometheus text (`text/plain; version=0.0.4`); otherwise 404. At the root, not under `/PIC-SURE` |
 
 Differences from Java a caller can see:
@@ -493,13 +580,78 @@ Differences from Java a caller can see:
 - `VARIANT_COUNT_FOR_QUERY` with no `genomicFilters` is a 200 `{"count":"0","message":"No
   variant filters were supplied, so no query was run."}` with a `queryMetadata` header, as in
   Java. Java runs no consent check for it; this service applies its own, so with the flag on
-  and no consent value it is the 400 "User consents are required for this query". With
-  `genomicFilters` it is a 400 unsupported.
+  and no consent value it is the 400 "User consents are required for this query".
 - Results are dropped oldest finished first when `HPDS_RESULT_LIMIT` or `HPDS_RESULT_MAX_BYTES`
   is reached, and after `HPDS_RESULT_MAX_AGE_SECONDS` when that is set; Java keeps them until
   restart.
-- Genomic input (genomic result types, `genomicFilters`, variant-spec paths) is a 400 naming the
-  unsupported feature.
+- Without `hpds.genomicProcessor.impl`, `genomicFilters` are a 400 naming the unsupported
+  feature, where Java's no-op processor fails with a `NullPointerException`; a variant-spec
+  path in `select` or a phenotypic filter is an unknown concept, as in Java (an empty
+  DATAFRAME column, a count of 0).
+- Genomic result types submitted to `POST /query` are a 400 "result type <TYPE> is not
+  supported by POST /query; send it to POST /query/sync". Java has no processor for them
+  there and answers the submit 200 without a body; the query never runs.
+- Where Java throws on a genomic request (answering 500 with audit logging on, or 200 with an
+  empty body and an ERROR async status with it off, as at BDC), this service answers 400 with a
+  message: a numeric INFO filter with one bound, a null bound or `min > max`; an `rs` key; a
+  spec position that is not a number; a spec key of fewer than two fields; a `null` inside
+  `values`; a numeric filter on a column some node holds as categorical; a selected key or
+  column whose `column + "_____" + key` does not split back into the two; a listed spec of
+  fewer than six fields an excerpt or an INFO set would parse on a node with patients in
+  scope; duplicate metadata strings in an excerpt; in `local` and `localDistributed`, an
+  excerpt spec no node holds; an `ID_CUBE_NAME` concept that is numeric for some subset
+  patient; `/search` with a term matching a categorical INFO column some node lacks;
+  `/search/values` for a column some node lacks, an unknown column included, or a page and
+  size whose `int` products make Java's `subList` throw. Messages never name a node or a
+  variant.
+- Refused where Java answers: an invalid genomic filter is refused even when the phenotype
+  cohort is empty, where Java skips the genomic step and answers 0; a `null` value is refused
+  even where no spec matches or the column has no info store; a `"_____"` key whose split lands
+  on an existing key is refused; a spec filter invalid as sent is refused at admission even on
+  a variant type with no INFO filter, where Java never evaluates it and answers empty.
+- Rust drops missing samples (`missing-samples-dropped`): `genomic-load
+  --skip-missing-samples` leaves out of a group's patient list a patient absent from every VCF
+  of its group, where Java's loader copies the last VCF sample's genotypes into it and reports
+  it as a carrier or as homozygous reference. On the AIO 1000 Genomes data that is 2,430 of
+  4,978 patients, so N, bitmask lengths and excerpt denominators follow the shorter list. On
+  records with a longer FORMAT than `GT` (`GT:DP`), Java credits the last header column's
+  genotype to the latest index sample mapped to it instead of the real last sample;
+  `genomic-load` keeps each genotype with its real sample. A store built by `genomic-migrate`
+  keeps Java's data as stored, defect included, and answers exactly as Java does.
+- AGGREGATE_VCF_EXCERPT column 2, "Patients with this variant NOT in subset", counts carriers
+  outside the query's subset, patients outside the caller's consents included, as Java does.
+  It is a count, not identities, and BDC's default explorer view; the genotype cells of
+  VCF_EXCERPT stay limited to the subset. Reproduced for equivalence; the consent question is
+  open with the PIC-SURE team.
+- VCF_EXCERPT, AGGREGATE_VCF_EXCERPT and VARIANT_LIST_FOR_QUERY bodies over
+  `HPDS_MAX_EXCERPT_BYTES` are a 400. They stream with their exact `Content-Length`; a
+  read failure after the headers are sent, a client that stops reading for
+  `HPDS_EXCERPT_STALL_SECONDS`, a body still unsent after `HPDS_EXCERPT_STREAM_SECONDS`, or a
+  genomic store changed on disk between the measuring pass and the last chunk ends the
+  response before that length, which a client sees as a failed transfer, never as a complete
+  body of other rows; a client that makes no room in its socket buffer has its connection closed after
+  `HPDS_WRITE_STALL_SECONDS`. At most `HPDS_EXCERPT_CONCURRENCY` of them run at once; one past
+  the cap waits up to `HPDS_EXCERPT_QUEUE_SECONDS` and is then a 503 with `Retry-After`, which
+  the query service turns into a 502 for its caller. Java has no such cap. A measuring pass that outlives `HPDS_SYNC_TIMEOUT_SECONDS` answers 503; it
+  is not interrupted, finishes, writes nothing and releases its slots.
+- Order: VARIANT_LIST_FOR_QUERY lists specs in the store's spec order, where Java's is a hash
+  or skip-list order; INFO_COLUMN_LISTING lists nodes or groups in index order and columns in
+  column order; VCF_EXCERPT patient columns follow index group order, where Java's follows
+  `File.listFiles`. Excerpt INFO columns and `/search` and `/search/values` value lists follow
+  Java's `HashSet` order, except inside one hash bucket, where Java's own order is not
+  specified. When two chromosome nodes of one group hold the same spec, its masks come from
+  the first node in index order, where Java's node order is unspecified; which row an excerpt
+  keeps when two rows collapse is unspecified in Java too.
+- The genomic store is encrypted with the phenotype store's key; Java's genomic files are
+  plain. The service never writes the genomic directory.
+- A genomic store that is configured but cannot be served, or that changes on disk, makes
+  health DOWN and genomic requests 503 while phenotype requests are answered (see
+  [Genomic store](#genomic-store)), except VARIANT_LIST_FOR_QUERY and the excerpts with their
+  setting off, which answer their `not allowed` text first. `POST /search` with a term is a
+  503 while the genomic store could not be opened, since which INFO columns match cannot be
+  known; after it changed on disk, a term matching no INFO column of the index held in memory
+  answers the phenotype results with an empty `info`, and one matching a column is a 503.
+  Java fails to start, or keeps answering from what it loaded.
 - `authorizationFilters` never narrow a query, as on the Java consent branch, which only
   validates them; `userConsents` choose the partitions instead. The original Java HPDS (main)
   applies each authorization filter as one more AND clause, so its answers shrink to the

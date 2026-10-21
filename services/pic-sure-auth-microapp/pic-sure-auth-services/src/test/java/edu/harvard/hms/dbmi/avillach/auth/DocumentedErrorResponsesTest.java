@@ -25,12 +25,15 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -193,7 +196,8 @@ class DocumentedErrorResponsesTest {
         UUID unknown = UUID.randomUUID();
 
         mockMvc.perform(asSuperAdmin(HttpMethod.GET, "/application/{id}", unknown)).andExpect(status().isBadRequest())
-            .andExpect(content().string("Application is not found by given Application ID: " + unknown));
+            .andExpect(jsonPath("$.message").value("Invalid request"))
+            .andExpect(jsonPath("$.content").value("Application is not found by given Application ID: " + unknown));
     }
 
     @Test
@@ -209,7 +213,8 @@ class DocumentedErrorResponsesTest {
         UUID unknown = UUID.randomUUID();
 
         mockMvc.perform(asSuperAdmin(HttpMethod.DELETE, "/application/{id}", unknown)).andExpect(status().isBadRequest())
-            .andExpect(content().string("Cannot find application by the given applicationId: " + unknown));
+            .andExpect(jsonPath("$.message").value("Invalid request"))
+            .andExpect(jsonPath("$.content").value("Cannot find application by the given applicationId: " + unknown));
     }
 
     @Test
@@ -232,7 +237,8 @@ class DocumentedErrorResponsesTest {
         UUID unknown = UUID.randomUUID();
 
         mockMvc.perform(asSuperAdmin(HttpMethod.GET, "/role/{id}", unknown)).andExpect(status().isBadRequest())
-            .andExpect(content().string("Role is not found by given role ID: " + unknown));
+            .andExpect(jsonPath("$.message").value("Invalid request"))
+            .andExpect(jsonPath("$.content").value("Role is not found by given role ID: " + unknown));
     }
 
     @Test
@@ -240,7 +246,8 @@ class DocumentedErrorResponsesTest {
         UUID unknown = UUID.randomUUID();
 
         mockMvc.perform(asSuperAdmin(HttpMethod.DELETE, "/role/{id}", unknown)).andExpect(status().isBadRequest())
-            .andExpect(content().string("Role not found - uuid: " + unknown));
+            .andExpect(jsonPath("$.message").value("Invalid request"))
+            .andExpect(jsonPath("$.content").value("Role not found - uuid: " + unknown));
     }
 
     @Test
@@ -255,7 +262,7 @@ class DocumentedErrorResponsesTest {
     @Test
     void unknownPrivilegeIs400() throws Exception {
         mockMvc.perform(asSuperAdmin(HttpMethod.GET, "/privilege/{id}", UUID.randomUUID())).andExpect(status().isBadRequest())
-            .andExpect(content().string("Privilege not found"));
+            .andExpect(jsonPath("$.message").value("Invalid request")).andExpect(jsonPath("$.content").value("Privilege not found"));
     }
 
     @Test
@@ -284,7 +291,8 @@ class DocumentedErrorResponsesTest {
     @Test
     void unknownConnectionIs400() throws Exception {
         mockMvc.perform(asSuperAdmin(HttpMethod.GET, "/connection/{id}", "no-such-connection")).andExpect(status().isBadRequest())
-            .andExpect(content().string("Connection with id no-such-connection not found"));
+            .andExpect(jsonPath("$.message").value("Invalid request"))
+            .andExpect(jsonPath("$.content").value("Connection with id no-such-connection not found"));
     }
 
     @Test
@@ -331,10 +339,10 @@ class DocumentedErrorResponsesTest {
     }
 
     /**
-     * The cache inspection controller only exists when {@code app.cache.inspect.enabled} is true, so its case runs in a context of its own
+     * The cache inspection controller only exists when {@code app.cache.inspect.enabled} is true, so its cases run in a context of its own
      * with a separate in-memory database. PSAMA uses Spring Boot's simple cache manager without {@code spring.cache.cache-names}, which
-     * creates any cache it is asked for, so the controller's "cache not found" branch cannot run and the endpoint declares no 400. The
-     * endpoint needs an authenticated caller and no particular role, so the request carries a test user rather than a JWT.
+     * creates any cache it is asked for, so the controller's "cache not found" branch cannot run and the endpoint declares no 400. Both
+     * reads admit only {@code SUPER_ADMIN}, so requests carry a test user holding a single authority rather than a JWT.
      */
     @Nested
     @TestPropertySource(
@@ -348,8 +356,40 @@ class DocumentedErrorResponsesTest {
 
         @Test
         void unknownCacheNameReturnsANewEmptyCache() throws Exception {
-            cacheInspectionMockMvc.perform(anonymous(HttpMethod.GET, "/cache/{name}", "nope").with(user("cache-inspector")))
-                .andExpect(status().isOk()).andExpect(content().json("{}"));
+            cacheInspectionMockMvc
+                .perform(anonymous(HttpMethod.GET, "/cache/{name}", "nope").with(holding(AuthNaming.AuthRoleNaming.SUPER_ADMIN)))
+                .andExpect(status().isOk()).andExpect(content().json("{\"name\":\"nope\",\"entries\":{}}", JsonCompareMode.STRICT));
+        }
+
+        @Test
+        void superAdminCanListCacheNames() throws Exception {
+            cacheInspectionMockMvc.perform(anonymous(HttpMethod.GET, "/cache").with(holding(AuthNaming.AuthRoleNaming.SUPER_ADMIN)))
+                .andExpect(status().isOk());
+        }
+
+        @Test
+        void superAdminCanDumpTheSessionsCache() throws Exception {
+            cacheInspectionMockMvc
+                .perform(anonymous(HttpMethod.GET, "/cache/{name}", "sessions").with(holding(AuthNaming.AuthRoleNaming.SUPER_ADMIN)))
+                .andExpect(status().isOk());
+        }
+
+        @Test
+        void adminCannotListCacheNames() throws Exception {
+            cacheInspectionMockMvc.perform(anonymous(HttpMethod.GET, "/cache").with(holding(AuthNaming.AuthRoleNaming.ADMIN)))
+                .andExpect(status().isForbidden());
+        }
+
+        @Test
+        void adminCannotDumpTheSessionsCache() throws Exception {
+            cacheInspectionMockMvc
+                .perform(anonymous(HttpMethod.GET, "/cache/{name}", "sessions").with(holding(AuthNaming.AuthRoleNaming.ADMIN)))
+                .andExpect(status().isForbidden());
+        }
+
+        /** An authenticated test user whose only granted authority is {@code authority}. */
+        RequestPostProcessor holding(String authority) {
+            return user("cache-inspector").authorities(new SimpleGrantedAuthority(authority));
         }
     }
 

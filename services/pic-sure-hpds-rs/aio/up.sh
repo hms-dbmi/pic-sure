@@ -9,6 +9,16 @@
 #   $DOCKER_CONFIG_DIR/hpds-rs          -> /opt/local/hpds           (read-only)
 #   $DOCKER_CONFIG_DIR/hpds-rs-results  -> /var/lib/hpds-rs/results
 #   $DOCKER_CONFIG_DIR/log/hpds-rs-logs -> /var/log/hpds-rs
+#   $HPDS_RS_GENOMIC_DIR                -> /opt/local/genomic        (read-only, when set)
+#
+# HPDS_RS_STORE_DIR replaces $DOCKER_CONFIG_DIR/hpds-rs as the phenotype store, and its own
+# hpds-rs.env is the one read, so a second store can be served without touching the first.
+# HPDS_RS_GENOMIC_DIR names a genomic store (geno.index) built by hpds-etl genomic-migrate or
+# genomic-load and sealed with the phenotype store's key; HPDS_GENOMIC_DATA_DIRECTORY is set
+# to the mount. It must lie outside $DOCKER_CONFIG_DIR/hpds and the phenotype store, and
+# hpds-rs.env must set hpds.genomicProcessor.impl (or HPDS_GENOMICPROCESSOR_IMPL) to the
+# store's layout. The Java hpds.env spelling HPDS_GENOMIC_PROCESSOR_IMPL is not read by
+# hpds-rs and is refused there, since it would serve no genomic data.
 #
 # The container is created, attached to both networks, then started. An existing hpds-rs is
 # replaced safely: the new one is created under a temporary name, started, and must report
@@ -70,6 +80,33 @@ if [[ ! -f "$RS_STORE_DIR/pheno.index" ]]; then
   fi
 fi
 
+# Exits unless directory $1 is neither directory $2 nor inside it. $3 names $2 in the message.
+refuse_inside() {
+  case "$1/" in
+    "$2"/*) fail "HPDS_RS_GENOMIC_DIR=$1 lies in $3 ($2); build the genomic store in its own directory" ;;
+  esac
+}
+
+genomic_args=()
+if [[ -n "$RS_GENOMIC_DIR" ]]; then
+  [[ -d "$RS_GENOMIC_DIR" ]] || fail "HPDS_RS_GENOMIC_DIR=$RS_GENOMIC_DIR is not a directory"
+  RS_GENOMIC_DIR="$(cd -P "$RS_GENOMIC_DIR" && pwd -P)"
+  refuse_inside "$RS_GENOMIC_DIR" "$JAVA_STORE_DIR" "the Java store directory"
+  [[ ! -d "$RS_STORE_DIR" ]] || refuse_inside "$RS_GENOMIC_DIR" "$(cd -P "$RS_STORE_DIR" && pwd -P)" "the phenotype store"
+  [[ -f "$RS_GENOMIC_DIR/geno.index" ]] \
+    || fail "$RS_GENOMIC_DIR has no genomic store (geno.index is missing). Build it with hpds-etl genomic-migrate or genomic-load."
+  if [[ ! -f "$RS_ENV" ]]; then
+    fail "$RS_ENV does not exist. With HPDS_RS_GENOMIC_DIR, write it first with hpds.genomicProcessor.impl set to the store's layout."
+  fi
+  if [[ -n "$(env_value "$RS_ENV" HPDS_GENOMIC_PROCESSOR_IMPL)" ]]; then
+    fail "$RS_ENV sets HPDS_GENOMIC_PROCESSOR_IMPL, which hpds-rs does not read; use hpds.genomicProcessor.impl"
+  fi
+  if [[ -z "$(env_value "$RS_ENV" hpds.genomicProcessor.impl)" && -z "$(env_value "$RS_ENV" HPDS_GENOMICPROCESSOR_IMPL)" ]]; then
+    fail "$RS_ENV sets neither hpds.genomicProcessor.impl nor HPDS_GENOMICPROCESSOR_IMPL, so the genomic store would not be served"
+  fi
+  genomic_args=(-v "$RS_GENOMIC_DIR:/opt/local/genomic:ro" -e HPDS_GENOMIC_DATA_DIRECTORY=/opt/local/genomic/)
+fi
+
 act mkdir -p "$RS_STORE_DIR" "$RS_RESULTS_DIR" "$RS_LOG_DIR"
 
 if [[ ! -f "$RS_ENV" ]]; then
@@ -105,6 +142,7 @@ act docker create --name "$create_name" --restart no --network "$PICSURE_NETWORK
   -v "$RS_STORE_DIR:/opt/local/hpds:ro" \
   -v "$RS_RESULTS_DIR:/var/lib/hpds-rs/results" \
   -v "$RS_LOG_DIR:/var/log/hpds-rs" \
+  ${genomic_args[@]+"${genomic_args[@]}"} \
   --env-file "$RS_ENV" \
   -e HPDS_DATA_DIRECTORY=/opt/local/hpds/ \
   -e HPDS_RESULTS_DIRECTORY=/var/lib/hpds-rs/results \

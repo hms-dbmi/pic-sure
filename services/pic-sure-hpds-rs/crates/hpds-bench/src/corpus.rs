@@ -62,6 +62,11 @@ pub enum Kind {
     UnknownStatus,
     /// `POST /v3/query/{id}/result` for an id the server never issued.
     UnknownResult,
+    /// One `GET /v3/search/values/` round trip. The request is an object whose
+    /// `genomicConceptPath`, `query`, `page` and `size` become query parameters: a string as
+    /// it is, any other value as its JSON text (so a non-integer page reaches the server as
+    /// sent), a `null` or missing one left out.
+    SearchValues,
 }
 
 /// One request in a corpus.

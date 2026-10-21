@@ -34,6 +34,10 @@
 //!   of `false`, an enum's first constant). Every
 //!   other number is the correctly rounded double, as `serde_json` with `float_roundtrip`
 //!   reads it.
+//! - A genomic filter's `min` and `max` are Java `Float`s. A string is coerced as for a
+//!   `Double` and rounded once to the nearest float. A number is rounded once from the text
+//!   Jackson parses it from, which for a decimal in an object query is the double's
+//!   `Double.toString` (see `json_number`).
 //! - A JSON number, `true` or `false` where the model holds a Java `String` (an element of
 //!   `select` or `values`, a `conceptPath`, a genomic filter `key`, a consent `value`) reads as
 //!   Jackson coerces a scalar into a `String`. In query text that is the literal text (`1.50`,
@@ -54,7 +58,7 @@
 //! `values` (dropped; on a `FILTER` marked by [`PhenotypicFilter::null_values`] and refused
 //! only where Java looks it up), a `null` element of `select` ([`Query::select_nulls`]) or of `authorizationFilters`
 //! ([`Query::null_authorization_filters`]), and a `null` genomic filter or genomic value
-//! (the query stays unsupported). A missing or `null` `expectedResultType` is refused here
+//! (kept, and refused when the engine translates the genomic filters). A missing or `null` `expectedResultType` is refused here
 //! ([`NULL_RESULT_TYPE_MESSAGE`]), since no route can answer without it.
 
 use std::fmt;
@@ -267,7 +271,7 @@ pub struct Query {
     pub user_consents: Vec<UserConsent>,
     /// The filter tree, or `None` for no filter.
     pub phenotypic_clause: Option<PhenotypicClause>,
-    /// Variant filters. Always unsupported here when non-empty.
+    /// Variant filters, which the engine evaluates over its genomic store.
     pub genomic_filters: Vec<GenomicFilter>,
     /// What the query returns.
     pub expected_result_type: ResultType,
@@ -655,27 +659,28 @@ fn scalar_text<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Stri
     deserializer.deserialize_any(ScalarText)
 }
 
-/// `v3.GenomicFilter`. Parsed so that the query is accepted as Java accepts it, then
-/// refused as unsupported when present.
+/// `v3.GenomicFilter`, read as Jackson reads it. Java fails on some of what Jackson accepts,
+/// and the engine refuses those filters when it translates them.
 ///
 /// A `null` element of `genomicFilters` reads as a filter with every field `null`, and a
-/// `null` among `values` is dropped, as Jackson accepts both; the filter stays present, so the
-/// query stays unsupported.
+/// `null` among `values` is kept, as Jackson keeps both.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GenomicFilter {
-    /// The variant annotation key.
+    /// A variant spec (`chr,pos,ref,alt[,gene,consequence]`) or an INFO column.
     #[serde(default)]
     pub key: Option<String>,
-    /// Values to match.
-    #[serde(default, deserialize_with = "strings_without_nulls")]
-    pub values: Option<Vec<String>>,
-    /// Lower bound.
-    #[serde(default, deserialize_with = "java_double")]
-    pub min: Option<f64>,
-    /// Upper bound.
-    #[serde(default, deserialize_with = "java_double")]
-    pub max: Option<f64>,
+    /// Zygosities of a variant spec, or values of a categorical INFO column; `None` when null
+    /// or absent. A `null` element is `None`.
+    #[serde(default)]
+    pub values: Option<Vec<Option<String>>>,
+    /// Lower bound of a numeric INFO column, a Java `Float`: a JSON number or numeric string
+    /// read as Jackson reads it into a `Float` (see the module docs).
+    #[serde(default, deserialize_with = "java_float")]
+    pub min: Option<f32>,
+    /// Upper bound of a numeric INFO column, read as `min` is.
+    #[serde(default, deserialize_with = "java_float")]
+    pub max: Option<f32>,
 }
 
 /// `v3.PhenotypicClause`: a filter or a subquery, chosen by deduction (see the module
@@ -970,13 +975,6 @@ impl Query {
     }
 }
 
-fn strings_without_nulls<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<Vec<String>>, D::Error> {
-    Ok(Option::<Vec<Option<String>>>::deserialize(deserializer)?
-        .map(|values| values.into_iter().flatten().collect()))
-}
-
 fn null_as_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
 where
     D: Deserializer<'de>,
@@ -1030,6 +1028,60 @@ impl<'de> Visitor<'de> for JavaDouble {
 
 fn java_double<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<f64>, D::Error> {
     deserializer.deserialize_any(JavaDouble)
+}
+
+/// `Float` as Jackson 2.21's `NumberDeserializers.FloatDeserializer` reads it. The query
+/// readers rewrite every genomic bound number token to a string holding the exact float Jackson
+/// reads from it (`json_number`), so a number reaches this visitor only from a query built
+/// another way; it is read as an object query's number is, through the double's
+/// `Double.toString`.
+struct JavaFloat;
+
+impl<'de> Visitor<'de> for JavaFloat {
+    type Value = Option<f32>;
+
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("a number, a numeric string, or null")
+    }
+
+    fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
+        Ok(None)
+    }
+
+    fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
+        Ok(None)
+    }
+
+    fn visit_some<D: Deserializer<'de>>(self, d: D) -> Result<Self::Value, D::Error> {
+        d.deserialize_any(self)
+    }
+
+    fn visit_f64<E: de::Error>(self, value: f64) -> Result<Self::Value, E> {
+        Ok(hpds_format::parse_java_float(
+            &hpds_format::java_double_to_string(value),
+        ))
+    }
+
+    fn visit_u64<E: de::Error>(self, value: u64) -> Result<Self::Value, E> {
+        Ok(Some(value as f32))
+    }
+
+    fn visit_i64<E: de::Error>(self, value: i64) -> Result<Self::Value, E> {
+        Ok(Some(value as f32))
+    }
+
+    fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
+        hpds_format::jackson_string_float(value).map_err(|error| match error {
+            hpds_format::StringDoubleError::TooLong(too_long) => E::custom(too_long),
+            hpds_format::StringDoubleError::Invalid => {
+                E::invalid_value(de::Unexpected::Str(value), &self)
+            }
+        })
+    }
+}
+
+fn java_float<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<f32>, D::Error> {
+    deserializer.deserialize_any(JavaFloat)
 }
 
 /// `Boolean` as Jackson 2.21's `NumberDeserializers.BooleanDeserializer` reads it with the
@@ -1219,7 +1271,7 @@ mod tests {
                 GenomicFilter::default(),
                 GenomicFilter {
                     key: Some("k".into()),
-                    values: Some(vec!["v".into()]),
+                    values: Some(vec![None, Some("v".into())]),
                     ..GenomicFilter::default()
                 }
             ]
@@ -1671,6 +1723,79 @@ mod tests {
             refused(text);
             assert!(parse_strict(text.as_bytes()).is_err(), "{text}");
         }
+    }
+
+    /// The genomic bounds of `query`'s only genomic filter as float bits, read from a request
+    /// body holding `query` as an object and from `query` sent as a string.
+    fn genomic_bounds(query: &str) -> [(Option<u32>, Option<u32>); 2] {
+        let bits = |q: Query| {
+            let f = &q.genomic_filters[0];
+            (f.min.map(f32::to_bits), f.max.map(f32::to_bits))
+        };
+        let envelope = parse_request_body(format!(r#"{{"query":{query}}}"#).as_bytes()).unwrap();
+        let object: Query = serde_json::from_value(envelope["query"].clone()).unwrap();
+        [
+            bits(object),
+            bits(Query::from_json(query.as_bytes()).unwrap()),
+        ]
+    }
+
+    /// Mirrors probes sent to the harmonization service: a decimal near the
+    /// midpoint above the stored key `0x39ae6e3d` (`0.0003327`) reads as the key in an object
+    /// query, through the double's `Double.toString`, and as the float above it in a string
+    /// query or as a string; just below the midpoint it reads as the key everywhere.
+    #[test]
+    fn genomic_bounds_read_as_java_floats_on_both_paths() {
+        let key = 0x39ae_6e3d_u32;
+        let above = "0.0003327000158606097102165222167968750001";
+        let below = "0.0003327000158606097102165222167968749999";
+        let filter = |min: &str, max: &str| {
+            format!(
+                r#"{{"expectedResultType":"COUNT","genomicFilters":[{{"key":"Variant_frequency_in_gnomAD","min":{min},"max":{max}}}]}}"#
+            )
+        };
+        assert_eq!(
+            genomic_bounds(&filter(above, "1")),
+            [
+                (Some(key), Some(1.0_f32.to_bits())),
+                (Some(key + 1), Some(1.0_f32.to_bits()))
+            ]
+        );
+        assert_eq!(
+            genomic_bounds(&filter(below, "-0")),
+            [(Some(key), Some(0)), (Some(key), Some(0))]
+        );
+        let quoted = format!("\"{above}\"");
+        assert_eq!(
+            genomic_bounds(&filter(&quoted, "-0.0")),
+            [
+                (Some(key + 1), Some(0x8000_0000)),
+                (Some(key + 1), Some(0x8000_0000))
+            ]
+        );
+        let infinity = f32::INFINITY.to_bits();
+        for (min, max) in [
+            ("1e39", "1e309"),
+            ("\"Infinity\"", "340282357000000000000000000000000000000"),
+        ] {
+            assert_eq!(
+                genomic_bounds(&filter(min, max)),
+                [(Some(infinity), Some(infinity)); 2],
+                "{min} {max}"
+            );
+        }
+        assert_eq!(
+            genomic_bounds(&filter("16777217", "null")),
+            [(Some(16_777_216.0_f32.to_bits()), None); 2]
+        );
+        let text = r#"{"expectedResultType":"COUNT","phenotypicClause":{"phenotypicFilterType":"FILTER","conceptPath":"a","min":0.1},"genomicFilters":[{"key":"k","min":0.1}]}"#;
+        let q = Query::from_json(text.as_bytes()).unwrap();
+        let Some(PhenotypicClause::Filter(f)) = &q.phenotypic_clause else {
+            panic!("{q:?}")
+        };
+        assert_eq!(f.min, Some(0.1_f64), "a phenotypic bound stays a double");
+        assert_eq!(q.genomic_filters[0].min, Some(0.1_f32));
+        refused(r#"{"expectedResultType":"COUNT","genomicFilters":[{"key":"k","min":"1f"}]}"#);
     }
 
     #[test]

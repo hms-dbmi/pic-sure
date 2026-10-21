@@ -10,18 +10,21 @@ use axum::http::header::{CONTENT_ENCODING, CONTENT_TYPE, VARY};
 use axum::http::{HeaderMap, HeaderValue};
 use axum::response::{IntoResponse, Response};
 use hpds_format::java_double_to_string;
-use hpds_query::SummaryColumnMeta;
+use hpds_query::{InfoSearchEntry, SummaryColumnMeta};
 use serde_json::Value;
 
 use crate::encoding::{GZIP_LEVEL, MIN_GZIP_BYTES, STORED_GZIP_LEVEL, accepts_gzip, gzip};
 use crate::envelope::read_envelope;
 use crate::error::ApiError;
+use crate::genomic::GenomicStatus;
 use crate::state::AppState;
 
 const JSON: &str = "application/json";
 
 const BODY_START: &str = r#"{"results":{"phenotypes":"#;
 const BODY_INFO: &str = r#","info":{}},"searchQuery":"#;
+const INFO_START: &str = r#","info":"#;
+const INFO_END: &str = r#"},"searchQuery":"#;
 
 /// The merged dictionary prepared for search once at startup: lowercase copies of every
 /// concept path and categorical value, so a search compares without allocating, and the two
@@ -139,17 +142,23 @@ impl SearchIndex {
     }
 
     /// The `SearchResults` body of [`search`] for `term`, `None` for a null or missing
-    /// `query`. The answers to `None` and to the empty term are the ones built at startup,
-    /// shared rather than copied.
+    /// `query`, with an empty `info` block. The answers to `None` and to the empty term are
+    /// the ones built at startup, shared rather than copied.
     pub fn render(&self, term: Option<String>) -> Bytes {
-        match term {
-            None => self.whole_dictionary.clone(),
-            Some(term) if term.is_empty() => self.every_concept.clone(),
-            Some(term) => Bytes::from(self.render_matches(&term)),
+        self.render_with_info(term, None)
+    }
+
+    /// [`SearchIndex::render`] with `info`, the rendered JSON object of the genomic `info`
+    /// block ([`render_info`]), in place of the empty one. A null term never has one.
+    pub fn render_with_info(&self, term: Option<String>, info: Option<&str>) -> Bytes {
+        match (term, info) {
+            (None, _) => self.whole_dictionary.clone(),
+            (Some(term), None) if term.is_empty() => self.every_concept.clone(),
+            (Some(term), info) => Bytes::from(self.render_matches(&term, info.unwrap_or("{}"))),
         }
     }
 
-    fn render_matches(&self, term: &str) -> Vec<u8> {
+    fn render_matches(&self, term: &str, info: &str) -> Vec<u8> {
         let needle = term.to_lowercase();
         let matching: Vec<&SearchEntry> = self
             .entries
@@ -159,8 +168,9 @@ impl SearchIndex {
         let mut query = String::new();
         push_string(&mut query, term);
         let members: usize = matching.iter().map(|entry| entry.member.len() + 1).sum();
-        let mut out =
-            Vec::with_capacity(BODY_START.len() + BODY_INFO.len() + members + query.len() + 3);
+        let mut out = Vec::with_capacity(
+            BODY_START.len() + BODY_INFO.len() + info.len() + members + query.len() + 3,
+        );
         out.extend_from_slice(BODY_START.as_bytes());
         out.push(b'{');
         for (i, entry) in matching.iter().enumerate() {
@@ -170,7 +180,9 @@ impl SearchIndex {
             out.extend_from_slice(&self.every_concept[entry.member.clone()]);
         }
         out.push(b'}');
-        out.extend_from_slice(BODY_INFO.as_bytes());
+        out.extend_from_slice(INFO_START.as_bytes());
+        out.extend_from_slice(info.as_bytes());
+        out.extend_from_slice(INFO_END.as_bytes());
         out.extend_from_slice(query.as_bytes());
         out.push(b'}');
         out
@@ -181,12 +193,24 @@ impl SearchIndex {
     /// are compressed at [`STORED_GZIP_LEVEL`] the first time a client asks and kept; any
     /// other answer is compressed at [`GZIP_LEVEL`].
     pub fn answer(&self, term: Option<String>, gzip_accepted: bool) -> SearchBody {
-        let stored = match &term {
-            None => Some(&self.whole_dictionary_gzip),
-            Some(term) if term.is_empty() => Some(&self.every_concept_gzip),
-            Some(_) => None,
+        self.answer_with_info(term, None, gzip_accepted)
+    }
+
+    /// [`SearchIndex::answer`] with the genomic `info` block `info`
+    /// ([`SearchIndex::render_with_info`]). An answer with an `info` block is never one of
+    /// the two stored ones.
+    pub fn answer_with_info(
+        &self,
+        term: Option<String>,
+        info: Option<&str>,
+        gzip_accepted: bool,
+    ) -> SearchBody {
+        let stored = match (&term, info) {
+            (None, _) => Some(&self.whole_dictionary_gzip),
+            (Some(term), None) if term.is_empty() => Some(&self.every_concept_gzip),
+            _ => None,
         };
-        let bytes = self.render(term);
+        let bytes = self.render_with_info(term, info);
         if !gzip_accepted || bytes.len() < MIN_GZIP_BYTES {
             return SearchBody {
                 bytes,
@@ -206,9 +230,36 @@ impl SearchIndex {
     }
 }
 
+/// The genomic `info` block as Java's `TreeMap` of `ImmutableMap`s writes it:
+/// `{<key>:{"description":...,"values":[...],"continuous":...},...}` in the entries' order.
+pub fn render_info(entries: &[InfoSearchEntry]) -> String {
+    let mut out = String::from("{");
+    for (i, entry) in entries.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        push_string(&mut out, &entry.key);
+        out.push_str(r#":{"description":"#);
+        push_string(&mut out, &entry.description);
+        out.push_str(r#","values":["#);
+        for (j, value) in entry.values.iter().enumerate() {
+            if j > 0 {
+                out.push(',');
+            }
+            push_string(&mut out, value);
+        }
+        out.push_str(r#"],"continuous":"#);
+        out.push_str(if entry.continuous { "true" } else { "false" });
+        out.push('}');
+    }
+    out.push('}');
+    out
+}
+
 /// `POST /search`: the concepts of the merged dictionary matching the request's `query`, as
-/// `SearchResults`. Not scoped by consent, as in Java: a caller sees concepts and category
-/// values of every partition.
+/// `SearchResults`, and the genomic INFO columns matching it. Not scoped by consent, as in
+/// Java: a caller sees concepts, category values and INFO values of every partition and
+/// every genomic node.
 ///
 /// The term is `query` as Java's `toString` writes it, lowercased. A concept matches when its
 /// lowercased path contains the term, or when it is categorical and one of its lowercased
@@ -216,6 +267,16 @@ impl SearchIndex {
 /// body is `{"results":{"phenotypes":{<path>:<SummaryColumnMeta>...},"info":{}},
 /// "searchQuery":<term as sent>}`, each concept as [`SearchIndex::build`] renders it. The
 /// scan, the rendering and any compression run on tokio's blocking pool.
+///
+/// With a genomic store served and a term given (the empty one included), `info` holds each
+/// INFO column whose description or key contains the lowercased term
+/// ([`hpds_query::Engine::search_info`]): its description, its values in Java's `HashSet`
+/// order (none for a continuous column) and whether it is continuous, keyed in Java string
+/// order. A matching categorical column some genomic node lacks is a 400, where Java fails.
+/// With genomic data configured but not opened, a request with a term is a 503, since which
+/// INFO columns match it cannot be known. Once the genomic store changed on disk, a term
+/// that matches no INFO column in the index held in memory answers with an empty `info`,
+/// and one that matches some column is a 503, since its values may no longer be read.
 ///
 /// With a null or missing `query`, Java serializes its whole dictionary's entry set, so
 /// `phenotypes` is an array of one-entry objects `{<path>:<SummaryColumnMeta>}` for every
@@ -238,21 +299,40 @@ pub async fn search(
     body: Bytes,
 ) -> Result<Response, ApiError> {
     let mut fields = read_envelope(&body)?;
-    state.engine()?;
+    let engine = Arc::clone(state.engine()?);
     let index = Arc::clone(state.search_index());
     let term = match fields.remove("query") {
         None | Some(Value::Null) => None,
         Some(term) => Some(java_to_string(&term)),
     };
+    state.check_genomic(term.is_some())?;
+    let with_info = term.is_some() && state.genomic_status() == GenomicStatus::Served;
     let negotiated =
         state.search_gzip() && headers.contains_key(axum::http::header::ACCEPT_ENCODING);
     let gzip_accepted = negotiated && accepts_gzip(&headers);
-    let answer = tokio::task::spawn_blocking(move || index.answer(term, gzip_accepted))
-        .await
-        .map_err(|error| {
-            tracing::error!(%error, "search task failed");
-            ApiError::internal()
-        })?;
+    let answer = tokio::task::spawn_blocking(move || {
+        let info = match &term {
+            Some(term) if with_info => Some(render_info(&match engine.search_info(term) {
+                Err(hpds_query::QueryError::GenomicStoreChanged { .. })
+                    if !engine.search_info_matches(term) =>
+                {
+                    Vec::new()
+                }
+                found => found?,
+            })),
+            _ => None,
+        };
+        Ok::<_, hpds_query::QueryError>(index.answer_with_info(
+            term,
+            info.as_deref(),
+            gzip_accepted,
+        ))
+    })
+    .await
+    .map_err(|error| {
+        tracing::error!(%error, "search task failed");
+        ApiError::internal()
+    })??;
     let varies = negotiated && (answer.gzipped || answer.bytes.len() >= MIN_GZIP_BYTES);
     let mut response = ([(CONTENT_TYPE, JSON)], answer.bytes).into_response();
     let response_headers = response.headers_mut();
@@ -265,12 +345,23 @@ pub async fn search(
     Ok(response)
 }
 
-/// `GET /search/values/`: genomic concept values. This engine holds no genomic data, so the
-/// answer is always an empty `PaginatedSearchResult`, `{"results":[],"page":<page>,"total":0}`.
+/// `GET /search/values/`: the values of the INFO column `genomicConceptPath` containing
+/// `query`, ignoring case, as Java's `PaginatedSearchResult`:
+/// `{"results":[...],"page":<page>,"total":<matching values>}`.
+///
+/// The values are in Java's `HashSet` order ([`hpds_query::Engine::search_info_values`]) and
+/// paged as Java's `Paginator` pages them, with its `int` arithmetic: page `p` of size `s`
+/// is the values from `(p - 1) * s` to `p * s`, each capped at the total. Where those
+/// products overflow `int` and Java's `subList` throws, the request is a 400; where they
+/// overflow and still form a range, that range is answered, as Java answers it.
 ///
 /// Java requires the `genomicConceptPath`, `query`, `page` and `size` parameters; a missing
-/// one, a page or size that is not an integer, or one below 1 is a 400.
+/// one, a page or size that is not an integer, or one below 1 is a 400. A column some
+/// genomic node lacks, an unknown one included, is a 400, where Java fails. Without genomic
+/// data configured the answer is `{"results":[],"page":<page>,"total":0}`, as Java's no-op
+/// processor gives; with genomic data configured but not served it is a 503.
 pub async fn search_values(
+    State(state): State<AppState>,
     QueryParams(params): QueryParams<HashMap<String, String>>,
 ) -> Result<Response, ApiError> {
     for name in ["genomicConceptPath", "query"] {
@@ -281,9 +372,48 @@ pub async fn search_values(
         }
     }
     let page = positive_param(&params, "page", "Page")?;
-    positive_param(&params, "size", "Size")?;
-    let body = format!(r#"{{"results":[],"page":{page},"total":0}}"#);
+    let size = positive_param(&params, "size", "Size")?;
+    state.check_genomic(true)?;
+    if state.genomic_status() == GenomicStatus::Off {
+        let body = format!(r#"{{"results":[],"page":{page},"total":0}}"#);
+        return Ok(([(CONTENT_TYPE, JSON)], body).into_response());
+    }
+    let engine = Arc::clone(state.engine()?);
+    let column = params["genomicConceptPath"].clone();
+    let query = params["query"].clone();
+    let values = tokio::task::spawn_blocking(move || engine.search_info_values(&column, &query))
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "search values task failed");
+            ApiError::internal()
+        })??;
+    let range = java_page(values.len(), page, size).ok_or_else(|| {
+        ApiError::bad_request(format!(
+            "page {page} of size {size} is outside the int range Java pages in"
+        ))
+    })?;
+    let mut body = String::from(r#"{"results":["#);
+    for (i, value) in values[range].iter().enumerate() {
+        if i > 0 {
+            body.push(',');
+        }
+        push_string(&mut body, value);
+    }
+    body.push_str(&format!(r#"],"page":{page},"total":{}}}"#, values.len()));
     Ok(([(CONTENT_TYPE, JSON)], body).into_response())
+}
+
+/// The range `Paginator.paginate` takes from a list of `len` values for `page` and `size`,
+/// both at least 1, with Java's wrapping `int` products, or `None` where Java's
+/// `List.subList` throws (a negative start, or an end before the start).
+pub fn java_page(len: usize, page: i32, size: i32) -> Option<std::ops::Range<usize>> {
+    let len = i32::try_from(len).unwrap_or(i32::MAX);
+    let start = page.wrapping_sub(1).wrapping_mul(size).min(len);
+    let end = page.wrapping_mul(size).min(len);
+    if start < 0 || end < start {
+        return None;
+    }
+    Some(start as usize..end as usize)
 }
 
 fn positive_param(
@@ -343,6 +473,29 @@ pub fn java_to_string(value: &Value) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn pages_follow_javas_int_arithmetic() {
+        assert_eq!(java_page(10, 1, 3), Some(0..3));
+        assert_eq!(java_page(10, 4, 3), Some(9..10));
+        assert_eq!(java_page(10, 5, 3), Some(10..10));
+        assert_eq!(java_page(10, 1, i32::MAX), Some(0..10));
+        assert_eq!(
+            java_page(10, 2, i32::MAX),
+            None,
+            "page * size wraps negative, below the start"
+        );
+        assert_eq!(
+            java_page(10, 3, 1 << 30),
+            None,
+            "(page - 1) * size wraps to i32::MIN"
+        );
+        assert_eq!(
+            java_page(10, 65_537, 65_536),
+            Some(0..10),
+            "(page - 1) * size wraps to 0 and page * size to 65,536"
+        );
+    }
 
     #[test]
     fn to_string_follows_java_collections() {

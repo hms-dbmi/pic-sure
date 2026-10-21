@@ -13,6 +13,7 @@ import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionResponse;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionTokenRejectedException;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import edu.harvard.hms.dbmi.avillach.gateway.error.GatewayErrors;
@@ -22,14 +23,15 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * Performs per-request PSAMA token introspection. Runs after {@code OpenAccessFilter} (no-bearer short-circuit) and {@code BufferingFilter}
- * (body buffering). The shared {@link PublicEndpointPolicy} exempts intentionally public routes from both authentication filters. Every
- * other request must carry a real {@code Bearer} token (open access is handled entirely upstream by {@code OpenAccessFilter}); the
- * introspection request sends the decoded path that Spring resolved as the root-level {@code "Target Service"}. It does not send or mutate
- * the request body. On success this filter stashes {@code X-User-*} request attributes, including privileges, for
- * {@code IdentityPropagationFilter} to turn into outbound headers. On token refresh it stashes {@link #ATTR_REFRESHED_TOKEN} for
- * {@code TokenRefreshResponseFilter}. An {@code active:false} response denies access. Introspection infrastructure failures
- * ({@link PicsureException}, or any transport error) fail closed: the mapped error is written and the request is never forwarded.
+ * Performs per-request PSAMA token introspection. Runs after {@code OpenAccessFilter} (the open-access short-circuit for requests with no
+ * bearer or with a PSAMA key as the bearer) and {@code BufferingFilter} (body buffering). The shared {@link PublicEndpointPolicy} exempts
+ * intentionally public routes from both authentication filters. Every other request must carry a real {@code Bearer} token (open access is
+ * handled entirely upstream by {@code OpenAccessFilter}); the introspection request sends the decoded path that Spring resolved as the
+ * root-level {@code "Target Service"}. It does not send or mutate the request body. On success this filter stashes {@code X-User-*} request
+ * attributes, including privileges, for {@code IdentityPropagationFilter} to turn into outbound headers. On token refresh it stashes
+ * {@link #ATTR_REFRESHED_TOKEN} for {@code TokenRefreshResponseFilter}. An {@code active:false} response denies access. Introspection
+ * infrastructure failures ({@link PicsureException}, or any transport error) fail closed: the mapped error is written and the request is
+ * never forwarded.
  */
 public class PsamaIntrospectionFilter extends OncePerRequestFilter {
 
@@ -62,9 +64,9 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
             return;
         }
 
-        // OpenAccessFilter (order 20) already authenticated this no-bearer request via PSAMA's open-access
-        // validate; demanding a Bearer token here would veto that grant. Only its dedicated grant attribute
-        // skips introspection -- a user-id attribute alone (any other identity source) must still be introspected.
+        // OpenAccessFilter (order 20) already authenticated this request (no bearer, or a PSAMA key as the bearer) via
+        // PSAMA's open-access validate; demanding a login token here would veto that grant. Only its dedicated grant
+        // attribute skips introspection -- a user-id attribute alone (any other identity source) must still be introspected.
         if (Boolean.TRUE.equals(req.getAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_GRANTED))) {
             chain.doFilter(req, resp);
             return;
@@ -95,11 +97,13 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
             // flattening it into a generic 502 below.
             mapPicsureException(resp, e);
             return;
+        } catch (IntrospectionTokenRejectedException e) {
+            log.error(e.getMessage());
+            introspectionFailed(resp, "introspection_token_rejected");
+            return;
         } catch (Exception e) {
             log.error("PSAMA introspection failed", e);
-            audit.put("auth_result", "failure");
-            audit.put("auth_failure_reason", "introspection_unreachable");
-            GatewayErrors.write(resp, HttpStatus.BAD_GATEWAY, "introspection_unreachable", "Token introspection failed.");
+            introspectionFailed(resp, "introspection_unreachable");
             return;
         }
 
@@ -128,6 +132,12 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
             req.setAttribute(ATTR_REFRESHED_TOKEN, intro.token());
         }
         chain.doFilter(req, resp);
+    }
+
+    private void introspectionFailed(HttpServletResponse resp, String reason) throws IOException {
+        audit.put("auth_result", "failure");
+        audit.put("auth_failure_reason", reason);
+        GatewayErrors.write(resp, HttpStatus.BAD_GATEWAY, "introspection_unreachable", "Token introspection failed.");
     }
 
     private void denied(HttpServletResponse resp, String reason, String message) throws IOException {

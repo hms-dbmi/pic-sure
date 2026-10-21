@@ -613,3 +613,56 @@ fn a_bucket_the_index_lacks_keeps_no_carriers() {
     let far = lines.iter().position(|l| *l == "B\tchr1\t3").unwrap();
     assert_eq!(lines[far + 2], "C\t");
 }
+
+#[test]
+fn keeps_special_floats_and_several_partitions_of_a_compressed_index() {
+    let mut keys: Vec<String> = (0..2500)
+        .map(|i| format!("{}", i as f32 * 0.25 - 300.0))
+        .collect();
+    keys.extend(["NaN", "-0.0", "0.0", "Infinity", "-Infinity"].map(String::from));
+    keys.sort_by(|a, b| java_string_cmp(a, b));
+    let leaked: Vec<&'static str> = keys
+        .iter()
+        .map(|k| &*Box::leak(k.clone().into_boxed_str()))
+        .collect();
+    let mut b = group_b_chr1();
+    b.infos.push(Info {
+        column: "Variant_frequency",
+        description: "Description=\"frequency\"",
+        keys: leaked.iter().map(|&k| (k, vec![0])).collect(),
+        ranges: Some(java_ranges(&leaked)),
+    });
+    let (run, result) = migrate("localPatientDistributed", &[b]);
+    assert!(result.unwrap().compressed_index_port_differences.is_empty());
+    let text = dump(&run.out);
+    let ranges: Vec<&str> = text.lines().filter(|l| l.starts_with("R\t")).collect();
+    assert_eq!(ranges.len(), 4, "three partitions: the first stored twice");
+    assert!(
+        ranges.iter().any(|r| r.starts_with("R\to:ff800000\t")),
+        "-Infinity opens the first partition"
+    );
+    assert!(
+        ranges.iter().any(|r| r.contains("\tc:7fc00000\t")),
+        "NaN closes the last partition"
+    );
+    let entries = ranges.join(";");
+    let index = |key: &str| keys.iter().position(|k| k == key).unwrap();
+    assert!(
+        entries.contains(&format!("80000000={}", index("-0.0"))),
+        "-0.0 keeps its own entry"
+    );
+    let mut zeros = [index("0"), index("0.0")];
+    zeros.sort_unstable();
+    assert!(
+        entries.contains(&format!("00000000={},{}", zeros[0], zeros[1])),
+        "0 and 0.0 share one entry"
+    );
+    assert!(
+        entries.contains("7f800000="),
+        "Infinity is inside the last partition"
+    );
+    assert!(
+        !entries.contains("7fc00000="),
+        "the last value of a partition is in no map"
+    );
+}

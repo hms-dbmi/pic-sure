@@ -41,10 +41,20 @@
 //! - Any other number that overflows a double is accepted by Jackson, which ignores it in a
 //!   field it ignores; `serde_json` refuses the whole text. The token is rewritten to a JSON
 //!   string holding its own text, so an ignored field stays ignored.
+//! - A `min` or `max` of a genomic filter is a `Float`, which Jackson reads from the text it
+//!   sees, rounded once to the nearest `f32` (`Float.parseFloat`). In a string query that text
+//!   is the token as written. In an object query the untyped value of a decimal or exponent
+//!   token is a double, written back with `Double.toString`, so the float is the one nearest
+//!   that text, which can differ from the one nearest the token. An integer token is the
+//!   integer rounded to a float on both paths, and `-0` is zero. Probes against the
+//!   harmonization service confirm both paths. The token is rewritten to a JSON string
+//!   holding the exact float, which the model reads back unchanged.
 //!
-//! The positions come from key names alone. That is sound for the v3 model: every key named
-//! above is a field of that type wherever it may appear in a query, the model refuses unknown
-//! fields inside a query, and fields outside it (the envelope's extras) are ignored either way.
+//! The positions come from key names, and for `min` and `max` from whether the object is an
+//! element of `genomicFilters`. That is sound for the v3 model: every other key named above is
+//! a field of that type wherever it may appear in a query, `min` and `max` are a phenotypic
+//! filter's `Double`s everywhere but in a genomic filter, the model refuses unknown fields
+//! inside a query, and fields outside it (the envelope's extras) are ignored either way.
 //!
 //! The length check applies to every number, since Jackson applies it while reading the whole
 //! body.
@@ -54,7 +64,7 @@
 
 use std::borrow::Cow;
 
-use hpds_format::{MAX_NUMBER_DIGITS, NumberTooLong, java_double_to_string};
+use hpds_format::{MAX_NUMBER_DIGITS, NumberTooLong, java_double_to_string, parse_java_float};
 
 /// Where the JSON text being read comes from, which decides the two rules that differ between
 /// the service's two ways of reading a query.
@@ -71,8 +81,12 @@ pub enum Source {
 /// What the v3 model reads the value of a key as, for the keys this module acts on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum KeyKind {
-    /// `min` or `max`: a `Double`.
+    /// `min` or `max` outside a genomic filter: a `Double`.
     Bound,
+    /// `min` or `max` of a genomic filter: a `Float`.
+    FloatBound,
+    /// `genomicFilters`: a list of genomic filters.
+    GenomicFilters,
     /// `conceptPath`, `key` or `value`: a `String`.
     Text,
     /// `select` or `values`: a list of `String`.
@@ -86,12 +100,16 @@ enum KeyKind {
 /// Where the scanner is inside one open object or array.
 #[derive(Debug, Clone, Copy)]
 enum Frame {
-    /// An object: whether the next string is a key, and what the current key's value is read
-    /// as.
-    Object { expects_key: bool, key: KeyKind },
-    /// An array, and whether its elements are read as `String` (the array is the value of a
-    /// [`KeyKind::TextList`] key).
-    Array { text_items: bool },
+    /// An object: whether the next string is a key, what the current key's value is read as,
+    /// and whether the object is a genomic filter.
+    Object {
+        expects_key: bool,
+        key: KeyKind,
+        genomic: bool,
+    },
+    /// An array, whether its elements are read as `String` (the array is the value of a
+    /// [`KeyKind::TextList`] key), and whether they are genomic filters.
+    Array { text_items: bool, genomic: bool },
 }
 
 impl Frame {
@@ -101,8 +119,11 @@ impl Frame {
             Frame::Object {
                 expects_key: false,
                 key,
+                ..
             } => key,
-            Frame::Array { text_items: true } => KeyKind::Text,
+            Frame::Array {
+                text_items: true, ..
+            } => KeyKind::Text,
             _ => KeyKind::Other,
         }
     }
@@ -125,26 +146,33 @@ pub fn java_numbers(json: &[u8], source: Source) -> Result<Cow<'_, [u8]>, Number
         match json[i] {
             b'"' => {
                 let end = string_end(json, i);
-                if let Some(Frame::Object { expects_key, key }) = frames.last_mut()
+                if let Some(Frame::Object {
+                    expects_key,
+                    key,
+                    genomic,
+                }) = frames.last_mut()
                     && *expects_key
                 {
-                    *key = key_kind(&json[i..end]);
+                    *key = key_kind(&json[i..end], *genomic);
                     *expects_key = false;
                 }
                 i = end;
             }
             b'{' => {
+                let genomic = matches!(frames.last(), Some(Frame::Array { genomic: true, .. }));
                 frames.push(Frame::Object {
                     expects_key: true,
                     key: KeyKind::Other,
+                    genomic,
                 });
                 i += 1;
             }
             b'[' => {
-                let text_items = frames
-                    .last()
-                    .is_some_and(|frame| frame.scalar_kind() == KeyKind::TextList);
-                frames.push(Frame::Array { text_items });
+                let kind = frames.last().map(|frame| frame.scalar_kind());
+                frames.push(Frame::Array {
+                    text_items: kind == Some(KeyKind::TextList),
+                    genomic: kind == Some(KeyKind::GenomicFilters),
+                });
                 i += 1;
             }
             b'}' | b']' => {
@@ -152,7 +180,10 @@ pub fn java_numbers(json: &[u8], source: Source) -> Result<Cow<'_, [u8]>, Number
                 i += 1;
             }
             b',' => {
-                if let Some(Frame::Object { expects_key, key }) = frames.last_mut() {
+                if let Some(Frame::Object {
+                    expects_key, key, ..
+                }) = frames.last_mut()
+                {
                     *expects_key = true;
                     *key = KeyKind::Other;
                 }
@@ -189,6 +220,8 @@ pub fn java_numbers(json: &[u8], source: Source) -> Result<Cow<'_, [u8]>, Number
                     .map_or(KeyKind::Other, |frame| frame.scalar_kind());
                 let replacement = if !is_json_number(token) {
                     None
+                } else if kind == KeyKind::FloatBound {
+                    Some(float_bound_replacement(token, source))
                 } else if token == b"-0" && kind != KeyKind::Text {
                     Some(Replacement::Text(b"0"))
                 } else {
@@ -196,9 +229,10 @@ pub fn java_numbers(json: &[u8], source: Source) -> Result<Cow<'_, [u8]>, Number
                         KeyKind::Bound => bound_replacement(token),
                         KeyKind::Text => Some(text_replacement(token, source)),
                         KeyKind::Not => wide_integer(token).then_some(Replacement::Text(b"true")),
-                        KeyKind::TextList | KeyKind::Other => {
+                        KeyKind::TextList | KeyKind::GenomicFilters | KeyKind::Other => {
                             overflow(token).map(|_| Replacement::Quoted)
                         }
+                        KeyKind::FloatBound => None,
                     }
                 };
                 if let Some(replacement) = replacement {
@@ -254,13 +288,16 @@ fn string_end(json: &[u8], start: usize) -> usize {
     json.len()
 }
 
-/// What the value of the quoted key token is read as, escapes decoded.
-fn key_kind(token: &[u8]) -> KeyKind {
+/// What the value of the quoted key token is read as, escapes decoded, in an object that is a
+/// genomic filter when `genomic` is set.
+fn key_kind(token: &[u8], genomic: bool) -> KeyKind {
     let kind = |key: &[u8]| match key {
+        b"min" | b"max" if genomic => KeyKind::FloatBound,
         b"min" | b"max" => KeyKind::Bound,
         b"conceptPath" | b"key" | b"value" => KeyKind::Text,
         b"select" | b"values" => KeyKind::TextList,
         b"not" => KeyKind::Not,
+        b"genomicFilters" => KeyKind::GenomicFilters,
         _ => KeyKind::Other,
     };
     if token.contains(&b'\\') {
@@ -386,6 +423,36 @@ fn overflow(token: &[u8]) -> Option<f64> {
     }
     let value: f64 = std::str::from_utf8(token).ok()?.parse().ok()?;
     value.is_infinite().then_some(value)
+}
+
+/// What a genomic filter's `min` or `max` number token becomes, read from `source`: a JSON
+/// string holding the float Jackson reads (see the module docs), as text that
+/// `Float.parseFloat` reads back as exactly that float.
+fn float_bound_replacement(token: &[u8], source: Source) -> Replacement {
+    let text = std::str::from_utf8(token).unwrap_or_default();
+    let integer = !token.iter().any(|b| matches!(b, b'.' | b'e' | b'E'));
+    let value = if integer {
+        parse_java_float(text).map(|v| if v == 0.0 { 0.0 } else { v })
+    } else if source == Source::QueryText {
+        parse_java_float(text)
+    } else {
+        text.parse::<f64>()
+            .ok()
+            .and_then(|double| parse_java_float(&java_double_to_string(double)))
+    };
+    Replacement::QuotedText(exact_float_text(value.unwrap_or(f32::NAN)))
+}
+
+/// Text that Jackson's string coercion of a `Float` reads as exactly `value`: `Infinity` or
+/// `-Infinity`, `NaN`, or the shortest decimal that rounds back to `value`.
+fn exact_float_text(value: f32) -> String {
+    if value.is_nan() {
+        "NaN".to_owned()
+    } else if value.is_infinite() {
+        if value > 0.0 { "Infinity" } else { "-Infinity" }.to_owned()
+    } else {
+        format!("{value:?}")
+    }
 }
 
 /// What a `min` or `max` number token becomes, when Jackson reads it differently from
@@ -566,6 +633,29 @@ mod tests {
         assert_eq!(
             NumberTooLong { digits: 1001 }.to_string(),
             "Number value length (1001) exceeds the maximum allowed (1000, from `StreamReadConstraints.getMaxNumberLength()`)"
+        );
+    }
+
+    #[test]
+    fn genomic_bounds_become_the_exact_float_jackson_reads() {
+        let json = r#"{"genomicFilters":[{"key":"k","min":1.5,"max":-0},{"max":1e39,"min":-1e309}],"phenotypicClause":{"min":-0,"max":1.5},"x":{"genomicFilters":[{"y":{"min":1.5}}]}}"#;
+        assert_eq!(
+            rewritten(json),
+            r#"{"genomicFilters":[{"key":"k","min":"1.5","max":"0.0"},{"max":"Infinity","min":"-Infinity"}],"phenotypicClause":{"min":0,"max":1.5},"x":{"genomicFilters":[{"y":{"min":1.5}}]}}"#
+        );
+        let near = r#"{"genomicFilters":[{"min":0.0003327000158606097102165222167968750001}]}"#;
+        assert_eq!(
+            rewritten_from(near, Source::QueryText),
+            r#"{"genomicFilters":[{"min":"0.00033270003"}]}"#
+        );
+        assert_eq!(
+            rewritten_from(near, Source::RequestBody),
+            r#"{"genomicFilters":[{"min":"0.0003327"}]}"#
+        );
+        let wide = format!(r#"{{"genomicFilters":[{{"min":1{}}}]}}"#, "0".repeat(40));
+        assert_eq!(
+            rewritten(&wide),
+            r#"{"genomicFilters":[{"min":"Infinity"}]}"#
         );
     }
 

@@ -85,6 +85,11 @@
 		</dependency>
 	</dependencies>
 
+	<properties>
+		<!-- Empty default so @{argLine} below resolves when JaCoCo is not attached. -->
+		<argLine></argLine>
+	</properties>
+
 	<build>
 		<plugins>
 			<plugin>
@@ -95,7 +100,8 @@
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
 				<configuration>
-					<argLine>-Dnet.bytebuddy.experimental=true</argLine>
+					<!-- @{argLine} keeps the JaCoCo agent from the Diff coverage job. -->
+					<argLine>@{argLine} -Dnet.bytebuddy.experimental=true</argLine>
 				</configuration>
 			</plugin>
 		</plugins>

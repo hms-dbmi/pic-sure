@@ -79,6 +79,25 @@ change; `up.sh` never rewrites it.
 read-only and the results directory is the one place the container writes query output. Keeping
 it outside also means a reload that replaces the store files never touches or deletes results.
 
+## A second store and a genomic store
+
+Two settings let `up.sh` serve a store other than `hpds-rs/`, for example a v5 store built
+beside the one the running service holds:
+
+- `HPDS_RS_STORE_DIR` names the phenotype store directory mounted at `/opt/local/hpds`, in place
+  of `$DOCKER_CONFIG_DIR/hpds-rs`. Its own `hpds-rs.env` is the one read and written.
+- `HPDS_RS_GENOMIC_DIR` names a genomic store (`geno.index`, `geno.blocks`, `.generation`),
+  built by `hpds-etl genomic-migrate` or `genomic-load` and sealed with the phenotype store's
+  key. It is mounted read-only at `/opt/local/genomic` and `HPDS_GENOMIC_DATA_DIRECTORY` is set
+  to it. `up.sh` refuses a directory inside `$DOCKER_CONFIG_DIR/hpds` or the phenotype store,
+  one without `geno.index`, and an `hpds-rs.env` that does not set `hpds.genomicProcessor.impl`
+  (or `HPDS_GENOMICPROCESSOR_IMPL`). The all-in-one's Java `hpds.env` spells it
+  `HPDS_GENOMIC_PROCESSOR_IMPL`, which `hpds-rs` does not read, so that spelling is refused too.
+
+A genomic store the service cannot serve (another key, another layout) leaves health DOWN, so
+the health gate fails and the running `hpds-rs` keeps serving. `test/up-genomic.sh` checks the
+mounts and refusals with dry runs only.
+
 ## Switching the query service
 
 The query service reads `HPDS_AUTH_URL` and `HPDS_OPEN_URL` from `query.env` only when its

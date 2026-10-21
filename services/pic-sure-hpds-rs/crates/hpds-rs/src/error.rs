@@ -1,7 +1,8 @@
 //! The plain-text error responses.
 
+use axum::http::HeaderValue;
 use axum::http::StatusCode;
-use axum::http::header::CONTENT_TYPE;
+use axum::http::header::{CONTENT_TYPE, RETRY_AFTER};
 use axum::response::{IntoResponse, Response};
 use hpds_query::QueryError;
 
@@ -22,6 +23,8 @@ pub struct ApiError {
     pub status: StatusCode,
     /// What went wrong.
     pub message: String,
+    /// Seconds sent in a `Retry-After` header, when the client may retry then.
+    pub retry_after: Option<u64>,
 }
 
 impl ApiError {
@@ -55,21 +58,34 @@ impl ApiError {
         Self::new(StatusCode::INTERNAL_SERVER_ERROR, SERVER_ERROR_MESSAGE)
     }
 
+    /// This error with a `Retry-After` header of `seconds`.
+    #[must_use]
+    pub fn with_retry_after(self, seconds: u64) -> Self {
+        ApiError {
+            retry_after: Some(seconds),
+            ..self
+        }
+    }
+
     fn new(status: StatusCode, message: impl Into<String>) -> Self {
         ApiError {
             status,
             message: message.into(),
+            retry_after: None,
         }
     }
 }
 
 impl From<QueryError> for ApiError {
     /// A 400 carrying the error's message when [`QueryError::is_client_error`] holds, a 503
-    /// saying the service must restart for [`QueryError::StoreChanged`] (the data directory
-    /// is logged, not sent), and otherwise a 500 whose detail is logged rather than sent.
+    /// saying the service must restart for [`QueryError::StoreChanged`] and
+    /// [`QueryError::GenomicStoreChanged`] (the directory is logged, not sent), and otherwise a 500 whose detail is logged rather than sent.
     fn from(error: QueryError) -> Self {
         if let QueryError::StoreChanged { .. } = error {
             return ApiError::unavailable(crate::state::STORE_CHANGED_REASON);
+        }
+        if let QueryError::GenomicStoreChanged { .. } = error {
+            return ApiError::unavailable(crate::genomic::GENOMIC_CHANGED_REASON);
         }
         if error.is_client_error() {
             ApiError::bad_request(error.to_string())
@@ -82,11 +98,17 @@ impl From<QueryError> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        (
+        let mut response = (
             self.status,
             [(CONTENT_TYPE, ERROR_CONTENT_TYPE)],
             self.message,
         )
-            .into_response()
+            .into_response();
+        if let Some(seconds) = self.retry_after {
+            response
+                .headers_mut()
+                .insert(RETRY_AFTER, HeaderValue::from(seconds));
+        }
+        response
     }
 }

@@ -17,10 +17,18 @@ pub enum QueryError {
     #[error("{0}")]
     Invalid(String),
 
-    /// The query asks for something this phenotype-only engine does not do: genomic filters,
-    /// variant-spec concept paths, or a genomic result type. The message names the feature.
-    #[error("{0} is not supported by this phenotype-only HPDS")]
+    /// The query asks for something this engine does not do: genomic filters when it serves
+    /// no genomic store. The message names the feature.
+    #[error("{0} is not supported: this HPDS serves no genomic store")]
     Unsupported(String),
+
+    /// A genomic filter Java fails on when it evaluates it (a `null` key or value, a variant
+    /// spec whose position is not a Java `int`, a numeric filter without both bounds or with
+    /// `min` above `max`, and the data-dependent failures the genomic engine names), refused
+    /// whether or not the phenotypic cohort is empty. Java answers these with an error or an
+    /// empty 200; the message says what is wrong.
+    #[error("{0}")]
+    GenomicFilter(String),
 
     /// The store requires consents (`hpds.requireAuthorizationFilter` is on) and the query
     /// carries no consent value. Java throws `MissingConsentsException` from the store, which
@@ -109,6 +117,22 @@ pub enum QueryError {
         source: Arc<FormatError>,
     },
 
+    /// A block of the genomic store could not be read, authenticated, or decoded.
+    #[error("cannot load the genomic {what} of node {node}: {source}")]
+    GenomicBlock {
+        /// The node's group and directory, as `group/dir`.
+        node: String,
+        /// The block: its kind and ordinal.
+        what: String,
+        /// The format error.
+        #[source]
+        source: Arc<FormatError>,
+    },
+
+    /// Writing a streamed answer, such as an excerpt, to its destination failed.
+    #[error("cannot write the answer: {0}")]
+    Output(Arc<std::io::Error>),
+
     /// A blocking task did not finish, for example because it panicked.
     #[error("query task failed: {0}")]
     Task(String),
@@ -123,22 +147,37 @@ pub enum QueryError {
         /// The data directory.
         dir: PathBuf,
     },
+
+    /// The genomic store files were replaced, or a publish into their directory began, after
+    /// the service opened them. Every query that reads the genomic store is refused until the
+    /// service restarts; phenotype-only queries are still answered.
+    #[error(
+        "the genomic store in {dir} changed on disk after this service opened it; restart the service to serve the new store"
+    )]
+    GenomicStoreChanged {
+        /// The genomic data directory.
+        dir: PathBuf,
+    },
 }
 
 impl QueryError {
     /// True when the request is at fault and retrying it unchanged cannot succeed: every
     /// variant except [`QueryError::Open`], [`QueryError::CohortOutsideSelection`],
-    /// [`QueryError::Block`], [`QueryError::StoreInconsistent`], [`QueryError::Task`] and
-    /// [`QueryError::StoreChanged`].
+    /// [`QueryError::Block`], [`QueryError::GenomicBlock`], [`QueryError::StoreInconsistent`],
+    /// [`QueryError::Output`], [`QueryError::Task`], [`QueryError::StoreChanged`] and
+    /// [`QueryError::GenomicStoreChanged`].
     pub fn is_client_error(&self) -> bool {
         !matches!(
             self,
             QueryError::Open { .. }
                 | QueryError::CohortOutsideSelection { .. }
                 | QueryError::Block { .. }
+                | QueryError::GenomicBlock { .. }
                 | QueryError::StoreInconsistent { .. }
+                | QueryError::Output(_)
                 | QueryError::Task(_)
                 | QueryError::StoreChanged { .. }
+                | QueryError::GenomicStoreChanged { .. }
         )
     }
 }

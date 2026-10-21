@@ -46,6 +46,47 @@ enum Command {
     GenomicMigrate(GenomicMigrateArgs),
     /// Write a genomic store in the canonical text form the Java DumpGenomicEq writes.
     GenomicDump(GenomicDumpArgs),
+    /// Build a new genomic store from VCF index files and their VCFs, as the Java
+    /// SplitChromosomeVcfLoader, SplitChromosomeVariantMetadataLoader and
+    /// GenomicDatasetFinalizer build a Java genomic store.
+    GenomicLoad(GenomicLoadArgs),
+}
+
+/// The layouts genomic-load writes, named as hpds.genomicProcessor.impl names them.
+#[derive(Clone, Copy, ValueEnum)]
+enum GenomicLoadMode {
+    /// One group of chromosome nodes.
+    #[value(name = "localDistributed")]
+    LocalDistributed,
+    /// Named groups of chromosome nodes.
+    #[value(name = "localPatientDistributed")]
+    LocalPatientDistributed,
+}
+
+#[derive(Args)]
+struct GenomicLoadArgs {
+    /// The layout of the store.
+    #[arg(long, value_enum)]
+    mode: GenomicLoadMode,
+    /// A VCF index file: `FILE` in localDistributed, `GROUP=FILE` per group in
+    /// localPatientDistributed, in any order. VCF paths in the file resolve against the
+    /// working directory.
+    #[arg(long = "index", required = true)]
+    indexes: Vec<String>,
+    /// Genomic store directory to create. It must not exist.
+    #[arg(long)]
+    out: PathBuf,
+    /// The phenotype store's key file, which seals the genomic store.
+    #[arg(long)]
+    key_file: PathBuf,
+    /// Leave out index samples missing from their VCF's header, which Java gives the
+    /// genotypes of the VCF's last sample, instead of refusing the load.
+    #[arg(long)]
+    skip_missing_samples: bool,
+    /// Worker threads, each loading one node at a time; each holds one node's INFO
+    /// columns and one bucket.
+    #[arg(long)]
+    threads: Option<usize>,
 }
 
 #[derive(Args)]
@@ -391,6 +432,7 @@ fn main() -> ExitCode {
         Command::Dump(args) => run_dump(args),
         Command::GenomicMigrate(args) => run_genomic_migrate(args),
         Command::GenomicDump(args) => run_genomic_dump(args),
+        Command::GenomicLoad(args) => run_genomic_load(args),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -475,6 +517,34 @@ fn run_genomic_migrate(args: GenomicMigrateArgs) -> Result<()> {
         threads: args.threads,
     };
     print_json(&hpds_etl::genomic::migrate::genomic_migrate(&options)?);
+    Ok(())
+}
+
+fn run_genomic_load(args: GenomicLoadArgs) -> Result<()> {
+    let mode = match args.mode {
+        GenomicLoadMode::LocalDistributed => hpds_format::GenoMode::LocalDistributed,
+        GenomicLoadMode::LocalPatientDistributed => hpds_format::GenoMode::LocalPatientDistributed,
+    };
+    let groups = args
+        .indexes
+        .iter()
+        .map(|arg| match (args.mode, arg.split_once('=')) {
+            (GenomicLoadMode::LocalDistributed, _) => (String::new(), PathBuf::from(arg)),
+            (GenomicLoadMode::LocalPatientDistributed, Some((group, file))) => {
+                (group.to_string(), PathBuf::from(file))
+            }
+            (GenomicLoadMode::LocalPatientDistributed, None) => (String::new(), PathBuf::from(arg)),
+        })
+        .collect();
+    let options = hpds_etl::genomic::vcf_load::GenomicLoadOptions {
+        mode,
+        groups,
+        out: args.out,
+        key_file: args.key_file,
+        skip_missing_samples: args.skip_missing_samples,
+        threads: args.threads,
+    };
+    print_json(&hpds_etl::genomic::vcf_load::genomic_load(&options)?);
     Ok(())
 }
 

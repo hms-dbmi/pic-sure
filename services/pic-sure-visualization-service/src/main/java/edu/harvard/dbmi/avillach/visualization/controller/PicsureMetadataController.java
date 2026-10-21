@@ -1,6 +1,7 @@
 package edu.harvard.dbmi.avillach.visualization.controller;
 
 import edu.harvard.dbmi.avillach.domain.QueryFormat;
+import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -16,6 +17,7 @@ public class PicsureMetadataController {
 
     @Operation(summary = "Describe the query format this resource accepts")
     @ApiResponse(responseCode = "200", description = "The query format specification")
+    @AuditEvent(type = "OTHER", action = "query.format")
     @PostMapping("/query/format")
     public ResponseEntity<QueryFormat> queryFormat() {
         return ResponseEntity.ok(distributionQueryFormat());

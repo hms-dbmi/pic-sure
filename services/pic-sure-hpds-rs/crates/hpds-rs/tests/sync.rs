@@ -116,7 +116,6 @@ async fn invalid_requests_are_plain_text_400s() {
         envelope(
             json!({"expectedResultType": "COUNT", "genomicFilters": [{"key": "Gene_with_variant", "values": ["APOE"]}]}),
         ),
-        envelope(json!({"expectedResultType": "VCF_EXCERPT"})),
         envelope(
             json!({"expectedResultType": "COUNT", "phenotypicClause": {"phenotypicFilterType": "FILTER", "conceptPath": AGE, "values": ["31"]}}),
         ),
@@ -175,16 +174,29 @@ async fn info_column_listing_is_an_empty_array() {
 }
 
 #[tokio::test]
-async fn other_genomic_types_name_the_unsupported_feature() {
+async fn excerpts_and_variant_lists_answer_javas_text_when_their_settings_are_off() {
     let f = fixture();
-    let reply = post(
-        &f.app,
-        SYNC,
-        envelope(json!({"expectedResultType": "VCF_EXCERPT"})),
-    )
-    .await;
-    assert_eq!(reply.status, StatusCode::BAD_REQUEST);
-    assert!(reply.body.contains("not supported"), "{}", reply.body);
+    for (result_type, text) in [
+        ("VCF_EXCERPT", "VCF_EXCERPT query type not allowed"),
+        (
+            "AGGREGATE_VCF_EXCERPT",
+            "AGGREGATE_VCF_EXCERPT query type not allowed",
+        ),
+        (
+            "VARIANT_LIST_FOR_QUERY",
+            "VARIANT_LIST query type not allowed",
+        ),
+    ] {
+        let reply = post(
+            &f.app,
+            SYNC,
+            envelope(json!({"expectedResultType": result_type})),
+        )
+        .await;
+        assert_eq!(reply.status, StatusCode::OK, "{result_type}");
+        assert_eq!(reply.content_type(), Some("text/plain"), "{result_type}");
+        assert_eq!(reply.body, text);
+    }
 }
 
 #[tokio::test]

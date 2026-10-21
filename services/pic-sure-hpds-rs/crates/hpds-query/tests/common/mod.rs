@@ -2,6 +2,8 @@
 
 #![allow(dead_code)]
 
+pub mod genomic;
+
 use std::path::{Path, PathBuf};
 
 use hpds_etl::load::{KeySource, LoadOptions, Mode, load};

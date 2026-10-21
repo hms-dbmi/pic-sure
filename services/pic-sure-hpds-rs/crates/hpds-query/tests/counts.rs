@@ -257,10 +257,9 @@ fn sync_dispatch_and_bodies() {
         Err(QueryError::NotSync(ResultType::Dataframe))
     ));
     q.expected_result_type = ResultType::VcfExcerpt;
-    assert!(matches!(
-        s.engine.run_sync(&q),
-        Err(QueryError::Unsupported(_))
-    ));
+    let excerpt = s.engine.run_sync(&q).unwrap();
+    assert_eq!(excerpt.body(), "VCF_EXCERPT query type not allowed");
+    assert_eq!(excerpt.content_type(), "text/plain");
     q.expected_result_type = ResultType::Count;
     q.genomic_filters = vec![GenomicFilter {
         key: Some("Gene_with_variant".into()),

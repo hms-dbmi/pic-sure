@@ -136,23 +136,49 @@ pub enum SyncResult {
     ContinuousCrossCount(ContinuousCrossCounts),
     /// OBSERVATION_CROSS_COUNT.
     ObservationCrossCount(ConceptCounts),
+    /// INFO_COLUMN_LISTING.
+    InfoColumnListing(Vec<crate::genomic::InfoColumnMeta>),
+    /// VARIANT_COUNT_FOR_QUERY: the count, or `None` when the query has no `genomicFilters`.
+    VariantCount(Option<u64>),
+    /// VARIANT_LIST_FOR_QUERY: the body.
+    VariantList(String),
+    /// VCF_EXCERPT or AGGREGATE_VCF_EXCERPT: the body.
+    Excerpt(String),
 }
 
+/// Body Java answers for VARIANT_COUNT_FOR_QUERY when `genomicFilters` is empty, keys in the
+/// sorted order of the `TreeMap` Java serializes.
+pub const NO_VARIANT_FILTERS_BODY: &str =
+    r#"{"count":"0","message":"No variant filters were supplied, so no query was run."}"#;
+
 impl SyncResult {
-    /// The content type Java sends: `text/plain` for COUNT, `application/json` for the
-    /// cross counts.
+    /// The content type Java sends: `text/plain` for COUNT, the variant list and the
+    /// excerpts, `application/json` for the cross counts, the INFO column listing and the
+    /// variant count.
     pub fn content_type(&self) -> &'static str {
         match self {
-            SyncResult::Count(_) => "text/plain",
+            SyncResult::Count(_) | SyncResult::VariantList(_) | SyncResult::Excerpt(_) => {
+                "text/plain"
+            }
             _ => "application/json",
         }
     }
 
     /// The response body Java writes: the bare decimal count for COUNT
-    /// (`String.valueOf(int)`), compact JSON for the cross counts.
+    /// (`String.valueOf(int)`), compact JSON for the cross counts, the INFO column listing
+    /// and the variant count (`{"count":<n>,"message":"Query ran successfully"}`), and the
+    /// text of the variant list and the excerpts.
     pub fn body(&self) -> String {
         let json = match self {
             SyncResult::Count(count) => return count.to_string(),
+            SyncResult::InfoColumnListing(listing) => {
+                return crate::genomic::info_column_listing_json(listing);
+            }
+            SyncResult::VariantCount(None) => return NO_VARIANT_FILTERS_BODY.to_owned(),
+            SyncResult::VariantCount(Some(count)) => {
+                return format!(r#"{{"count":{count},"message":"Query ran successfully"}}"#);
+            }
+            SyncResult::VariantList(body) | SyncResult::Excerpt(body) => return body.clone(),
             SyncResult::CrossCount(c) | SyncResult::ObservationCrossCount(c) => {
                 serde_json::to_string(c)
             }

@@ -164,4 +164,22 @@ class ExportGenomicForMigrationTest {
         }
         return times;
     }
+
+    @Test
+    void anExportDirectoryHoldingOtherFilesIsRefusedUntouched(@TempDir Path dir) throws Exception {
+        Path store = Files.createDirectories(dir.resolve("store"));
+        writeStore(store, new FileBackedStorageVariantMasksImpl(store.resolve("chr1masks.bin").toFile()));
+        Path key = dir.resolve("key");
+        Files.writeString(key, KEY);
+        Path export = Files.createDirectories(dir.resolve("export"));
+        Files.writeString(export.resolve("node-00000.bin"), "old");
+        Files.writeString(export.resolve("notes.txt"), "keep");
+        IllegalStateException e =
+            assertThrows(IllegalStateException.class, () -> new ExportGenomicForMigration("local", store, key, export).export());
+        assertTrue(e.getMessage().contains("notes.txt"), e.getMessage());
+        assertEquals("old", Files.readString(export.resolve("node-00000.bin")));
+        assertTrue(ExportGenomicForMigration.isExportFile("genomic.bin.tmp"));
+        assertTrue(ExportGenomicForMigration.isExportFile("node-00012.bin.tmp"));
+        assertTrue(!ExportGenomicForMigration.isExportFile("node-notes.txt"));
+    }
 }

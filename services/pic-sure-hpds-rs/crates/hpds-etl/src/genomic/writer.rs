@@ -6,6 +6,10 @@
 //! Sealing binds every block to its node index and, for info blocks, to the column's index
 //! in the store's column table, so both are fixed before any node is built. Block locations
 //! are relative to the node's temporary file until [`assemble`] moves them.
+//!
+//! [`InfoColumnsBuilder`] turns a node's INFO columns, whose keys name variants by a source
+//! id (Java's spec index id), into info blocks once every variant has its node id, with the
+//! carriers of each categorical key gathered from the masks as the buckets go by.
 
 use std::cmp::Ordering;
 use std::fs::File;
@@ -16,10 +20,12 @@ use std::path::{Path, PathBuf};
 use hpds_format::{
     CompressedRange, GENO_BLOCKS_FILE_NAME, GENO_INDEX_FILE_NAME, GenoBlockCodec, GenoBlockKind,
     GenoBlocksWriter, GenoChunkEntry, GenoGroup, GenoIndex, GenoIndexHeader, GenoInfoEntry,
-    GenoLocation, GenoMode, GenoNode, JavaMaskInput, KEY_SOURCE_PHENOTYPE, MASK_CHUNK_TARGET,
-    MaskVariantInput, Protection, RangeBound, StoreId, encode_carrier_chunk, encode_mask_chunk,
+    GenoLocation, GenoMode, GenoNode, InfoKeyInput, JavaMaskInput, KEY_SOURCE_PHENOTYPE,
+    MASK_CHUNK_TARGET, MaskVariantInput, Protection, RangeBound, StoreId,
+    build_java_compressed_index, encode_carrier_chunk, encode_info_block, encode_mask_chunk,
     encode_metadata_chunk, java_float_cmp, java_string_cmp,
 };
+use roaring::RoaringBitmap;
 
 use crate::error::{EtlError, Result};
 use crate::load::DEFAULT_KEY_NAME;
@@ -439,6 +445,246 @@ pub fn assemble(
             index_bytes: encoded.len() as u64,
         },
     ))
+}
+
+/// One INFO column of a node, as [`InfoColumnsBuilder::new`] takes it.
+#[derive(Clone, Debug)]
+pub struct InfoColumnInput {
+    /// The column's index in the store's column table.
+    pub column: u16,
+    /// The column's name, for messages.
+    pub name: String,
+    /// `FileBackedByteIndexedInfoStore.description`.
+    pub description: String,
+    /// The keys, strictly ascending in Java order, each with the source ids of its variants.
+    pub keys: Vec<(String, Vec<u32>)>,
+    /// For a continuous column its `CompressedIndex`, entries naming keys by index, in any
+    /// range order; `None` for a categorical column.
+    pub ranges: Option<Vec<CompressedRange>>,
+}
+
+/// Builds a node's info blocks: maps each source id to its node variant id, gathers per
+/// categorical key the patients holding `he` or `ho` on any of its variants, and encodes and
+/// seals the blocks once the node's buckets are done. Carriers are kept as roaring sets of
+/// positions, so memory follows the carriers, not the keys times the patient count.
+pub struct InfoColumnsBuilder {
+    columns: Vec<InfoColumnInput>,
+    ref_offsets: Vec<u32>,
+    refs: Vec<(u16, u32)>,
+    carriers: Vec<Vec<Option<RoaringBitmap>>>,
+    source_to_variant: Vec<u32>,
+}
+
+impl InfoColumnsBuilder {
+    /// Starts the info blocks of a node whose source ids run below `source_count`.
+    ///
+    /// # Errors
+    /// [`EtlError::Usage`] naming the column when its keys are not strictly ascending in
+    /// Java order, a source id is out of range, or columns come out of order.
+    pub fn new(columns: Vec<InfoColumnInput>, source_count: u32) -> Result<Self> {
+        let refuse =
+            |name: &str, detail: &str| EtlError::Usage(format!("column {name:?}: {detail}"));
+        if columns.windows(2).any(|w| w[0].column >= w[1].column) {
+            return Err(EtlError::Usage("info columns come out of order".into()));
+        }
+        let mut offsets = vec![0u32; source_count as usize + 1];
+        for c in &columns {
+            if c.keys
+                .windows(2)
+                .any(|w| java_string_cmp(&w[0].0, &w[1].0).is_ge())
+            {
+                return Err(refuse(
+                    &c.name,
+                    "keys are not strictly ascending in Java order",
+                ));
+            }
+            for (key, ids) in &c.keys {
+                if let Some(id) = ids.iter().find(|&&id| id >= source_count) {
+                    return Err(refuse(
+                        &c.name,
+                        &format!("key {key:?} names variant {id}, outside {source_count}"),
+                    ));
+                }
+                if c.ranges.is_none() {
+                    for &id in ids {
+                        offsets[id as usize + 1] += 1;
+                    }
+                }
+            }
+        }
+        for i in 1..offsets.len() {
+            offsets[i] += offsets[i - 1];
+        }
+        let mut fill = offsets.clone();
+        let mut refs = vec![(0u16, 0u32); offsets[source_count as usize] as usize];
+        for (c, column) in columns.iter().enumerate() {
+            if column.ranges.is_some() {
+                continue;
+            }
+            for (k, (_, ids)) in column.keys.iter().enumerate() {
+                for &id in ids {
+                    let slot = &mut fill[id as usize];
+                    refs[*slot as usize] = (c as u16, k as u32);
+                    *slot += 1;
+                }
+            }
+        }
+        let carriers = columns
+            .iter()
+            .map(|c| {
+                if c.ranges.is_some() {
+                    Vec::new()
+                } else {
+                    vec![None; c.keys.len()]
+                }
+            })
+            .collect();
+        Ok(InfoColumnsBuilder {
+            columns,
+            ref_offsets: offsets,
+            refs,
+            carriers,
+            source_to_variant: vec![u32::MAX; source_count as usize],
+        })
+    }
+
+    /// Gives source id `source` the node variant id `variant`.
+    ///
+    /// # Errors
+    /// A message when the source id is out of range or already has a variant.
+    pub fn assign(&mut self, source: u32, variant: u32) -> std::result::Result<(), String> {
+        let target = self
+            .source_to_variant
+            .get_mut(source as usize)
+            .ok_or_else(|| format!("source id {source} out of range"))?;
+        if *target != u32::MAX {
+            return Err(format!("source id {source} is placed twice"));
+        }
+        *target = variant;
+        Ok(())
+    }
+
+    /// Adds the `he` and `ho` positions of the variant named by source id `source` to the
+    /// carriers of every categorical key holding it.
+    pub fn add_carriers(&mut self, source: u32, he: &[u32], ho: &[u32]) {
+        let source = source as usize;
+        let Some(range) = self
+            .ref_offsets
+            .get(source..source + 2)
+            .map(|w| w[0] as usize..w[1] as usize)
+        else {
+            return;
+        };
+        for &(c, k) in &self.refs[range] {
+            let set =
+                self.carriers[usize::from(c)][k as usize].get_or_insert_with(RoaringBitmap::new);
+            set.extend(he.iter().copied());
+            set.extend(ho.iter().copied());
+        }
+    }
+
+    /// The first source id without a variant, if any.
+    pub fn unassigned(&self) -> Option<u32> {
+        self.source_to_variant
+            .iter()
+            .position(|&v| v == u32::MAX)
+            .map(|id| id as u32)
+    }
+
+    /// Encodes and seals every column's info block into `builder`, for a node of
+    /// `patient_count` patients whose variants are all added. Returns the names of the
+    /// continuous columns whose `CompressedIndex` differs, bit for bit, from the one the
+    /// Rust port builds from the same keys.
+    ///
+    /// # Errors
+    /// [`EtlError::Usage`] naming the column for a source id without a variant, a
+    /// continuous column without keys or ranges, or a block the format refuses; sealing and
+    /// I/O errors.
+    pub fn finish(self, builder: &mut NodeBuilder, patient_count: u32) -> Result<Vec<String>> {
+        if let Some(id) = self.unassigned() {
+            return Err(EtlError::Usage(format!("source id {id} has no variant")));
+        }
+        let variant_count = builder.variant_count();
+        let mut differences = Vec::new();
+        for (column, carriers) in self.columns.into_iter().zip(self.carriers) {
+            let refuse =
+                |detail: String| EtlError::Usage(format!("column {:?}: {detail}", column.name));
+            let variants: Vec<RoaringBitmap> = column
+                .keys
+                .iter()
+                .map(|(_, ids)| {
+                    ids.iter()
+                        .map(|&id| self.source_to_variant[id as usize])
+                        .collect()
+                })
+                .collect();
+            let positions: Vec<Vec<u32>> = carriers
+                .into_iter()
+                .map(|set| set.map(|s| s.iter().collect()).unwrap_or_default())
+                .collect();
+            let ranges = match column.ranges {
+                None => None,
+                Some(mut ranges) => {
+                    if column.keys.is_empty() || ranges.is_empty() {
+                        return Err(refuse(format!(
+                            "a continuous column with {} keys and {} CompressedIndex ranges; Java's query on it throws",
+                            column.keys.len(),
+                            ranges.len()
+                        )));
+                    }
+                    sort_compressed_ranges(&mut ranges);
+                    let keys: Vec<&str> = column.keys.iter().map(|(k, _)| k.as_str()).collect();
+                    let ported = build_java_compressed_index(&keys);
+                    if ported.as_ref().is_none_or(|p| !same_ranges(p, &ranges)) {
+                        differences.push(column.name.clone());
+                    }
+                    Some(ranges)
+                }
+            };
+            let continuous = ranges.is_some();
+            let inputs: Vec<InfoKeyInput<'_>> = column
+                .keys
+                .iter()
+                .enumerate()
+                .map(|(k, (key, _))| InfoKeyInput {
+                    key,
+                    variants: &variants[k],
+                    carriers: (!continuous).then(|| positions[k].as_slice()),
+                })
+                .collect();
+            let payload =
+                encode_info_block(&inputs, ranges.as_deref(), variant_count, patient_count)
+                    .map_err(|e| refuse(e.to_string()))?;
+            builder.add_info(
+                column.column,
+                continuous,
+                column.description,
+                column.keys.len() as u32,
+                &payload,
+            )?;
+        }
+        Ok(differences)
+    }
+}
+
+/// True when two range lists are equal bit for bit: bounds and entry floats compared by
+/// their bits, so `-0.0` and `0.0`, and NaN payloads, count as different.
+fn same_ranges(a: &[CompressedRange], b: &[CompressedRange]) -> bool {
+    let bits = |bound: RangeBound| match bound {
+        RangeBound::Unbounded => (0u8, 0u32),
+        RangeBound::Open(v) => (1, v.to_bits()),
+        RangeBound::Closed(v) => (2, v.to_bits()),
+    };
+    a.len() == b.len()
+        && a.iter().zip(b).all(|(x, y)| {
+            bits(x.lower) == bits(y.lower)
+                && bits(x.upper) == bits(y.upper)
+                && x.entries.len() == y.entries.len()
+                && x.entries
+                    .iter()
+                    .zip(&y.entries)
+                    .all(|(e, f)| e.0.to_bits() == f.0.to_bits() && e.1 == f.1)
+        })
 }
 
 /// Guava's cut order of a lower bound: `CLOSED v` is the cut below `v`, `OPEN v` the cut

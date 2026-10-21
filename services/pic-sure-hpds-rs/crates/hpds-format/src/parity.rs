@@ -634,15 +634,61 @@ pub enum StringDoubleError {
 /// # Errors
 /// [`StringDoubleError::TooLong`] and [`StringDoubleError::Invalid`] as above.
 pub fn jackson_string_double(text: &str) -> Result<Option<f64>, StringDoubleError> {
+    match jackson_number_text(text)? {
+        JacksonNumberText::Null => Ok(None),
+        JacksonNumberText::Special(value) => Ok(Some(value)),
+        JacksonNumberText::Decimal(decimal) => decimal
+            .parse::<f64>()
+            .map(Some)
+            .map_err(|_| StringDoubleError::Invalid),
+    }
+}
+
+/// A `Float` field given as a JSON string, read as Jackson 2.21's
+/// `NumberDeserializers.FloatDeserializer` coerces it: the special values, trimming, `null`,
+/// plain decimal and length rules of [`jackson_string_double`], then `Float.parseFloat`, which
+/// rounds the decimal straight to the nearest `f32` ([`parse_java_float`]), overflow to
+/// infinity included.
+///
+/// # Errors
+/// [`StringDoubleError::TooLong`] and [`StringDoubleError::Invalid`] as for
+/// [`jackson_string_double`].
+pub fn jackson_string_float(text: &str) -> Result<Option<f32>, StringDoubleError> {
+    match jackson_number_text(text)? {
+        JacksonNumberText::Null => Ok(None),
+        JacksonNumberText::Special(value) => Ok(Some(value as f32)),
+        JacksonNumberText::Decimal(decimal) => parse_java_float(decimal)
+            .map(Some)
+            .ok_or(StringDoubleError::Invalid),
+    }
+}
+
+/// What Jackson's string coercion of a floating point field makes of `text` before it parses
+/// the number.
+enum JacksonNumberText<'a> {
+    /// Blank, or exactly `null`.
+    Null,
+    /// `NaN` or an infinity, as a double.
+    Special(f64),
+    /// A trimmed plain decimal within the length limit.
+    Decimal(&'a str),
+}
+
+/// The checks [`jackson_string_double`] and [`jackson_string_float`] share, in Jackson's
+/// order: the special values as written, then trimming and `null`, then the plain decimal
+/// form, then the length limit.
+fn jackson_number_text(text: &str) -> Result<JacksonNumberText<'_>, StringDoubleError> {
     match text {
-        "NaN" => return Ok(Some(f64::NAN)),
-        "Infinity" | "+Infinity" | "INF" | "+INF" => return Ok(Some(f64::INFINITY)),
-        "-Infinity" | "-INF" => return Ok(Some(f64::NEG_INFINITY)),
+        "NaN" => return Ok(JacksonNumberText::Special(f64::NAN)),
+        "Infinity" | "+Infinity" | "INF" | "+INF" => {
+            return Ok(JacksonNumberText::Special(f64::INFINITY));
+        }
+        "-Infinity" | "-INF" => return Ok(JacksonNumberText::Special(f64::NEG_INFINITY)),
         _ => {}
     }
     let trimmed = text.trim_matches(|c: char| c <= ' ');
     if trimmed.is_empty() || trimmed == "null" {
-        return Ok(None);
+        return Ok(JacksonNumberText::Null);
     }
     if !is_plain_decimal(trimmed.as_bytes()) {
         return Err(StringDoubleError::Invalid);
@@ -651,10 +697,7 @@ pub fn jackson_string_double(text: &str) -> Result<Option<f64>, StringDoubleErro
     if length > MAX_NUMBER_DIGITS {
         return Err(StringDoubleError::TooLong(NumberTooLong { digits: length }));
     }
-    trimmed
-        .parse::<f64>()
-        .map(Some)
-        .map_err(|_| StringDoubleError::Invalid)
+    Ok(JacksonNumberText::Decimal(trimmed))
 }
 
 /// Whether `text` matches `[+-]?(D+(\.D+)?([eE][+-]?D+)?|D+\.|\.D+([eE][+-]?D+)?)`, `D` an
@@ -858,6 +901,55 @@ mod tests {
         for text in ["", " ", "  ", "null", " null ", "\tnull\n"] {
             assert_eq!(ok(text), None, "{text:?}");
         }
+    }
+
+    #[test]
+    fn strings_coerce_to_floats_with_the_double_rules_and_one_rounding() {
+        for text in ["1f", "0x1p3", "-NaN", " Infinity", "1.e5", "1,5", "nul"] {
+            assert_eq!(
+                jackson_string_float(text),
+                Err(StringDoubleError::Invalid),
+                "{text:?}"
+            );
+        }
+        assert!(jackson_string_float("NaN").unwrap().unwrap().is_nan());
+        for text in ["", " ", "null", " null "] {
+            assert_eq!(jackson_string_float(text), Ok(None), "{text:?}");
+        }
+        for (text, value) in [
+            ("Infinity", f32::INFINITY),
+            ("-INF", f32::NEG_INFINITY),
+            (" 1.5 ", 1.5),
+            ("-0", -0.0),
+            ("1e39", f32::INFINITY),
+            ("1e-50", 0.0),
+            ("16777217", 16_777_216.0),
+            ("0.1", 0.1),
+            ("3.4028235e38", f32::MAX),
+        ] {
+            assert_eq!(
+                jackson_string_float(text).map(|v| v.map(f32::to_bits)),
+                Ok(Some(value.to_bits())),
+                "{text:?}"
+            );
+        }
+        let midpoint_and_more = "1.000000059604644775390625000000000001";
+        assert_eq!(
+            jackson_string_float(midpoint_and_more)
+                .unwrap()
+                .map(f32::to_bits),
+            Some(1.0_f32.to_bits() + 1),
+            "rounded once, straight to the float above the midpoint"
+        );
+        assert_eq!(
+            midpoint_and_more.parse::<f64>().unwrap() as f32,
+            1.0,
+            "a double narrowed afterwards rounds twice and lands below"
+        );
+        assert!(matches!(
+            jackson_string_float(&"1".repeat(1001)),
+            Err(StringDoubleError::TooLong(_))
+        ));
     }
 
     #[test]

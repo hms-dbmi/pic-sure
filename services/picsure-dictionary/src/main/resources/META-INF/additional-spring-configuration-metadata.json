@@ -1,0 +1,73 @@
+{
+  "properties": [
+    {
+      "name": "DEST_IP",
+      "type": "java.lang.String",
+      "description": "Destination IP address recorded on outgoing audit log events. When unset, the audit logging filter falls back to the request's local address for each request."
+    },
+    {
+      "name": "DEST_PORT",
+      "type": "java.lang.Integer",
+      "description": "Destination port recorded on outgoing audit log events. When unset, the audit logging filter falls back to the request's local port for each request."
+    },
+    {
+      "name": "cache.duration-minutes",
+      "type": "java.lang.Integer",
+      "description": "Minutes an entry stays in the Caffeine cache after its last access before it expires. Backs the cache used for concept search results, concept counts, and facet lookups.",
+      "defaultValue": 60
+    },
+    {
+      "name": "cache.maximum-size",
+      "type": "java.lang.Integer",
+      "description": "Maximum number of entries the Caffeine cache can hold across the concept search, concept count, and facet caches before older entries are evicted.",
+      "defaultValue": 5000
+    },
+    {
+      "name": "concept.tree.max_depth",
+      "type": "java.lang.Integer",
+      "description": "Upper bound on the depth request parameter accepted by the concept tree and ancestor endpoints. A requested depth outside 0 to this value makes the endpoint return a 400 response.",
+      "defaultValue": 5
+    },
+    {
+      "name": "dashboard.column-order",
+      "type": "java.util.List<java.lang.String>",
+      "description": "Comma-separated list of dashboard column data element keys giving the display order of dashboard columns. A column whose key is not in this list is sorted after all listed columns, in its original order."
+    },
+    {
+      "name": "dashboard.columns",
+      "type": "java.util.Map<java.lang.String,java.lang.String>",
+      "description": "SpEL map literal, for example {abbreviation:'Abbreviation',name:'Name',clinvars:'Clinical Variables'}, pairing each dashboard column's data element key with its display label."
+    },
+    {
+      "name": "dashboard.enable.bdc_hack",
+      "type": "java.lang.Boolean",
+      "description": "When true, the dashboard endpoint returns a fixed set of BDC-specific columns and rows instead of the layout configured by dashboard.columns and dashboard.column-order."
+    },
+    {
+      "name": "dashboard.enable.extra_details",
+      "type": "java.lang.Boolean",
+      "description": "When false, concept detail responses skip adding parent concept details and return the concept unchanged."
+    },
+    {
+      "name": "dashboard.layout.type",
+      "type": "java.lang.String",
+      "description": "Selects the dashboard drawer layout. When equal to default (case-insensitive), the dashboard drawer endpoints return data from the repository; any other value makes the full drawer endpoint return an empty list and the per-dataset drawer endpoint return nothing.",
+      "defaultValue": "default"
+    },
+    {
+      "name": "dashboard.nonmeta-columns",
+      "type": "java.util.Set<java.lang.String>",
+      "description": "Comma-separated list of dashboard column data element keys that are not stored as dataset_meta key/value rows, so they are excluded from the metadata lookup query that builds dashboard rows."
+    },
+    {
+      "name": "filtering.unfilterable_concepts",
+      "type": "java.util.List<java.lang.String>",
+      "description": "Comma-separated list of concept_node_meta keys, for example stigmatized, whose matching concepts have their search rank multiplier set to zero. A matching concept stays in search results but sorts last instead of being excluded."
+    },
+    {
+      "name": "metadata.no_show_list",
+      "type": "java.util.Set<java.lang.String>",
+      "description": "Comma-separated list of concept_node_meta keys excluded from concept metadata responses."
+    }
+  ]
+}

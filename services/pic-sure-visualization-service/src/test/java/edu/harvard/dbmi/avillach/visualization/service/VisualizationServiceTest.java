@@ -111,6 +111,7 @@ class VisualizationServiceTest {
 
         assertTrue(response.categoricalData().isEmpty());
         assertTrue(response.continuousData().isEmpty());
+        verifyNoInteractions(queryServiceClient);
     }
 
     @Test

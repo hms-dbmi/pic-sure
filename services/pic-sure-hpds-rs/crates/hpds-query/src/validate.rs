@@ -1,5 +1,5 @@
 //! `QueryValidator` and `PhenotypicFilterValidator`, plus the check that refuses the
-//! genomic features this engine does not implement.
+//! genomic result types this engine does not compute.
 //!
 //! Java runs `QueryValidator` only when an asynchronous query is submitted (`POST /query`).
 //! `/query/sync` validates nothing, but the store still refuses a query without consent
@@ -81,39 +81,10 @@ fn comma_spec(key: &str, with_annotations: bool) -> bool {
         && (!with_annotations || (word(suffix[3]) && word(suffix[4])))
 }
 
-/// Refuses what a phenotype-only engine cannot answer: a genomic result type, a non-empty
-/// `genomicFilters`, or a variant-spec path ([`path_is_variant_spec`]) in `select` or in a
-/// filter. Authorization filters are never applied, so their paths are not checked here.
-///
-/// # Errors
-/// [`QueryError::Unsupported`] naming the first unsupported feature found.
-pub fn check_supported(query: &Query) -> Result<()> {
-    if query.expected_result_type.is_genomic() {
-        return Err(QueryError::Unsupported(format!(
-            "result type {}",
-            query.expected_result_type
-        )));
-    }
-    if !query.genomic_filters.is_empty() {
-        return Err(QueryError::Unsupported("genomicFilters".into()));
-    }
-    let paths = query.select.iter().map(String::as_str).chain(
-        query
-            .all_filters()
-            .into_iter()
-            .map(|f| f.concept_path.as_str()),
-    );
-    for path in paths {
-        if path_is_variant_spec(path) {
-            return Err(QueryError::Unsupported(format!(
-                "variant-spec concept path {path:?}"
-            )));
-        }
-    }
-    Ok(())
-}
-
-/// `QueryValidator` with `PhenotypicFilterValidator`, plus [`check_supported`].
+/// `QueryValidator` with `PhenotypicFilterValidator`. Genomic filters and result types are
+/// not its concern, as in Java; a variant-spec path ([`path_is_variant_spec`]) in `select` or
+/// in a phenotypic filter is a concept path like any other: an empty DATAFRAME column, a
+/// concept no partition holds.
 /// [`crate::Engine::validate`] builds one from its partition set's flag; build one directly
 /// only to validate against another [`ConceptLookup`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -133,8 +104,7 @@ impl Default for QueryValidator {
 }
 
 impl QueryValidator {
-    /// Validates `query` against `concepts` in Java's order: unsupported features first,
-    /// then the consent requirement, then every filter of the phenotypic clause, then every
+    /// Validates `query` against `concepts` in Java's order: the consent requirement, then every filter of the phenotypic clause, then every
     /// (deprecated, never applied) authorization filter. Unknown `select` paths are allowed
     /// (Java only logs them).
     ///
@@ -143,10 +113,8 @@ impl QueryValidator {
     /// ([`QueryError::UserConsentsRequired`]).
     ///
     /// # Errors
-    /// [`QueryError::Unsupported`] from [`check_supported`], and [`QueryError::Invalid`]
-    /// with Java's message for the first rule broken.
+    /// [`QueryError::Invalid`] with Java's message for the first rule broken.
     pub fn validate(&self, query: &Query, concepts: &impl ConceptLookup) -> Result<()> {
-        check_supported(query)?;
         if self.require_consents && query.user_consents.is_empty() {
             return Err(QueryError::Invalid(
                 "User consents are required for this query".into(),
