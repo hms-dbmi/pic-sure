@@ -108,6 +108,8 @@ pub(crate) struct ByteBudget {
     permits: AtomicU64,
     waits: AtomicU64,
     wait_nanos: AtomicU64,
+    #[cfg(test)]
+    charges: AtomicU64,
 }
 
 impl ByteBudget {
@@ -127,6 +129,8 @@ impl ByteBudget {
             permits: AtomicU64::new(0),
             waits: AtomicU64::new(0),
             wait_nanos: AtomicU64::new(0),
+            #[cfg(test)]
+            charges: AtomicU64::new(0),
         }
     }
 
@@ -250,6 +254,14 @@ impl ByteBudget {
         let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         state.held = state.held.saturating_add(bytes);
         self.peak.fetch_max(state.held, Ordering::Relaxed);
+        #[cfg(test)]
+        self.charges.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// How many times [`ByteBudget::charge_held`] has charged bytes.
+    #[cfg(test)]
+    pub(crate) fn charges(&self) -> u64 {
+        self.charges.load(Ordering::Relaxed)
     }
 
     /// Gives back `bytes` that [`ByteBudget::charge_held`] counted, waking the waiters.

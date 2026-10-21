@@ -1895,6 +1895,10 @@ mod tests {
             let bound = BUDGET + (CALLERS + clause_thread_cap() as u64) * CHUNK;
             assert!(stats.peak_held <= bound, "{stats:?} over {bound}");
             assert!(set.block_cache_stats().evictions > 0);
+            assert!(
+                crate::partition::test_support::prefix_charges(set) > 0,
+                "the cache dropped entries reads held, and they were charged"
+            );
             assert_eq!(set.cohort_guard_refusals(), 0);
         }
 
