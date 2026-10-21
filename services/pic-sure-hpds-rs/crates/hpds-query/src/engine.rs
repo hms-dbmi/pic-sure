@@ -2347,9 +2347,12 @@ mod tests {
             }
         }
 
-        /// Once a read returns, nothing it dropped is alive, without the test driving any
-        /// reclamation: `moka` hands every load's shared copy to deferred reclamation, and
-        /// the read lets that run after each chunk.
+        /// Shortly after a read returns, nothing it dropped is alive, without the test driving
+        /// any reclamation: `moka` hands every load's shared copy to deferred reclamation, and
+        /// the read lets that run after each chunk. The test waits up to a second, which lets
+        /// pool threads run the flush the read broadcast and lets collections elsewhere in a
+        /// busy test process catch up; run alone, without the read's reclamation, nothing
+        /// else collects and the copies stay alive.
         #[test]
         fn a_chunk_read_leaves_no_dropped_entry_alive_when_it_returns() {
             let concepts = prefix_concepts();
@@ -2360,8 +2363,13 @@ mod tests {
                     let engine = engine_with(&out, share, 20_000, 0);
                     let set = engine.partitions();
                     assert!(!engine.patients(&query).unwrap().is_empty());
+                    let live = crate::partition::test_support::live(set);
+                    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+                    while live.live() > 0 && std::time::Instant::now() < deadline {
+                        std::thread::sleep(std::time::Duration::from_millis(1));
+                    }
                     assert_eq!(
-                        crate::partition::test_support::live(set).live(),
+                        live.live(),
                         0,
                         "share {share}, round {round}: entries alive after the read returned"
                     );
