@@ -5,6 +5,7 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
 
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.UserProfileResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.fenceMapping.StudyMetaData;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
@@ -18,18 +19,17 @@ import jakarta.mail.MessagingException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.MockitoAnnotations;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.AuthorityUtils;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.security.SecureRandom;
 import java.util.*;
@@ -38,37 +38,36 @@ import java.util.stream.Collectors;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-@SpringBootTest
-@ContextConfiguration(classes = {JWTUtil.class, UserService.class})
+@ExtendWith(MockitoExtension.class)
 public class UserServiceTest {
 
-    @MockitoBean
+    @Mock
     private SecurityContext securityContext;
-    @MockitoBean
+    @Mock
     private BasicMailService basicMailService;
-    @MockitoBean
+    @Mock
     private TOSService tosService;
-    @MockitoBean
+    @Mock
     private UserRepository userRepository;
-    @MockitoBean
+    @Mock
     private ConnectionRepository connectionRepository;
-    @MockitoBean
+    @Mock
     private RoleService roleService;
-    @MockitoBean
+    @Mock
     private JWTUtil mockJwtUtil;
-    @MockitoBean
+    @Mock
     private LoggingClient loggingClient;
     private JWTUtil jwtUtil;
-    @MockitoBean
+    @Mock
     private SessionService sessionService;
 
     private static final long defaultTokenExpirationTime = 1000L * 60 * 60; // 1 hour
     private final long longTermTokenExpirationTime = 2592000000L;
 
     private UserService userService;
-    @MockitoBean
+    @Mock
     private UserConsentsRepository userConsentsRepository;
-    @MockitoBean
+    @Mock
     private FenceMappingUtility fenceMappingUtility;
 
     @AfterEach
@@ -78,11 +77,8 @@ public class UserServiceTest {
 
     @BeforeEach
     public void setUp() {
-        MockitoAnnotations.openMocks(this);
 
-        Authentication authentication = mock(Authentication.class);
         SecurityContextHolder.setContext(securityContext);
-        when(securityContext.getAuthentication()).thenReturn(authentication);
 
         jwtUtil = new JWTUtil(generate256Base64Secret(), true);
         userService = new UserService(
@@ -94,11 +90,19 @@ public class UserServiceTest {
     @Test
     public void testGetUserProfileResponse() {
         User user = createTestUser();
-        when(userRepository.findByEmail(user.getEmail())).thenReturn(user);
-
         UserClaims userClaims = buildTestUserClaims(user);
+        when(mockJwtUtil.createJwtToken(anyString(), anyString(), anyMap(), eq(user.getSubject()), anyLong())).thenReturn("profile-token");
+        when(tosService.hasUserAcceptedLatest(user.getSubject())).thenReturn(true);
+
         HashMap<String, String> result = userService.getUserProfileResponse(userClaims);
-        assertNotNull(result);
+
+        assertEquals("profile-token", result.get("token"));
+        assertEquals(user.getSubject(), result.get("userId"));
+        assertEquals(user.getEmail(), result.get("email"));
+        assertEquals(user.getUuid().toString(), result.get("uuid"));
+        assertEquals("true", result.get("acceptedTOS"));
+        assertNotNull(result.get("expirationDate"));
+        verify(sessionService).startSession(eq(user.getSubject()), anyString());
     }
 
     @Test
@@ -135,109 +139,16 @@ public class UserServiceTest {
     }
 
     @Test
-    public void testAddUser() {
-        User user = createTestUser();
-        when(userRepository.saveAll(List.of(user))).thenReturn(List.of(user));
-
-        List<User> result = userService.addUser(List.of(user));
-        assertNotNull(result);
-    }
-
-    @Test
-    public void testAddUsers() {
+    public void testUpdateUser_UserRoleNotExisting() {
         User user = createTestUser();
         configureUserSecurityContext(user);
-        when(userRepository.saveAll(List.of(user))).thenReturn(List.of(user));
-
-        doAnswer(invocation -> new HashSet<>(user.getRoles())).when(roleService).getRolesByIds(anySet());
-
-        List<User> result = userService.addUsers(List.of(user));
-        System.out.println(result);
-        assertNotNull(result);
-        assertEquals(1, result.size());
-        assertEquals(user, result.getFirst());
-    }
-
-    @Test
-    public void testAddUsers_SuperAdminRole() {
-        User user = createTestUser();
-        user.getRoles().add(createSuperAdminRole());
-        configureUserSecurityContext(user);
-        when(userRepository.saveAll(List.of(user))).thenReturn(List.of(user));
-
-        doAnswer(invocation -> new HashSet<>(user.getRoles())).when(roleService).getRolesByIds(anySet());
-
-        List<User> result = userService.addUsers(List.of(user));
-        assertNotNull(result);
-        assertEquals(1, result.size());
-        assertEquals(user, result.getFirst());
-    }
-
-    @Test
-    public void testAddUsers_SuperAdminRole_withoutNecessaryPrivileges() {
-        User user = createTestUser();
-        Set<Role> roles = user.getRoles();
-        roles.add(createSuperAdminRole());
-        user.setRoles(roles);
-
-        doAnswer(invocation -> new HashSet<>(user.getRoles())).when(roleService).getRolesByIds(anySet());
-
-        System.out.println(user.getRoles());
-        User loggedInUser = createTestUser();
-        configureUserSecurityContext(loggedInUser);
-        when(userRepository.saveAll(List.of(user))).thenReturn(List.of(user));
-
-        assertThrows(IllegalArgumentException.class, () -> {
-            userService.addUsers(List.of(user));
-        });
-
-    }
-
-    @Test
-    public void testAddUsers_UserRoleNotExisting() {
-        User user = createTestUser();
-        configureUserSecurityContext(user);
-        when(userRepository.saveAll(List.of(user))).thenReturn(List.of(user));
 
         assertThrows(RuntimeException.class, () -> {
-            List<User> result = userService.addUsers(List.of(user));
+            List<User> result = userService.updateUser(List.of(user));
             assertNotNull(result);
             assertEquals(1, result.size());
             assertEquals(user, result.getFirst());
         });
-    }
-
-    @Test
-    public void testAddUsers_UserEmailNull_AndBadMetadata() {
-        User user = createTestUser();
-        configureUserSecurityContext(user);
-
-        // set email to null
-        user.setEmail(null);
-        // set bad metadata
-        user.setGeneralMetadata("bad metadata");
-
-        when(userRepository.saveAll(List.of(user))).thenReturn(List.of(user));
-        doAnswer(invocation -> new HashSet<>(user.getRoles())).when(roleService).getRolesByIds(anySet());
-
-        userService.addUsers(List.of(user));
-    }
-
-    @Test
-    public void testAddUsers_UserEmailNull_AndValidMetadata() {
-        User user = createTestUser();
-        configureUserSecurityContext(user);
-
-        // set email to null
-        user.setEmail(null);
-        // set bad metadata
-        user.setGeneralMetadata("{\"email\":\" " + user.getEmail() + "\"}");
-
-        when(userRepository.saveAll(List.of(user))).thenReturn(List.of(user));
-
-        doAnswer(invocation -> new HashSet<>(user.getRoles())).when(roleService).getRolesByIds(anySet());
-
-        userService.addUsers(List.of(user));
     }
 
     @Test
@@ -280,7 +191,6 @@ public class UserServiceTest {
 
         User loggedInUser = createTestUser();
         configureUserSecurityContext(loggedInUser);
-        when(userRepository.saveAll(List.of(user))).thenReturn(List.of(user));
 
         User userToFindByID = new User();
         userToFindByID.setUuid(user.getUuid());
@@ -312,8 +222,6 @@ public class UserServiceTest {
     public void testSendUserUpdateEmails_success() throws MessagingException {
         User user = createTestUser();
         List<User> users = List.of(user);
-        when(userRepository.saveAll(users)).thenReturn(users);
-        configureUserSecurityContext(user);
 
         try {
             userService.sendUserUpdateEmailsFromResponse(users);
@@ -341,11 +249,10 @@ public class UserServiceTest {
         Jws<Claims> claimsJws = this.jwtUtil.parseToken(token);
         System.out.println(claimsJws);
 
-        when(mockJwtUtil.parseToken(anyString())).thenReturn(claimsJws);
         when(tosService.hasUserAcceptedLatest(any())).thenReturn(true);
-        User.UserForDisplay currentUser = userService.getCurrentUser("Bearer " + token, true);
+        UserProfileResponse currentUser = userService.getCurrentUser("Bearer " + token, true);
         assertNotNull(currentUser);
-        assertEquals(user.getToken(), currentUser.getToken());
+        assertEquals(user.getToken(), currentUser.token());
     }
 
     @Test
@@ -363,10 +270,15 @@ public class UserServiceTest {
         Jws<Claims> claimsJws = this.jwtUtil.parseToken(token);
         System.out.println(claimsJws);
         when(mockJwtUtil.parseToken(anyString())).thenReturn(claimsJws);
+        String longTermSubject = AuthNaming.LONG_TERM_TOKEN_PREFIX + "|" + user.getSubject();
+        when(mockJwtUtil.createJwtToken(anyString(), anyString(), anyMap(), eq(longTermSubject), anyLong()))
+            .thenReturn("generated-long-term-token");
         when(tosService.hasUserAcceptedLatest(any())).thenReturn(true);
-        User.UserForDisplay currentUser = userService.getCurrentUser("Bearer " + token, true);
+        UserProfileResponse currentUser = userService.getCurrentUser("Bearer " + token, true);
         assertNotNull(currentUser);
-        assertEquals(user.getToken(), currentUser.getToken());
+        assertEquals("generated-long-term-token", currentUser.token());
+        assertEquals("generated-long-term-token", user.getToken());
+        verify(userRepository).save(user);
     }
 
     @Test
@@ -396,12 +308,11 @@ public class UserServiceTest {
 
         Jws<Claims> claimsJws = this.jwtUtil.parseToken(token);
 
-        when(mockJwtUtil.parseToken(anyString())).thenReturn(claimsJws);
         user.setToken(token);
         when(tosService.hasUserAcceptedLatest(any())).thenReturn(true);
-        User.UserForDisplay currentUser = userService.getCurrentUser("Bearer " + token, true);
+        UserProfileResponse currentUser = userService.getCurrentUser("Bearer " + token, true);
         assertNotNull(currentUser);
-        assertEquals(user.getToken(), currentUser.getToken());
+        assertEquals(user.getToken(), currentUser.token());
     }
 
     @Test
@@ -425,15 +336,14 @@ public class UserServiceTest {
     }
 
     @Test
-    public void testAddUsers_withUserHavingEmptyRoleSet() {
+    public void testUpdateUser_withUserHavingEmptyRoleSet() {
         User user = createTestUser();
         user.setRoles(null);
 
         configureUserSecurityContext(user);
-        when(userRepository.saveAll(List.of(user))).thenReturn(List.of(user));
 
         assertThrows(IllegalArgumentException.class, () -> {
-            List<User> result = userService.addUsers(List.of(user));
+            List<User> result = userService.updateUser(List.of(user));
             assertNull(result.getFirst().getRoles());
         });
     }
@@ -455,7 +365,6 @@ public class UserServiceTest {
     public void testRefreshUserToken() {
         User user = createTestUser();
         configureUserSecurityContext(user);
-        when(userRepository.saveAll(List.of(user))).thenReturn(List.of(user));
 
         Map<String, Object> claims = new HashMap<>();
         claims.put("sub", user.getSubject());
@@ -480,7 +389,6 @@ public class UserServiceTest {
     @Test
     public void testChangeRole() {
         User user = createTestUser();
-        configureUserSecurityContext(user);
         when(userRepository.save(user)).thenReturn(user);
 
         // new roles
@@ -565,9 +473,8 @@ public class UserServiceTest {
     @Test
     public void ensureBaselineRoles_persistenceFails_rejectsAuthentication() {
         User user = createTestUser();
-        when(roleService.findByNames(anySet())).thenReturn(
-            Map.of(RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME, createRoleNamed(RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME))
-        );
+        when(roleService.findByNames(anySet()))
+            .thenReturn(Map.of(RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME, createRoleNamed(RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME)));
         when(userRepository.save(user)).thenThrow(new IllegalStateException("synthetic database failure"));
 
         NotAuthorizedException exception = assertThrows(NotAuthorizedException.class, () -> userService.ensureBaselineRoles(user));

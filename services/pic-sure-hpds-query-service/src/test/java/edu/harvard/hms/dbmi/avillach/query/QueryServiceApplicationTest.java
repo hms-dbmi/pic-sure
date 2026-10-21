@@ -45,8 +45,8 @@ class QueryServiceApplicationTest {
     @Test
     void hpdsBackendSelectorIsWired() {
         assertThat(hpdsBackendSelector).isNotNull();
-        var target = hpdsBackendSelector.select("auth", false);
-        assertThat(target.baseUrl()).isEqualTo("http://localhost:1/PIC-SURE");
+        var target = hpdsBackendSelector.select("auth");
+        assertThat(target.baseUrl()).isEqualTo("http://localhost:1/PIC-SURE/v3");
         assertThat(target.token()).isEqualTo("test-auth-token");
     }
 

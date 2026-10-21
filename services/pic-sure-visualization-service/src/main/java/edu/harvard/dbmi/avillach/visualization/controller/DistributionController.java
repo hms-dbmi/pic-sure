@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.visualization.controller;
 
+import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.dbmi.avillach.visualization.logging.AuditLoggingContext;
 import edu.harvard.dbmi.avillach.visualization.model.AccessType;
 import edu.harvard.dbmi.avillach.visualization.model.DistributionRequest;
@@ -43,6 +44,7 @@ public class DistributionController {
                 description = "The query service was unreachable, answered with an error status other than 403, or returned a body that could not be read"
             )}
     )
+    @AuditEvent(type = "QUERY", action = "visualization.distributions")
     @PostMapping("/{backend}/distributions")
     public ResponseEntity<VisualizationResponse> distributions(
         @PathVariable String backend, @Valid @RequestBody DistributionRequest request,

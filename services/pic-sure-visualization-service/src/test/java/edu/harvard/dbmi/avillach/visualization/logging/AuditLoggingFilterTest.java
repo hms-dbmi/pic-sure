@@ -89,7 +89,7 @@ class AuditLoggingFilterTest {
         verify(loggingClient).send(eventCaptor.capture(), eq("Bearer token"), eq(response.getHeader("X-Request-Id")));
 
         LoggingEvent event = eventCaptor.getValue();
-        assertEquals("QUERY", event.getEventType());
+        assertEquals("UNLABELED", event.getEventType());
         assertEquals("visualization.distributions", event.getAction());
         assertEquals(response.getHeader("X-Request-Id"), event.getRequest().getRequestId());
         assertEquals("POST", event.getRequest().getMethod());
@@ -127,6 +127,23 @@ class AuditLoggingFilterTest {
         verify(loggingClient).send(eventCaptor.capture(), isNull(), anyString());
         assertEquals("bin_continuous", eventCaptor.getValue().getMetadata().get("route"));
         assertEquals(2, eventCaptor.getValue().getMetadata().get("output_point_count"));
+    }
+
+    @Test
+    void doFilter_usesTheHandlerLabelOverTheRouteDefault() throws ServletException, IOException {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/bin/continuous");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, resp) -> {
+            req.setAttribute(AuditLoggingContext.EVENT_TYPE_ATTR, "DATA_ACCESS");
+            req.setAttribute(AuditLoggingContext.ACTION_ATTR, "handler.label");
+        };
+
+        filter.doFilter(request, response, chain);
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient, times(1)).send(eventCaptor.capture(), isNull(), anyString());
+        assertEquals("DATA_ACCESS", eventCaptor.getValue().getEventType());
+        assertEquals("handler.label", eventCaptor.getValue().getAction());
     }
 
     @Test

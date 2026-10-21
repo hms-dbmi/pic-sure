@@ -4,6 +4,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.SummaryColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.GenomicFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Operator;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
@@ -28,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -256,8 +258,39 @@ class CountV3ProcessorTest {
         ArgumentCaptor<Query> executed = ArgumentCaptor.forClass(Query.class);
         verify(queryExecutor, atLeastOnce()).getPatientSubsetForQuery(executed.capture());
         assertTrue(
-                executed.getAllValues().stream().allMatch(executedQuery -> Set.of("partition1").equals(executedQuery.consentValues())),
-                "every query reaching the executor must carry the caller's consents, including the per-concept copy"
+            executed.getAllValues().stream().allMatch(executedQuery -> Set.of("partition1").equals(executedQuery.consentValues())),
+            "every query reaching the executor must carry the caller's consents, including the per-concept copy"
         );
+    }
+
+    @Test
+    public void runVariantCount_noGenomicFilters_returnsZeroWithoutQuerying() {
+        Query query = new Query(List.of(), List.of(), Set.of(), null, null, ResultType.VARIANT_COUNT_FOR_QUERY, null, null);
+
+        Map<String, Object> countResponse = countV3Processor.runVariantCount(query);
+
+        assertEquals("0", countResponse.get("count"));
+        verifyNoInteractions(queryExecutor);
+    }
+
+    @Test
+    public void runVariantCount_emptyGenomicFilters_returnsZeroWithoutQuerying() {
+        Query query = new Query(List.of(), List.of(), Set.of(), null, List.of(), ResultType.VARIANT_COUNT_FOR_QUERY, null, null);
+
+        Map<String, Object> countResponse = countV3Processor.runVariantCount(query);
+
+        assertEquals("0", countResponse.get("count"));
+        verifyNoInteractions(queryExecutor);
+    }
+
+    @Test
+    public void runVariantCount_genomicFilters_returnsVariantListSize() {
+        GenomicFilter geneFilter = new GenomicFilter("Gene_with_variant", List.of("APOE"), null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), null, List.of(geneFilter), ResultType.VARIANT_COUNT_FOR_QUERY, null, null);
+        when(queryExecutor.getVariantList(query)).thenReturn(List.of("variant1", "variant2"));
+
+        Map<String, Object> countResponse = countV3Processor.runVariantCount(query);
+
+        assertEquals(2, countResponse.get("count"));
     }
 }

@@ -134,6 +134,18 @@ public class Application extends BaseEntity implements Principal {
             this.url = url;
             return this;
         }
+
+        /**
+         * Projects a persisted application onto the token-free display shape.
+         *
+         * @param application the persisted application
+         * @return the display projection
+         */
+        public static ApplicationForDisplay from(Application application) {
+            return new ApplicationForDisplay().setUuid(application.getUuid() == null ? null : application.getUuid().toString())
+                .setName(application.getName()).setDescription(application.getDescription()).setUrl(application.getUrl())
+                .setEnable(application.isEnable());
+        }
     }
     
     public String toString() {

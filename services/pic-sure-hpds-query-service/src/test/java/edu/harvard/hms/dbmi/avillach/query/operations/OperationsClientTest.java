@@ -25,6 +25,9 @@ import org.springframework.web.client.RestClient;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 
+import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
+import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
 class OperationsClientTest {
@@ -68,6 +71,24 @@ class OperationsClientTest {
                 .withRequestBody(
                     equalToJson("{\"query\":\"{}\",\"resourceResultId\":null,\"status\":\"QUEUED\",\"version\":\"v1\",\"metadata\":null}")
                 )
+        );
+    }
+
+    @Test
+    void saveSendsEveryMemberInDeclarationOrderNullsIncluded() {
+        UUID id = UUID.randomUUID();
+        ops.stubFor(
+            post(urlEqualTo("/operations/internal/queries")).willReturn(
+                aResponse().withStatus(201).withHeader("Content-Type", "application/json").withBody("{\"picsureId\":\"" + id + "\"}")
+            )
+        );
+
+        client().save(new SaveQueryRequest("{}", null, "QUEUED", "3", null));
+
+        ops.verify(
+            postRequestedFor(urlEqualTo("/operations/internal/queries")).withRequestBody(
+                equalTo("{\"query\":\"{}\",\"resourceResultId\":null,\"status\":\"QUEUED\",\"version\":\"3\",\"metadata\":null}")
+            )
         );
     }
 
@@ -133,12 +154,16 @@ class OperationsClientTest {
         UUID id = UUID.randomUUID();
         ops.stubFor(patch(urlEqualTo("/operations/internal/queries/" + id)).willReturn(aResponse().withStatus(204)));
 
-        client().update(id, new UpdateQueryRequest("COMPLETE", "r-1", null));
+        client().update(id, new UpdateQueryRequest("COMPLETE", "r-1", null, "{\"query\":{}}", "3"));
 
         ops.verify(
-            patchRequestedFor(urlEqualTo("/operations/internal/queries/" + id))
-                .withHeader("X-PIC-SURE-INTERNAL-TOKEN", equalTo("test-token"))
-                .withRequestBody(equalToJson("{\"status\":\"COMPLETE\",\"resourceResultId\":\"r-1\",\"metadata\":null}"))
+            patchRequestedFor(urlEqualTo("/operations/internal/queries/" + id)).withHeader(
+                "X-PIC-SURE-INTERNAL-TOKEN", equalTo("test-token")
+            ).withRequestBody(
+                equalToJson(
+                    "{\"status\":\"COMPLETE\",\"resourceResultId\":\"r-1\",\"metadata\":null,\"query\":\"{\\\"query\\\":{}}\",\"version\":\"3\"}"
+                )
+            )
         );
     }
 
@@ -147,7 +172,7 @@ class OperationsClientTest {
         UUID id = UUID.randomUUID();
         ops.stubFor(patch(urlEqualTo("/operations/internal/queries/" + id)).willReturn(aResponse().withStatus(500)));
 
-        assertThatThrownBy(() -> client().update(id, new UpdateQueryRequest("COMPLETE", null, null)))
+        assertThatThrownBy(() -> client().update(id, new UpdateQueryRequest("COMPLETE", null, null, null, null)))
             .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
     }
 }

@@ -1,0 +1,32 @@
+version: 2
+updates:
+  - package-ecosystem: 'maven'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    commit-message:
+      prefix: '[maven] '
+    labels:
+      - 'dependencies'
+
+  # Keeps the SHA-pinned actions current. These PRs edit .github/, so the risk classifier
+  # always sends them to a human; that is intended.
+  # One label only: label-checker.yml requires exactly one of its release labels.
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    commit-message:
+      prefix: '[actions] '
+    labels:
+      - 'ignore-for-release'
+
+  # Tools the risk workflows run (jscpd). Also under .github/, so always human-reviewed.
+  - package-ecosystem: 'npm'
+    directory: '/.github/scripts/risk'
+    schedule:
+      interval: 'weekly'
+    commit-message:
+      prefix: '[actions] '
+    labels:
+      - 'ignore-for-release'

@@ -34,6 +34,7 @@ import com.tngtech.archunit.core.domain.JavaModifier;
 public final class SecurityRules {
 
     public static final String PRE_AUTHORIZE = "org.springframework.security.access.prepost.PreAuthorize";
+    public static final String PUBLIC_ENDPOINT = "edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint";
     public static final String ENABLE_METHOD_SECURITY =
         "org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity";
 
@@ -73,8 +74,9 @@ public final class SecurityRules {
     private SecurityRules() {}
 
     /**
-     * R6: no class or method carries a JSR-250 security annotation or {@code @Secured}. Method security
-     * runs with pre/post support only, so any of them would be silently ignored.
+     * {@code no-replaced-security-annotations}: no class or method carries a JSR-250 security annotation or
+     * {@code @Secured}. Method security runs with pre/post support only, so any of them would be silently
+     * ignored.
      *
      * @param module the module path, used in the violation text
      * @param classes that module's imported classes
@@ -101,8 +103,8 @@ public final class SecurityRules {
     }
 
     /**
-     * R7: {@code @PreAuthorize} sits only on controller handler methods. A class-level guard, or one on a
-     * service method, is enforced but never reaches the published document.
+     * {@code preauthorize-only-on-handlers}: {@code @PreAuthorize} sits only on controller handler methods. A
+     * class-level guard, or one on a service method, is enforced but never reaches the published document.
      *
      * @param module the module path, used in the violation text
      * @param classes that module's imported classes
@@ -128,9 +130,9 @@ public final class SecurityRules {
     }
 
     /**
-     * R8: every {@code @PreAuthorize} is exactly {@code hasAnyAuthority('A', ...)} or
-     * {@code hasAuthority('A')}, with literal, distinct values that are all known authority names. A
-     * misspelled name would compile and deny everyone.
+     * {@code preauthorize-uses-standard-form}: every {@code @PreAuthorize} is exactly
+     * {@code hasAnyAuthority('A', ...)} or {@code hasAuthority('A')}, with literal, distinct values that are
+     * all known authority names. A misspelled name would compile and deny everyone.
      *
      * @param module the module path, used in the violation text
      * @param classes that module's imported classes
@@ -151,9 +153,9 @@ public final class SecurityRules {
     }
 
     /**
-     * R9: a module that uses {@code @PreAuthorize} declares {@code @EnableMethodSecurity} with pre/post
-     * support left on. Without it every guard in the module is inert, and each endpoint is open to anyone
-     * the filter chain lets through.
+     * {@code guards-enable-method-security}: a module that uses {@code @PreAuthorize} declares
+     * {@code @EnableMethodSecurity} with pre/post support left on. Without it every guard in the module is inert,
+     * and each endpoint is open to anyone the filter chain lets through.
      *
      * @param module the module path, used in the violation text
      * @param classes that module's imported classes
@@ -178,11 +180,46 @@ public final class SecurityRules {
     }
 
     /**
-     * R11: no code calls {@code hasRole}, {@code hasAnyRole} or {@code isUserInRole} on a Spring Security,
-     * Spring Boot actuator, Servlet or JAX-RS type. Each of those checks adds the {@code ROLE_} prefix, and
-     * the authorities granted in this reactor carry none, so the check denies everyone. R8 rejects the same
-     * mistake inside {@code @PreAuthorize}; this rule covers filter-chain URL rules, authorization managers
-     * and request checks, including calls inside lambdas and method references.
+     * {@code handler-declares-authorization}: every handler carries exactly one authorization decision on the
+     * method, either {@code @PreAuthorize} or {@code @PublicEndpoint}, and no class carries
+     * {@code @PublicEndpoint}. A handler with neither is open to whoever the filter chain lets through without
+     * anyone having said so, which is how a read returning every application's token reached plain users.
+     *
+     * @param module the module path, used in the violation text
+     * @param classes that module's imported classes
+     * @return one violation per handler with neither or both annotations, and one per class carrying {@code @PublicEndpoint}
+     */
+    public static List<String> handlersDeclareAuthorization(String module, JavaClasses classes) {
+        List<String> violations = new ArrayList<>();
+        for (JavaClass type : sorted(classes)) {
+            if (Annotations.has(type, PUBLIC_ENDPOINT)) {
+                String at = SwaggerRules.at(module, type);
+                violations.add(at + " carries @PublicEndpoint at class level; move it to each handler method");
+            }
+        }
+        for (JavaClass controller : Controllers.of(classes)) {
+            for (JavaMethod handler : Controllers.handlerMethods(controller)) {
+                boolean guarded = Annotations.has(handler, PRE_AUTHORIZE);
+                boolean declaredPublic = Annotations.has(handler, PUBLIC_ENDPOINT);
+                String at = SwaggerRules.at(module, controller, handler.getName());
+                if (guarded && declaredPublic) {
+                    violations.add(at + " carries both @PreAuthorize and @PublicEndpoint; keep the one that states its access");
+                } else if (!guarded && !declaredPublic) {
+                    violations.add(at + " carries neither @PreAuthorize nor @PublicEndpoint");
+                }
+            }
+        }
+        return violations;
+    }
+
+    /**
+     * {@code no-role-checks}: no code calls {@code hasRole}, {@code hasAnyRole} or {@code isUserInRole} on a
+     * Spring Security, Spring Boot actuator, Servlet or JAX-RS type. Each of those checks adds the
+     * {@code ROLE_} prefix, and the authorities granted in this reactor carry none, so the check denies
+     * everyone.
+     * {@code preauthorize-uses-standard-form} rejects the same mistake inside {@code @PreAuthorize};
+     * this rule covers filter-chain URL rules, authorization managers and request checks, including calls
+     * inside lambdas and method references.
      *
      * @param module the module path, used in the violation text
      * @param classes that module's imported classes

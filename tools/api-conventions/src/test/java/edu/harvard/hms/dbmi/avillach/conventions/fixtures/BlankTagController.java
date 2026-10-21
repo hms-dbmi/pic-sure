@@ -6,7 +6,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Tag with a name but a blank description, so it violates R2. */
+/** Tag with a name but a blank description, so it violates {@code tag-is-complete}. */
 @Tag(name = "Blank", description = "   ")
 @RestController
 public class BlankTagController {

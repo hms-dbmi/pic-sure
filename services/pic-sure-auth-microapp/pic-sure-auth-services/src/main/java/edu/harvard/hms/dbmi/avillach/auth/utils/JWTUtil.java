@@ -15,13 +15,15 @@ import org.springframework.stereotype.Component;
 import javax.crypto.SecretKey;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Date;
 import java.util.Map;
 import java.util.Optional;
 
 /**
- * <p>This class is for generating a JWT token and contains common methods for operations on JWT tokens.</p>
- * <p>For more information on JWT tokens, see <url><a href="https://github.com/hms-dbmi/jwt-creator/blob/master/src/main/java/edu/harvard/hms/dbmi/avillach/jwt/App.java">...</a><url/></p>
+ * <p>This class is for generating a JWT token and contains common methods for operations on JWT tokens.</p> <p>For more information on JWT
+ * tokens, see <url><a
+ * href="https://github.com/hms-dbmi/jwt-creator/blob/master/src/main/java/edu/harvard/hms/dbmi/avillach/jwt/App.java">...</a><url/></p>
  */
 @Component
 public class JWTUtil {
@@ -36,8 +38,10 @@ public class JWTUtil {
 
     private final static ObjectMapper objectMapper = new ObjectMapper();
 
-    public JWTUtil(@Value("${application.client.secret}") String clientSecret,
-                   @Value("${application.client.secret.base64}") boolean clientSecretIsBase64) {
+    public JWTUtil(
+        @Value("${application.client.secret}") String clientSecret,
+        @Value("${application.client.secret.base64}") boolean clientSecretIsBase64
+    ) {
         this.clientSecret = clientSecret;
         this.clientSecretIsBase64 = clientSecretIsBase64;
     }
@@ -51,11 +55,26 @@ public class JWTUtil {
     }
 
     /**
-     * @param id      - id
-     * @param issuer  - issuer
-     * @param claims  - claims
-     * @param subject - subject
-     * @return JWT token
+     * Whether {@code candidate} is the HMAC key every token here is signed and verified with, derived from
+     * {@code application.client.secret} exactly as signing does. Other signers call this to prove they use a key of their own; the key
+     * bytes themselves never leave this class.
+     */
+    public boolean signsWith(byte[] candidate) {
+        return MessageDigest.isEqual(candidate, signingKeyBytes());
+    }
+
+    /** Returns the decoded application secret encoded as UTF-8, matching the key used for signing and verification. */
+    private byte[] signingKeyBytes() {
+        return getDecodedClientSecret().getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Creates a compact JWT signed with the application secret. The supplied id, issuer, subject, current issuance time, and computed
+     * expiration override the corresponding entries in {@code claims}.
+     *
+     * @param ttlMillis lifetime in milliseconds; negative values use seven days, and zero uses 999 days
+     * @return the signed JWT without a bearer or API key prefix
+     * @throws io.jsonwebtoken.security.WeakKeyException if the application signing key is shorter than 32 bytes
      */
     public String createJwtToken(String id, String issuer, Map<String, Object> claims, String subject, long ttlMillis) {
         logger.debug("createJwtToken() starting...");
@@ -72,19 +91,12 @@ public class JWTUtil {
         long nowMillis = System.currentTimeMillis();
         Date now = new Date(nowMillis);
 
-        String clientSecret = getDecodedClientSecret();
-        SecretKey signingKey = Keys.hmacShaKeyFor(clientSecret.getBytes(StandardCharsets.UTF_8));
+        SecretKey signingKey = Keys.hmacShaKeyFor(signingKeyBytes());
 
-        //Builds the JWT and serializes it to a compact, URL-safe string
-        JwtBuilder builder = Jwts.builder()
-                .claims(claims)
-                .id(id)
-                .issuedAt(now)
-                .subject(subject)
-                .issuer(issuer)
-                .signWith(signingKey);
+        // Builds the JWT and serializes it to a compact, URL-safe string
+        JwtBuilder builder = Jwts.builder().claims(claims).id(id).issuedAt(now).subject(subject).issuer(issuer).signWith(signingKey);
 
-        //if it has been specified, let's add the expiration
+        // if it has been specified, let's add the expiration
         long expMillis = nowMillis + ttlMillis;
         Date exp = new Date(expMillis);
         builder.expiration(exp);
@@ -93,9 +105,15 @@ public class JWTUtil {
         return jwt_token;
     }
 
+    /**
+     * Verifies a compact JWT with the application signing key and returns its signed claims, enforcing expiration and not-before claims
+     * when present.
+     *
+     * @throws NotAuthorizedException if parsing or verification fails, including an expired, null, or empty token
+     * @throws io.jsonwebtoken.security.WeakKeyException if the application signing key is shorter than 32 bytes
+     */
     public Jws<Claims> parseToken(String token) {
-        String clientSecret = getDecodedClientSecret();
-        SecretKey signingKey = Keys.hmacShaKeyFor(clientSecret.getBytes(StandardCharsets.UTF_8));
+        SecretKey signingKey = Keys.hmacShaKeyFor(signingKeyBytes());
 
         Jws<Claims> jws;
         try {
@@ -114,15 +132,14 @@ public class JWTUtil {
     }
 
     /**
-     * Verifies the token's signature and returns its claims even when the token is past its expiration. A user whose
-     * token has idled out still needs to be able to log out, and an expired token whose signature checks out names
-     * its subject just as reliably as a live one.
+     * Verifies the token's signature and returns its claims even when the token is past its expiration. A user whose token has idled out
+     * still needs to be able to log out, and an expired token whose signature checks out names its subject just as reliably as a live one.
      *
      * @return the claims, or empty if the signature or structure could not be verified
+     * @throws io.jsonwebtoken.security.WeakKeyException if the application signing key is shorter than 32 bytes
      */
     public Optional<Claims> parseTokenAllowingExpiration(String token) {
-        String clientSecret = getDecodedClientSecret();
-        SecretKey signingKey = Keys.hmacShaKeyFor(clientSecret.getBytes(StandardCharsets.UTF_8));
+        SecretKey signingKey = Keys.hmacShaKeyFor(signingKeyBytes());
 
         try {
             return Optional.of(Jwts.parser().verifyWith(signingKey).build().parseSignedClaims(token).getPayload());
@@ -147,6 +164,14 @@ public class JWTUtil {
         return sub.startsWith(AuthNaming.LONG_TERM_TOKEN_PREFIX);
     }
 
+    /**
+     * @param sub the token's user-id claim, possibly null
+     * @return true if {@code sub} names a PSAMA application, which is how the gateway's token introspection token identifies itself
+     */
+    public static boolean isApplicationToken(String sub) {
+        return sub != null && sub.startsWith(AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX);
+    }
+
     public String setClientSecret(String clientSecret) {
         return clientSecret;
     }
@@ -169,8 +194,7 @@ public class JWTUtil {
     /**
      * Extract the payload from the ga4gh token and convert it to a Ga4ghPassportV1
      * @param ga4ghToken The ga4gh_passport_v1 extracted from the Passport
-     * @return Optional of a Ga4ghPassportV1. If empty we could not successfully extract the claims and map them to
-     * the class.
+     * @return Optional of a Ga4ghPassportV1. If empty we could not successfully extract the claims and map them to the class.
      */
     public static Optional<Ga4ghPassportV1> parseGa4ghPassportV1(String ga4ghToken) {
         try {

@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
 import jakarta.validation.Valid;
 import io.swagger.v3.oas.annotations.Operation;
@@ -32,6 +33,7 @@ public class BannerController {
 
     @Operation(summary = "List currently active banners")
     @ApiResponse(responseCode = "200", description = "Active banners in display order")
+    @AuditEvent(type = "OTHER", action = "banner.list_active")
     @GetMapping("/active")
     public List<ActiveBannerDto> activeBanners() {
         return service.activeBanners();
@@ -39,6 +41,7 @@ public class BannerController {
 
     @Operation(summary = "List banners available for management")
     @ApiResponse(responseCode = "200", description = "Management banners")
+    @AuditEvent(type = "OTHER", action = "banner.list")
     @GetMapping
     public List<ManagementBannerDto> managedBanners() {
         return service.managedBanners();
@@ -47,6 +50,7 @@ public class BannerController {
     @Operation(summary = "Reorder banners")
     @ApiResponse(responseCode = "200", description = "Banners in their updated order")
     @ApiResponse(responseCode = "400", description = "Invalid banner request")
+    @AuditEvent(type = "ADMIN", action = "banner.reordered")
     @PutMapping("/order")
     public List<ManagementBannerDto> reorder(GatewayUser user, @Valid @RequestBody ReorderBannersRequest request) {
         return service.reorder(request.bannerUuids(), user);
@@ -55,6 +59,7 @@ public class BannerController {
     @Operation(summary = "Publish a banner")
     @ApiResponse(responseCode = "201", description = "The published banner")
     @ApiResponse(responseCode = "400", description = "Invalid banner request")
+    @AuditEvent(type = "ADMIN", action = "banner.published")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ManagementBannerDto publish(GatewayUser user, @Valid @RequestBody PublishBannerRequest request) {
@@ -64,6 +69,7 @@ public class BannerController {
     @Operation(summary = "Save a banner draft")
     @ApiResponse(responseCode = "201", description = "The saved draft")
     @ApiResponse(responseCode = "400", description = "Invalid banner request")
+    @AuditEvent(type = "ADMIN", action = "banner.saved")
     @PostMapping("/saved")
     @ResponseStatus(HttpStatus.CREATED)
     public ManagementBannerDto saveDraft(GatewayUser user, @Valid @RequestBody PublishBannerRequest request) {
@@ -75,6 +81,7 @@ public class BannerController {
     @ApiResponse(responseCode = "400", description = "Invalid banner request")
     @ApiResponse(responseCode = "404", description = "Banner not found")
     @ApiResponse(responseCode = "409", description = "The banner lifecycle does not allow this operation")
+    @AuditEvent(type = "ADMIN", action = "banner.updated")
     @PutMapping("/{uuid}")
     public ManagementBannerDto update(GatewayUser user, @PathVariable UUID uuid, @Valid @RequestBody PublishBannerRequest request) {
         return service.update(uuid, request, user);
@@ -85,6 +92,7 @@ public class BannerController {
     @ApiResponse(responseCode = "400", description = "Invalid banner request")
     @ApiResponse(responseCode = "404", description = "Banner not found")
     @ApiResponse(responseCode = "409", description = "The banner lifecycle does not allow this operation")
+    @AuditEvent(type = "ADMIN", action = "banner.published")
     @PostMapping("/{uuid}/publish")
     public ManagementBannerDto publishDraft(GatewayUser user, @PathVariable UUID uuid, @Valid @RequestBody PublishBannerRequest request) {
         return service.publishDraft(uuid, request, user);
@@ -94,6 +102,7 @@ public class BannerController {
     @ApiResponse(responseCode = "200", description = "The disabled banner")
     @ApiResponse(responseCode = "404", description = "Banner not found")
     @ApiResponse(responseCode = "409", description = "The banner lifecycle does not allow this operation")
+    @AuditEvent(type = "ADMIN", action = "banner.disabled")
     @PostMapping("/{uuid}/disable")
     public ManagementBannerDto disable(GatewayUser user, @PathVariable UUID uuid) {
         return service.disable(uuid, user);
@@ -103,6 +112,7 @@ public class BannerController {
     @ApiResponse(responseCode = "200", description = "The archived banner")
     @ApiResponse(responseCode = "404", description = "Banner not found")
     @ApiResponse(responseCode = "409", description = "The banner lifecycle does not allow this operation")
+    @AuditEvent(type = "ADMIN", action = "banner.archived")
     @PostMapping("/{uuid}/archive")
     public ArchivedBannerDto archive(GatewayUser user, @PathVariable UUID uuid) {
         return service.archive(uuid, user);
@@ -113,6 +123,7 @@ public class BannerController {
     @ApiResponse(responseCode = "400", description = "Invalid banner request")
     @ApiResponse(responseCode = "404", description = "Banner not found")
     @ApiResponse(responseCode = "409", description = "The banner lifecycle does not allow this operation")
+    @AuditEvent(type = "ADMIN", action = "banner.restored")
     @PostMapping("/{uuid}/restore")
     @ResponseStatus(HttpStatus.CREATED)
     public ManagementBannerDto restore(

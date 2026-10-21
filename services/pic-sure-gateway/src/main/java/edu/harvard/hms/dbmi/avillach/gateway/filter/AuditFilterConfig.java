@@ -30,8 +30,8 @@ public class AuditFilterConfig {
      */
     static final int AUDIT_FILTER_ORDER = -101;
 
-    // Leading service prefix(es) + optional /v3, e.g. "/query", "/hpds/auth/v3/query".
-    private static final String PFX = "^(?:/[a-z0-9-]+)+?(?:/v3)?";
+    // Leading service prefix(es), e.g. "/query", "/hpds/auth/query".
+    private static final String PFX = "^(?:/[a-z0-9-]+)+?";
 
     @Bean
     public LoggingClient loggingClient() {

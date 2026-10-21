@@ -1,0 +1,61 @@
+name: Risk Classifier
+
+# From the diff alone, labels each PR risk:low or risk:needs-review and publishes the
+# "Review policy" check run that the branch ruleset requires:
+#   risk:low          -> success: no human review required
+#   risk:needs-review -> in progress until a human other than the author approves the latest commit
+# Findings are in the check run's summary; nothing is commented on the PR.
+# Nothing here approves or merges anything.
+#
+# SECURITY: pull_request_target and workflow_run both run this file and its scripts from
+# the BASE/default branch, so a PR cannot edit its own classifier. The workflow never checks
+# out or executes PR code; it only reads the PR through the API.
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - edited
+      - ready_for_review
+      - converted_to_draft
+      - labeled
+      - unlabeled
+  workflow_run:
+    workflows: ['Review Trigger']
+    types: [completed]
+
+permissions: {}
+
+# Reviews on fork PRs carry no PR number, so those fall back to the reviewed commit.
+concurrency:
+  group: risk-classifier-${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.head_sha }}
+  cancel-in-progress: true
+
+jobs:
+  classify:
+    name: Risk classifier
+    if: github.event_name == 'pull_request_target' || github.event.workflow_run.event == 'pull_request_review'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.event.repository.default_branch }}
+          sparse-checkout: .github
+          persist-credentials: false
+      - name: Classify and publish the Review policy check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number }}
+          # Used only to find a fork PR when PR_NUMBER is empty. Passed through env, never
+          # interpolated into the script, because a fork chooses its own branch name.
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_OWNER: ${{ github.event.workflow_run.head_repository.owner.login }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: node .github/scripts/risk/classify.mjs

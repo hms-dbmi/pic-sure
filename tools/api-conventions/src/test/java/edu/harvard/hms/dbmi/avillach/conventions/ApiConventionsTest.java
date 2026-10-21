@@ -17,82 +17,196 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Applies the rules to this reactor. Every rule reports its whole list, so one run names every problem
  * rather than the first. The swagger rules cover the modules the registry marks documented; the
  * authorization rules cover every compiled module, because an unenforced guard is a problem wherever it sits.
+ * {@code handler-declares-authorization} covers PSAMA alone, the one module whose authorization lives in its own handlers.
+ * The test conventions cover every module's compiled tests rather than its main classes.
  */
 class ApiConventionsTest {
 
+    private static final List<String> PSAMA_ONLY = List.of("services/pic-sure-auth-microapp/pic-sure-auth-services");
+
     private static ModuleRegistry registry;
     private static Map<String, JavaClasses> modules;
+    private static Map<String, JavaClasses> testModules;
+    private static Path reactorRoot;
 
     @BeforeAll
     static void importReactor() {
         registry = ModuleRegistry.load();
-        modules = ReactorModules.discover(Path.of(System.getProperty("reactor.root")));
+        reactorRoot = Path.of(System.getProperty("reactor.root"));
+        modules = ReactorModules.discover(reactorRoot);
+        testModules = ReactorModules.discoverTests(reactorRoot);
     }
 
     @Test
     void everyDocumentedModuleYieldsControllers() {
-        report("R0a", RegistryRules.documentedModulesYieldControllers(registry, modules));
+        report("documented-module-has-controllers", RegistryRules.documentedModulesYieldControllers(registry, modules));
     }
 
     @Test
     void everyModuleWithAControllerIsRegistered() {
-        report("R0b", RegistryRules.controllerModulesAreRegistered(registry, modules));
+        report("controller-module-is-registered", RegistryRules.controllerModulesAreRegistered(registry, modules));
     }
 
     @Test
     void everyControllerIsTaggedOrHidden() {
-        report("R1", overDocumentedModules(SwaggerRules::tagOrHidden));
+        report("controller-tagged-or-hidden", overDocumentedModules(SwaggerRules::tagOrHidden));
     }
 
     @Test
     void everyTagIsComplete() {
-        report("R2", overDocumentedModules(SwaggerRules::tagIsComplete));
+        report("tag-is-complete", overDocumentedModules(SwaggerRules::tagIsComplete));
     }
 
     @Test
     void everyHandlerHasAnOperationSummary() {
-        report("R3", overDocumentedModules(SwaggerRules::operationHasSummary));
+        report("operation-has-summary", overDocumentedModules(SwaggerRules::operationHasSummary));
     }
 
     @Test
     void everyHandlerDeclaresItsResponses() {
-        report("R4", overDocumentedModules(SwaggerRules::responsesAreDeclared));
+        report("responses-are-declared", overDocumentedModules(SwaggerRules::responsesAreDeclared));
     }
 
     @Test
     void documentationDoesNotRestateGuardedAuthorities() {
-        report("R10", overDocumentedModules(SwaggerRules::documentationDoesNotRestateAuthorities));
+        report("docs-do-not-restate-authorities", overDocumentedModules(SwaggerRules::documentationDoesNotRestateAuthorities));
+    }
+
+    @Test
+    void noMappingPathEndsInASlash() {
+        report("no-trailing-slash", overDocumentedModules(MappingPathRules::noTrailingSlash));
     }
 
     @Test
     void noHandlerUsesAReplacedSecurityAnnotation() {
-        report("R6", overAllModules(SecurityRules::noReplacedSecurityAnnotations));
+        report("no-replaced-security-annotations", overAllModules(SecurityRules::noReplacedSecurityAnnotations));
     }
 
     @Test
     void preAuthorizeSitsOnlyOnHandlers() {
-        report("R7", overAllModules(SecurityRules::preAuthorizeOnlyOnHandlers));
+        report("preauthorize-only-on-handlers", overAllModules(SecurityRules::preAuthorizeOnlyOnHandlers));
     }
 
     @Test
     void preAuthorizeNamesKnownAuthoritiesInTheStandardForm() {
         Set<String> known = SecurityRules.knownAuthorities(modules, SecurityRules.KNOWN_AUTHORITIES_CLASS);
-        report("R8", overAllModules((module, classes) -> SecurityRules.preAuthorizeNamesAuthorities(module, classes, known)));
+        report("preauthorize-uses-standard-form", overAllModules((module, classes) -> SecurityRules.preAuthorizeNamesAuthorities(module, classes, known)));
     }
 
     @Test
     void everyModuleWithGuardsEnablesMethodSecurity() {
-        report("R9", overAllModules(SecurityRules::methodSecurityEnabled));
+        report("guards-enable-method-security", overAllModules(SecurityRules::methodSecurityEnabled));
     }
 
     @Test
     void noCodeChecksARolePrefix() {
-        report("R11", overAllModules(SecurityRules::noRoleChecks));
+        report("no-role-checks", overAllModules(SecurityRules::noRoleChecks));
+    }
+
+    @Test
+    void catchAllExceptionAdviceKeepsFrameworkStatuses() {
+        report("catch-all-advice-extends-base", overAllModules(ExceptionAdviceRules::catchAllAdviceExtendsBaseHandler));
+    }
+
+    @Test
+    void everyHandlerCarriesAnAuditEvent() {
+        report("handler-has-audit-event", overAllModules(AuditRules::auditEventOnEveryHandler));
+    }
+
+    @Test
+    void everyNamedPathVariableAppearsInAMappedPath() {
+        report("path-variables-in-template", overAllModules(RoutingRules::pathVariablesAppearInTemplate));
+    }
+
+    @Test
+    void everyValueStringIsWellFormed() {
+        report("value-strings-well-formed", overAllModules(ConfigurationRules::valueStringsAreWellFormed));
+    }
+
+    @Test
+    void everyValueKeyIsDeclared() {
+        report(
+            "value-keys-declared",
+            overAllModules((module, classes) -> ConfigurationRules.valueKeysAreDeclared(module, classes, metadata(module).declared()))
+        );
+    }
+
+    @Test
+    void everyPropertyMetadataFileIsComplete() {
+        report("property-metadata-complete", overAllModules((module, classes) -> ConfigurationRules.metadataIsComplete(module, metadata(module))));
+    }
+
+    @Test
+    void everyRequestMappingHandlerNamesItsVerbs() {
+        report("request-mapping-names-method", overAllModules(RequestMethodRules::requestMappingNamesMethod));
+    }
+
+    @Test
+    void noGetHandlerNarrowsConsumes() {
+        report("get-has-no-consumes", overAllModules(ContentTypeRules::getDoesNotNarrowConsumes));
+    }
+
+    private static PropertyMetadata metadata(String module) {
+        return PropertyMetadata.load(reactorRoot.resolve(module).resolve("target/classes"));
+    }
+
+    @Test
+    void everyPsamaHandlerDeclaresItsAuthorization() {
+        report("handler-declares-authorization", overModules(PSAMA_ONLY, SecurityRules::handlersDeclareAuthorization));
+    }
+
+    private static List<String> overModules(List<String> scope, Rule rule) {
+        List<String> violations = new ArrayList<>();
+        for (String module : scope) {
+            JavaClasses classes = modules.get(module);
+            if (classes == null) {
+                violations.add(module + " is not a compiled module; build the reactor first");
+            } else {
+                violations.addAll(rule.apply(module, classes));
+            }
+        }
+        return violations;
+    }
+
+    @Test
+    void noHandlerBindsAnEntity() {
+        Set<String> entities = EntityBoundaryRules.entityTypes(modules);
+        report("no-entity-parameters", overAllModules((module, classes) -> EntityBoundaryRules.noEntityParameters(module, classes, entities)));
+    }
+
+    @Test
+    void everyHandlerSignatureIsTyped() {
+        Set<String> entities = EntityBoundaryRules.entityTypes(modules);
+        report(
+            "typed-handler-signatures",
+            overDocumentedModules((module, classes) -> SignatureRules.typedHandlerSignatures(module, classes, entities))
+        );
+    }
+
+    @Test
+    void everyReachableModelIsDocumented() {
+        report("schema-documented-models", SchemaRules.documentedModels(registry, modules, SchemaRules.SHARED_MODEL_MODULES));
+    }
+
+    @Test
+    void noTestConstructorTakesAMock() {
+        report("no-constructor-parameter-mocks", overAllTestModules(TestConventionRules::noConstructorParameterMocks));
+    }
+
+    @Test
+    void everyTestShapedMethodIsAnnotated() {
+        report("test-methods-are-annotated", overAllTestModules(TestConventionRules::testMethodsAreAnnotated));
     }
 
     private static List<String> overAllModules(Rule rule) {
         List<String> violations = new ArrayList<>();
         modules.forEach((module, classes) -> violations.addAll(rule.apply(module, classes)));
+        return violations;
+    }
+
+    private static List<String> overAllTestModules(Rule rule) {
+        List<String> violations = new ArrayList<>();
+        testModules.forEach((module, classes) -> violations.addAll(rule.apply(module, classes)));
         return violations;
     }
 

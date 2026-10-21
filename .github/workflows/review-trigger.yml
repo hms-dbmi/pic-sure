@@ -1,0 +1,19 @@
+name: Review Trigger
+
+# Deliberately does nothing. Its only job is to finish, which fires the trusted
+# "Risk Classifier" workflow (workflow_run runs from the default branch) so the
+# "Review policy" status is recomputed when a review is submitted or dismissed.
+# A PR can edit this file, but all that gets it is an extra, harmless re-evaluation.
+on:
+  pull_request_review:
+    types: [submitted, dismissed, edited]
+
+permissions: {}
+
+jobs:
+  noop:
+    name: Review event
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - run: echo "review event received"

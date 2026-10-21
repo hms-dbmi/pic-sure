@@ -114,7 +114,7 @@ class AuditMockMvcTest {
     }
 
     @Test
-    void notFoundReturnsOtherEventTypeWithNoAnnotation() throws Exception {
+    void notFoundReturnsUnlabeledEventTypeWithNoAnnotation() throws Exception {
         when(loggingClient.isEnabled()).thenReturn(true);
 
         mockMvc.perform(get("/PIC-SURE/v3/nonexistent")).andExpect(status().isNotFound());
@@ -124,7 +124,7 @@ class AuditMockMvcTest {
 
         LoggingEvent event = captor.getValue();
         // No @AuditEvent on a 404, so falls back to defaults
-        assertEquals("OTHER", event.getEventType());
+        assertEquals("UNLABELED", event.getEventType());
         assertNotNull(event.getError());
         assertEquals(404, event.getError().get("status"));
     }

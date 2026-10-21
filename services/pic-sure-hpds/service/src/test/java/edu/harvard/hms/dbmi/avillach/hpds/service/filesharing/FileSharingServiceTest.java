@@ -9,12 +9,12 @@ import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.PatientV3Processor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.VariantListV3Processor;
 import edu.harvard.hms.dbmi.avillach.hpds.service.QueryV3Service;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
 import java.util.List;
@@ -24,38 +24,41 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@EnableAutoConfiguration
-@SpringBootTest(classes = FileSharingV3Service.class)
+@ExtendWith(MockitoExtension.class)
 public class FileSharingServiceTest {
 
-    @MockBean
+    @Mock
     QueryV3Service queryService;
 
-    @MockBean
+    @Mock
     FileSystemV3Service fileWriter;
 
-    @MockBean
+    @Mock
     VariantListV3Processor variantListProcessor;
 
-    @MockBean
+    @Mock
     PatientV3Processor patientProcessor;
 
-    @MockBean
+    @Mock
     ResultWriter resultWriter;
 
-    @MockBean
+    @Mock
     LoggingClient loggingClient;
 
-    @Autowired
     FileSharingV3Service subject;
+
+    @BeforeEach
+    public void setup() {
+        subject = new FileSharingV3Service(queryService, fileWriter, variantListProcessor, loggingClient);
+    }
 
     @Test
     public void shouldCreatePhenotypicData() {
         UUID picsureId = UUID.randomUUID();
         UUID uuid = UUID.randomUUID();
         Query query = new Query(
-            List.of("\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\"), List.of(), Set.of(), null, null, ResultType.DATAFRAME_TIMESERIES,
-            picsureId, uuid
+            List.of("\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\"), List.of(), Set.of(), null, null,
+            ResultType.DATAFRAME_TIMESERIES, picsureId, uuid
         );
         AsyncResult result = new AsyncResult(query, variantListProcessor, resultWriter);
         result.setStatus(AsyncResult.Status.SUCCESS);
@@ -73,8 +76,8 @@ public class FileSharingServiceTest {
         UUID picsureId = UUID.randomUUID();
         UUID uuid = UUID.randomUUID();
         Query query = new Query(
-            List.of("\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\"), List.of(), Set.of(), null, null, ResultType.DATAFRAME_TIMESERIES,
-            picsureId, uuid
+            List.of("\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\"), List.of(), Set.of(), null, null,
+            ResultType.DATAFRAME_TIMESERIES, picsureId, uuid
         );
         AsyncResult result = new AsyncResult(query, variantListProcessor, resultWriter);
         result.setStatus(AsyncResult.Status.ERROR);
@@ -84,6 +87,46 @@ public class FileSharingServiceTest {
         boolean actual = subject.createPhenotypicData(query);
 
         assertFalse(actual);
+        Mockito.verify(fileWriter, Mockito.never()).writeResultToFile(Mockito.anyString(), Mockito.<AsyncResult>any(), Mockito.anyString());
+        Mockito.verifyNoInteractions(loggingClient);
+    }
+
+    @Test
+    public void shouldNotCreatePhenotypicDataWhenResultMissing() {
+        UUID picsureId = UUID.randomUUID();
+        UUID uuid = UUID.randomUUID();
+        Query query = new Query(
+            List.of("\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\"), List.of(), Set.of(), null, null,
+            ResultType.DATAFRAME_TIMESERIES, picsureId, uuid
+        );
+
+        Mockito.when(queryService.getResultFor(uuid)).thenReturn(null);
+
+        boolean actual = subject.createPhenotypicData(query);
+
+        assertFalse(actual);
+        Mockito.verify(fileWriter, Mockito.never()).writeResultToFile(Mockito.anyString(), Mockito.<AsyncResult>any(), Mockito.anyString());
+        Mockito.verifyNoInteractions(loggingClient);
+    }
+
+    @Test
+    public void shouldNotSendAuditEventWhenPhenotypicWriteFails() {
+        UUID picsureId = UUID.randomUUID();
+        UUID uuid = UUID.randomUUID();
+        Query query = new Query(
+            List.of("\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\"), List.of(), Set.of(), null, null,
+            ResultType.DATAFRAME_TIMESERIES, picsureId, uuid
+        );
+        AsyncResult result = new AsyncResult(query, variantListProcessor, resultWriter);
+        result.setStatus(AsyncResult.Status.SUCCESS);
+
+        Mockito.when(queryService.getResultFor(uuid)).thenReturn(result);
+        Mockito.when(fileWriter.writeResultToFile("phenotypic_data.csv", result, picsureId.toString())).thenReturn(false);
+
+        boolean actual = subject.createPhenotypicData(query);
+
+        assertFalse(actual);
+        Mockito.verifyNoInteractions(loggingClient);
     }
 
     @Test
@@ -91,8 +134,8 @@ public class FileSharingServiceTest {
         UUID picsureId = UUID.randomUUID();
         UUID uuid = UUID.randomUUID();
         Query query = new Query(
-            List.of("\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\"), List.of(), Set.of(), null, null, ResultType.DATAFRAME_TIMESERIES,
-            picsureId, uuid
+            List.of("\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\"), List.of(), Set.of(), null, null,
+            ResultType.DATAFRAME_TIMESERIES, picsureId, uuid
         );
         String vcf = "lol lets put the whole vcf in a string";
         Mockito.when(variantListProcessor.runVcfExcerptQuery(query, true)).thenReturn(vcf);
@@ -104,11 +147,30 @@ public class FileSharingServiceTest {
     }
 
     @Test
+    public void shouldNotCreateGenomicData() {
+        UUID picsureId = UUID.randomUUID();
+        UUID uuid = UUID.randomUUID();
+        Query query = new Query(
+            List.of("\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\"), List.of(), Set.of(), null, null,
+            ResultType.DATAFRAME_TIMESERIES, picsureId, uuid
+        );
+        String vcf = "lol lets put the whole vcf in a string";
+        Mockito.when(variantListProcessor.runVcfExcerptQuery(query, true)).thenReturn(vcf);
+        Mockito.when(fileWriter.writeResultToFile("genomic_data.tsv", vcf, picsureId.toString())).thenReturn(false);
+
+        boolean actual = subject.createGenomicData(query);
+
+        assertFalse(actual);
+        Mockito.verifyNoInteractions(loggingClient);
+    }
+
+    @Test
     void shouldCreatePatientsList() {
         UUID picsureId = UUID.randomUUID();
         UUID uuid = UUID.randomUUID();
         Query query = new Query(
-            List.of("\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\"), List.of(), Set.of(), null, null, ResultType.PATIENTS, picsureId, uuid
+            List.of("\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\"), List.of(), Set.of(), null, null, ResultType.PATIENTS,
+            picsureId, uuid
         );
 
         AsyncResult result = new AsyncResult(query, patientProcessor, resultWriter);

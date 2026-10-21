@@ -188,7 +188,7 @@ public class QueryServiceClient {
     }
 
     private String querySyncPath(AccessType accessType) {
-        return accessType == AccessType.OPEN ? "/hpds/open/v3/query/sync" : "/hpds/auth/v3/query/sync";
+        return accessType == AccessType.OPEN ? "/hpds/open/query/sync" : "/hpds/auth/query/sync";
     }
 
     private void sendQueryEvent(
