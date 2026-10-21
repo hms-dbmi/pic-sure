@@ -11,7 +11,7 @@ use hpds_bench::consents::{
     ConsentPlan, expand, parse_variants, partitions_in_dir, partitions_of_files,
 };
 use hpds_bench::corpus::{generate, read_corpus, write_corpus};
-use hpds_bench::divergence::{Divergences, JavaBranch, Side};
+use hpds_bench::divergence::{ConsentContract, Divergences, JavaBranch, Side};
 use hpds_bench::duration::parse_duration;
 use hpds_bench::golden::{read_golden, run_golden};
 use hpds_bench::load::{LoadConfig, render_table, run_load};
@@ -103,6 +103,11 @@ enum Command {
         /// (feature-harmonization). Needs --java.
         #[arg(long, value_enum, requires = "java")]
         java_branch: Option<JavaBranchArg>,
+        /// The consent contract the Rust service serves, its HPDS_CONSENT_CONTRACT:
+        /// `harmonization` (the default) or `main`. Rules scoped to a contract apply only under
+        /// it. Needs --java.
+        #[arg(long, value_enum, requires = "java")]
+        consent_contract: Option<ConsentContractArg>,
     },
     /// Replay a corpus against one server and report latency and throughput.
     ///
@@ -268,6 +273,7 @@ async fn run(cli: Cli) -> Result<bool> {
             divergences,
             java,
             java_branch,
+            consent_contract,
         } => {
             if corpus.is_none() && golden.is_none() {
                 return Err(BenchError::Invalid(
@@ -294,6 +300,9 @@ async fn run(cli: Cli) -> Result<bool> {
                 };
                 if let (Some(side), Some(branch)) = (java, java_branch) {
                     rules = rules.for_java(side.into(), branch.into());
+                }
+                if let Some(contract) = consent_contract {
+                    rules = rules.with_contract(contract.into());
                 }
                 let found = compare_corpus(
                     &client_a,
@@ -404,6 +413,24 @@ enum JavaBranchArg {
     Main,
     /// The consent-partitioned HPDS, `feature-harmonization`.
     Consent,
+}
+
+/// `--consent-contract`: the consent contract the Rust service serves.
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+enum ConsentContractArg {
+    /// The consent-partitioned contract of `feature-harmonization`.
+    Harmonization,
+    /// The contract of the original HPDS, `main`.
+    Main,
+}
+
+impl From<ConsentContractArg> for ConsentContract {
+    fn from(contract: ConsentContractArg) -> ConsentContract {
+        match contract {
+            ConsentContractArg::Harmonization => ConsentContract::Harmonization,
+            ConsentContractArg::Main => ConsentContract::Main,
+        }
+    }
 }
 
 impl From<JavaBranchArg> for JavaBranch {

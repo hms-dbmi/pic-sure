@@ -10,6 +10,7 @@ use crate::corpus::{CorpusEntry, Kind};
 use crate::{BenchError, Result};
 
 mod genomic;
+mod main_contract;
 
 /// A condition on the two outcomes that must hold for a rule to apply, beyond name and status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -263,6 +264,29 @@ pub enum Condition {
     /// Two `/search/values` pages that differ only in the order of values sharing one Java
     /// hash bucket.
     SearchValuesBucketSet,
+    /// Main consent contract only. A `/query/sync` entry of any result type but
+    /// INFO_COLUMN_LISTING whose query carries no authorization filter (`authorizationFilters`
+    /// missing, `null` or `[]`, a repeated key keeping its last value); the Rust side refused
+    /// with a 400 naming `authorizationFilters`, and the Java side (which must be known)
+    /// answered 200 with a body over every patient.
+    SyncFlagRefusal,
+    /// Main consent contract only. The entry's query holds a field that main's `Query`,
+    /// `AuthorizationFilter`, `PhenotypicFilter`, `PhenotypicSubquery` or `GenomicFilter` does
+    /// not declare, or a clause mixing filter and subquery fields; the Rust side refused with a
+    /// 400 holding ``unknown field `<name>` `` for one such field, and the Java side (which
+    /// must be known) answered 500, Jackson's failure in `convertIncomingQuery`.
+    UnknownFieldRefused,
+    /// Main consent contract only. The entry's query holds an authorization filter that is
+    /// `null`, or whose `conceptPath` or `values` is `null` or missing; the Rust side refused
+    /// with a 400 whose body starts with `an authorization filter`, and the Java side (which
+    /// must be known) failed while evaluating: a sync 200 with an empty body or a sync 500, or
+    /// an async submit answered 200 or 500 with no status.
+    NullAuthorizationFilterMainRefused,
+    /// Both sides failed the way the Java service fails, one in each form: a sync 200 with an
+    /// empty body against a sync 500, or an async submit answered 200 with
+    /// no status against one answered 500. Java answers the first with its audit logging
+    /// client off and the second with it on.
+    JavaFailureClass,
 }
 
 /// Which Java service a comparison runs against, for rules that hold for one branch only.
@@ -273,6 +297,18 @@ pub enum JavaBranch {
     Main,
     /// The consent-partitioned HPDS, `feature-harmonization`.
     Consent,
+}
+
+/// The consent contract the Rust service serves, its `HPDS_CONSENT_CONTRACT`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ConsentContract {
+    /// The consent-partitioned contract of `feature-harmonization`, the only one served before
+    /// the setting existed.
+    #[default]
+    Harmonization,
+    /// The contract of the original HPDS, `main`.
+    Main,
 }
 
 /// One of the two servers of a comparison.
@@ -291,6 +327,8 @@ pub struct JavaService {
     pub side: Side,
     /// Which Java branch it runs.
     pub branch: JavaBranch,
+    /// The consent contract the Rust side serves.
+    pub contract: ConsentContract,
 }
 
 /// When a rule applies: one condition, or a list of body normalizations
@@ -339,6 +377,11 @@ pub struct Rule {
     /// comparison names that branch ([`Divergences::for_java`]).
     #[serde(default, rename = "javaBranch")]
     pub java_branch: Option<JavaBranch>,
+    /// The consent contract the rule holds for. A rule naming one applies only when the
+    /// comparison's Rust side serves that contract, which is
+    /// [`ConsentContract::Harmonization`] unless [`Divergences::with_contract`] says otherwise.
+    #[serde(default, rename = "consentContract")]
+    pub consent_contract: Option<ConsentContract>,
     /// Why the difference is accepted, citing the spec's divergence list.
     pub reason: String,
 }
@@ -1108,7 +1151,9 @@ fn async_error(outcome: &Outcome) -> bool {
 }
 
 /// Whether the Rust side refused with a body `refused` accepts and the Java side's outcome
-/// satisfies `failed`. With the Java side unknown, either side may be Java.
+/// satisfies `failed`. With the Java side unknown, either side may be Java. Under the main
+/// consent contract Java's failure may also take its audit-logging form, a sync 500 or an
+/// async submit answered 500 with no status, wherever `failed` accepts the matching 200 form.
 fn rust_refused_java_failed(
     a: &Outcome,
     b: &Outcome,
@@ -1122,7 +1167,10 @@ fn rust_refused_java_failed(
                 Side::A => (a, b),
                 Side::B => (b, a),
             };
-            refusal(rust_outcome).is_some_and(&refused) && failed(java_outcome)
+            refusal(rust_outcome).is_some_and(&refused)
+                && (failed(java_outcome)
+                    || (java.contract == ConsentContract::Main
+                        && main_contract::failed_with_500(java_outcome, &failed)))
         }
         None => refused_against(a, b, refused, failed),
     }
@@ -1150,18 +1198,26 @@ fn null_concept_path_refused(
     b: &Outcome,
     java: Option<JavaService>,
 ) -> bool {
+    let main = java.is_some_and(|java| java.contract == ConsentContract::Main);
     entry_query(entry).is_some_and(|query| {
         phenotypic_filters(&query)
             .into_iter()
             .any(|filter| filter.get("conceptPath").is_none_or(Value::is_null))
-            || authorization_filters(&query)
-                .iter()
-                .any(|filter| filter.get("conceptPath").is_some_and(Value::is_null))
+            || (!main
+                && authorization_filters(&query)
+                    .iter()
+                    .any(|filter| filter.get("conceptPath").is_some_and(Value::is_null)))
     }) && rust_refused_java_failed(
         a,
         b,
         java,
-        |body| NULL_CONCEPT_PATHS.contains(&body),
+        |body| {
+            if main {
+                body == NULL_CONCEPT_PATHS[0]
+            } else {
+                NULL_CONCEPT_PATHS.contains(&body)
+            }
+        },
         |o| empty_sync_200(o) || submit_failed(o) || async_error(o),
     )
 }
@@ -1750,6 +1806,14 @@ impl Condition {
             Condition::InfoListingMultiset => genomic::info_listing_multiset(a, b),
             Condition::SearchInfoValuesSet => equal_after(a, b, &[self]),
             Condition::SearchValuesBucketSet => genomic::search_values_bucket_set(entry, a, b),
+            Condition::SyncFlagRefusal => main_contract::sync_flag_refusal(entry, a, b, java),
+            Condition::UnknownFieldRefused => {
+                main_contract::unknown_field_refused(entry, a, b, java)
+            }
+            Condition::NullAuthorizationFilterMainRefused => {
+                main_contract::null_authorization_filter_refused(entry, a, b, java)
+            }
+            Condition::JavaFailureClass => main_contract::java_failure_class(a, b),
         }
     }
 }
@@ -1764,6 +1828,11 @@ impl Rule {
     ) -> bool {
         if let Some(branch) = self.java_branch
             && java.is_none_or(|java| java.branch != branch)
+        {
+            return false;
+        }
+        if let Some(contract) = self.consent_contract
+            && java.map_or(ConsentContract::default(), |java| java.contract) != contract
         {
             return false;
         }
@@ -1842,11 +1911,28 @@ impl Divergences {
 
     /// These rules for a comparison whose Java service is on `side` and runs `branch`: rules
     /// naming another branch stop applying, and conditions that need the Java side can hold.
+    /// The Rust side serves [`ConsentContract::Harmonization`] until
+    /// [`Divergences::with_contract`] says otherwise.
     pub fn for_java(self, side: Side, branch: JavaBranch) -> Self {
         Divergences {
-            java: Some(JavaService { side, branch }),
+            java: Some(JavaService {
+                side,
+                branch,
+                contract: ConsentContract::default(),
+            }),
             ..self
         }
+    }
+
+    /// These rules for a comparison whose Rust side serves `contract`: rules naming another
+    /// contract stop applying, and the main contract's conditions can hold. The contract is
+    /// part of what the comparison knows about its Java side, so it takes effect only after
+    /// [`Divergences::for_java`].
+    pub fn with_contract(mut self, contract: ConsentContract) -> Self {
+        if let Some(java) = &mut self.java {
+            java.contract = contract;
+        }
+        self
     }
 
     /// The first rule that accepts the difference between the two outcomes of one entry.
@@ -3402,5 +3488,458 @@ mod tests {
         let unknown_side = checked_in();
         e.result_type = "DATAFRAME_TIMESERIES".into();
         assert_eq!(rule_name(&unknown_side, &e, &success, &error), None);
+    }
+
+    fn main_contract() -> Divergences {
+        checked_in()
+            .for_java(Side::A, JavaBranch::Main)
+            .with_contract(ConsentContract::Main)
+    }
+
+    fn harmonization_contract() -> Divergences {
+        checked_in().for_java(Side::A, JavaBranch::Main)
+    }
+
+    #[test]
+    fn the_harmonization_rules_against_main_stop_applying_under_the_main_contract() {
+        let set = checked_in();
+        for name in [
+            "search-shape-main",
+            "authorization-filters-main",
+            "null-authorization-filter-main",
+        ] {
+            let rule = set.rules.iter().find(|r| r.name == name).unwrap();
+            assert_eq!(
+                rule.consent_contract,
+                Some(ConsentContract::Harmonization),
+                "{name}"
+            );
+        }
+        for name in [
+            "sync-requires-authorization-filter-main",
+            "unknown-field-main",
+            "null-authorization-filter-main-status",
+            "java-failure-empty-200-or-500",
+        ] {
+            let rule = set.rules.iter().find(|r| r.name == name).unwrap();
+            assert_eq!(rule.consent_contract, Some(ConsentContract::Main), "{name}");
+            assert_eq!(rule.java_branch, Some(JavaBranch::Main), "{name}");
+        }
+        let e = query_entry(
+            "authz-values-null-count",
+            Kind::Sync,
+            json!({"expectedResultType": "COUNT", "authorizationFilters": [{"conceptPath": "\\s\\", "values": [null]}]}),
+        );
+        assert_eq!(
+            rule_name(
+                &harmonization_contract(),
+                &e,
+                &sync(200, ""),
+                &sync(200, "3")
+            )
+            .as_deref(),
+            Some("null-authorization-filter-main")
+        );
+        assert_eq!(
+            rule_name(&main_contract(), &e, &sync(200, ""), &sync(200, "3")),
+            None
+        );
+        let unknown_java = checked_in().with_contract(ConsentContract::Main);
+        assert_eq!(unknown_java.java, None);
+    }
+
+    #[test]
+    fn an_unscoped_sync_query_is_accepted_only_under_main_with_a_refusal_naming_the_filters() {
+        let refusal = sync(400, "authorizationFilters are required for this query");
+        let answer = sync(200, "3");
+        for query in [
+            json!({"expectedResultType": "COUNT"}),
+            json!({"expectedResultType": "COUNT", "authorizationFilters": null}),
+            json!({"expectedResultType": "COUNT", "authorizationFilters": []}),
+        ] {
+            let e = query_entry("unscoped-count", Kind::Sync, query);
+            assert_eq!(
+                rule_name(&main_contract(), &e, &answer, &refusal).as_deref(),
+                Some("sync-requires-authorization-filter-main")
+            );
+            assert_eq!(
+                rule_name(&harmonization_contract(), &e, &answer, &refusal),
+                None
+            );
+            assert_eq!(rule_name(&main_contract(), &e, &refusal, &answer), None);
+            assert_eq!(
+                rule_name(&main_contract(), &e, &sync(200, ""), &refusal),
+                None
+            );
+            assert_eq!(
+                rule_name(&main_contract(), &e, &answer, &sync(400, "something else")),
+                None
+            );
+        }
+        let repeated = raw_entry(
+            "unscoped-repeated-count",
+            json!({"query": r#"{"expectedResultType": "COUNT", "authorizationFilters": [{"conceptPath": "\\s\\", "values": ["x"]}], "authorizationFilters": []}"#}),
+        );
+        assert_eq!(
+            rule_name(&main_contract(), &repeated, &answer, &refusal).as_deref(),
+            Some("sync-requires-authorization-filter-main")
+        );
+        let scoped = query_entry(
+            "scoped-count",
+            Kind::Sync,
+            json!({"expectedResultType": "COUNT", "authorizationFilters": [{"conceptPath": "\\s\\", "values": ["x"]}]}),
+        );
+        assert_eq!(
+            rule_name(&main_contract(), &scoped, &answer, &refusal),
+            None
+        );
+        let listing = query_entry(
+            "unscoped-listing",
+            Kind::Sync,
+            json!({"expectedResultType": "INFO_COLUMN_LISTING"}),
+        );
+        assert_eq!(
+            rule_name(&main_contract(), &listing, &answer, &refusal),
+            None
+        );
+        let submit = query_entry(
+            "unscoped-patients",
+            Kind::Async,
+            json!({"expectedResultType": "PATIENTS"}),
+        );
+        assert_eq!(
+            rule_name(
+                &main_contract(),
+                &submit,
+                &async_outcome(200, Some("SUCCESS"), Some("PATIENT_NUM\n1\n")),
+                &refused_submit("authorizationFilters are required for this query")
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn an_unknown_field_is_accepted_only_under_main_naming_it_against_javas_500() {
+        let java = sync(500, "");
+        let cases = [
+            (
+                json!({"expectedResultType": "COUNT", "userConsents": {}}),
+                "userConsents",
+            ),
+            (
+                json!({"expectedResultType": "COUNT", "authorizationFilters": [{"conceptPath": "\\s\\", "values": ["x"], "extra": 1}]}),
+                "extra",
+            ),
+            (
+                json!({"expectedResultType": "COUNT", "phenotypicClause": {"operator": "AND", "phenotypicClauses": [{"phenotypicFilterType": "REQUIRED", "conceptPath": "\\a\\", "size": 1}]}}),
+                "size",
+            ),
+            (
+                json!({"expectedResultType": "COUNT", "phenotypicClause": {"phenotypicFilterType": "REQUIRED", "conceptPath": "\\a\\", "operator": "AND"}}),
+                "operator",
+            ),
+            (
+                json!({"expectedResultType": "COUNT", "genomicFilters": [{"key": "Gene", "values": ["A"], "other": true}]}),
+                "other",
+            ),
+        ];
+        for (query, field) in cases {
+            let e = query_entry("unknown-field-count", Kind::Sync, query);
+            let refusal = sync(
+                400,
+                &format!("the query is not valid: unknown field `{field}`, expected one of `x`"),
+            );
+            assert_eq!(
+                rule_name(&main_contract(), &e, &java, &refusal).as_deref(),
+                Some("unknown-field-main"),
+                "{field}"
+            );
+            assert_eq!(
+                rule_name(&harmonization_contract(), &e, &java, &refusal),
+                None
+            );
+            assert_eq!(
+                rule_name(&main_contract(), &e, &sync(200, ""), &refusal),
+                None
+            );
+            assert_eq!(
+                rule_name(
+                    &main_contract(),
+                    &e,
+                    &java,
+                    &sync(400, "the query is not valid: unknown field `elsewhere`")
+                ),
+                None
+            );
+        }
+        let known = query_entry(
+            "known-fields-count",
+            Kind::Sync,
+            json!({"expectedResultType": "COUNT", "phenotypicClause": {"phenotypicFilterType": "REQUIRED", "conceptPath": "\\a\\", "not": false}}),
+        );
+        assert_eq!(
+            rule_name(
+                &main_contract(),
+                &known,
+                &java,
+                &sync(400, "the query is not valid: unknown field `not`")
+            ),
+            None
+        );
+        let submit = query_entry(
+            "unknown-field-patients",
+            Kind::Async,
+            json!({"expectedResultType": "PATIENTS", "userConsents": {}}),
+        );
+        assert_eq!(
+            rule_name(
+                &main_contract(),
+                &submit,
+                &async_outcome(500, None, None),
+                &refused_submit("the query is not valid: unknown field `userConsents`")
+            )
+            .as_deref(),
+            Some("unknown-field-main")
+        );
+    }
+
+    #[test]
+    fn a_null_in_an_authorization_filter_is_refused_under_main_against_either_java_failure() {
+        let sync_cases = [
+            json!([null]),
+            json!([{"values": ["x"]}]),
+            json!([{"conceptPath": null, "values": ["x"]}]),
+            json!([{"conceptPath": "\\s\\"}]),
+            json!([{"conceptPath": "\\s\\", "values": null}]),
+        ];
+        let refusal = sync(400, "an authorization filter's values are null");
+        for filters in sync_cases {
+            let e = query_entry(
+                "authz-null-count",
+                Kind::Sync,
+                json!({"expectedResultType": "COUNT", "authorizationFilters": filters}),
+            );
+            for java in [sync(200, ""), sync(500, ""), sync(500, "{\"error\":1}")] {
+                assert_eq!(
+                    rule_name(&main_contract(), &e, &java, &refusal).as_deref(),
+                    Some("null-authorization-filter-main-status"),
+                    "{filters}"
+                );
+            }
+            assert_eq!(
+                rule_name(&main_contract(), &e, &sync(200, "3"), &refusal),
+                None
+            );
+            assert_eq!(
+                rule_name(
+                    &main_contract(),
+                    &e,
+                    &sync(200, ""),
+                    &sync(400, "a phenotypic filter's values hold null")
+                ),
+                None
+            );
+        }
+        let clean = query_entry(
+            "authz-clean-count",
+            Kind::Sync,
+            json!({"expectedResultType": "COUNT", "authorizationFilters": [{"conceptPath": "\\s\\", "values": ["x"]}]}),
+        );
+        assert_eq!(
+            rule_name(&main_contract(), &clean, &sync(200, ""), &refusal),
+            None
+        );
+        let submit = query_entry(
+            "authz-null-patients",
+            Kind::Async,
+            json!({"expectedResultType": "PATIENTS", "authorizationFilters": [null]}),
+        );
+        let refused = refused_submit(NULL_AUTHORIZATION_FILTER);
+        for java in [bodiless_submit(), async_outcome(500, None, None)] {
+            assert_eq!(
+                rule_name(&main_contract(), &submit, &java, &refused).as_deref(),
+                Some("null-authorization-filter-main-status")
+            );
+        }
+        assert_eq!(
+            rule_name(
+                &harmonization_contract(),
+                &submit,
+                &bodiless_submit(),
+                &refused
+            )
+            .as_deref(),
+            Some("null-authorization-filter-status")
+        );
+        assert_eq!(
+            rule_name(
+                &harmonization_contract(),
+                &submit,
+                &async_outcome(500, None, None),
+                &refused
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn a_null_concept_path_covers_only_phenotypic_filters_under_main() {
+        let authorization = query_entry(
+            "authz-path-null-patients",
+            Kind::Async,
+            json!({"expectedResultType": "PATIENTS", "authorizationFilters": [{"conceptPath": null, "values": ["x"]}]}),
+        );
+        let refused = refused_submit(NULL_CONCEPT_PATHS[1]);
+        assert_eq!(
+            rule_name(
+                &harmonization_contract(),
+                &authorization,
+                &bodiless_submit(),
+                &refused
+            )
+            .as_deref(),
+            Some("null-concept-path-status")
+        );
+        assert_eq!(
+            rule_name(
+                &main_contract(),
+                &authorization,
+                &bodiless_submit(),
+                &refused
+            )
+            .as_deref(),
+            Some("null-authorization-filter-main-status")
+        );
+        let mut narrowed = main_contract();
+        narrowed
+            .rules
+            .retain(|rule| rule.name != "null-authorization-filter-main-status");
+        assert_eq!(
+            rule_name(&narrowed, &authorization, &bodiless_submit(), &refused),
+            None
+        );
+        let phenotypic_message = refused_submit(NULL_CONCEPT_PATHS[0]);
+        assert_eq!(
+            rule_name(
+                &harmonization_contract(),
+                &authorization,
+                &bodiless_submit(),
+                &phenotypic_message
+            )
+            .as_deref(),
+            Some("null-concept-path-status")
+        );
+        assert_eq!(
+            rule_name(
+                &main_contract(),
+                &authorization,
+                &bodiless_submit(),
+                &phenotypic_message
+            ),
+            None
+        );
+        let phenotypic = query_entry(
+            "path-null-count",
+            Kind::Sync,
+            json!({"expectedResultType": "COUNT", "phenotypicClause": {"phenotypicFilterType": "REQUIRED", "conceptPath": null}}),
+        );
+        let refusal = sync(400, NULL_CONCEPT_PATHS[0]);
+        assert_eq!(
+            rule_name(&main_contract(), &phenotypic, &sync(500, ""), &refusal).as_deref(),
+            Some("null-concept-path-status")
+        );
+        let authorization_message = sync(400, NULL_CONCEPT_PATHS[1]);
+        assert_eq!(
+            rule_name(
+                &harmonization_contract(),
+                &phenotypic,
+                &sync(200, ""),
+                &authorization_message
+            )
+            .as_deref(),
+            Some("null-concept-path-status")
+        );
+        assert_eq!(
+            rule_name(
+                &main_contract(),
+                &phenotypic,
+                &sync(200, ""),
+                &authorization_message
+            ),
+            None
+        );
+        assert_eq!(
+            rule_name(
+                &harmonization_contract(),
+                &phenotypic,
+                &sync(500, ""),
+                &refusal
+            ),
+            None
+        );
+        assert_eq!(
+            rule_name(
+                &harmonization_contract(),
+                &phenotypic,
+                &sync(200, ""),
+                &refusal
+            )
+            .as_deref(),
+            Some("null-concept-path-status")
+        );
+    }
+
+    #[test]
+    fn the_two_forms_of_a_java_failure_are_one_class_under_main() {
+        let e = query_entry(
+            "failure-count",
+            Kind::Sync,
+            json!({"expectedResultType": "COUNT"}),
+        );
+        assert_eq!(
+            rule_name(&main_contract(), &e, &sync(200, ""), &sync(500, "")).as_deref(),
+            Some("java-failure-empty-200-or-500")
+        );
+        assert_eq!(
+            rule_name(&main_contract(), &e, &sync(500, ""), &sync(200, "")).as_deref(),
+            Some("java-failure-empty-200-or-500")
+        );
+        assert_eq!(
+            rule_name(&main_contract(), &e, &sync(200, "3"), &sync(500, "")),
+            None
+        );
+        assert_eq!(
+            rule_name(
+                &harmonization_contract(),
+                &e,
+                &sync(200, ""),
+                &sync(500, "")
+            ),
+            None
+        );
+        let submit = query_entry(
+            "failure-patients",
+            Kind::Async,
+            json!({"expectedResultType": "PATIENTS"}),
+        );
+        assert_eq!(
+            rule_name(
+                &main_contract(),
+                &submit,
+                &bodiless_submit(),
+                &async_outcome(500, None, None)
+            )
+            .as_deref(),
+            Some("java-failure-empty-200-or-500")
+        );
+        assert_eq!(
+            rule_name(
+                &main_contract(),
+                &submit,
+                &async_outcome(200, Some("ERROR"), None),
+                &async_outcome(500, None, None)
+            ),
+            None
+        );
     }
 }

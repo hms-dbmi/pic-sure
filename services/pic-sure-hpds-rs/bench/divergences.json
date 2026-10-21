@@ -1,6 +1,37 @@
 {
   "rules": [
     {
+      "name": "sync-requires-authorization-filter-main",
+      "when": "sync-flag-refusal",
+      "statuses": [200, 400],
+      "javaBranch": "main",
+      "consentContract": "main",
+      "reason": "Decision 2 (spec-v6-bdc-readiness.md), main consent contract only: with HPDS_REQUIRE_AUTHORIZATION_FILTER on (Java's hpds.requireAuthorizationFilter, on by default and on at BDC), Rust refuses /query/sync with 400 when authorizationFilters is missing, null or empty, or becomes empty because a repeated key keeps its last value []. Java main runs no validator on sync and answers over every patient (QueryV3Service runs QueryValidator only on POST /query). INFO_COLUMN_LISTING is exempt, as the harmonization contract exempts it from the consent requirement, since it reads no patient data. BDC's query service always sends \\_consents\\ on the auth backend, so no BDC answer changes. Accepted only on sync, only for a query with no authorization filter, and only with Rust's 400 naming authorizationFilters against Java's 200 with a body."
+    },
+    {
+      "name": "unknown-field-main",
+      "when": "unknown-field-refused",
+      "statuses": [400, 500],
+      "javaBranch": "main",
+      "consentContract": "main",
+      "reason": "Decision 6 (spec-v6-bdc-readiness.md), main consent contract only: main mode knows the seven fields of main's Query (select, authorizationFilters, phenotypicClause, genomicFilters, expectedResultType, picsureId, id). An unknown field anywhere, userConsents included, or a clause mixing filter and subquery fields, makes Java's default ObjectMapper throw in convertIncomingQuery, which PicSureV3Service answers with 500 on /query/sync and POST /query. Rust answers 400 naming the field. Accepted only when the request holds a field that Query, AuthorizationFilter, PhenotypicFilter, PhenotypicSubquery or GenomicFilter does not declare, with Rust's 400 holding \"unknown field `<name>`\" for one such field against Java's 500."
+    },
+    {
+      "name": "null-authorization-filter-main-status",
+      "when": "null-authorization-filter-main-refused",
+      "javaBranch": "main",
+      "consentContract": "main",
+      "reason": "Decision 2 (spec-v6-bdc-readiness.md), main consent contract only: a null element of authorizationFilters, a null or missing conceptPath, or null or missing values makes Java main throw while evaluating (a NullPointerException in authorizationFiltersToPhenotypicClause or the cube cache, or IllegalArgumentException 'Either values or one of min/max must be set for a filter'), which AuditLoggingFilter answers 200 with an empty body with audit logging off (BDC's configuration) and 500 with it on. On POST /query a null element or null path throws a NullPointerException in QueryValidator that escapes runQuery: 200 with an empty body (or 500) and no job. Null or empty values there end the job in ERROR, which Rust matches. Rust refuses the sync request and the submit with 400 and a message starting \"an authorization filter\". Accepted only when the query holds such a null, with that refusal against Java's empty 200, its 500, or its submit answered 200 or 500 with no status. In main mode it replaces null-authorization-filter-main."
+    },
+    {
+      "name": "java-failure-empty-200-or-500",
+      "when": "java-failure-class",
+      "statuses": [200, 500],
+      "javaBranch": "main",
+      "consentContract": "main",
+      "reason": "Comparer normalization, main consent contract only: Java answers an uncaught exception 200 with an empty body when HPDS's audit logging client is off (AuditLoggingFilter returns from its finally block, BDC's configuration) and 500 when it is on, and an async submit 200 or 500 with no status. Both forms are one failure class, so one corpus judges both configurations: this rule accepts the two forms against each other, and under the main contract every rule that names Java's quiet failure accepts the 500 form too. A body Jackson cannot map is answered 500 by convertIncomingQuery in both configurations, so unknown-field-main accepts only the 500."
+    },
+    {
       "name": "invalid-request-status",
       "entry": "error-*",
       "statuses": [400, 500],
@@ -134,12 +165,14 @@
       "entry": "search-*",
       "when": ["column-meta-shape", "numeric-max-double-min-value"],
       "javaBranch": "main",
+      "consentContract": "harmonization",
       "reason": "Contract, main branch only (javaBranch): Rust serves the consent branch's /search shape, SummaryColumnMeta (name, widthInBytes, categorical, categoryValues, min, max, patientCount, timestampMin, timestampMax, nulls written). The original Java HPDS on main serves ColumnMeta (name, categorical, categoryValues for categorical concepts, min and max for numeric ones, observationCount, patientCount). Accepted only when the bodies are equal once every column meta keeps the shared fields (name, categorical, a non-empty categoryValues, a non-null min and max, patientCount) and, as the main loader also starts max at Double.MIN_VALUE (LoadingStore.java:54), a max of 4.9E-324 against a real max of zero or below takes the real value."
     },
     {
       "name": "authorization-filters-main",
       "when": "authorization-filters-narrow",
       "javaBranch": "main",
+      "consentContract": "harmonization",
       "reason": "Contract, main branch only (javaBranch): Rust, like the consent branch, never applies authorizationFilters (the consent branch only validates them, QueryValidator.java:49), while the original Java HPDS on main ANDs each one into the query (PhenotypicQueryExecutor.java:35), so main answers fewer patients. Rust must not replace a main-branch HPDS that relies on authorizationFilters (README, Differences from Java). Accepted only against main, only when the entry's query carries a non-empty authorizationFilters list, both sides answered (sync 200, or async SUCCESS), and main's answer is the narrower one: a COUNT no greater than Rust's, a cross count with the same concepts at the top level and every count under them no greater, a PATIENTS or DATAFRAME export with the same header and a subset of Rust's rows. Against the consent branch, which ignores the filters as Rust does, any difference stays reported."
     },
     {
@@ -165,7 +198,7 @@
     {
       "name": "null-concept-path-status",
       "when": "null-concept-path-refused",
-      "reason": "Java error, invalid input: a phenotypic filter whose conceptPath is null makes Java fail on every route (the executor looks the path up on /query/sync and answers 200 with an empty body; on POST /query QueryValidator's dictionary lookup answers 200 with no body, or for ANY_RECORD_OF the job ends in ERROR), and so does an authorization filter whose conceptPath is null on POST /query (PhenotypicFilterValidator.java:29). Rust refuses them with 400 and exactly \"a phenotypic filter's conceptPath is null\" or \"an authorization filter's conceptPath is null\" (a missing conceptPath counts as null, as Jackson reads it). Accepted only when the query holds such a filter, Rust's 400 is one of those messages exactly, and Java's answer is one of those three failures."
+      "reason": "Java error, invalid input: a phenotypic filter whose conceptPath is null makes Java fail on every route (the executor looks the path up on /query/sync and answers 200 with an empty body; on POST /query QueryValidator's dictionary lookup answers 200 with no body, or for ANY_RECORD_OF the job ends in ERROR), and so does an authorization filter whose conceptPath is null on POST /query (PhenotypicFilterValidator.java:29). Rust refuses them with 400 and exactly \"a phenotypic filter's conceptPath is null\" or \"an authorization filter's conceptPath is null\" (a missing conceptPath counts as null, as Jackson reads it). Accepted only when the query holds such a filter, Rust's 400 is one of those messages exactly, and Java's answer is one of those three failures. Under the main consent contract the rule covers phenotypic filters only, and Java's 500 counts as its failure too: a null path in an authorization filter is null-authorization-filter-main-status on both routes."
     },
     {
       "name": "null-filter-value-status",
@@ -226,6 +259,7 @@
       "name": "null-authorization-filter-main",
       "when": "null-authorization-filter-ignored",
       "javaBranch": "main",
+      "consentContract": "harmonization",
       "reason": "Java error, deprecated field: the main branch applies authorizationFilters, and a null element, a null conceptPath or a null value in one makes it fail, answering /query/sync 200 with an empty body and ending POST /query in ERROR. Rust never applies authorizationFilters, as the consent branch does not on /query/sync, and answers the query. Accepted only on main, only when the query holds such a null, and only with Java's failure against Rust's answer."
     },
     {

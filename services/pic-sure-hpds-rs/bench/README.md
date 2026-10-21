@@ -106,6 +106,18 @@ hpds-bench compare --a http://127.0.0.1:18081/PIC-SURE --b http://rust:8080/PIC-
   --corpus /tmp/corpus --divergences bench/divergences.json --java a --java-branch main
 ```
 
+A rule with `consentContract` (`harmonization` or `main`) applies only when the Rust side serves
+that consent contract. The run says which with `--consent-contract <harmonization|main>`, after
+`--java`; without it the Rust side is taken to serve `harmonization`, so a run that does not
+name a contract judges as before. The three rules that describe the harmonization contract
+against Java main (`search-shape-main`, `authorization-filters-main` and
+`null-authorization-filter-main`) apply to harmonization runs and pair parity only. Under
+`main`, the main contract's rules apply (`sync-requires-authorization-filter-main`,
+`unknown-field-main`, `null-authorization-filter-main-status` and
+`java-failure-empty-200-or-500`), every rule that accepts Java's empty 200 or bodiless submit
+also accepts its 500 form, and `null-concept-path-status` covers phenotypic filters only. JSON
+bodies are compared as parsed values, so CROSS_COUNT's varying key order needs no rule.
+
 The genomic rules work the same way, from the two answers and the request alone, without the
 equivalence oracle: Rust's refusals where Java fails on a genomic filter (an empty 200, a 500,
 an ERROR job or a bodiless submit), Rust's refusals of a genomic filter Java never evaluates
