@@ -18,6 +18,8 @@ spring:
         dialect: org.hibernate.dialect.H2Dialect
 
 picsure:
+  openapi:
+    title: PIC-SURE Operations Service
   operations:
     # Test-only shared secret for InternalTokenFilter (/internal/**). NEVER commit a real production value here --
     # the real deployment sources this from the QUERY_SERVICE_INTERNAL_TOKEN env var (see src/main/resources/application.yml).
