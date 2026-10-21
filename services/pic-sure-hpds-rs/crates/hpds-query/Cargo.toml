@@ -14,7 +14,6 @@ tokio = ["dep:tokio"]
 
 [dependencies]
 bytes = "1"
-crossbeam-epoch = "0.9.21"
 hpds-format.workspace = true
 libc.workspace = true
 memchr = "2.8.3"
@@ -29,6 +28,7 @@ tracing.workspace = true
 xxhash-rust.workspace = true
 
 [dev-dependencies]
+crossbeam-epoch = "0.9.21"
 hpds-bench = { path = "../hpds-bench" }
 hpds-etl = { path = "../hpds-etl" }
 hpds-gen = { path = "../hpds-gen" }

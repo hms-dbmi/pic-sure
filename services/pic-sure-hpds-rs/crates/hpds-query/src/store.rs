@@ -83,20 +83,6 @@ pub(crate) fn block_cache(
         .build()
 }
 
-/// Collections [`collect_unlinked`] runs. Memory unlinked in epoch `e` is freed once the
-/// global epoch reaches `e + 2`, and each collection advances it at most once, so the last two
-/// may free what the first two let expire.
-const RECLAIM_COLLECTIONS: usize = 4;
-
-/// Pushes the calling thread's bag of deferred frees to `crossbeam-epoch`'s global queue and
-/// collects [`RECLAIM_COLLECTIONS`] times, freeing every expired bag in the queue up to the
-/// collector's eight per collection ([`crate::PartitionSet::reclaim_unlinked`]).
-pub(crate) fn collect_unlinked() {
-    for _ in 0..RECLAIM_COLLECTIONS {
-        crossbeam_epoch::pin().flush();
-    }
-}
-
 /// A multi-concept read sends a concept's lookup through the block cache on one call in
 /// this many, and takes it from [`RecentEntries`] on the others, so the cache keeps
 /// seeing how often and how recently each concept is read, at this fraction of the reads.

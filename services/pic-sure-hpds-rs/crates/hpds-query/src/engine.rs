@@ -2306,6 +2306,8 @@ mod tests {
         /// with concurrent loaders through a waiter it unlinks with deferred reclamation,
         /// and that waiter keeps a clone of the entry until the global epoch advances. The
         /// count is therefore taken after reclaiming, before each chunk loads and at the end.
+        /// The final check is the bound the README states for that memory: nothing the read
+        /// dropped survives the next collections once no thread holds the epoch back.
         #[test]
         fn peak_live_entries_stay_under_the_chunk_bound() {
             let concepts = prefix_concepts();
@@ -2345,57 +2347,6 @@ mod tests {
                     );
                 }
             }
-        }
-
-        /// After each chunk a read lets deferred reclamation free what it dropped: `moka`
-        /// hands every load's shared copy to `crossbeam-epoch`. The read records each run, and
-        /// the count of entries alive right after its collections, for its own partition set,
-        /// so the test neither waits for nor drives any reclamation, and no collection elsewhere
-        /// in the process can stand in for the read's: the read must run once per chunk, and
-        /// every pool worker must run the flush the read broadcast for each chunk, counted for
-        /// this set alone. Most reads leave nothing alive after their last collection; one may
-        /// leave a copy or two when another thread, pinned in an older epoch, holds the global
-        /// epoch back (the residue [`crate::PartitionSet::reclaim_unlinked`] bounds), so the
-        /// test allows that for at most a quarter of its reads.
-        #[test]
-        fn a_chunk_read_frees_what_it_dropped_after_each_chunk() {
-            use crate::partition::test_support::reclamation;
-            const READS: usize = 40;
-            let concepts = prefix_concepts();
-            let (_dir, out) = prefix_store(&concepts);
-            let consents = ["p1", "p2", "p3"];
-            let query = any_record_of_prefix("\\c\\", &consents);
-            let mut left_alive = 0;
-            for read in 0..READS {
-                let share = if read % 2 == 0 { 0.0 } else { 2.0 };
-                let engine = engine_with(&out, share, 20_000, 0);
-                let set = engine.partitions();
-                let selection = set.select_consents(&consents).unwrap();
-                let chunks = selection
-                    .read_chunks(&selection.concepts_with_prefix("\\c\\"))
-                    .len();
-                assert!(chunks > 1);
-                assert!(!engine.patients(&query).unwrap().is_empty());
-                let (runs, live_after, _) = reclamation(set);
-                assert_eq!(runs, chunks, "read {read}: one reclamation per chunk");
-                if live_after > 0 {
-                    left_alive += 1;
-                }
-                let workers = chunks * rayon::current_num_threads();
-                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-                while reclamation(set).2 < workers && std::time::Instant::now() < deadline {
-                    std::thread::sleep(std::time::Duration::from_millis(1));
-                }
-                assert_eq!(
-                    reclamation(set).2,
-                    workers,
-                    "read {read}: every pool worker flushed once per chunk"
-                );
-            }
-            assert!(
-                left_alive * 4 <= READS,
-                "{left_alive} of {READS} reads left entries alive after their last collection"
-            );
         }
 
         #[test]
