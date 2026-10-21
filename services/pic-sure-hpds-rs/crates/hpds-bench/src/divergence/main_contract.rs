@@ -43,15 +43,21 @@ const SUBQUERY_FIELDS: [&str; 3] = ["not", "phenotypicClauses", "operator"];
 /// The fields of main's `GenomicFilter`.
 const GENOMIC_FILTER_FIELDS: [&str; 4] = ["key", "values", "min", "max"];
 
-/// The refusals main mode answers a `null` in an authorization filter with, exactly:
-/// `hpds_query`'s `NULL_AUTHORIZATION_FILTER_MESSAGE`, `NULL_AUTHORIZATION_CONCEPT_PATH_MESSAGE`,
-/// `NULL_AUTHORIZATION_VALUES_MESSAGE` and `NULL_AUTHORIZATION_VALUE_MESSAGE`.
-const NULL_AUTHORIZATION_FILTER_REFUSALS: [&str; 4] = [
-    "an authorization filter is null",
-    "an authorization filter's conceptPath is null",
-    "an authorization filter's values are null",
-    "an authorization filter's values hold null",
-];
+/// Main mode's refusal of a `null` element of `authorizationFilters`, exactly: `hpds_query`'s
+/// `NULL_AUTHORIZATION_FILTER_MESSAGE`.
+const NULL_FILTER_REFUSAL: &str = "an authorization filter is null";
+
+/// Main mode's refusal of a `null` or missing `conceptPath`: `hpds_query`'s
+/// `NULL_AUTHORIZATION_CONCEPT_PATH_MESSAGE`.
+const NULL_PATH_REFUSAL: &str = "an authorization filter's conceptPath is null";
+
+/// Main mode's refusal of `null` or missing `values`: `hpds_query`'s
+/// `NULL_AUTHORIZATION_VALUES_MESSAGE`.
+const NULL_VALUES_REFUSAL: &str = "an authorization filter's values are null";
+
+/// Main mode's refusal of a `null` value looked up in a categorical concept: `hpds_query`'s
+/// `NULL_AUTHORIZATION_VALUE_MESSAGE`.
+const NULL_VALUE_REFUSAL: &str = "an authorization filter's values hold null";
 
 /// The refusal main mode answers an unscoped sync query with, exactly: `hpds_query`'s
 /// `AUTHORIZATION_FILTER_REQUIRED_MESSAGE`.
@@ -207,17 +213,27 @@ pub(super) fn unknown_field_refused(
         })
 }
 
-/// Whether an authorization filter is `null`, or an object whose `conceptPath` or `values` is
-/// `null` or missing, or whose `values` hold a `null`.
-fn null_authorization_filter(filter: &Value) -> bool {
-    filter.is_null()
-        || (filter.is_object()
-            && (filter.get("conceptPath").is_none_or(Value::is_null)
-                || filter.get("values").is_none_or(Value::is_null)
-                || filter
-                    .get("values")
-                    .and_then(Value::as_array)
-                    .is_some_and(|values| values.iter().any(Value::is_null))))
+/// The refusals the `null`s of one authorization filter can draw from main mode: for a `null`
+/// filter its own; for an object, the path refusal when `conceptPath` is `null` or missing,
+/// the values refusal when `values` is, and the value refusal when `values` holds a `null`.
+fn null_refusals(filter: &Value, out: &mut Vec<&'static str>) {
+    if filter.is_null() {
+        out.push(NULL_FILTER_REFUSAL);
+        return;
+    }
+    if !filter.is_object() {
+        return;
+    }
+    if filter.get("conceptPath").is_none_or(Value::is_null) {
+        out.push(NULL_PATH_REFUSAL);
+    }
+    match filter.get("values") {
+        None | Some(Value::Null) => out.push(NULL_VALUES_REFUSAL),
+        Some(Value::Array(values)) if values.iter().any(Value::is_null) => {
+            out.push(NULL_VALUE_REFUSAL);
+        }
+        Some(_) => {}
+    }
 }
 
 /// See [`super::Condition::NullAuthorizationFilterMainRefused`].
@@ -230,15 +246,19 @@ pub(super) fn null_authorization_filter_refused(
     let Some(java) = main_java(java) else {
         return false;
     };
-    entry_query(entry).is_some_and(|query| {
-        authorization_filters(&query)
-            .iter()
-            .any(null_authorization_filter)
-    }) && rust_refused_java_failed(
-        a,
-        b,
-        Some(java),
-        |body| NULL_AUTHORIZATION_FILTER_REFUSALS.contains(&body),
-        |o| empty_sync_200(o) || submit_failed(o),
-    )
+    let Some(query) = entry_query(entry) else {
+        return false;
+    };
+    let mut refusals = Vec::new();
+    for filter in authorization_filters(&query) {
+        null_refusals(filter, &mut refusals);
+    }
+    !refusals.is_empty()
+        && rust_refused_java_failed(
+            a,
+            b,
+            Some(java),
+            |body| refusals.contains(&body),
+            |o| empty_sync_200(o) || submit_failed(o),
+        )
 }

@@ -287,8 +287,8 @@ pub enum Condition {
     UnknownFieldRefused,
     /// Main consent contract only. The entry's query holds an authorization filter that is
     /// `null`, or whose `conceptPath` or `values` is `null` or missing, or whose `values` hold
-    /// a `null`; the Rust side refused with a 400 holding exactly one of main mode's four
-    /// messages ("an authorization filter is null", "an authorization filter's conceptPath is
+    /// a `null`; the Rust side refused with a 400 holding exactly the one of main mode's four
+    /// messages that names a kind of `null` the query holds ("an authorization filter is null", "an authorization filter's conceptPath is
     /// null", "an authorization filter's values are null", "an authorization filter's values
     /// hold null"), and the Java side (which
     /// must be known) failed while evaluating: a sync 200 with an empty body or a sync 500, or
@@ -3777,20 +3777,41 @@ mod tests {
     #[test]
     fn a_null_in_an_authorization_filter_is_refused_under_main_against_either_java_failure() {
         let sync_cases = [
-            json!([null]),
-            json!([{"values": ["x"]}]),
-            json!([{"conceptPath": null, "values": ["x"]}]),
-            json!([{"conceptPath": "\\s\\"}]),
-            json!([{"conceptPath": "\\s\\", "values": null}]),
-            json!([{"conceptPath": "\\s\\", "values": ["x", null]}]),
+            (json!([null]), "an authorization filter is null"),
+            (
+                json!([{"values": ["x"]}]),
+                "an authorization filter's conceptPath is null",
+            ),
+            (
+                json!([{"conceptPath": null, "values": ["x"]}]),
+                "an authorization filter's conceptPath is null",
+            ),
+            (
+                json!([{"conceptPath": "\\s\\"}]),
+                "an authorization filter's values are null",
+            ),
+            (
+                json!([{"conceptPath": "\\s\\", "values": null}]),
+                "an authorization filter's values are null",
+            ),
+            (
+                json!([{"conceptPath": "\\s\\", "values": ["x", null]}]),
+                "an authorization filter's values hold null",
+            ),
         ];
-        let refusal = sync(400, "an authorization filter's values are null");
-        for filters in sync_cases {
+        let messages = [
+            "an authorization filter is null",
+            "an authorization filter's conceptPath is null",
+            "an authorization filter's values are null",
+            "an authorization filter's values hold null",
+        ];
+        for (filters, message) in sync_cases {
             let e = query_entry(
                 "authz-null-count",
                 Kind::Sync,
                 json!({"expectedResultType": "COUNT", "authorizationFilters": filters}),
             );
+            let refusal = sync(400, message);
             for java in [sync(200, ""), sync(500, ""), sync(500, "{\"error\":1}")] {
                 assert_eq!(
                     rule_name(&main_contract(), &e, &java, &refusal).as_deref(),
@@ -3802,17 +3823,18 @@ mod tests {
                 rule_name(&main_contract(), &e, &sync(200, "3"), &refusal),
                 None
             );
-            for other in [
-                "a phenotypic filter's values hold null",
-                "an authorization filter is wrong",
-            ] {
+            for other in messages.iter().filter(|other| **other != message).chain([
+                &"a phenotypic filter's values hold null",
+                &"an authorization filter is wrong",
+            ]) {
                 assert_eq!(
                     rule_name(&main_contract(), &e, &sync(200, ""), &sync(400, other)),
                     None,
-                    "{other}"
+                    "{filters}: {other}"
                 );
             }
         }
+        let refusal = sync(400, "an authorization filter's values are null");
         let clean = query_entry(
             "authz-clean-count",
             Kind::Sync,
