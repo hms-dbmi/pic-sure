@@ -1857,6 +1857,47 @@ mod tests {
             assert_eq!(set.cohort_guard_refusals(), 0);
         }
 
+        /// On a cache of about a quarter of the store, entries found cached are dropped while reads
+        /// hold them, and each is charged to the budget until let go. A thread holds one chunk
+        /// at a time, its permit and its charged entries within the chunk bound, so the
+        /// budget's peak stays within the budget plus one chunk for each thread that reads:
+        /// the six calling threads and the clause threads.
+        #[test]
+        fn concurrent_reads_on_a_small_cache_stay_within_the_budget_and_a_chunk_per_thread() {
+            use crate::cohort::clause_thread_cap;
+            const CHUNK: u64 = 20_000;
+            const BUDGET: u64 = 30_000;
+            const CALLERS: u64 = 6;
+            let concepts = prefix_concepts();
+            let (_dir, out) = prefix_store(&concepts);
+            let consents: [&[&str]; 2] = [&["p1"], &["p1", "p2", "p3"]];
+            let unbounded = engine_with(&out, NARROW_VIEW_SHARE, u64::MAX, 0);
+            let expected: Vec<RoaringBitmap> = consents
+                .iter()
+                .map(|c| unbounded.patients(&patients_of(broad_or(), c)).unwrap())
+                .collect();
+            let engine = engine_budgeted(&out, NARROW_VIEW_SHARE, CHUNK, BUDGET, 8_000);
+            std::thread::scope(|scope| {
+                for thread in 0..CALLERS as usize {
+                    let (engine, expected, consents) = (&engine, &expected, &consents);
+                    scope.spawn(move || {
+                        for round in 0..4 {
+                            let which = (thread + round) % 2;
+                            let query = patients_of(broad_or(), consents[which]);
+                            assert_eq!(engine.patients(&query).unwrap(), expected[which]);
+                        }
+                    });
+                }
+            });
+            let set = engine.partitions();
+            let stats = set.prefix_read_stats();
+            assert_eq!(stats.held, 0, "every permit and charge is released");
+            let bound = BUDGET + (CALLERS + clause_thread_cap() as u64) * CHUNK;
+            assert!(stats.peak_held <= bound, "{stats:?} over {bound}");
+            assert!(set.block_cache_stats().evictions > 0);
+            assert_eq!(set.cohort_guard_refusals(), 0);
+        }
+
         #[test]
         fn broad_filters_run_on_threads_of_their_own() {
             use crate::partition::test_support::take_chunk_threads;
@@ -2082,6 +2123,45 @@ mod tests {
             assert_eq!(stats.held, 0);
             assert!(stats.peak_held <= 30_000, "{stats:?}");
             assert_eq!(set.cohort_guard_refusals(), 0);
+        }
+
+        /// A read holds the cached entries of its chunk while it merges them, outside the
+        /// budget while the cache keeps them. When the cache drops them meanwhile, the read
+        /// is the only holder, so they are charged to the budget until it lets them go.
+        #[test]
+        fn cached_entries_the_cache_drops_under_a_read_are_charged_to_the_budget() {
+            use std::sync::atomic::{AtomicU64, Ordering::SeqCst};
+            static CACHED: AtomicU64 = AtomicU64::new(0);
+            static HELD: AtomicU64 = AtomicU64::new(0);
+            fn drop_the_cache(set: &crate::PartitionSet) {
+                CACHED.store(
+                    crate::partition::test_support::cached_block_bytes(set),
+                    SeqCst,
+                );
+                set.clear_cache();
+                HELD.store(set.prefix_read_stats().held, SeqCst);
+            }
+            let concepts = prefix_concepts();
+            let (_dir, out) = prefix_store(&concepts);
+            let query = any_record_of_prefix("\\c\\", &["p1"]);
+            let expected = engine_with(&out, 2.0, u64::MAX, 0)
+                .patients(&query)
+                .unwrap();
+            let engine = engine_budgeted(&out, 2.0, u64::MAX, u64::MAX, 1 << 30);
+            assert_eq!(engine.patients(&query).unwrap(), expected);
+            let found = fault::hooking_chunk_held(drop_the_cache, || engine.patients(&query));
+            assert_eq!(found.unwrap(), expected);
+            let cached = CACHED.load(SeqCst);
+            assert!(cached > 0);
+            assert_eq!(
+                HELD.load(SeqCst),
+                cached,
+                "every entry the read found cached is charged once the cache drops it"
+            );
+            let stats = engine.partitions().prefix_read_stats();
+            assert_eq!(stats.held, 0, "the charge ends with the read");
+            assert!(stats.peak_held >= cached, "{stats:?}");
+            assert_eq!(engine.partitions().cohort_guard_refusals(), 0);
         }
 
         #[test]

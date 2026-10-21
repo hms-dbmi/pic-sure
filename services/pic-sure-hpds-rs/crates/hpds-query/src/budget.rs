@@ -239,6 +239,33 @@ impl ByteBudget {
         })
     }
 
+    /// Counts `bytes` as held, at once and whatever is free, for memory a reader already
+    /// holds outside every permit and the cache: no permit is counted and nothing waits. The
+    /// held count may then exceed the budget, and later requests wait until
+    /// [`ByteBudget::release_held`] gives the bytes back.
+    pub(crate) fn charge_held(&self, bytes: u64) {
+        if bytes == 0 {
+            return;
+        }
+        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        state.held = state.held.saturating_add(bytes);
+        self.peak.fetch_max(state.held, Ordering::Relaxed);
+    }
+
+    /// Gives back `bytes` that [`ByteBudget::charge_held`] counted, waking the waiters.
+    pub(crate) fn release_held(&self, bytes: u64) {
+        if bytes == 0 {
+            return;
+        }
+        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        state.held = state.held.saturating_sub(bytes);
+        let queued = state.queued();
+        drop(state);
+        if queued {
+            self.released.notify_all();
+        }
+    }
+
     /// True when `bytes` more fit beside what `state` holds.
     fn fits(&self, state: &State, bytes: u64) -> bool {
         state
@@ -387,6 +414,31 @@ mod tests {
         let stats = budget.stats();
         assert_eq!((stats.held, stats.permits, stats.waits), (0, 2, 1));
         assert_eq!(stats.peak_held, 90);
+    }
+
+    #[test]
+    fn bytes_charged_as_held_count_at_once_and_hold_back_waiters() {
+        let budget = ByteBudget::new(100);
+        let first = budget.acquire(60);
+        budget.charge_held(70);
+        let stats = budget.stats();
+        assert_eq!((stats.held, stats.peak_held, stats.permits), (130, 130, 1));
+        std::thread::scope(|scope| {
+            let waiter = scope.spawn(|| drop(budget.acquire(30)));
+            while budget.stats().waits < 1 {
+                std::thread::sleep(Duration::from_micros(50));
+            }
+            drop(first);
+            std::thread::sleep(Duration::from_millis(20));
+            assert_eq!(
+                budget.stats().held,
+                70,
+                "30 does not fit beside the 70 charged"
+            );
+            budget.release_held(70);
+            waiter.join().unwrap();
+        });
+        assert_eq!(budget.stats().held, 0);
     }
 
     #[test]

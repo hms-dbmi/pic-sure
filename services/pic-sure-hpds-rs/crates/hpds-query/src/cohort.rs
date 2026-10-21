@@ -475,6 +475,26 @@ pub(crate) mod fault {
 
     thread_local! {
         static CHUNK_PEAK: Cell<Option<usize>> = const { Cell::new(None) };
+        static AFTER_CHUNK_HELD: Cell<Option<fn(&crate::PartitionSet)>> =
+            const { Cell::new(None) };
+    }
+
+    /// Runs `work` on the calling thread with `hook` run each time one of its multi-concept
+    /// reads has its chunk's entries in hand, before it merges them, as a concurrent read
+    /// acting at that moment would.
+    pub(crate) fn hooking_chunk_held<R>(
+        hook: fn(&crate::PartitionSet),
+        work: impl FnOnce() -> R,
+    ) -> R {
+        struct Clear;
+        impl Drop for Clear {
+            fn drop(&mut self) {
+                AFTER_CHUNK_HELD.with(|h| h.set(None));
+            }
+        }
+        AFTER_CHUNK_HELD.with(|h| h.set(Some(hook)));
+        let _clear = Clear;
+        work()
     }
 
     /// Reclaims, while [`watching_chunks`] runs on the calling thread, the tracked entries
@@ -494,6 +514,9 @@ pub(crate) mod fault {
     /// the most; and records in `set` the thread that loaded the chunk.
     pub(crate) fn note_chunk_held(set: &crate::PartitionSet) {
         crate::partition::test_support::note_chunk_thread(set);
+        if let Some(hook) = AFTER_CHUNK_HELD.with(Cell::get) {
+            hook(set);
+        }
         CHUNK_PEAK.with(|peak| {
             if let Some(seen) = peak.get() {
                 let live = crate::partition::test_support::live(set).live();
@@ -1107,7 +1130,7 @@ fn any_record_of_chunk(
     build_views: bool,
 ) -> Result<bool> {
     fault::before_chunk_load(selection.set());
-    let (entries, permit) = selection.charged_entries(reads)?;
+    let (entries, permit, holds) = selection.charged_entries(reads)?;
     fault::note_chunk_held(selection.set());
     let pairs: Vec<(ConceptRead, _)> = reads.iter().copied().zip(entries).collect();
     let mut views: Vec<Option<Arc<View>>> = pairs
@@ -1174,6 +1197,7 @@ fn any_record_of_chunk(
         drop(corrected);
         drop(views);
         drop(pairs);
+        drop(holds);
         drop(permit);
         return Ok(exact);
     };
@@ -1186,6 +1210,7 @@ fn any_record_of_chunk(
     drop(corrected);
     drop(views);
     drop(pairs);
+    drop(holds);
     drop(permit);
     Ok(exact)
 }

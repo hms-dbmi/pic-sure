@@ -19,6 +19,7 @@ use moka::notification::RemovalCause;
 use moka::sync::Cache;
 use roaring::RoaringBitmap;
 
+use crate::budget::ByteBudget;
 use crate::counters::BlockCacheCounters;
 use crate::error::{QueryError, Result};
 use crate::view::View;
@@ -34,6 +35,16 @@ pub const DEFAULT_CACHE_BYTES: u64 = 4 << 30;
 /// never allocates.
 pub(crate) type BlockCache = Cache<u32, Arc<CachedConcept>>;
 
+/// The bit of [`CachedConcept`]'s hold state set once the block cache has dropped it.
+const HOLDS_DROPPED: u64 = 1 << 63;
+
+/// The bit of [`CachedConcept`]'s hold state set while its block is charged to the prefix
+/// read budget: while it is dropped and some read holds it.
+const HOLDS_CHARGED: u64 = 1 << 62;
+
+/// The bits of [`CachedConcept`]'s hold state counting the reads that hold it.
+const HOLDS_COUNT: u64 = HOLDS_CHARGED - 1;
+
 /// Bytes an entry is weighed at beyond its block and view.
 const ENTRY_OVERHEAD: usize = 64;
 
@@ -43,11 +54,13 @@ const ENTRY_OVERHEAD: usize = 64;
 /// already fills the cache on its own. Every entry dropped to keep the bound is counted in
 /// `counters.evictions`; an entry replaced by its reweighed self is not. Every entry the
 /// cache drops for any other reason than being replaced is marked dropped
-/// ([`CachedConcept::is_dropped`]) and forgotten by `recent`.
+/// ([`CachedConcept::mark_dropped`], which charges it to `budget` while reads hold it) and
+/// forgotten by `recent`.
 pub(crate) fn block_cache(
     cache_bytes: u64,
     counters: Arc<BlockCacheCounters>,
     recent: Arc<RecentEntries>,
+    budget: Arc<ByteBudget>,
 ) -> BlockCache {
     Cache::builder()
         .max_capacity(cache_bytes)
@@ -59,7 +72,7 @@ pub(crate) fn block_cache(
                 counters.evictions.fetch_add(1, Ordering::Relaxed);
             }
             if cause != RemovalCause::Replaced {
-                concept.mark_dropped();
+                concept.mark_dropped(&budget);
                 recent.forget(*index as usize, &concept);
             }
         })
@@ -204,6 +217,7 @@ pub(crate) struct CachedConcept {
     view: OnceLock<Arc<View>>,
     building: Mutex<()>,
     dropped: AtomicBool,
+    holds: AtomicU64,
     #[cfg(test)]
     ticket: OnceLock<test_support::LiveTicket>,
     #[cfg(test)]
@@ -218,6 +232,7 @@ impl CachedConcept {
             view: OnceLock::new(),
             building: Mutex::new(()),
             dropped: AtomicBool::new(false),
+            holds: AtomicU64::new(0),
             #[cfg(test)]
             ticket: OnceLock::new(),
             #[cfg(test)]
@@ -233,11 +248,71 @@ impl CachedConcept {
 
     /// Marks the entry as dropped by the block cache, for good: [`RecentEntries`] never
     /// serves or remembers it again. A reader that builds its view puts it back into the
-    /// cache only while the cache still holds it, so a dropped entry never returns.
-    pub(crate) fn mark_dropped(&self) {
+    /// cache only while the cache still holds it, so a dropped entry never returns. While
+    /// reads hold the entry ([`CachedConcept::hold`]), its block is charged to `budget`
+    /// from now until the last of them lets it go.
+    pub(crate) fn mark_dropped(&self, budget: &ByteBudget) {
         #[cfg(test)]
         let _ = self.dropped_at.set(test_support::tick_drop_clock());
         self.dropped.store(true, Ordering::Release);
+        self.update_holds(budget, |holds| holds | HOLDS_DROPPED);
+    }
+
+    /// Records that a read holds the entry, which it found in the block cache and so took no
+    /// permit for. Should the cache drop it before [`CachedConcept::release_hold`], the read
+    /// would hold its block outside both the cache and `budget`, so the block is then
+    /// charged to `budget` until every holding read has released it; when the cache has
+    /// dropped it already, the charge starts now.
+    pub(crate) fn hold(&self, budget: &ByteBudget) {
+        self.update_holds(budget, |holds| holds + 1);
+    }
+
+    /// Ends a hold taken by [`CachedConcept::hold`], giving back the charge when it was the
+    /// last one.
+    pub(crate) fn release_hold(&self, budget: &ByteBudget) {
+        self.update_holds(budget, |holds| holds - 1);
+    }
+
+    /// Applies `change` to the hold state (the count of holding reads, the dropped bit and
+    /// the charged bit) in one atomic step, setting the charged bit exactly while the entry
+    /// is dropped and held. The block is charged to `budget` before the bit is set and
+    /// released after it is cleared, so what the budget counts never falls below what the
+    /// charged entries hold.
+    fn update_holds(&self, budget: &ByteBudget, change: impl Fn(u64) -> u64) {
+        let bytes = self.block.heap_size() as u64;
+        let mut charged_ahead = false;
+        let mut current = self.holds.load(Ordering::SeqCst);
+        loop {
+            let changed = change(current) & !HOLDS_CHARGED;
+            let charge = changed & HOLDS_DROPPED != 0 && changed & HOLDS_COUNT != 0;
+            if charge && current & HOLDS_CHARGED == 0 && !charged_ahead {
+                budget.charge_held(bytes);
+                charged_ahead = true;
+            }
+            let next = if charge {
+                changed | HOLDS_CHARGED
+            } else {
+                changed
+            };
+            match self.holds.compare_exchange_weak(
+                current,
+                next,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => {
+                    let was_charged = current & HOLDS_CHARGED != 0;
+                    if charged_ahead && (was_charged || !charge) {
+                        budget.release_held(bytes);
+                    }
+                    if was_charged && !charge {
+                        budget.release_held(bytes);
+                    }
+                    return;
+                }
+                Err(now) => current = now,
+            }
+        }
     }
 
     /// The drop clock's reading when the entry was first marked dropped
@@ -902,6 +977,63 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_dropped_entry_is_charged_exactly_while_reads_hold_it() {
+        let payload = encode_numeric_payload(&[]).unwrap();
+        let block = Block::decode(AlignedBuf::copy_from(&payload)).unwrap();
+        let bytes = block.heap_size() as u64;
+        assert!(bytes > 0);
+        let budget = ByteBudget::new(u64::MAX);
+        let held = || budget.stats().held;
+        let early = CachedConcept::new(Block::decode(AlignedBuf::copy_from(&payload)).unwrap());
+        early.hold(&budget);
+        early.hold(&budget);
+        assert_eq!(held(), 0, "a cached entry is the cache's to count");
+        early.mark_dropped(&budget);
+        assert_eq!(held(), bytes, "charged once, however many reads hold it");
+        early.release_hold(&budget);
+        assert_eq!(held(), bytes);
+        early.release_hold(&budget);
+        assert_eq!(held(), 0, "given back with the last hold");
+        let late = CachedConcept::new(block);
+        late.mark_dropped(&budget);
+        assert_eq!(
+            held(),
+            0,
+            "a dropped entry no read holds costs the budget nothing"
+        );
+        late.hold(&budget);
+        assert_eq!(
+            held(),
+            bytes,
+            "a hold on an entry already dropped charges it"
+        );
+        late.mark_dropped(&budget);
+        assert_eq!(held(), bytes);
+        late.release_hold(&budget);
+        assert_eq!(held(), 0);
+    }
+
+    #[test]
+    fn holds_and_drops_racing_leave_nothing_charged() {
+        let payload = encode_numeric_payload(&[]).unwrap();
+        let budget = ByteBudget::new(u64::MAX);
+        for _ in 0..200 {
+            let entry = CachedConcept::new(Block::decode(AlignedBuf::copy_from(&payload)).unwrap());
+            std::thread::scope(|scope| {
+                for _ in 0..3 {
+                    scope.spawn(|| {
+                        entry.hold(&budget);
+                        std::hint::spin_loop();
+                        entry.release_hold(&budget);
+                    });
+                }
+                scope.spawn(|| entry.mark_dropped(&budget));
+            });
+            assert_eq!(budget.stats().held, 0);
+        }
+    }
+
+    #[test]
     fn concurrent_first_readers_build_the_view_once() {
         let payload = encode_numeric_payload(&[]).unwrap();
         let entry = Arc::new(CachedConcept::new(
@@ -979,7 +1111,12 @@ mod tests {
         let weight = entries[0].weight() as u64;
         let recent = Arc::new(RecentEntries::new(entries.len()));
         let counters = Arc::new(BlockCacheCounters::default());
-        let cache = block_cache(weight * 2, Arc::clone(&counters), Arc::clone(&recent));
+        let cache = block_cache(
+            weight * 2,
+            Arc::clone(&counters),
+            Arc::clone(&recent),
+            Arc::new(ByteBudget::new(u64::MAX)),
+        );
         for (index, entry) in entries.iter().enumerate() {
             cache.insert(index as u32, Arc::clone(entry));
             remember(&recent, index, entry);
@@ -1016,7 +1153,12 @@ mod tests {
         let weight = empty_entry().weight() as u64;
         let recent = Arc::new(RecentEntries::new(concepts));
         let counters = Arc::new(BlockCacheCounters::default());
-        let cache = block_cache(weight * 3, counters, Arc::clone(&recent));
+        let cache = block_cache(
+            weight * 3,
+            counters,
+            Arc::clone(&recent),
+            Arc::new(ByteBudget::new(u64::MAX)),
+        );
         let held: Vec<Arc<CachedConcept>> = (0..concepts as u32)
             .map(|index| cache.get_with(index, empty_entry))
             .collect();

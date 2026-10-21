@@ -399,7 +399,7 @@ pub struct PartitionSet {
     store: Store,
     narrow_view_share: f64,
     prefix_read_bytes: u64,
-    prefix_budget: ByteBudget,
+    prefix_budget: Arc<ByteBudget>,
     evaluating: AtomicUsize,
     cache: BlockCache,
     recent: Arc<RecentEntries>,
@@ -564,6 +564,7 @@ impl PartitionSet {
         let generation = xxhash_rust::xxh3::xxh3_128(store_id.as_bytes());
         let cache_counters = Arc::new(BlockCacheCounters::default());
         let recent = Arc::new(RecentEntries::new(dictionary.len()));
+        let prefix_budget = Arc::new(ByteBudget::new(options.prefix_read_budget_bytes));
         Ok(PartitionSet {
             dir: dir.to_path_buf(),
             layout: if partitioned {
@@ -578,6 +579,7 @@ impl PartitionSet {
                 options.store.cache_bytes,
                 Arc::clone(&cache_counters),
                 Arc::clone(&recent),
+                Arc::clone(&prefix_budget),
             ),
             recent,
             turns: AtomicUsize::new(0),
@@ -592,7 +594,7 @@ impl PartitionSet {
             store,
             narrow_view_share: options.narrow_view_share,
             prefix_read_bytes: options.prefix_read_bytes.max(1),
-            prefix_budget: ByteBudget::new(options.prefix_read_budget_bytes),
+            prefix_budget,
             evaluating: AtomicUsize::new(0),
             cache_capacity: options.store.cache_bytes,
             cache_counters,
@@ -1462,7 +1464,8 @@ impl<'a> Selection<'a> {
     }
 
     /// The entries of one chunk of a multi-concept read ([`Selection::read_chunks`]), in
-    /// order, and the permit of the process prefix read budget charged for them. Looks each
+    /// order, the permit of the process prefix read budget charged for them, and the holds
+    /// on the ones found in the cache. Looks each
     /// up in the cache (most of them through [`RecentEntries`], see
     /// [`PartitionSet::cached_entries`]); then takes a permit for the decoded size bounds
     /// of the concepts still missing; then reads every missing block on the rayon pool and
@@ -1470,8 +1473,11 @@ impl<'a> Selection<'a> {
     /// returned. The caller holds the entries and the permit until it has merged the chunk,
     /// then drops the entries and the permit. Blocking.
     ///
-    /// Concepts found in the cache are charged to the cache, not the budget, so they are
-    /// never held while the read waits: when the permit is not granted at once, the entries
+    /// Concepts found in the cache are charged to the cache, not the permit. The read holds
+    /// each of them ([`CachedHolds`]), so one the cache drops before the read lets it go is
+    /// charged to the budget from the drop until then, and the read never holds a block
+    /// that neither the cache nor the budget counts. They are never held while the read
+    /// waits: when the permit is not granted at once, the entries
     /// found are dropped, the read waits for its permit, and then looks the chunk up again.
     /// When the cache dropped some of them meanwhile and the permit does not cover what is
     /// missing now, the read gives the permit back and waits, again holding no entry, for
@@ -1487,7 +1493,7 @@ impl<'a> Selection<'a> {
     pub(crate) fn charged_entries(
         &self,
         reads: &[ConceptRead],
-    ) -> Result<(Vec<Arc<CachedConcept>>, BudgetPermit<'a>)> {
+    ) -> Result<(Vec<Arc<CachedConcept>>, BudgetPermit<'a>, CachedHolds<'a>)> {
         let indexes: Vec<usize> = reads.iter().map(|read| read.index).collect();
         let budget = &self.set.prefix_budget;
         let mut entries = self.set.cached_entries(&indexes);
@@ -1506,6 +1512,7 @@ impl<'a> Selection<'a> {
                 permit
             }
         };
+        let holds = CachedHolds::new(budget, entries.iter().flatten());
         let missing: Vec<usize> = (0..reads.len()).filter(|&i| entries[i].is_none()).collect();
         let loaded: Vec<Result<Arc<CachedConcept>>> = if missing.len() < 2 {
             missing
@@ -1526,7 +1533,7 @@ impl<'a> Selection<'a> {
                 .iter()
                 .filter_map(|&i| Some((indexes[i], entries[i].as_ref()?))),
         );
-        Ok((entries.into_iter().flatten().collect(), permit))
+        Ok((entries.into_iter().flatten().collect(), permit, holds))
     }
 
     /// The summed decoded size bounds of the concepts of `reads` whose entry in `entries`
@@ -1578,6 +1585,36 @@ impl<'a> Selection<'a> {
                 });
         }
         Ok(view)
+    }
+}
+
+/// The cached entries a multi-concept read holds for one chunk, each held
+/// ([`CachedConcept::hold`]) until this is dropped, so the budget is charged for any of them
+/// the cache drops in the meantime.
+pub(crate) struct CachedHolds<'a> {
+    budget: &'a ByteBudget,
+    entries: Vec<Arc<CachedConcept>>,
+}
+
+impl<'a> CachedHolds<'a> {
+    /// Holds each of `entries` against `budget`.
+    fn new<'e>(
+        budget: &'a ByteBudget,
+        entries: impl Iterator<Item = &'e Arc<CachedConcept>>,
+    ) -> Self {
+        let entries: Vec<Arc<CachedConcept>> = entries.map(Arc::clone).collect();
+        for entry in &entries {
+            entry.hold(budget);
+        }
+        CachedHolds { budget, entries }
+    }
+}
+
+impl Drop for CachedHolds<'_> {
+    fn drop(&mut self) {
+        for entry in &self.entries {
+            entry.release_hold(self.budget);
+        }
     }
 }
 
@@ -1772,6 +1809,16 @@ pub(crate) mod test_support {
     /// Where in `pheno.blocks` the block of the concept at `index` is stored.
     pub(crate) fn block_location(set: &PartitionSet, index: usize) -> hpds_format::BlockLocation {
         set.store.entry(index as u32).location()
+    }
+
+    /// The summed block sizes ([`hpds_format::Block::heap_size`]) of the entries the block
+    /// cache holds.
+    pub(crate) fn cached_block_bytes(set: &PartitionSet) -> u64 {
+        set.cache.run_pending_tasks();
+        set.cache
+            .iter()
+            .map(|(_, entry)| entry.block().heap_size() as u64)
+            .sum()
     }
 
     /// The decoded size bound the index records for the concept at `index`.
