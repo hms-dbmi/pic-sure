@@ -43,14 +43,22 @@ const SUBQUERY_FIELDS: [&str; 3] = ["not", "phenotypicClauses", "operator"];
 /// The fields of main's `GenomicFilter`.
 const GENOMIC_FILTER_FIELDS: [&str; 4] = ["key", "values", "min", "max"];
 
-/// The start of every refusal main mode answers a `null` in an authorization filter with.
-const NULL_AUTHORIZATION_FILTER_PREFIX: &str = "an authorization filter";
+/// The refusals main mode answers a `null` in an authorization filter with, exactly:
+/// `hpds_query`'s `NULL_AUTHORIZATION_FILTER_MESSAGE`, `NULL_AUTHORIZATION_CONCEPT_PATH_MESSAGE`,
+/// `NULL_AUTHORIZATION_VALUES_MESSAGE` and `NULL_AUTHORIZATION_VALUE_MESSAGE`.
+const NULL_AUTHORIZATION_FILTER_REFUSALS: [&str; 4] = [
+    "an authorization filter is null",
+    "an authorization filter's conceptPath is null",
+    "an authorization filter's values are null",
+    "an authorization filter's values hold null",
+];
 
-/// The start of every refusal of the query reader, which a refusal of an unscoped sync query
-/// never is.
-const QUERY_READER_REFUSAL: &str = "the query is not valid:";
+/// The refusal main mode answers an unscoped sync query with, exactly: `hpds_query`'s
+/// `AUTHORIZATION_FILTER_REQUIRED_MESSAGE`.
+const AUTHORIZATION_FILTER_REQUIRED: &str = "Authorization filter is required for this query: \
+     authorizationFilters is missing or empty and hpds.requireAuthorizationFilter is on";
 
-/// The field a refusal of an unscoped sync query must name.
+/// The query field whose emptiness the requirement refuses.
 const AUTHORIZATION_FILTERS: &str = "authorizationFilters";
 
 /// The Java side when the comparison knows it and the Rust side serves the main contract.
@@ -115,9 +123,7 @@ pub(super) fn sync_flag_refusal(
     });
     let (java_outcome, rust_outcome) = sides(a, b, java);
     unscoped
-        && refusal(rust_outcome).is_some_and(|body| {
-            body.contains(AUTHORIZATION_FILTERS) && !body.starts_with(QUERY_READER_REFUSAL)
-        })
+        && refusal(rust_outcome).is_some_and(|body| body == AUTHORIZATION_FILTER_REQUIRED)
         && matches!(java_outcome, Outcome::Sync(s) if s.status == 200 && !s.body.is_empty())
 }
 
@@ -202,12 +208,16 @@ pub(super) fn unknown_field_refused(
 }
 
 /// Whether an authorization filter is `null`, or an object whose `conceptPath` or `values` is
-/// `null` or missing.
+/// `null` or missing, or whose `values` hold a `null`.
 fn null_authorization_filter(filter: &Value) -> bool {
     filter.is_null()
         || (filter.is_object()
             && (filter.get("conceptPath").is_none_or(Value::is_null)
-                || filter.get("values").is_none_or(Value::is_null)))
+                || filter.get("values").is_none_or(Value::is_null)
+                || filter
+                    .get("values")
+                    .and_then(Value::as_array)
+                    .is_some_and(|values| values.iter().any(Value::is_null))))
 }
 
 /// See [`super::Condition::NullAuthorizationFilterMainRefused`].
@@ -228,7 +238,7 @@ pub(super) fn null_authorization_filter_refused(
         a,
         b,
         Some(java),
-        |body| body.starts_with(NULL_AUTHORIZATION_FILTER_PREFIX),
+        |body| NULL_AUTHORIZATION_FILTER_REFUSALS.contains(&body),
         |o| empty_sync_200(o) || submit_failed(o),
     )
 }

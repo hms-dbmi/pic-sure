@@ -119,8 +119,12 @@ submit also accepts the 500 form Java answers with audit logging on, `null-conce
 covers phenotypic filters only, and a refused repetition of `authorizationFilters` is never
 accepted, since main keeps the last value. `--require-authorization-filter <on|off>` (on by
 default) says how the Rust side's `HPDS_REQUIRE_AUTHORIZATION_FILTER` is set; with it off, a
-refusal of an unscoped sync query is reported. JSON bodies are compared as parsed values, so
-CROSS_COUNT's varying key order needs no rule.
+refusal of an unscoped sync query is reported. The two refusal rules match main mode's exact
+messages: the unscoped sync refusal "Authorization filter is required for this query:
+authorizationFilters is missing or empty and hpds.requireAuthorizationFilter is on", and the
+four refusals of a `null` in an authorization filter ("an authorization filter is null", "...'s
+conceptPath is null", "...'s values are null", "...'s values hold null"). JSON bodies are compared
+as parsed values, so CROSS_COUNT's varying key order needs no rule.
 
 The genomic rules work the same way, from the two answers and the request alone, without the
 equivalence oracle: Rust's refusals where Java fails on a genomic filter (an empty 200, a 500,

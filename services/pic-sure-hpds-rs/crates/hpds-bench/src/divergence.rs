@@ -269,8 +269,10 @@ pub enum Condition {
     /// INFO_COLUMN_LISTING whose query carries no authorization filter (`authorizationFilters`
     /// missing, `null` or `[]`, a repeated key keeping its last value), with the Rust side
     /// running with `HPDS_REQUIRE_AUTHORIZATION_FILTER` on; the Rust side refused
-    /// with a 400 naming `authorizationFilters` that is not a refusal of the query reader, and the Java side (which must be known)
-    /// answered 200 with a body over every patient.
+    /// with a 400 holding exactly main mode's message ("Authorization filter is required for
+    /// this query: authorizationFilters is missing or empty and hpds.requireAuthorizationFilter
+    /// is on"), and the Java side (which must be known) answered 200 with a body over every
+    /// patient.
     SyncFlagRefusal,
     /// Always under the harmonization contract. Under the main contract, the entry's raw body
     /// or string query repeats a key other than `authorizationFilters`, whose repetition main
@@ -284,8 +286,11 @@ pub enum Condition {
     /// must be known) answered 500, Jackson's failure in `convertIncomingQuery`.
     UnknownFieldRefused,
     /// Main consent contract only. The entry's query holds an authorization filter that is
-    /// `null`, or whose `conceptPath` or `values` is `null` or missing; the Rust side refused
-    /// with a 400 whose body starts with `an authorization filter`, and the Java side (which
+    /// `null`, or whose `conceptPath` or `values` is `null` or missing, or whose `values` hold
+    /// a `null`; the Rust side refused with a 400 holding exactly one of main mode's four
+    /// messages ("an authorization filter is null", "an authorization filter's conceptPath is
+    /// null", "an authorization filter's values are null", "an authorization filter's values
+    /// hold null"), and the Java side (which
     /// must be known) failed while evaluating: a sync 200 with an empty body or a sync 500, or
     /// an async submit answered 200 or 500 with no status.
     NullAuthorizationFilterMainRefused,
@@ -2006,6 +2011,10 @@ mod tests {
     use crate::corpus::Kind;
     use serde_json::json;
 
+    /// Main mode's refusal of an unscoped sync query while authorization filters are required.
+    const MAIN_FLAG_REFUSAL: &str = "Authorization filter is required for this query: \
+         authorizationFilters is missing or empty and hpds.requireAuthorizationFilter is on";
+
     fn entry(name: &str, result_type: &str) -> CorpusEntry {
         CorpusEntry {
             name: name.into(),
@@ -3606,7 +3615,7 @@ mod tests {
 
     #[test]
     fn an_unscoped_sync_query_is_accepted_only_under_main_with_a_refusal_naming_the_filters() {
-        let refusal = sync(400, "authorizationFilters are required for this query");
+        let refusal = sync(400, MAIN_FLAG_REFUSAL);
         let answer = sync(200, "3");
         for query in [
             json!({"expectedResultType": "COUNT"}),
@@ -3627,10 +3636,16 @@ mod tests {
                 rule_name(&main_contract(), &e, &sync(200, ""), &refusal),
                 None
             );
-            assert_eq!(
-                rule_name(&main_contract(), &e, &answer, &sync(400, "something else")),
-                None
-            );
+            for other in [
+                "something else",
+                "authorizationFilters are required for this query",
+            ] {
+                assert_eq!(
+                    rule_name(&main_contract(), &e, &answer, &sync(400, other)),
+                    None,
+                    "{other}"
+                );
+            }
         }
         let repeated = raw_entry(
             "unscoped-repeated-count",
@@ -3668,7 +3683,7 @@ mod tests {
                 &main_contract(),
                 &submit,
                 &async_outcome(200, Some("SUCCESS"), Some("PATIENT_NUM\n1\n")),
-                &refused_submit("authorizationFilters are required for this query")
+                &refused_submit(MAIN_FLAG_REFUSAL)
             ),
             None
         );
@@ -3767,6 +3782,7 @@ mod tests {
             json!([{"conceptPath": null, "values": ["x"]}]),
             json!([{"conceptPath": "\\s\\"}]),
             json!([{"conceptPath": "\\s\\", "values": null}]),
+            json!([{"conceptPath": "\\s\\", "values": ["x", null]}]),
         ];
         let refusal = sync(400, "an authorization filter's values are null");
         for filters in sync_cases {
@@ -3786,15 +3802,16 @@ mod tests {
                 rule_name(&main_contract(), &e, &sync(200, "3"), &refusal),
                 None
             );
-            assert_eq!(
-                rule_name(
-                    &main_contract(),
-                    &e,
-                    &sync(200, ""),
-                    &sync(400, "a phenotypic filter's values hold null")
-                ),
-                None
-            );
+            for other in [
+                "a phenotypic filter's values hold null",
+                "an authorization filter is wrong",
+            ] {
+                assert_eq!(
+                    rule_name(&main_contract(), &e, &sync(200, ""), &sync(400, other)),
+                    None,
+                    "{other}"
+                );
+            }
         }
         let clean = query_entry(
             "authz-clean-count",
@@ -4016,7 +4033,7 @@ mod tests {
             Kind::Sync,
             json!({"expectedResultType": "COUNT"}),
         );
-        let refusal = sync(400, "authorizationFilters are required for this query");
+        let refusal = sync(400, MAIN_FLAG_REFUSAL);
         let answer = sync(200, "3");
         assert_eq!(
             rule_name(
