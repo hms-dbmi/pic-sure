@@ -5,6 +5,36 @@
       "type": "java.lang.Boolean",
       "description": "Whether ConsentAuthorizationService scopes auth-backend queries to the caller's current dbGaP consents and re-checks saved results against them before returning them. Maps from the CONSENT_BASED_AUTHORIZATION_ENABLED environment variable. When false, both checks are skipped for every backend.",
       "defaultValue": true
+    },
+    {
+      "name": "picsure.openapi.examples.categorical-concept-path",
+      "type": "java.lang.String",
+      "description": "Shown in the OpenAPI examples. A categorical concept path the query examples filter on. Concept paths are backslash delimited; in a .properties file write each backslash twice, while an environment variable takes the path as it is.",
+      "defaultValue": "\\Synthea\\ACT Demographics\\Sex\\"
+    },
+    {
+      "name": "picsure.openapi.examples.categorical-value",
+      "type": "java.lang.String",
+      "description": "Shown in the OpenAPI examples. A value of the categorical concept, used as its filter value in the query examples.",
+      "defaultValue": "Female"
+    },
+    {
+      "name": "picsure.openapi.examples.second-categorical-concept-path",
+      "type": "java.lang.String",
+      "description": "Shown in the OpenAPI examples. A second categorical concept path, used where a query example selects or requires two. Concept paths are backslash delimited; in a .properties file write each backslash twice, while an environment variable takes the path as it is.",
+      "defaultValue": "\\Synthea\\ACT Demographics\\Race\\"
+    },
+    {
+      "name": "picsure.openapi.examples.continuous-concept-path",
+      "type": "java.lang.String",
+      "description": "Shown in the OpenAPI examples. A continuous concept path the query examples filter to a range and export. Concept paths are backslash delimited; in a .properties file write each backslash twice, while an environment variable takes the path as it is.",
+      "defaultValue": "\\Synthea\\ACT Demographics\\Age\\"
+    },
+    {
+      "name": "picsure.openapi.examples.gene",
+      "type": "java.lang.String",
+      "description": "Shown in the OpenAPI examples. A gene symbol the genomic query examples filter on.",
+      "defaultValue": "APOE"
     }
   ]
 }

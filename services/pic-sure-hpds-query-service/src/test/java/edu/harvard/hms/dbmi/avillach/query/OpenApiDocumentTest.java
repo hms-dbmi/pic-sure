@@ -146,6 +146,13 @@ class OpenApiDocumentTest {
     }
 
     @Test
+    void everyExamplePlaceholderIsResolved() throws Exception {
+        String body = mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+
+        assertThat(body).doesNotContain("${picsure.openapi.examples");
+    }
+
+    @Test
     void everyRequestExampleIsACompleteBodyForItsResultType() throws Exception {
         JsonNode document = document();
 
