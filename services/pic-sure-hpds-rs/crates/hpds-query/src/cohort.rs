@@ -251,6 +251,7 @@ pub(crate) mod fault {
 
     thread_local! {
         static SKIP_AUTHORIZATION: Cell<bool> = const { Cell::new(false) };
+        static WIDEN_SUBSET: Cell<bool> = const { Cell::new(false) };
         static SKIP_REACH: Cell<bool> = const { Cell::new(false) };
         static VIEWS_BETWEEN_READS: Cell<bool> = const { Cell::new(false) };
         static FORGET_VIEWS: Cell<bool> = const { Cell::new(false) };
@@ -310,6 +311,23 @@ pub(crate) mod fault {
     /// Runs `work` on the calling thread with that intersection skipped.
     pub(crate) fn skipping_authorization<R>(work: impl FnOnce() -> R) -> R {
         with_flag(&SKIP_AUTHORIZATION, work)
+    }
+
+    /// `subset`, or while [`widening_subsets`] runs on the calling thread, `subset` with every
+    /// patient of `selection` added, as an excerpt that lost track of its cohort would be.
+    pub(crate) fn widened(
+        selection: &crate::Selection<'_>,
+        mut subset: roaring::RoaringBitmap,
+    ) -> roaring::RoaringBitmap {
+        if WIDEN_SUBSET.with(Cell::get) {
+            subset |= selection.patients().as_ref();
+        }
+        subset
+    }
+
+    /// Runs `work` on the calling thread with every excerpt subset widened ([`widened`]).
+    pub(crate) fn widening_subsets<R>(work: impl FnOnce() -> R) -> R {
+        with_flag(&WIDEN_SUBSET, work)
     }
 
     /// True while the calling thread skips the final intersection of a narrow selection's
@@ -448,6 +466,13 @@ pub(crate) mod fault {
 pub(crate) mod fault {
     pub(crate) fn skips_authorization() -> bool {
         false
+    }
+
+    pub(crate) fn widened(
+        _selection: &crate::Selection<'_>,
+        subset: roaring::RoaringBitmap,
+    ) -> roaring::RoaringBitmap {
+        subset
     }
 
     pub(crate) fn skips_reach() -> bool {

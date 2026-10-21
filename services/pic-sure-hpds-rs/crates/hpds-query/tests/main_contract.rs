@@ -727,12 +727,47 @@ fn genomic_answers_run_over_the_authorized_set() {
     };
     assert_eq!(variants(consents(&["phs1.c1"])), Some(1));
     assert_eq!(variants(consents(&["phs9.c9"])), Some(0));
-    let list = engine.variant_list(&query(
-        ResultType::VariantListForQuery,
-        consents(&["phs2.c1"]),
-        &["G2"],
-    ));
-    assert!(list.is_ok(), "{list:?}");
+    let list = |filters: Value, gene_name: &str| {
+        engine
+            .variant_list(&query(
+                ResultType::VariantListForQuery,
+                filters,
+                &[gene_name],
+            ))
+            .unwrap()
+    };
+    assert_eq!(list(consents(&["phs2.c1"]), "G2"), "[]");
+    assert_eq!(
+        list(topmed.clone(), "G2"),
+        "[chr1,200,A,T,G2,synonymous_variant]"
+    );
+    let excerpt = |result_type: ResultType, filters: Value| match engine
+        .vcf_excerpt(&query(result_type, filters, &["G1"]))
+        .unwrap()
+    {
+        hpds_query::ExcerptAnswer::Text(text) => text,
+        hpds_query::ExcerptAnswer::Rows(rows) => {
+            let mut out = Vec::new();
+            rows.write_to(&mut out).unwrap();
+            String::from_utf8(out).unwrap()
+        }
+    };
+    assert_eq!(
+        excerpt(ResultType::VcfExcerpt, consents(&["phs1.c2"])),
+        "CHROM\tPOSITION\tREF\tALT\tVariant_consequence_calculated\tGene_with_variant\tAF\t\
+         Patients with this variant in subset\tPatients with this variant NOT in subset\t9\t10\n\
+         chr1\t100\tA\tA\tmissense_variant\tG1\t0.1\t2/2\t2/4\t0/1\t1/1\n"
+    );
+    assert_eq!(
+        excerpt(ResultType::AggregateVcfExcerpt, consents(&["phs1.c2"])),
+        "CHROM\tPOSITION\tREF\tALT\tVariant_consequence_calculated\tGene_with_variant\tAF\t\
+         Patients with this variant in subset\tPatients with this variant NOT in subset\n\
+         chr1\t100\tA\tA\tmissense_variant\tG1\t0.1\t2/2\t2/4\n"
+    );
+    assert_eq!(
+        excerpt(ResultType::VcfExcerpt, consents(&["phs9.c9"])),
+        hpds_query::NO_VARIANTS_FOUND
+    );
     let unfiltered =
         |result_type: ResultType| with_filters(result_type.java_name(), json!([null]), json!({}));
     assert!(matches!(

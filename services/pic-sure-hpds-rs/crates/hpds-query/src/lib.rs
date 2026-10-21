@@ -48,6 +48,11 @@ mod store;
 pub mod validate;
 mod view;
 
+#[cfg(test)]
+#[allow(dead_code)]
+#[path = "../tests/common/genomic.rs"]
+mod test_genomic;
+
 pub use budget::{GenomicReadStats, PrefixReadStats, ReadBudgetStats};
 pub use contract::{CONSENT_CONTRACT_NAMES, ConsentContract};
 pub use counters::BlockCacheStats;

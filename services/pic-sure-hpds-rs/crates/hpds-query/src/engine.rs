@@ -700,7 +700,7 @@ impl Engine {
             return Ok(None);
         }
         let mut count = 0u64;
-        if let Some((store, lists)) = self.variant_lists_in(&checked)? {
+        if let Some((store, lists, _)) = self.variant_lists_in(&checked)? {
             for_each_listed_spec(store, &lists, |_, _| {
                 count += 1;
                 Ok(())
@@ -733,7 +733,7 @@ impl Engine {
         crate::cohort::check_authorization_nulls(checked.selection(), query)?;
         let max = self.variant_settings.max_excerpt_bytes;
         let mut body = String::from("[");
-        if let Some((store, lists)) = self.variant_lists_in(&checked)? {
+        if let Some((store, lists, _)) = self.variant_lists_in(&checked)? {
             for_each_listed_spec(store, &lists, |spec, _| {
                 if body.len() > 1 {
                     body.push_str(", ");
@@ -762,7 +762,8 @@ impl Engine {
     /// [`VcfExcerpt`]), measured and checked before any of it is written.
     ///
     /// Column 2 counts carriers outside the subset, patients outside the query's consents
-    /// included, as Java does; the subset itself passes the cohort guard.
+    /// included, as Java does; the subset itself passes the cohort guard, and under the main
+    /// contract must lie inside the phenotypic cohort, so inside the authorized set.
     ///
     /// # Errors
     /// As for [`Engine::variant_count`]; [`QueryError::LimitExceeded`] for an excerpt over
@@ -783,14 +784,17 @@ impl Engine {
         }
         let checked = self.admit_genomic(checked)?;
         crate::cohort::check_authorization_nulls(checked.selection(), query)?;
-        let Some((store, lists)) = self.variant_lists_in(&checked)? else {
+        let Some((store, lists, cohort)) = self.variant_lists_in(&checked)? else {
             return Ok(ExcerptAnswer::Text(NO_VARIANTS_FOUND.to_owned()));
         };
         let Some(evaluation) = lists.evaluation.as_ref().filter(|_| !lists.is_empty()) else {
             return Ok(ExcerptAnswer::Text(NO_VARIANTS_FOUND.to_owned()));
         };
-        let subset = evaluation.patients(store);
+        let subset = crate::cohort::fault::widened(checked.selection(), evaluation.patients(store));
         crate::cohort::guard(checked.selection(), &subset)?;
+        if self.partitions.contract() == ConsentContract::Main {
+            crate::cohort::guard_within(checked.selection(), &cohort, &subset)?;
+        }
         let columns = excerpt_columns(store, &self.variant_settings.info_column_order);
         let labels = if include_patients {
             self.patient_labels(&checked, &subset_column_ids(store, &subset))?
@@ -808,12 +812,12 @@ impl Engine {
         )?))
     }
 
-    /// Every node's variant list for an admitted query, or `None` when it has no
-    /// `genomicFilters`, so nothing is listed.
+    /// Every node's variant list for an admitted query, with the phenotypic cohort it was
+    /// listed over, or `None` when it has no `genomicFilters`, so nothing is listed.
     fn variant_lists_in<'s>(
         &'s self,
         checked: &CheckedQuery<'_, 's>,
-    ) -> Result<Option<(&'s GenomicStore, VariantLists)>> {
+    ) -> Result<Option<(&'s GenomicStore, VariantLists, Cow<'s, RoaringBitmap>)>> {
         let query = checked.query();
         if query.genomic_filters.is_empty() {
             return Ok(None);
@@ -822,7 +826,8 @@ impl Engine {
             return Err(QueryError::Unsupported("genomicFilters".into()));
         };
         let cohort = evaluate_cohort_cow(checked)?;
-        Ok(Some((store, variant_lists(store, filters, &cohort)?)))
+        let lists = variant_lists(store, filters, &cohort)?;
+        Ok(Some((store, lists, cohort)))
     }
 
     /// The headers of VCF_EXCERPT's patient columns for the patients `ids`: each id, or with
@@ -2194,24 +2199,99 @@ mod tests {
             assert_eq!(engine.partitions().cohort_guard_refusals(), 7);
         }
 
-        #[test]
-        fn under_the_main_contract_a_cohort_outside_the_authorized_set_fails_every_result_type() {
-            let (_dir, out) = two_partitions();
+        /// `out`, the two-partition store, opened under the main contract with `required` as
+        /// `hpds.requireAuthorizationFilter`, with a genomic store beside it in `dir`: one node
+        /// of patients 1 to 20 holding `chr1,100,A,G` in gene `G1`, carried by 1, 2 and 15,
+        /// and every variant result type allowed.
+        fn main_with_genomic(
+            out: &std::path::Path,
+            dir: &std::path::Path,
+            required: bool,
+        ) -> Engine {
+            use crate::test_genomic::{GroupVcfs, NodeVcf, load_genomic, rec};
+            let key = out.join("encryption_key");
+            let store_dir = dir.join("genomic");
+            load_genomic(
+                &dir.join("work"),
+                &key,
+                hpds_format::GenoMode::LocalDistributed,
+                &[GroupVcfs {
+                    name: "",
+                    nodes: vec![NodeVcf {
+                        chrom: "chr1",
+                        patients: (1..=20).collect(),
+                        records: vec![rec(
+                            "chr1",
+                            100,
+                            "G",
+                            "G1",
+                            "missense_variant",
+                            "0.1",
+                            &[(1, "0|1"), (2, "1|1"), (15, "0|1")],
+                        )],
+                    }],
+                }],
+                &store_dir,
+            );
+            let genomic = crate::GenomicStore::open_with_key_file(
+                &store_dir,
+                &key,
+                &crate::GenomicOptions::default(),
+            )
+            .unwrap();
             let options = PartitionOptions {
-                require_consents: true,
+                require_consents: required,
                 contract: crate::ConsentContract::Main,
                 ..PartitionOptions::default()
             };
-            let engine = Engine::open(&out, &options).unwrap();
-            let query = |result_type| Query {
+            Engine::open(out, &options)
+                .unwrap()
+                .with_genomic(genomic)
+                .with_variant_settings(crate::VariantResultSettings {
+                    vcf_excerpt_enabled: true,
+                    ..crate::VariantResultSettings::default()
+                })
+        }
+
+        /// The genomic filter keeping the carriers of gene `G1`.
+        fn gene_g1() -> crate::GenomicFilter {
+            crate::GenomicFilter {
+                key: Some("Gene_with_variant".into()),
+                values: Some(vec![Some("G1".into())]),
+                ..crate::GenomicFilter::default()
+            }
+        }
+
+        /// Runs `query` as its result type is served, discarding the answer.
+        fn run_any(engine: &Engine, query: &Query) -> crate::Result<()> {
+            match query.expected_result_type {
+                ResultType::Patients => engine.patients(query).map(|_| ()),
+                ResultType::Dataframe => engine.dataframe(query).map(|_| ()),
+                ResultType::VcfExcerpt | ResultType::AggregateVcfExcerpt => {
+                    engine.vcf_excerpt(query).map(|_| ())
+                }
+                _ => engine.answer_sync(query).map(|_| ()),
+            }
+        }
+
+        #[test]
+        fn under_the_main_contract_a_cohort_outside_the_authorized_set_fails_every_result_type() {
+            let (dir, out) = two_partitions();
+            let engine = main_with_genomic(&out, dir.path(), true);
+            let query = |result_type: ResultType| Query {
                 authorization_filters: vec![crate::AuthorizationFilter {
                     concept_path: Some("\\consent\\".into()),
                     values: Some(vec![Some("c1".into())]),
                 }],
+                genomic_filters: if result_type.is_genomic() {
+                    vec![gene_g1()]
+                } else {
+                    Vec::new()
+                },
                 ..required_in_p1(result_type)
             };
             assert_eq!(engine.count(&query(ResultType::Count)).unwrap(), 0);
-            for result_type in [
+            let result_types = [
                 ResultType::Count,
                 ResultType::CrossCount,
                 ResultType::CategoricalCrossCount,
@@ -2219,14 +2299,15 @@ mod tests {
                 ResultType::ObservationCrossCount,
                 ResultType::Patients,
                 ResultType::Dataframe,
-            ] {
+                ResultType::VariantCountForQuery,
+                ResultType::VariantListForQuery,
+                ResultType::VcfExcerpt,
+                ResultType::AggregateVcfExcerpt,
+            ];
+            for result_type in result_types {
                 let query = query(result_type);
-                let broken = fault::skipping_authorization(|| match result_type {
-                    ResultType::Patients => engine.patients(&query).map(|_| ()),
-                    ResultType::Dataframe => engine.dataframe(&query).map(|_| ()),
-                    _ => engine.answer_sync(&query).map(|_| ()),
-                });
-                let error = broken.unwrap_err();
+                assert!(run_any(&engine, &query).is_ok(), "{result_type:?}");
+                let error = fault::skipping_authorization(|| run_any(&engine, &query)).unwrap_err();
                 assert!(
                     matches!(
                         error,
@@ -2236,7 +2317,41 @@ mod tests {
                 );
                 assert!(!error.is_client_error());
             }
-            assert_eq!(engine.partitions().cohort_guard_refusals(), 7);
+            assert_eq!(
+                engine.partitions().cohort_guard_refusals(),
+                result_types.len() as u64
+            );
+        }
+
+        #[test]
+        fn under_the_main_contract_an_excerpt_subset_outside_its_cohort_is_refused() {
+            let (dir, out) = two_partitions();
+            let engine = main_with_genomic(&out, dir.path(), false);
+            for result_type in [ResultType::VcfExcerpt, ResultType::AggregateVcfExcerpt] {
+                let query = Query {
+                    phenotypic_clause: Some(PhenotypicClause::Filter(PhenotypicFilter {
+                        min: Some(1.0),
+                        max: Some(5.0),
+                        ..PhenotypicFilter::new(PhenotypicFilterType::Filter, "\\a\\")
+                    })),
+                    genomic_filters: vec![gene_g1()],
+                    ..Query::new(result_type)
+                };
+                assert!(matches!(
+                    engine.vcf_excerpt(&query),
+                    Ok(crate::ExcerptAnswer::Rows(_))
+                ));
+                let error =
+                    fault::widening_subsets(|| engine.vcf_excerpt(&query).map(|_| ())).unwrap_err();
+                assert!(
+                    matches!(
+                        error,
+                        QueryError::CohortOutsideAuthorizedSet { patients: 15 }
+                    ),
+                    "{result_type:?}: {error}"
+                );
+            }
+            assert_eq!(engine.partitions().cohort_guard_refusals(), 2);
         }
 
         #[test]
