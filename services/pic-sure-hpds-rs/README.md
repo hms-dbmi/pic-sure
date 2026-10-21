@@ -160,7 +160,8 @@ JEMALLOC_SYS_WITH_LG_PAGE=16 cargo build --release -p hpds-rs
 | `HPDS_ALLOW_PLAIN` | `false` | Open a store with no key file. Local benchmarking only. |
 | `HPDS_RESULT_CACHE_BYTES` | `0` (off) | Byte bound of the sync result cache, which holds COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT and OBSERVATION_CROSS_COUNT answers (see [Result cache](#result-cache)). `0` turns it off. A bound above 0 but below 2,992 bytes can store no answer, since one answer may take at most a sixteenth of it; startup logs a warning saying so. |
 | `HPDS_COMBINED_STORE`, `HPDS_PER_PARTITION_COUNTS` | ignored | Settings of the format 1 store layout; logged as ignored. |
-| `HPDS_REQUIRE_AUTHORIZATION_FILTER` | `true` | Rust-only name for Java's `hpds.requireAuthorizationFilter`, which is also accepted as a variable of that exact name (the Rust name wins when both are set). Despite the name it gates `userConsents`, not authorization filters: when true, every query on `/query/sync` and `POST /query` needs at least one non-null `userConsents` value and is otherwise a 400 "User consents are required for this query", and an unpartitioned data directory is refused at startup. When false, a query without consent values reads every partition. `authorizationFilters` are validated on `POST /query` but never applied, in either mode, as on the Java branch. An open (non-auth) backend must run with it false, since the query service sends that backend no consents. |
+| `HPDS_CONSENT_CONTRACT` | none, required | `main` or `harmonization`: which consent contract requests are read and scoped by (see [Consent contracts](#consent-contracts)). The service refuses to start without it, naming both values, because either default would scope some deployment's queries wrongly. The startup log, the `hpds_consent_contract` metric and, under `main`, the health body carry it. |
+| `HPDS_REQUIRE_AUTHORIZATION_FILTER` | `true` | Rust-only name for Java's `hpds.requireAuthorizationFilter`, which is also accepted as a variable of that exact name (the Rust name wins when both are set). Under `HPDS_CONSENT_CONTRACT=main` it requires authorization filters, as in Java main (see [Consent contracts](#consent-contracts)). Under `harmonization`, despite the name, it gates `userConsents`, not authorization filters: when true, every query on `/query/sync` and `POST /query` needs at least one non-null `userConsents` value and is otherwise a 400 "User consents are required for this query", and an unpartitioned data directory is refused at startup. When false, a query without consent values reads every partition. `authorizationFilters` are validated on `POST /query` but never applied, in either mode, as on the Java branch. An open (non-auth) backend must run with it false, since the query service sends that backend no consents. |
 | `ID_BATCH_SIZE` | `0` | Java's export switch. `0` ends every DATAFRAME export in ERROR with "exports are disabled (ID_BATCH_SIZE=0)"; any larger value enables exports (the batch size itself does not change the algorithm). PATIENTS is unaffected. |
 | `HPDS_EXPORT_PIN_BYTES` | 2 GiB | Cap on the decoded blocks one DATAFRAME export holds in memory, summed over the blocks it pins. Each concept's whole block counts, every partition's rows, whatever the selection, since that is what the export holds. A wider export ends in ERROR with "export too wide; select fewer concepts". |
 | `HPDS_PREFIX_READ_BYTES` | 512 MiB | Bound on the decoded blocks one `ANY_RECORD_OF` holds in memory outside the block cache, by the decoded size bound the index records for each concept. A prefix covering more is read in chunks within the bound, each merged and dropped before the next loads; a single concept larger than the bound is read alone. What all reads together hold is bounded by `HPDS_PREFIX_READ_BUDGET_BYTES`. |
@@ -217,6 +218,68 @@ error, health reports DOWN with a reason, and query routes answer 503. The start
 `store opened` carries `overlap_patients`, the size of the overlap set (see
 [Partition layout](#partition-layout)). At shutdown the service logs what its block cache
 holds: blocks, partition views, and the bytes of each.
+
+### Consent contracts
+
+`HPDS_CONSENT_CONTRACT` names the contract of the query service in front of this service.
+
+- **`main`**: Java HPDS main as BDC runs it (tag `v4.1.1`). The query service replaces every
+  auth query's `authorizationFilters` with the caller's consents (`\_consents\`, plus
+  `\_topmed_consents\` with genomic filters and `\_harmonized_consent\` with a harmonized
+  phenotypic filter), and HPDS applies them. Each filter is a `FILTER` on its path and values,
+  and the filters are ANDed with each other and with the phenotypic clause into one authorized
+  cohort that every result type starts from: COUNT, the cross counts, PATIENTS, DATAFRAME and
+  the genomic types (whose filters narrow it further, so `\_topmed_consents\` scopes them). The
+  store may be unpartitioned (a migrated BDC javabin) or partitioned, read as the union of its
+  partitions; no consent value is mapped to a partition. Every cohort is checked against the
+  authorized set before it is used.
+- **`harmonization`**: the consent-partitioned branch. `userConsents` select partitions, and
+  `authorizationFilters` are validated on `POST /query` and never applied. The rest of this
+  README describes it where it says consents.
+
+What a caller sees under `main`, against Java `v4.1.1`:
+
+- The request model is main's seven fields: `select`, `authorizationFilters`,
+  `phenotypicClause`, `genomicFilters`, `expectedResultType`, `picsureId`, `id`. Any other
+  field, `userConsents` included, anywhere in the query, is a 400 naming it (``unknown field
+  `userConsents` ``); Java answers 500. A clause mixing filter and subquery fields names the
+  subquery field the same way. Numbers, booleans and enum ordinals are read as Jackson reads
+  them, as under `harmonization`.
+- `authorizationFilters` absent, `null` or `[]` is the empty list. Each filter's `values` is a
+  set: repeats and order change nothing. A filter on an unknown concept, with an unknown value
+  or with `values: []` selects nobody; values on a numeric concept are a 400 "... is not a
+  categorical variable", where Java fails with an empty 200.
+- A key `authorizationFilters` repeated in the query keeps its last value, as Jackson does.
+  Every other repeated key is a 400, as under `harmonization`.
+- `/query/sync` runs no validator, as Java does, so an unknown authorization concept counts 0.
+  With `HPDS_REQUIRE_AUTHORIZATION_FILTER` true, a sync query whose `authorizationFilters` is
+  missing, `null` or empty is a 400 "Authorization filter is required for this query:
+  authorizationFilters is missing or empty and hpds.requireAuthorizationFilter is on", checked
+  before anything else. Java answers it over every patient. BDC's query service always sends
+  `\_consents\`, so no BDC answer changes; behind the query service's `serve` mode the 400
+  falls back to Java. INFO_COLUMN_LISTING is exempt: it reads no patient data. With the flag
+  false the query answers over every patient, as in Java.
+- `POST /query` runs Java main's validator in its order: the requirement, every phenotypic
+  filter, then every authorization filter (values non-empty, a known concept, a categorical
+  one). A refusal registers the job already in ERROR with Java's message, as Java does; Java
+  shows only the status. A `null` filter or a `null` `conceptPath`, where Java's validator
+  throws something else and creates no job, is a 400.
+- A `null` filter, a `null` or missing `conceptPath` or `values`, and a `null` value looked up
+  in a categorical concept are a 400 starting "an authorization filter" on `/query/sync`, where
+  Java answers 200 with an empty body (500 with audit logging on).
+- Category and continuous cross counts list only the phenotypic clause's concepts; CROSS_COUNT
+  and OBSERVATION_CROSS_COUNT list `select`, so an authorization concept appears there only
+  when selected, counted over the authorized set.
+- `/search` answers Java main's `ColumnMeta`: `name`, `categorical`, then `categoryValues` for
+  a categorical concept or `min` and `max` for a numeric one, then `observationCount` and
+  `patientCount` (distinct patients over the whole store). No storage field and no timestamp,
+  as Java writes none. A null term answers the array of one-entry objects, as under
+  `harmonization`; the INFO block and `/search/values/` are the same under both contracts.
+- `GET /actuator/health` adds `"consentContract":"main"`.
+- The sync `queryMetadata` header stays a random UUID, where Java derives a UUIDv5 from the
+  query.
+- AGGREGATE_VCF_EXCERPT's "NOT in subset" column counts carriers outside the authorized cohort,
+  as Java's does.
 
 ### Genomic store
 
@@ -466,7 +529,8 @@ other route compresses.
 
 With `HPDS_METRICS=on`, `GET /metrics` reports these in the Prometheus text exposition format.
 Labels take only fixed values: route templates as the router declares them (or `unmatched`),
-result type names (or `none`), error kinds, histogram bounds and export outcomes. A request
+result type names (or `none`), error kinds, histogram bounds, export outcomes and the consent
+contract. A request
 whose path matches a route but whose method does not (a 405) counts under that route's
 template; only a path no route matches counts as `unmatched`. No label or value carries a
 patient id, concept path, consent name, result id or anything from a request body. Counters
@@ -490,7 +554,8 @@ runs on the blocking pool.
 | `hpds_prefix_read_permits_total`, `hpds_prefix_read_waits_total`, `hpds_prefix_read_wait_seconds_total` | counter | Chunks granted bytes of the budget, chunks that waited for it, and the seconds they waited |
 | `hpds_block_loads_total`, `hpds_block_load_failures_total`, `hpds_block_load_seconds_total` | counter | Blocks read from the store, authenticated and decoded into the cache; block reads that failed; and the seconds spent on both, summed over threads |
 | `hpds_store_superseded` | gauge | 1 while a store of another id has been moved into the data directory and the service serves the store it opened from its open files (see [Partition layout](#partition-layout)); a restart serves the new one |
-| `hpds_cohort_guard_refusals_total` | counter | Queries refused by the cohort check (see [Narrow selections](#narrow-selections)) |
+| `hpds_consent_contract{contract}` | gauge | 1, labelled `main` or `harmonization` from `HPDS_CONSENT_CONTRACT` (see [Consent contracts](#consent-contracts)) |
+| `hpds_cohort_guard_refusals_total` | counter | Queries refused by the cohort check (see [Narrow selections](#narrow-selections)), and under the main contract by the check against the authorized set |
 | `hpds_result_cache_hits_total`, `_misses_total`, `_evictions_total` | counter | Result cache lookups and evictions; only with `HPDS_RESULT_CACHE_BYTES` above 0 |
 | `hpds_result_cache_entries`, `_bytes`, `_capacity_bytes` | gauge | What the result cache holds, and its bound; only when it is on |
 | `hpds_async_results` | gauge | Async results held, pending, running and finished |
@@ -525,7 +590,7 @@ off, and a connection that takes more than 10 seconds to send a request's header
 | `POST /query/format`, `POST /write/{dataType}` | 400, not supported |
 | `POST /search` | The merged dictionary as `SummaryColumnMeta` (`name`, `widthInBytes`, `categorical`, `categoryValues`, `min`, `max`, `patientCount`, `timestampMin`, `timestampMax`, nulls written), not consent-scoped. A string term, `""` included, answers an object keyed by path, matched by case-insensitive path substring or exact category value; a null or missing term answers Java's array of one-entry objects for every concept. `info` holds, for a string term, each INFO column whose description or key contains it ignoring case, keyed in Java string order, as `{description, values, continuous}` with the values in Java's `HashSet` order (none for a continuous column); `{}` for a null term or without genomic data. See the locale note in `search.rs`. gzip on request, see [Search compression](#search-compression). |
 | `GET /search/values/` | `{"results","page","total"}`: the values of INFO column `genomicConceptPath` containing `query` ignoring case, in Java's `HashSet` order, paged with Java's `int` arithmetic; an empty page without genomic data |
-| `GET /actuator/health` | 200 `{"status":"UP"}` when the store's dictionary holds a concept (or the genomic store an INFO column), with `"storeSuperseded":true` or `"genomicStoreSuperseded":true` added while a store of another id has been moved in (see [Partition layout](#partition-layout) and [Genomic store](#genomic-store)); else 503 `{"status":"DOWN","reason":...}` |
+| `GET /actuator/health` | 200 `{"status":"UP"}` (with `"consentContract":"main"` under the main contract) when the store's dictionary holds a concept (or the genomic store an INFO column), with `"storeSuperseded":true` or `"genomicStoreSuperseded":true` added while a store of another id has been moved in (see [Partition layout](#partition-layout) and [Genomic store](#genomic-store)); else 503 `{"status":"DOWN","reason":...}` |
 | `GET /metrics` | With `HPDS_METRICS=on`, the counters of [Metrics](#metrics) as Prometheus text (`text/plain; version=0.0.4`); otherwise 404. At the root, not under `/PIC-SURE` |
 
 Differences from Java a caller can see:
