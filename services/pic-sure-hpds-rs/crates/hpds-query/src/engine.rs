@@ -2128,6 +2128,11 @@ mod tests {
             assert!(selection.read_chunks(&[]).is_empty());
         }
 
+        /// Counts decoded entries alive by object, so it must not count an entry that no
+        /// read holds but that `crossbeam-epoch` has not yet freed: `moka` shares each load
+        /// with concurrent loaders through a waiter it unlinks with deferred reclamation,
+        /// and that waiter keeps a clone of the entry until the global epoch advances. The
+        /// count is therefore taken after reclaiming, before each chunk loads and at the end.
         #[test]
         fn peak_live_entries_stay_under_the_chunk_bound() {
             let concepts = prefix_concepts();
@@ -2160,7 +2165,11 @@ mod tests {
                         live.peak()
                     );
                     assert!(live.peak() > 0);
-                    assert_eq!(live.live(), 0, "every entry is dropped once merged");
+                    assert_eq!(
+                        live.live_after_reclaim(std::time::Duration::from_secs(2)),
+                        0,
+                        "every entry is dropped once merged"
+                    );
                 }
             }
         }

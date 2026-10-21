@@ -430,6 +430,18 @@ pub(crate) mod fault {
         static CHUNK_PEAK: Cell<Option<usize>> = const { Cell::new(None) };
     }
 
+    /// Reclaims, while [`watching_chunks`] runs on the calling thread, the tracked entries
+    /// of `set` that no read holds but deferred reclamation still keeps alive
+    /// ([`crate::store::test_support::LiveEntries::live_after_reclaim`]), so the count taken
+    /// once the next chunk has loaded holds only what a read holds. A test that watches
+    /// chunks runs a single read on a set nothing else reads.
+    pub(crate) fn before_chunk_load(set: &crate::PartitionSet) {
+        if CHUNK_PEAK.with(Cell::get).is_some() {
+            crate::partition::test_support::live(set)
+                .live_after_reclaim(std::time::Duration::from_secs(2));
+        }
+    }
+
     /// Records, while [`watching_chunks`] runs on the calling thread, the tracked entries
     /// of `set` alive once a chunk of a multi-concept read has loaded, the moment it holds
     /// the most; and records in `set` the thread that loaded the chunk.
@@ -488,6 +500,8 @@ pub(crate) mod fault {
     }
 
     pub(crate) fn note_view_fallback() {}
+
+    pub(crate) fn before_chunk_load(_set: &crate::PartitionSet) {}
 
     pub(crate) fn note_chunk_held(_set: &crate::PartitionSet) {}
 
@@ -1038,6 +1052,7 @@ fn any_record_of_chunk(
     parallelism: usize,
     build_views: bool,
 ) -> Result<bool> {
+    fault::before_chunk_load(selection.set());
     let (entries, permit) = selection.charged_entries(reads)?;
     fault::note_chunk_held(selection.set());
     let pairs: Vec<(ConceptRead, _)> = reads.iter().copied().zip(entries).collect();

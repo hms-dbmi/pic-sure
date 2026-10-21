@@ -829,6 +829,22 @@ pub(crate) mod test_support {
         pub(crate) fn reset_peak(&self) {
             self.peak.store(self.live(), Ordering::SeqCst);
         }
+
+        /// The tracked entries alive once memory already unlinked from shared structures
+        /// is reclaimed, waiting up to `bound` for that. A load through the block cache
+        /// shares its entry with concurrent loaders of the same concept through a waiter
+        /// that `moka` unlinks with `crossbeam-epoch`, which frees it, and the entry clone it
+        /// holds, only after the global epoch has advanced past every pinned thread. Pinning
+        /// and flushing here drives that, so an entry no read holds any longer is counted
+        /// as dropped.
+        pub(crate) fn live_after_reclaim(&self, bound: std::time::Duration) -> usize {
+            let deadline = std::time::Instant::now() + bound;
+            while self.live() > 0 && std::time::Instant::now() < deadline {
+                crossbeam_epoch::pin().flush();
+                std::thread::yield_now();
+            }
+            self.live()
+        }
     }
 
     /// One tracked entry, counted in its [`LiveEntries`] until dropped.
