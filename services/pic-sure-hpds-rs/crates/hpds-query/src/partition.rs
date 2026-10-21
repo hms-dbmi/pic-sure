@@ -975,24 +975,18 @@ impl PartitionSet {
     /// found in the cache is remembered there.
     fn cached_entries(&self, indexes: &[usize]) -> Vec<Option<Arc<CachedConcept>>> {
         let turn = turn_of(self.turns.fetch_add(1, Ordering::Relaxed));
+        let clock = crate::cohort::fault::recent_hits_clock();
         let mut entries = self.recent.get_all(indexes.iter().copied(), |index| {
             index % RECORD_EVERY == turn
         });
-        if crate::cohort::fault::checks_recent_hits() {
-            let dropped_when_served: Vec<bool> = entries
-                .iter()
-                .map(|entry| entry.as_ref().is_some_and(|served| served.is_dropped()))
-                .collect();
-            for ((entry, &index), dropped_when_served) in
-                entries.iter().zip(indexes).zip(dropped_when_served)
-            {
+        if let Some(clock) = clock {
+            for (entry, &index) in entries.iter().zip(indexes) {
                 if let Some(served) = entry {
                     let held = self
                         .cache
                         .iter()
                         .any(|(key, held)| *key == index as u32 && Arc::ptr_eq(&held, served));
-                    let cached = !dropped_when_served && (held || served.is_dropped());
-                    crate::cohort::fault::note_recent_hit(cached);
+                    crate::cohort::fault::note_recent_hit(index, served, clock, held);
                 }
             }
         }

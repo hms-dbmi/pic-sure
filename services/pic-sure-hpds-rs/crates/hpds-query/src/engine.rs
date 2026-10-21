@@ -2481,13 +2481,19 @@ mod tests {
             roomy.partitions().cached_bytes() / count as u64
         }
 
+        /// Every concept the table of recent entries serves must be one the cache holds,
+        /// or one it drops only after the read looked it up, as a lookup through the cache
+        /// could equally have returned. An entry the cache has dropped carries the drop
+        /// clock's reading, so one dropped before the read looked is told apart from one
+        /// dropped while it was being checked; and an entry the cache was removing when
+        /// checked must carry its drop mark once every read has returned.
         #[test]
         fn concurrent_study_level_reads_on_a_small_cache_serve_only_cached_entries() {
             let concepts = 40;
             let (_dir, out) = store(&paths("s", concepts));
             let weight = entry_weight(&out, concepts);
             let engine = engine(&out, weight * 3, 2.0);
-            let (served, uncached) = fault::checking_recent_hits(|| {
+            let hits = fault::checking_recent_hits(|| {
                 std::thread::scope(|scope| {
                     for consents in [&[][..], &["p1"][..]] {
                         let engine = &engine;
@@ -2504,10 +2510,20 @@ mod tests {
             let set = engine.partitions();
             assert!(set.cached_bytes() <= weight * 3, "{}", set.cached_bytes());
             assert!(set.block_cache_stats().evictions > 0);
-            assert!(
-                uncached * 100 <= served.max(1),
-                "{uncached} of {served} table hits were entries the cache did not hold"
+            assert!(hits.served > 0, "{hits:?}");
+            assert_eq!(
+                hits.dropped_before_serving, 0,
+                "{} of {} table hits were entries the cache had dropped before the read",
+                hits.dropped_before_serving, hits.served
             );
+            for (index, entry) in &hits.unconfirmed {
+                let (held, _) = crate::partition::test_support::held_and_served(set, *index);
+                assert!(
+                    entry.is_dropped()
+                        || held.is_some_and(|held| std::sync::Arc::ptr_eq(&held, entry)),
+                    "concept {index} was served an entry the cache never dropped and does not hold"
+                );
+            }
         }
 
         #[test]

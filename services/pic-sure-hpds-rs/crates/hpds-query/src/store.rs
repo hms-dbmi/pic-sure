@@ -206,6 +206,8 @@ pub(crate) struct CachedConcept {
     dropped: AtomicBool,
     #[cfg(test)]
     ticket: OnceLock<test_support::LiveTicket>,
+    #[cfg(test)]
+    dropped_at: OnceLock<u64>,
 }
 
 impl CachedConcept {
@@ -218,6 +220,8 @@ impl CachedConcept {
             dropped: AtomicBool::new(false),
             #[cfg(test)]
             ticket: OnceLock::new(),
+            #[cfg(test)]
+            dropped_at: OnceLock::new(),
         }
     }
 
@@ -231,7 +235,16 @@ impl CachedConcept {
     /// serves or remembers it again. A reader that builds its view puts it back into the
     /// cache only while the cache still holds it, so a dropped entry never returns.
     pub(crate) fn mark_dropped(&self) {
+        #[cfg(test)]
+        let _ = self.dropped_at.set(test_support::tick_drop_clock());
         self.dropped.store(true, Ordering::Release);
+    }
+
+    /// The drop clock's reading when the entry was first marked dropped
+    /// ([`test_support::drop_clock`]), or `None` while it is not.
+    #[cfg(test)]
+    pub(crate) fn dropped_at(&self) -> Option<u64> {
+        self.dropped_at.get().copied()
     }
 
     /// Whether the block cache has dropped the entry ([`CachedConcept::mark_dropped`]).
@@ -805,7 +818,20 @@ fn open_error(dir: &Path, error: impl std::fmt::Display) -> QueryError {
 #[cfg(test)]
 pub(crate) mod test_support {
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+
+    static DROP_CLOCK: AtomicU64 = AtomicU64::new(0);
+
+    /// The number of entries marked dropped so far, process-wide: an entry marked after a
+    /// reading of it carries a later value ([`super::CachedConcept::dropped_at`]).
+    pub(crate) fn drop_clock() -> u64 {
+        DROP_CLOCK.load(Ordering::SeqCst)
+    }
+
+    /// Advances the drop clock for one entry being marked dropped and returns its new value.
+    pub(super) fn tick_drop_clock() -> u64 {
+        DROP_CLOCK.fetch_add(1, Ordering::SeqCst) + 1
+    }
 
     /// The number of tracked entries alive now and the most alive at once.
     #[derive(Debug, Default)]

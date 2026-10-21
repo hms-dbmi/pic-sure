@@ -373,38 +373,75 @@ pub(crate) mod fault {
 
     static CHECK_RECENT_HITS: std::sync::atomic::AtomicBool =
         std::sync::atomic::AtomicBool::new(false);
-    static RECENT_HITS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    static RECENT_HITS_UNCACHED: std::sync::atomic::AtomicUsize =
-        std::sync::atomic::AtomicUsize::new(0);
+    static RECENT_HITS: std::sync::Mutex<Option<RecentHits>> = std::sync::Mutex::new(None);
 
-    /// True while [`checking_recent_hits`] runs: every concept a multi-concept read takes
-    /// from its table of recent entries is then checked against the block cache.
-    pub(crate) fn checks_recent_hits() -> bool {
-        CHECK_RECENT_HITS.load(std::sync::atomic::Ordering::SeqCst)
+    /// What [`checking_recent_hits`] saw of the concepts multi-concept reads took from their
+    /// table of recent entries.
+    #[derive(Debug, Default)]
+    pub(crate) struct RecentHits {
+        /// Concepts taken from the table.
+        pub(crate) served: usize,
+        /// Concepts served although the cache had dropped their entry before the read
+        /// looked them up.
+        pub(crate) dropped_before_serving: usize,
+        /// Entries served that the cache neither held nor had dropped yet when checked, with
+        /// their concept index: ones it was removing at that instant, whose drop its listener
+        /// marks right after, unless the read served an entry the cache never held.
+        pub(crate) unconfirmed: Vec<(usize, std::sync::Arc<crate::store::CachedConcept>)>,
     }
 
-    /// Records one concept taken from the table of recent entries, and whether it was the
-    /// entry the block cache held: not yet dropped when served, and then either found in the
-    /// cache under its key or dropped since (an eviction right after serving, which a
-    /// lookup through the cache could equally have returned).
-    pub(crate) fn note_recent_hit(cached: bool) {
-        RECENT_HITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        if !cached {
-            RECENT_HITS_UNCACHED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    /// The drop clock ([`crate::store::test_support::drop_clock`]) while
+    /// [`checking_recent_hits`] runs, read by a multi-concept read before it looks its
+    /// concepts up in the table of recent entries; `None` otherwise.
+    pub(crate) fn recent_hits_clock() -> Option<u64> {
+        CHECK_RECENT_HITS
+            .load(std::sync::atomic::Ordering::SeqCst)
+            .then(crate::store::test_support::drop_clock)
+    }
+
+    /// Records the entry of the concept at `index` that the table of recent entries served
+    /// to a read that looked it up after the drop clock read `clock`, and whether the block
+    /// cache held it right after. An entry whose drop was marked at or before `clock` was
+    /// already dropped when served. One the cache did not hold is confirmed when its drop is
+    /// marked by now (an eviction right after serving, which a lookup through the cache
+    /// could equally have returned) and kept for the caller to check otherwise.
+    pub(crate) fn note_recent_hit(
+        index: usize,
+        served: &std::sync::Arc<crate::store::CachedConcept>,
+        clock: u64,
+        held: bool,
+    ) {
+        let mut hits = RECENT_HITS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(hits) = hits.as_mut() else {
+            return;
+        };
+        hits.served += 1;
+        if served.dropped_at().is_some_and(|at| at <= clock) {
+            hits.dropped_before_serving += 1;
+        } else if !held && !served.is_dropped() {
+            hits.unconfirmed
+                .push((index, std::sync::Arc::clone(served)));
         }
     }
 
-    /// Runs `work`, on any number of threads, with recent-entry hits checked, and returns
-    /// how many concepts were taken from the table and how many of those the block cache
-    /// did not hold.
-    pub(crate) fn checking_recent_hits(work: impl FnOnce()) -> (usize, usize) {
+    /// Runs `work`, on any number of threads, with every concept a multi-concept read takes
+    /// from its table of recent entries checked against the block cache, and returns what the
+    /// checks saw.
+    pub(crate) fn checking_recent_hits(work: impl FnOnce()) -> RecentHits {
         use std::sync::atomic::Ordering::SeqCst;
-        RECENT_HITS.store(0, SeqCst);
-        RECENT_HITS_UNCACHED.store(0, SeqCst);
+        *RECENT_HITS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(RecentHits::default());
         CHECK_RECENT_HITS.store(true, SeqCst);
         work();
         CHECK_RECENT_HITS.store(false, SeqCst);
-        (RECENT_HITS.load(SeqCst), RECENT_HITS_UNCACHED.load(SeqCst))
+        RECENT_HITS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+            .unwrap_or_default()
     }
 
     /// Records that a multi-concept read on the calling thread looked the concept at
@@ -507,11 +544,17 @@ pub(crate) mod fault {
 
     pub(crate) fn note_cache_lookup(_index: usize) {}
 
-    pub(crate) fn checks_recent_hits() -> bool {
-        false
+    pub(crate) fn recent_hits_clock() -> Option<u64> {
+        None
     }
 
-    pub(crate) fn note_recent_hit(_cached: bool) {}
+    pub(crate) fn note_recent_hit(
+        _index: usize,
+        _served: &std::sync::Arc<crate::store::CachedConcept>,
+        _clock: u64,
+        _held: bool,
+    ) {
+    }
 
     pub(crate) fn before_view_reinsert(_set: &crate::PartitionSet, _index: usize) {}
 }
