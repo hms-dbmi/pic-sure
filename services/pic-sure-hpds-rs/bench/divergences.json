@@ -122,7 +122,7 @@
     {
       "name": "genomic-type-on-async-route",
       "when": "genomic-type-on-async-route",
-      "reason": "Spec section 1 and plan-v5.md decision of 2026-10-20 after V5-9: genomic result types and INFO_COLUMN_LISTING on POST /query stay unsupported in Rust, as in Java. Java has no processor for them in initializeResult (QueryV3Service.java:118, the switch default throws RuntimeException outside the IllegalArgumentException catch), so its submit answers 200 with no body or the job ends in ERROR. Rust refuses the submit with 400 \"result type <type> is not supported by POST /query; send it to POST /query/sync\". Accepted only for async entries with that exact message for the entry's result type, against Java's bodiless 200 or ERROR."
+      "reason": "Spec section 1 and the plan-v5.md decision of 2026-10-20 on the oracle: genomic result types and INFO_COLUMN_LISTING on POST /query stay unsupported in Rust, as in Java. Java has no processor for them in initializeResult (QueryV3Service.java:118, the switch default throws RuntimeException outside the IllegalArgumentException catch), so its submit answers 200 with no body or the job ends in ERROR. Rust refuses the submit with 400 \"result type <type> is not supported by POST /query; send it to POST /query/sync\". Accepted only for async entries with that exact message for the entry's result type, against Java's bodiless 200 or ERROR."
     },
     {
       "name": "request-limit-status",

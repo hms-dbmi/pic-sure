@@ -78,6 +78,13 @@ pub(super) enum Refusal {
     ColumnMissing,
 }
 
+/// The delimiter Java's `VariantIndexCache` joins a column and a key with.
+const DELIMITER: &str = "_____";
+
+/// The fragment of Rust's refusal of a numeric filter on a column some node holds as
+/// categorical, a refusal that depends on the store.
+const CATEGORICAL_COLUMN: &str = "names a column that is categorical on some genomic node";
+
 /// The class of a refusal message, if it is one of Rust's genomic refusals.
 fn refusal_class(body: &str) -> Option<Refusal> {
     REFUSALS
@@ -112,17 +119,20 @@ pub(super) fn refused_where_java_fails(
     rust_refused_java_failed(a, b, java, refused, java_failed)
 }
 
-/// Whether `value` is an answer over no patients or no variants: every number in it zero, a
-/// JSON array or object of such values (strings allowed, as in VARIANT_COUNT_FOR_QUERY's
-/// message), `[]` written as text, or `No Variants Found`.
+/// Whether `value` is an answer over no patients or no variants: every number in it zero, in
+/// a JSON array or object of such values. A string or `null` counts only as a field of an
+/// object (VARIANT_COUNT_FOR_QUERY's `message`), never as the whole answer or an array element.
 fn empty_json(value: &Value) -> bool {
-    match value {
-        Value::Number(n) => n.as_f64() == Some(0.0),
-        Value::String(_) | Value::Null => true,
-        Value::Bool(_) => false,
-        Value::Array(items) => items.iter().all(empty_json),
-        Value::Object(map) => map.values().all(empty_json),
+    fn empty(value: &Value, in_object: bool) -> bool {
+        match value {
+            Value::Number(n) => n.as_f64() == Some(0.0),
+            Value::String(_) | Value::Null => in_object,
+            Value::Bool(_) => false,
+            Value::Array(items) => items.iter().all(|v| empty(v, false)),
+            Value::Object(map) => map.values().all(|v| empty(v, true)),
+        }
     }
+    empty(value, false)
 }
 
 /// Whether Java answered as over an empty cohort or an empty variant list: a sync 200 whose
@@ -142,28 +152,160 @@ fn empty_answer(outcome: &Outcome) -> bool {
     }
 }
 
-/// [`super::Condition::InvalidGenomicFilterNotEvaluated`]: Rust refused with one of its
-/// genomic refusals and Java answered as over an empty cohort or an empty variant list
-/// ([`empty_answer`]), because it never evaluated the filter.
+/// The entry's `genomicFilters`, or an empty list when the request holds none.
+fn genomic_filters(entry: &CorpusEntry) -> Vec<Value> {
+    entry_query(entry)
+        .and_then(|query| query.get("genomicFilters").cloned())
+        .and_then(|filters| filters.as_array().cloned())
+        .unwrap_or_default()
+}
+
+/// Whether `key` is a variant spec as `VariantUtils.pathIsVariantSpec` reads it: `rs` and a
+/// digit, or comma-separated fields ending in a position of digits and dots and two allele
+/// fields of `A`, `C`, `G`, `T` (either case), optionally followed by two word fields.
+fn is_variant_spec(key: &str) -> bool {
+    if key.contains(['\n', '\r', '\u{85}', '\u{2028}', '\u{2029}']) {
+        return false;
+    }
+    if let Some(rest) = key.strip_prefix("rs") {
+        return rest.starts_with(|c: char| c.is_ascii_digit());
+    }
+    let fields: Vec<&str> = key.split(',').collect();
+    let position = |f: &str| !f.is_empty() && f.chars().all(|c| c.is_ascii_digit() || c == '.');
+    let allele = |f: &str| f.chars().all(|c| "ACGTacgt".contains(c));
+    let word = |f: &str| f.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    let four = |f: &[&str]| {
+        f.len() >= 4 && {
+            let n = f.len();
+            position(f[n - 3]) && allele(f[n - 2]) && allele(f[n - 1])
+        }
+    };
+    four(&fields)
+        || (fields.len() >= 6
+            && word(fields[fields.len() - 1])
+            && word(fields[fields.len() - 2])
+            && four(&fields[..fields.len() - 2]))
+}
+
+/// The classes of the refusals Rust decides from the request's genomic filters alone, as its
+/// `GenomicFilters::translate` documents them: a `null` key, zygosity or categorical value
+/// ([`Refusal::Null`]); a spec key whose position Java cannot read ([`Refusal::SpecKey`]); a
+/// numeric filter with one bound or with `min` above `max` in `Float.compare` order
+/// ([`Refusal::Range`]).
+fn static_refusals(filters: &[Value]) -> Vec<Refusal> {
+    let mut out = Vec::new();
+    for filter in filters {
+        let Some(key) = filter.get("key") else {
+            out.push(Refusal::Null);
+            continue;
+        };
+        let Some(key) = key.as_str() else {
+            out.push(Refusal::Null);
+            continue;
+        };
+        let values = filter.get("values").and_then(Value::as_array);
+        let holds_null = values.is_some_and(|v| v.iter().any(Value::is_null));
+        if is_variant_spec(key) {
+            if hpds_format::VariantSpecKey::parse(key).is_none() {
+                out.push(Refusal::SpecKey);
+            } else if holds_null {
+                out.push(Refusal::Null);
+            }
+        } else if values.is_some() {
+            if holds_null {
+                out.push(Refusal::Null);
+            }
+        } else {
+            let bound = |name: &str| filter.get(name).and_then(Value::as_f64).map(|x| x as f32);
+            match (bound("min"), bound("max")) {
+                (None, None) => {}
+                (Some(min), Some(max)) => {
+                    if hpds_format::java_float_cmp(min, max) == std::cmp::Ordering::Greater {
+                        out.push(Refusal::Range);
+                    }
+                }
+                _ => out.push(Refusal::Range),
+            }
+        }
+    }
+    out
+}
+
+/// Whether a genomic filter's key or one of its values cannot pass Java's `"_____"` lookup: a
+/// non-spec key holding the delimiter, or a value that holds it or is empty.
+fn holds_delimiter_shape(filters: &[Value]) -> bool {
+    filters.iter().any(|filter| {
+        let key = filter
+            .get("key")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        !is_variant_spec(key)
+            && (key.contains(DELIMITER)
+                || filter
+                    .get("values")
+                    .and_then(Value::as_array)
+                    .is_some_and(|values| {
+                        values
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .any(|v| v.is_empty() || v.contains(DELIMITER))
+                    }))
+    })
+}
+
+/// Whether the request's genomic filters hold a numeric filter with both bounds, the only
+/// shape whose column Rust can find categorical on some node.
+fn holds_numeric_filter(filters: &[Value]) -> bool {
+    filters.iter().any(|filter| {
+        filter.get("values").is_none_or(Value::is_null)
+            && filter.get("min").is_some_and(Value::is_number)
+            && filter.get("max").is_some_and(Value::is_number)
+    })
+}
+
+/// [`super::Condition::InvalidGenomicFilterNotEvaluated`]: Rust refused a genomic filter, Java
+/// answered as over an empty cohort or an empty variant list ([`empty_answer`]) because it never
+/// evaluated the filter, and the request holds the filter Rust names: a refusal Rust decides
+/// from the request alone ([`static_refusals`]), or, for the data-dependent refusals, a numeric
+/// filter on a column some node holds as categorical or a value Java's delimiter lookup cannot
+/// read.
 pub(super) fn invalid_filter_not_evaluated(
+    entry: &CorpusEntry,
     a: &Outcome,
     b: &Outcome,
     java: Option<JavaService>,
 ) -> bool {
+    let filters = genomic_filters(entry);
+    let stat = static_refusals(&filters);
     rust_refused_java_failed(
         a,
         b,
         java,
-        |body| {
-            refusal_class(body).is_some_and(|c| {
-                !matches!(
-                    c,
-                    Refusal::NoStore | Refusal::ColumnMissing | Refusal::IdCube
-                )
-            })
+        |body| match refusal_class(body) {
+            Some(Refusal::Range) if body.contains(CATEGORICAL_COLUMN) => {
+                holds_numeric_filter(&filters)
+            }
+            Some(Refusal::Delimiter) => holds_delimiter_shape(&filters),
+            Some(class @ (Refusal::Null | Refusal::Range | Refusal::SpecKey)) => {
+                stat.contains(&class)
+            }
+            _ => false,
         },
         empty_answer,
     )
+}
+
+/// [`super::Condition::InfoKeyDelimiterRefused`]: Rust refused with its delimiter refusal and
+/// the request holds a key or value of the delimiter shape ([`holds_delimiter_shape`]). Java's
+/// answer is not checked: Java either fails there or silently reads another key's variants.
+pub(super) fn delimiter_refused(
+    entry: &CorpusEntry,
+    a: &Outcome,
+    b: &Outcome,
+    java: Option<JavaService>,
+) -> bool {
+    holds_delimiter_shape(&genomic_filters(entry))
+        && refused_where_java_fails(Refusal::Delimiter, a, b, java)
 }
 
 /// [`super::Condition::GenomicResultSizeLimit`]: Rust refused an excerpt or a variant list
@@ -580,36 +722,99 @@ mod tests {
     }
 
     #[test]
-    fn a_filter_java_never_evaluates_needs_an_empty_java_answer() {
+    fn a_filter_java_never_evaluates_needs_the_filter_and_an_empty_java_answer() {
+        let rs = entry(
+            Kind::Sync,
+            "COUNT",
+            json!({"genomicFilters": [{"key": "rs1", "values": null}]}),
+        );
+        let valid = entry(
+            Kind::Sync,
+            "COUNT",
+            json!({"genomicFilters": [{"key": "chr1,5,A,G", "values": null}]}),
+        );
         let refused = sync(400, "the variant spec rs1 has no position Java can read: x");
-        assert!(invalid_filter_not_evaluated(
+        for java in [
+            "0",
+            "[]",
+            "No Variants Found\n",
+            r#"{"count":0,"message":"Query ran successfully"}"#,
+        ] {
+            assert!(
+                invalid_filter_not_evaluated(&rs, &sync(200, java), &refused, None),
+                "{java}"
+            );
+        }
+        assert!(!invalid_filter_not_evaluated(
+            &valid,
             &sync(200, "0"),
             &refused,
             None
         ));
-        assert!(invalid_filter_not_evaluated(
-            &sync(200, "[]"),
-            &refused,
-            None
-        ));
-        assert!(invalid_filter_not_evaluated(
-            &sync(200, "No Variants Found\n"),
-            &refused,
-            None
-        ));
-        assert!(invalid_filter_not_evaluated(
-            &sync(200, r#"{"count":0,"message":"Query ran successfully"}"#),
-            &refused,
-            None
-        ));
         assert!(!invalid_filter_not_evaluated(
+            &rs,
             &sync(200, "3"),
             &refused,
             None
         ));
         assert!(!invalid_filter_not_evaluated(
+            &rs,
+            &sync(200, "\"x\""),
+            &refused,
+            None
+        ));
+        assert!(!invalid_filter_not_evaluated(
+            &rs,
+            &sync(200, "[null]"),
+            &refused,
+            None
+        ));
+        assert!(!invalid_filter_not_evaluated(
+            &rs,
             &sync(200, "0"),
             &sync(400, NO_GENOMIC_STORE),
+            None
+        ));
+        let other = sync(
+            400,
+            "the numeric genomic filter on X needs both min and max",
+        );
+        assert!(!invalid_filter_not_evaluated(
+            &rs,
+            &sync(200, "0"),
+            &other,
+            None
+        ));
+        let one_bound = entry(
+            Kind::Sync,
+            "COUNT",
+            json!({"genomicFilters": [{"key": "AF", "min": 0.1}]}),
+        );
+        assert!(invalid_filter_not_evaluated(
+            &one_bound,
+            &sync(200, "0"),
+            &other,
+            None
+        ));
+        let categorical_column = sync(
+            400,
+            "the numeric genomic filter on G names a column that is categorical on some genomic node",
+        );
+        let numeric = entry(
+            Kind::Sync,
+            "COUNT",
+            json!({"genomicFilters": [{"key": "G", "min": 0.1, "max": 0.2}]}),
+        );
+        assert!(invalid_filter_not_evaluated(
+            &numeric,
+            &sync(200, "0"),
+            &categorical_column,
+            None
+        ));
+        assert!(!invalid_filter_not_evaluated(
+            &rs,
+            &sync(200, "0"),
+            &categorical_column,
             None
         ));
         let export = Outcome::Async(AsyncOutcome {
@@ -618,7 +823,55 @@ mod tests {
             result_body: Some("PATIENT_NUM\n".into()),
             ..AsyncOutcome::default()
         });
-        assert!(invalid_filter_not_evaluated(&export, &refused, None));
+        assert!(invalid_filter_not_evaluated(&rs, &export, &refused, None));
+    }
+
+    #[test]
+    fn a_delimiter_refusal_needs_a_key_or_value_of_that_shape() {
+        let delimiter = sync(
+            400,
+            "the genomic filter on X selects a value that Java cannot look up, since the column \
+             or the value holds _____ or the value is empty",
+        );
+        for filters in [
+            json!([{"key": "Gene", "values": ["D_____E"]}]),
+            json!([{"key": "Gene", "values": ["F_____"]}]),
+            json!([{"key": "Gene", "values": [""]}]),
+            json!([{"key": "Ge_____ne", "values": ["A"]}]),
+        ] {
+            let e = entry(Kind::Sync, "COUNT", json!({"genomicFilters": filters}));
+            assert!(
+                delimiter_refused(&e, &sync(200, "12"), &delimiter, None),
+                "{filters}"
+            );
+        }
+        let plain = entry(
+            Kind::Sync,
+            "COUNT",
+            json!({"genomicFilters": [{"key": "Gene", "values": ["ABC1"]}]}),
+        );
+        assert!(!delimiter_refused(
+            &plain,
+            &sync(200, "12"),
+            &delimiter,
+            None
+        ));
+    }
+
+    #[test]
+    fn variant_specs_are_read_as_java_reads_them() {
+        for key in [
+            "rs123",
+            "chr1,100,A,G",
+            "1,100,A,G,gene,cons",
+            "chr1,1.5,A,G",
+            "a,b,1,AC,",
+        ] {
+            assert!(is_variant_spec(key), "{key}");
+        }
+        for key in ["Gene_with_variant", "chr1,100,A,X", "rs", "chr1,,A,G"] {
+            assert!(!is_variant_spec(key), "{key}");
+        }
     }
 
     #[test]

@@ -628,3 +628,40 @@ pub(crate) fn variant_mask(
     mask.intersect_with(scope);
     Ok(mask)
 }
+
+#[cfg(test)]
+mod delimiter_tests {
+    use super::check_delimiter;
+
+    #[test]
+    fn a_key_java_reads_back_through_the_delimiter_passes() {
+        assert!(check_delimiter("Gene_with_variant", ["ABC1", "G2"].into_iter()).is_ok());
+    }
+
+    #[test]
+    fn a_key_or_column_holding_the_delimiter_is_refused() {
+        for (column, key) in [
+            ("Gene_with_variant", "D_____E"),
+            ("Gene_____with", "ABC1"),
+            ("Gene_with_variant", "F_____"),
+            ("Gene_with_variant", "_____"),
+            ("Gene_with_variant", ""),
+        ] {
+            let refused = check_delimiter(column, [key].into_iter());
+            assert!(refused.is_err(), "{column} {key:?}");
+            assert!(
+                refused
+                    .unwrap_err()
+                    .to_string()
+                    .contains("selects a value that Java cannot look up"),
+                "{column} {key:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn trailing_empty_fields_are_dropped_as_java_split_drops_them() {
+        assert!(check_delimiter("Gene", ["A_____"].into_iter()).is_err());
+        assert!(check_delimiter("Gene", ["A"].into_iter()).is_ok());
+    }
+}

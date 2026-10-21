@@ -219,8 +219,9 @@ pub enum Condition {
     /// Java's `Optional.get` throws, and the Java side failed.
     ExcerptMasksMissingRefused,
     /// The Rust side refused a selected column or value that Java looks up through its
-    /// `_____` delimiter and cannot split back into itself. Java either fails or silently
-    /// reads another key's variants, so its answer is not checked.
+    /// `_____` delimiter and cannot split back into itself, and the request holds a key or
+    /// value of that shape. Java either fails or silently reads another key's variants, so its
+    /// answer is not checked.
     InfoKeyDelimiterRefused,
     /// The Rust side refused a VCF_EXCERPT because `ID_CUBE_NAME` names a numeric concept,
     /// whose values Java casts to `String` for the patient column headers and fails on, and
@@ -231,10 +232,11 @@ pub enum Condition {
     /// fails on them, failed.
     GenomicNoStoreRefused,
     /// The Rust side refused with one of its refusals of a genomic filter invalid as sent,
-    /// and the Java side answered as over an empty cohort or an empty variant list (a count
-    /// of 0, cross counts of 0, `[]`, `No Variants Found`, an export with no rows), because it
-    /// never evaluated the filter: the phenotype cohort was empty, or a variant result type
-    /// had no INFO filter. Rust decides a filter's validity from the request alone.
+    /// the request holds that filter, and the Java side answered as over an empty cohort or an
+    /// empty variant list (a count of 0, cross counts of 0, `[]`, `No Variants Found`, an
+    /// export with no rows), because it never evaluated the filter: the phenotype cohort was
+    /// empty, or a variant result type had no INFO filter. Rust decides a filter's validity
+    /// from the request alone.
     InvalidGenomicFilterNotEvaluated,
     /// A `/search/values` entry the Rust side refused with 400 and the Java side answered
     /// 500 or 200 with an empty body.
@@ -1727,9 +1729,7 @@ impl Condition {
             Condition::ExcerptMasksMissingRefused => {
                 genomic::refused_where_java_fails(genomic::Refusal::MasksMissing, a, b, java)
             }
-            Condition::InfoKeyDelimiterRefused => {
-                genomic::refused_where_java_fails(genomic::Refusal::Delimiter, a, b, java)
-            }
+            Condition::InfoKeyDelimiterRefused => genomic::delimiter_refused(entry, a, b, java),
             Condition::IdCubeNumericRefused => {
                 entry.result_type == "VCF_EXCERPT"
                     && genomic::refused_where_java_fails(genomic::Refusal::IdCube, a, b, java)
@@ -1738,7 +1738,7 @@ impl Condition {
                 genomic::refused_where_java_fails(genomic::Refusal::NoStore, a, b, java)
             }
             Condition::InvalidGenomicFilterNotEvaluated => {
-                genomic::invalid_filter_not_evaluated(a, b, java)
+                genomic::invalid_filter_not_evaluated(entry, a, b, java)
             }
             Condition::SearchValuesRefused => genomic::search_values_refused(entry, a, b),
             Condition::SearchInfoColumnMissingRefused => {
