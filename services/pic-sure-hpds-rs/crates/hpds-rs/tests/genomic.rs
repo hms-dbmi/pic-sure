@@ -1005,6 +1005,10 @@ async fn search_after_the_genomic_store_changed_answers_terms_no_info_column_mat
     );
 }
 
+/// The write stall bound runs from the first write that stays pending, which can only come
+/// after the excerpt's measure pass has sent the response head. The test therefore waits for
+/// the head without consuming it, however long the measure pass takes on a slow or
+/// instrumented build, and bounds the close from there.
 #[tokio::test]
 async fn a_connection_whose_client_reads_nothing_is_closed_after_the_write_stall_bound() {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -1037,6 +1041,11 @@ async fn a_connection_whose_client_reads_nothing_is_closed_after_the_write_stall
         body.len()
     );
     stream.write_all(request.as_bytes()).await.unwrap();
+    let mut first = [0u8; 1];
+    tokio::time::timeout(std::time::Duration::from_secs(120), stream.peek(&mut first))
+        .await
+        .expect("the response head arrives once the excerpt is measured")
+        .unwrap();
     let mut closed = false;
     for _ in 0..80 {
         if hpds_rs::connections_write_stalled() > before {
