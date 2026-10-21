@@ -150,7 +150,7 @@ class ToolUseLoopServiceTest {
     void aFinalTurnWithNoTextFallsBackToTheFallbackText() {
         FakeModelClient model = FakeModelClient.returning(doneTurn(null));
 
-        ChatResponse response = new ToolUseLoopService(model, new FakeToolGateway(), 8).handle(REQUEST, CALLER);
+        ChatResponse response = new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
 
         assertEquals(ToolUseLoopService.FALLBACK_TEXT, response.response());
     }
@@ -165,6 +165,7 @@ class ToolUseLoopServiceTest {
         assertEquals("Handled the error", response.response());
         ConversationEntry lastEntryOfFirstReplay = model.historySeenOnCall(2).get(model.historySeenOnCall(2).size() - 1);
         assertTrue(lastEntryOfFirstReplay instanceof ConversationEntry.ToolResultEntry, "the failure must still appear as a tool result");
+        assertTrue(((ConversationEntry.ToolResultEntry) lastEntryOfFirstReplay).error(), "the failure must be flagged as an error to the model");
     }
 
     @Test
