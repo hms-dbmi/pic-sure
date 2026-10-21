@@ -38,12 +38,16 @@ pub(crate) type BlockCache = Cache<u32, Arc<CachedConcept>>;
 /// The bit of [`CachedConcept`]'s hold state set once the block cache has dropped it.
 const HOLDS_DROPPED: u64 = 1 << 63;
 
-/// The bit of [`CachedConcept`]'s hold state set while its block is charged to the prefix
-/// read budget: while it is dropped and some read holds it.
-const HOLDS_CHARGED: u64 = 1 << 62;
+/// The low bits of [`CachedConcept`]'s hold state, counting the reads that hold it.
+const HOLDS_COUNT: u64 = (1 << 20) - 1;
 
-/// The bits of [`CachedConcept`]'s hold state counting the reads that hold it.
-const HOLDS_COUNT: u64 = HOLDS_CHARGED - 1;
+/// Where the bytes [`CachedConcept`] has charged to the prefix read budget start in its hold
+/// state, above the count.
+const HOLDS_CHARGE_SHIFT: u32 = 20;
+
+/// The most bytes the hold state records as charged (8 TiB less one byte), far above any
+/// entry's weight; a heavier entry is charged at this.
+const HOLDS_CHARGE_MAX: u64 = (1 << 43) - 1;
 
 /// Bytes an entry is weighed at beyond its block and view.
 const ENTRY_OVERHEAD: usize = 64;
@@ -275,7 +279,7 @@ impl CachedConcept {
     /// Marks the entry as dropped by the block cache, for good: [`RecentEntries`] never
     /// serves or remembers it again. A reader that builds its view puts it back into the
     /// cache only while the cache still holds it, so a dropped entry never returns. While
-    /// reads hold the entry ([`CachedConcept::hold`]), its block is charged to `budget`
+    /// reads hold the entry ([`CachedConcept::hold`]), its weight is charged to `budget`
     /// from now until the last of them lets it go.
     pub(crate) fn mark_dropped(&self, budget: &ByteBudget) {
         #[cfg(test)]
@@ -286,9 +290,9 @@ impl CachedConcept {
 
     /// Records that a read holds the entry, which it found in the block cache and so took no
     /// permit for. Should the cache drop it before [`CachedConcept::release_hold`], the read
-    /// would hold its block outside both the cache and `budget`, so the block is then
-    /// charged to `budget` until every holding read has released it; when the cache has
-    /// dropped it already, the charge starts now.
+    /// would hold its block and view outside both the cache and `budget`, so the entry's
+    /// weight ([`CachedConcept::weight`]) is then charged to `budget` until every holding read
+    /// has released it; when the cache has dropped it already, the charge starts now.
     pub(crate) fn hold(&self, budget: &ByteBudget) {
         self.update_holds(budget, |holds| holds + 1);
     }
@@ -299,27 +303,39 @@ impl CachedConcept {
         self.update_holds(budget, |holds| holds - 1);
     }
 
-    /// Applies `change` to the hold state (the count of holding reads, the dropped bit and
-    /// the charged bit) in one atomic step, setting the charged bit exactly while the entry
-    /// is dropped and held. The block is charged to `budget` before the bit is set and
-    /// released after it is cleared, so what the budget counts never falls below what the
-    /// charged entries hold.
+    /// Brings the charge up to the entry's weight after a reader has built its view, when the
+    /// entry is charged: a view built on a dropped entry that reads hold is charged with it.
+    pub(crate) fn recharge(&self, budget: &ByteBudget) {
+        self.update_holds(budget, |holds| holds);
+    }
+
+    /// Applies `change` to the hold state (the count of holding reads and the dropped bit) in
+    /// one atomic step, with the bytes charged to `budget` recorded beside them: the entry's
+    /// weight, or what was charged already when that is more, exactly while the entry is
+    /// dropped and held, and nothing otherwise. Bytes are charged to `budget` before the
+    /// state records them and released after it no longer does, so what the budget counts
+    /// never falls below what the charged entries hold.
     fn update_holds(&self, budget: &ByteBudget, change: impl Fn(u64) -> u64) {
-        let bytes = self.block.heap_size() as u64;
-        let mut charged_ahead = false;
+        let mut ahead = 0u64;
         let mut current = self.holds.load(Ordering::SeqCst);
         loop {
-            let changed = change(current) & !HOLDS_CHARGED;
-            let charge = changed & HOLDS_DROPPED != 0 && changed & HOLDS_COUNT != 0;
-            if charge && current & HOLDS_CHARGED == 0 && !charged_ahead {
-                budget.charge_held(bytes);
-                charged_ahead = true;
-            }
-            let next = if charge {
-                changed | HOLDS_CHARGED
+            let charged = current >> HOLDS_CHARGE_SHIFT & HOLDS_CHARGE_MAX;
+            let changed = change(current & (HOLDS_DROPPED | HOLDS_COUNT));
+            let wanted = if changed & HOLDS_DROPPED != 0 && changed & HOLDS_COUNT != 0 {
+                charged.max((self.weight() as u64).min(HOLDS_CHARGE_MAX))
             } else {
-                changed
+                0
             };
+            let more = wanted.saturating_sub(charged);
+            if more > ahead {
+                budget.charge_held(more - ahead);
+                ahead = more;
+            }
+            let next = changed | wanted << HOLDS_CHARGE_SHIFT;
+            if next == current {
+                budget.release_held(ahead);
+                return;
+            }
             match self.holds.compare_exchange_weak(
                 current,
                 next,
@@ -327,13 +343,8 @@ impl CachedConcept {
                 Ordering::SeqCst,
             ) {
                 Ok(_) => {
-                    let was_charged = current & HOLDS_CHARGED != 0;
-                    if charged_ahead && (was_charged || !charge) {
-                        budget.release_held(bytes);
-                    }
-                    if was_charged && !charge {
-                        budget.release_held(bytes);
-                    }
+                    budget.release_held(ahead - more);
+                    budget.release_held(charged.saturating_sub(wanted));
                     return;
                 }
                 Err(now) => current = now,
@@ -1006,11 +1017,11 @@ mod tests {
     fn a_dropped_entry_is_charged_exactly_while_reads_hold_it() {
         let payload = encode_numeric_payload(&[]).unwrap();
         let block = Block::decode(AlignedBuf::copy_from(&payload)).unwrap();
-        let bytes = block.heap_size() as u64;
-        assert!(bytes > 0);
         let budget = ByteBudget::new(u64::MAX);
         let held = || budget.stats().held;
         let early = CachedConcept::new(Block::decode(AlignedBuf::copy_from(&payload)).unwrap());
+        let bytes = early.weight() as u64;
+        assert!(bytes > 0);
         early.hold(&budget);
         early.hold(&budget);
         assert_eq!(held(), 0, "a cached entry is the cache's to count");

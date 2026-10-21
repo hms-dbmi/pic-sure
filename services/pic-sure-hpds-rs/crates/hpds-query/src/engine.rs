@@ -2187,10 +2187,7 @@ mod tests {
             static CACHED: AtomicU64 = AtomicU64::new(0);
             static HELD: AtomicU64 = AtomicU64::new(0);
             fn drop_the_cache(set: &crate::PartitionSet) {
-                CACHED.store(
-                    crate::partition::test_support::cached_block_bytes(set),
-                    SeqCst,
-                );
+                CACHED.store(crate::partition::test_support::cached_weight(set), SeqCst);
                 set.clear_cache();
                 HELD.store(set.prefix_read_stats().held, SeqCst);
             }
@@ -2209,12 +2206,46 @@ mod tests {
             assert_eq!(
                 HELD.load(SeqCst),
                 cached,
-                "every entry the read found cached is charged once the cache drops it"
+                "every entry the read found cached is charged, view included, once the cache \
+                 drops it"
             );
             let stats = engine.partitions().prefix_read_stats();
             assert_eq!(stats.held, 0, "the charge ends with the read");
             assert!(stats.peak_held >= cached, "{stats:?}");
             assert_eq!(engine.partitions().cohort_guard_refusals(), 0);
+        }
+
+        /// A view built on an entry the cache has already dropped, while a read holds it,
+        /// is charged with its block.
+        #[test]
+        fn a_view_built_on_a_dropped_entry_is_charged_with_it() {
+            fn drop_the_cache(set: &crate::PartitionSet) {
+                set.clear_cache();
+            }
+            let concepts = prefix_concepts();
+            let (_dir, out) = prefix_store(&concepts);
+            let narrow = any_record_of_prefix("\\c\\", &["p1"]);
+            let roomy = engine_budgeted(&out, 2.0, u64::MAX, u64::MAX, 1 << 30);
+            let expected = roomy.patients(&narrow).unwrap();
+            let with_views = crate::partition::test_support::cached_weight(roomy.partitions());
+            let engine = engine_budgeted(&out, 2.0, u64::MAX, u64::MAX, 1 << 30);
+            let set = engine.partitions();
+            for index in 0..set.concept_count() {
+                crate::partition::test_support::reload(set, index);
+            }
+            assert_eq!(
+                set.cached_views().0,
+                0,
+                "every block is cached without a view"
+            );
+            let found = fault::hooking_chunk_held(drop_the_cache, || engine.patients(&narrow));
+            assert_eq!(found.unwrap(), expected);
+            let stats = set.prefix_read_stats();
+            assert_eq!(stats.held, 0);
+            assert_eq!(
+                stats.peak_held, with_views,
+                "the narrow read's entries are charged with the views it built on them"
+            );
         }
 
         #[test]

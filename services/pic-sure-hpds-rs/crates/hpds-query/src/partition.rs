@@ -1581,6 +1581,7 @@ impl<'a> Selection<'a> {
             )
         })?;
         if built {
+            entry.recharge(&self.set.prefix_budget);
             crate::cohort::fault::before_view_reinsert(self.set, read.index);
             self.set
                 .cache
@@ -1844,13 +1845,13 @@ pub(crate) mod test_support {
         set.store.entry(index as u32).location()
     }
 
-    /// The summed block sizes ([`hpds_format::Block::heap_size`]) of the entries the block
-    /// cache holds.
-    pub(crate) fn cached_block_bytes(set: &PartitionSet) -> u64 {
+    /// The summed weights ([`CachedConcept::weight`]) of the entries the block cache holds:
+    /// each block, its view when built, and the entry overhead.
+    pub(crate) fn cached_weight(set: &PartitionSet) -> u64 {
         set.cache.run_pending_tasks();
         set.cache
             .iter()
-            .map(|(_, entry)| entry.block().heap_size() as u64)
+            .map(|(_, entry)| entry.weight() as u64)
             .sum()
     }
 
