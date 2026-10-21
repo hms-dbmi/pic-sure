@@ -61,7 +61,7 @@ class OpenApiDocumentTest {
             .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON)).andReturn().getResponse().getContentAsString();
         JsonNode document = objectMapper.readTree(body);
 
-        assertThat(document.path("info").path("title").asText()).isEqualTo("pic-sure-hpds-query-service");
+        assertThat(document.path("info").path("title").asText()).isEqualTo("PIC-SURE High Performance Data Store (HPDS) Query Service");
         assertThat(document.path("info").path("version").asText()).isNotBlank();
         assertThat(document.path("components").path("securitySchemes").has(OpenApiConfiguration.BEARER_SCHEME)).isTrue();
         assertThat(document.path("security").get(0).has(OpenApiConfiguration.BEARER_SCHEME)).isTrue();
