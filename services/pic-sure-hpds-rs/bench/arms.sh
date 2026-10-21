@@ -133,10 +133,10 @@ arm_env() {
         -e PICSURE_ACTUATOR_EXPOSURE=health -e hpds.requireAuthorizationFilter=false -e "JAVA_OPTS=$JAVA_OPTS" ;;
     rust)
       printf '%s\n' "${common[@]}" -e "HPDS_CACHE_BYTES=$CACHE_BYTES" -e HPDS_REQUIRE_AUTHORIZATION_FILTER=false \
-        -e 'RUST_LOG=info,hpds_rs::access=warn' ;;
+        -e HPDS_CONSENT_CONTRACT=harmonization -e 'RUST_LOG=info,hpds_rs::access=warn' ;;
     rust-plain)
       printf '%s\n' "${common[@]}" -e "HPDS_CACHE_BYTES=$CACHE_BYTES" -e HPDS_REQUIRE_AUTHORIZATION_FILTER=false \
-        -e 'RUST_LOG=info,hpds_rs::access=warn' -e HPDS_ALLOW_PLAIN=true ;;
+        -e HPDS_CONSENT_CONTRACT=harmonization -e 'RUST_LOG=info,hpds_rs::access=warn' -e HPDS_ALLOW_PLAIN=true ;;
   esac
 }
 

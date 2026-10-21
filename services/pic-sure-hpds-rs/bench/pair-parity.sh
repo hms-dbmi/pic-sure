@@ -15,6 +15,8 @@
 #   RESULT_CACHE_BYTES  HPDS_RESULT_CACHE_BYTES for both sides (0)
 #   CACHE_BYTES         HPDS_CACHE_BYTES for both sides (4294967296)
 #   REQUIRE_CONSENTS    HPDS_REQUIRE_AUTHORIZATION_FILTER for both sides (false)
+#   CONSENT_CONTRACT    HPDS_CONSENT_CONTRACT for both sides (harmonization); a build that
+#                       predates the setting ignores it
 #   SEARCH_GZIP         what search-encoding.py expects of B: off (the default) or on. It does
 #                       not set HPDS_SEARCH_GZIP; put that in B_ENV
 #   GOLDEN              golden files, space-separated, each checked against both sides
@@ -60,6 +62,7 @@ serve() {
   # shellcheck disable=SC2086
   env $extra HPDS_DATA_DIRECTORY="$store" SERVER_PORT="$port" HPDS_CACHE_BYTES="${CACHE_BYTES:-4294967296}" \
     HPDS_REQUIRE_AUTHORIZATION_FILTER="${REQUIRE_CONSENTS:-false}" HPDS_RESULTS_DIRECTORY="$results" \
+    HPDS_CONSENT_CONTRACT="${CONSENT_CONTRACT:-harmonization}" \
     SMALL_JOB_LIMIT=100 SMALL_TASK_THREADS=4 LARGE_TASK_THREADS=2 ID_BATCH_SIZE=1000 \
     HPDS_RESULT_CACHE_BYTES="${RESULT_CACHE_BYTES:-0}" RUST_LOG=info,hpds_rs::access=warn \
     "$bin" > "$log" 2>&1 &

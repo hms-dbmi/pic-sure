@@ -72,8 +72,11 @@ the replacement, but it keeps its address and still answers anyone holding it.
 `hpds-rs.env` is written once from `hpds/hpds.env`: `ID_BATCH_SIZE`, `SMALL_TASK_THREADS`,
 `LARGE_TASK_THREADS` and `hpds.requireAuthorizationFilter` (which becomes
 `HPDS_REQUIRE_AUTHORIZATION_FILTER`, `true` when the Java file does not set it), plus
+`HPDS_CONSENT_CONTRACT=main` (the AIO query service sends Java main's `authorizationFilters`),
 `HPDS_CACHE_BYTES` at 4 GiB and `RUST_LOG=info`. Edit it and run `up.sh` again to apply a
-change; `up.sh` never rewrites it.
+change; `up.sh` never rewrites it, except to add `HPDS_CONSENT_CONTRACT=main` to a file that has
+no such line, since hpds-rs refuses to start without the setting. Set it to `harmonization` for
+a query service that sends `userConsents`.
 
 `hpds-rs-results/` sits beside the store, not inside `hpds-rs/`, because the store is mounted
 read-only and the results directory is the one place the container writes query output. Keeping

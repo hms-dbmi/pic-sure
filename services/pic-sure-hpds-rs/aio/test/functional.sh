@@ -153,7 +153,7 @@ echo "--- up"
 "$AIO/up.sh"
 expect_equal "hpds-rs health" "$(docker container inspect -f '{{.State.Health.Status}}' ${RS_T})" healthy
 grep -q '^ID_BATCH_SIZE=1500$' "$DOCKER_CONFIG_DIR/hpds-rs/hpds-rs.env" && pass "env template took ID_BATCH_SIZE from hpds.env" || check_failed "env template took ID_BATCH_SIZE"
-for pair in SMALL_TASK_THREADS=3 LARGE_TASK_THREADS=2 HPDS_REQUIRE_AUTHORIZATION_FILTER=false; do
+for pair in SMALL_TASK_THREADS=3 LARGE_TASK_THREADS=2 HPDS_REQUIRE_AUTHORIZATION_FILTER=false HPDS_CONSENT_CONTRACT=main; do
   grep -q "^$pair\$" "$DOCKER_CONFIG_DIR/hpds-rs/hpds-rs.env" && pass "hpds-rs.env has $pair" || check_failed "hpds-rs.env has $pair"
 done
 expect_equal "running container got the thread setting" "$(env_of ${RS_T} | sed -n 's/^SMALL_TASK_THREADS=//p')" 3
@@ -251,7 +251,8 @@ fi
 expect_equal "no partition directories in the output" "$(find "$part_out" -mindepth 1 -maxdepth 1 -type d ! -name '.*' | wc -l | tr -d ' ')" 0
 expect_equal "partitioned key mode" "$(stat -f '%Lp' "$part_out/encryption_key")" 600
 docker run -d --name ${PART_T} --network ${PICSURE_T} -v "$part_out:/opt/local/hpds:ro" \
-  -e HPDS_REQUIRE_AUTHORIZATION_FILTER=true "${HPDS_RS_IMAGE:-hms-dbmi/pic-sure-hpds-rs:LATEST}" >/dev/null
+  -e HPDS_REQUIRE_AUTHORIZATION_FILTER=true -e HPDS_CONSENT_CONTRACT=harmonization \
+  "${HPDS_RS_IMAGE:-hms-dbmi/pic-sure-hpds-rs:LATEST}" >/dev/null
 waited=0
 until [[ "$(docker container inspect -f '{{.State.Health.Status}}' ${PART_T})" == healthy || "$waited" -ge 60 ]]; do
   sleep 1
@@ -331,7 +332,11 @@ expect_equal "qs back on java" "$(env_of ${QS_T} | sed -n 's/^HPDS_AUTH_URL=//p'
 "$AIO/down.sh" >/dev/null && pass "down is idempotent" || check_failed "down is idempotent"
 
 echo "--- down with no query service container restores the file"
+grep -v '^HPDS_CONSENT_CONTRACT=' "$DOCKER_CONFIG_DIR/hpds-rs/hpds-rs.env" > "$WORK/hpds-rs.env.old"
+cp "$WORK/hpds-rs.env.old" "$DOCKER_CONFIG_DIR/hpds-rs/hpds-rs.env"
 "$AIO/up.sh"
+grep -qx 'HPDS_CONSENT_CONTRACT=main' "$DOCKER_CONFIG_DIR/hpds-rs/hpds-rs.env" && pass "up added the missing consent contract line" || check_failed "up added the missing consent contract line"
+expect_equal "up kept the rest of hpds-rs.env" "$(grep -v '^HPDS_CONSENT_CONTRACT=' "$DOCKER_CONFIG_DIR/hpds-rs/hpds-rs.env")" "$(cat "$WORK/hpds-rs.env.old")"
 "$AIO/switch.sh" rust
 mv "$DOCKER_CONFIG_DIR/query/query.env.pre-rust" "$DOCKER_CONFIG_DIR/query/query.env.java-backup"
 docker rm -f ${QS_T} >/dev/null

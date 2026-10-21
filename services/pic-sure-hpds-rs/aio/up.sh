@@ -35,9 +35,11 @@
 #
 # Settings come from $DOCKER_CONFIG_DIR/hpds-rs/hpds-rs.env, written on the first run from
 # the Java hpds.env: ID_BATCH_SIZE, SMALL_TASK_THREADS, LARGE_TASK_THREADS and
-# hpds.requireAuthorizationFilter (true when absent). Later runs never rewrite it. Fails when
-# the networks are missing (start the AIO first) or the store has not been loaded (run
-# aio/load.sh). Waits for the healthcheck.
+# hpds.requireAuthorizationFilter (true when absent), plus HPDS_CONSENT_CONTRACT=main, since
+# the AIO query service sends Java main's authorizationFilters. Later runs never rewrite it,
+# except to add HPDS_CONSENT_CONTRACT=main when the file has no such line, as hpds-rs refuses
+# to start without it. Fails when the networks are missing (start the AIO first) or the store
+# has not been loaded (run aio/load.sh). Waits for the healthcheck.
 set -euo pipefail
 
 # shellcheck source=lib.sh
@@ -120,9 +122,12 @@ ID_BATCH_SIZE=$id_batch_size
 SMALL_TASK_THREADS=$small_threads
 LARGE_TASK_THREADS=$large_threads
 HPDS_REQUIRE_AUTHORIZATION_FILTER=$auth_filter
+HPDS_CONSENT_CONTRACT=main
 HPDS_CACHE_BYTES=4294967296
 RUST_LOG=info
 ENV
+elif ! grep -q '^[[:space:]]*HPDS_CONSENT_CONTRACT=' "$RS_ENV"; then
+  { cat "$RS_ENV"; echo "HPDS_CONSENT_CONTRACT=main"; } | put_file "$RS_ENV" 600
 fi
 
 new_name="$HPDS_RS_CONTAINER-new"

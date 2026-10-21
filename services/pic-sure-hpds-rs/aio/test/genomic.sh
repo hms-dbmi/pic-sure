@@ -72,6 +72,7 @@ start() {
     -v "$pheno:/opt/local/hpds:ro" -v "$genomic:/opt/local/genomic:ro" \
     -e HPDS_GENOMIC_DATA_DIRECTORY=/opt/local/genomic/ -e "hpds.genomicProcessor.impl=$impl" \
     -e VCF_EXCERPT_ENABLED=true -e HPDS_REQUIRE_AUTHORIZATION_FILTER=false -e ID_BATCH_SIZE=1000 \
+    -e HPDS_CONSENT_CONTRACT=harmonization \
     -e HPDS_METRICS=on "$@" "$IMAGE" >/dev/null
   local waited=0
   until curl -s -o /dev/null "http://127.0.0.1:$port/actuator/health" || [[ "$waited" -ge 120 ]]; do
