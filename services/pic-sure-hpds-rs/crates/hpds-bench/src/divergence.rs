@@ -274,7 +274,8 @@ pub enum Condition {
     SyncFlagRefusal,
     /// Always under the harmonization contract. Under the main contract, the entry's raw body
     /// or string query repeats a key other than `authorizationFilters`, whose repetition main
-    /// accepts as Jackson does, keeping the last value.
+    /// accepts as Jackson does, keeping the last value, and the Rust side (the Java side must
+    /// be known) refused with a 400 holding `duplicate key "<key>"` for one such key.
     RepeatedKeyRefusable,
     /// Main consent contract only. The entry's query holds a field that main's `Query`,
     /// `AuthorizationFilter`, `PhenotypicFilter`, `PhenotypicSubquery` or `GenomicFilter` does
@@ -1511,10 +1512,19 @@ fn refusable_repeated_keys(text: &str, java: Option<JavaService>) -> Vec<String>
 }
 
 /// See [`Condition::RepeatedKeyRefusable`].
-fn repeated_key_refusable(entry: &CorpusEntry, java: Option<JavaService>) -> bool {
-    if java.is_none_or(|java| java.contract != ConsentContract::Main) {
+fn repeated_key_refusable(
+    entry: &CorpusEntry,
+    a: &Outcome,
+    b: &Outcome,
+    java: Option<JavaService>,
+) -> bool {
+    let Some(java) = java.filter(|java| java.contract == ConsentContract::Main) else {
         return true;
-    }
+    };
+    let rust_outcome = match java.side {
+        Side::A => b,
+        Side::B => a,
+    };
     let text = match &entry.raw_body {
         Some(text) => Some(text.clone()),
         None => match entry.request.get("query") {
@@ -1522,7 +1532,13 @@ fn repeated_key_refusable(entry: &CorpusEntry, java: Option<JavaService>) -> boo
             _ => None,
         },
     };
-    text.is_some_and(|text| !refusable_repeated_keys(&text, java).is_empty())
+    let keys = text.map_or_else(Vec::new, |text| refusable_repeated_keys(&text, Some(java)));
+    refusal(rust_outcome).is_some_and(|body| {
+        keys.iter().any(|key| {
+            serde_json::to_string(key)
+                .is_ok_and(|quoted| body.contains(&format!("duplicate key {quoted}")))
+        })
+    })
 }
 
 /// Whether Jackson's enum coercion reads `text` as one of Java's `ResultType` constants: a
@@ -1836,7 +1852,7 @@ impl Condition {
             Condition::SearchInfoValuesSet => equal_after(a, b, &[self]),
             Condition::SearchValuesBucketSet => genomic::search_values_bucket_set(entry, a, b),
             Condition::SyncFlagRefusal => main_contract::sync_flag_refusal(entry, a, b, java),
-            Condition::RepeatedKeyRefusable => repeated_key_refusable(entry, java),
+            Condition::RepeatedKeyRefusable => repeated_key_refusable(entry, a, b, java),
             Condition::UnknownFieldRefused => {
                 main_contract::unknown_field_refused(entry, a, b, java)
             }
@@ -4075,6 +4091,10 @@ mod tests {
         };
         let raw_authz = raw_body_entry("error-duplicate-key-authz", &body("authorizationFilters"));
         let any_refusal = sync(400, "duplicate key");
+        let names_select = sync(
+            400,
+            "the query is not valid: duplicate key \"select\" at line 1 column 40",
+        );
         assert_eq!(
             rule_name(&harmonization_contract(), &raw_authz, &answer, &any_refusal).as_deref(),
             Some("duplicate-key-last-wins")
@@ -4085,8 +4105,30 @@ mod tests {
         );
         let raw_select = raw_body_entry("error-duplicate-key-select", &body("select"));
         assert_eq!(
-            rule_name(&main_contract(), &raw_select, &answer, &any_refusal).as_deref(),
+            rule_name(&main_contract(), &raw_select, &answer, &names_select).as_deref(),
             Some("duplicate-key-last-wins")
+        );
+        assert_eq!(
+            rule_name(&main_contract(), &raw_select, &answer, &any_refusal),
+            None
+        );
+        assert_eq!(
+            rule_name(
+                &harmonization_contract(),
+                &raw_select,
+                &answer,
+                &any_refusal
+            )
+            .as_deref(),
+            Some("duplicate-key-last-wins")
+        );
+        let names_authz = sync(
+            400,
+            "the query is not valid: duplicate key \"authorizationFilters\" at line 1 column 40",
+        );
+        assert_eq!(
+            rule_name(&main_contract(), &raw_authz, &answer, &names_authz),
+            None
         );
     }
 
@@ -4098,6 +4140,9 @@ mod tests {
             "missing-consents-async-error",
             "consent-extra-field-status",
             "search-order-and-double-min-value",
+            "search-concept-order",
+            "search-max-double-min-value",
+            "search-concept-and-category-values-order",
         ] {
             let rule = set.rules.iter().find(|r| r.name == name).unwrap();
             assert_eq!(

@@ -759,25 +759,50 @@ pub fn write_corpus(
     Ok(manifest)
 }
 
-/// Loads every entry listed in `<dir>/manifest.json`, in manifest order.
+/// An entry file of a corpus that exists but could not be read as an entry.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SkippedEntry {
+    /// The entry's file, as the manifest names it.
+    pub file: String,
+    /// Why it could not be read, such as JSON nested past the parser's depth limit.
+    pub reason: String,
+}
+
+/// The entries of a corpus directory, and the entry files that could not be parsed.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Corpus {
+    /// The entries read, in manifest order.
+    pub entries: Vec<CorpusEntry>,
+    /// The entry files left out because they do not parse as an entry, in manifest order.
+    pub skipped: Vec<SkippedEntry>,
+}
+
+/// Loads every entry listed in `<dir>/manifest.json`, in manifest order. An entry file that
+/// does not parse as an entry, for example one nested deeper than `serde_json`'s recursion
+/// limit, is left out and listed in [`Corpus::skipped`] instead of failing the whole corpus.
 ///
 /// # Errors
 ///
-/// Fails when the manifest or an entry file is missing or malformed.
-pub fn read_corpus(dir: &Path) -> Result<Vec<CorpusEntry>> {
+/// Fails when the manifest is missing or malformed, or an entry file cannot be read.
+pub fn read_corpus(dir: &Path) -> Result<Corpus> {
     let manifest_path = dir.join("manifest.json");
     let text =
         std::fs::read_to_string(&manifest_path).map_err(|e| BenchError::io(&manifest_path, e))?;
     let manifest: Manifest =
         serde_json::from_str(&text).map_err(|e| BenchError::json("manifest.json", e))?;
-    let mut entries = Vec::new();
+    let mut corpus = Corpus::default();
     for row in manifest.entries {
         let path: PathBuf = dir.join(&row.file);
         let body = std::fs::read_to_string(&path).map_err(|e| BenchError::io(&path, e))?;
-        entries
-            .push(serde_json::from_str(&body).map_err(|e| BenchError::json(row.file.clone(), e))?);
+        match serde_json::from_str(&body) {
+            Ok(entry) => corpus.entries.push(entry),
+            Err(e) => corpus.skipped.push(SkippedEntry {
+                file: row.file,
+                reason: e.to_string(),
+            }),
+        }
     }
-    Ok(entries)
+    Ok(corpus)
 }
 
 #[cfg(test)]
@@ -1096,7 +1121,47 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let manifest = write_corpus(dir.path(), 3, 30, &entries).unwrap();
         assert_eq!(manifest.entries.len(), entries.len());
-        assert_eq!(read_corpus(dir.path()).unwrap(), entries);
+        let corpus = read_corpus(dir.path()).unwrap();
+        assert_eq!(corpus.entries, entries);
+        assert!(corpus.skipped.is_empty());
+    }
+
+    #[test]
+    fn an_entry_nested_past_the_parser_limit_is_skipped_and_reported() {
+        let entries = generate(&sample_columns(true), 3, 4).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let mut manifest = write_corpus(dir.path(), 3, 4, &entries).unwrap();
+        let mut clause = json!({"phenotypicFilterType": "REQUIRED", "conceptPath": "\\a\\"});
+        for _ in 0..140 {
+            clause = json!({"operator": "AND", "phenotypicClauses": [clause]});
+        }
+        let deep = CorpusEntry {
+            name: "deep-count".into(),
+            request: json!({"query": {"expectedResultType": "COUNT", "phenotypicClause": clause}}),
+            ..entries[0].clone()
+        };
+        std::fs::write(
+            dir.path().join("deep.json"),
+            serde_json::to_string(&deep).unwrap(),
+        )
+        .unwrap();
+        manifest.entries.insert(
+            1,
+            ManifestRow {
+                file: "deep.json".into(),
+                ..manifest.entries[0].clone()
+            },
+        );
+        std::fs::write(
+            dir.path().join("manifest.json"),
+            serde_json::to_string(&manifest).unwrap(),
+        )
+        .unwrap();
+        let corpus = read_corpus(dir.path()).unwrap();
+        assert_eq!(corpus.entries, entries);
+        assert_eq!(corpus.skipped.len(), 1);
+        assert_eq!(corpus.skipped[0].file, "deep.json");
+        assert!(corpus.skipped[0].reason.contains("recursion limit"));
     }
 
     #[test]

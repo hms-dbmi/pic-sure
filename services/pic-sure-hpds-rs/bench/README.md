@@ -111,7 +111,7 @@ that consent contract. The run says which with `--consent-contract <harmonizatio
 `--java`; without it the Rust side is taken to serve `harmonization`, so a run that does not
 name a contract judges as before. The rules that describe the harmonization contract
 (`search-shape-main`, `authorization-filters-main`, `null-authorization-filter-main`, the
-`userConsents` rules and `search-order-and-double-min-value`) apply to harmonization runs and
+`userConsents` rules and the search order and `Double.MIN_VALUE` normalizations, since main's search compares exactly) apply to harmonization runs and
 pair parity only. Under `main`, the main contract's rules apply
 (`sync-requires-authorization-filter-main`, `unknown-field-main` and
 `null-authorization-filter-main-status`), every rule that accepts Java's empty 200 or bodiless

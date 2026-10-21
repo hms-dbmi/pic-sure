@@ -60,6 +60,7 @@
     },
     {
       "name": "search-max-double-min-value",
+      "consentContract": "harmonization",
       "entry": "search-*",
       "when": "numeric-max-double-min-value",
       "reason": "Spec divergence, LowRAMLoadingStore.complete and LoadingStore initialize max to Double.MIN_VALUE, so a numeric concept with no value above zero reports a max of 4.9E-324; /search returns that stored max, where Rust returns the real one. Accepted only when every other field of the search body is equal and the real max is zero or below."
@@ -91,12 +92,14 @@
     },
     {
       "name": "search-concept-order",
+      "consentContract": "harmonization",
       "entry": "search-*",
       "when": "search-concept-order",
       "reason": "README, Differences from Java: '/search writes concepts in path order ... Java's order of both is unspecified (an immutable map whose order changes with every start, a HashMap, a HashSet)'. Applies to the null-term answer, an array of one-entry objects. Accepted only when sorting those arrays by path makes the bodies equal."
     },
     {
       "name": "search-concept-and-category-values-order",
+      "consentContract": "harmonization",
       "entry": "search-*",
       "when": ["search-concept-order", "category-values-order"],
       "reason": "README, Differences from Java: '/search writes concepts in path order and categoryValues sorted. Java's order of both is unspecified'. For the null-term answer both orders differ at once. Accepted only when sorting the concept array by path and every categoryValues array makes the bodies equal."
@@ -124,7 +127,7 @@
       "entry": "error-duplicate-key-*",
       "statuses": [200, 400],
       "when": "repeated-key-refusable",
-      "reason": "README, Differences from Java: 'Request bodies holding the same key twice in any object, the envelope, the query, a clause or a userConsents entry included ... are a 400. Jackson keeps the last copy.' Accepted only for the duplicate-key entries. Under the main consent contract the entry must repeat a key other than authorizationFilters: main keeps the last authorizationFilters value as Jackson does (Decision 6), so a refusal of that repetition stays reported."
+      "reason": "README, Differences from Java: 'Request bodies holding the same key twice in any object, the envelope, the query, a clause or a userConsents entry included ... are a 400. Jackson keeps the last copy.' Accepted only for the duplicate-key entries. Under the main consent contract the entry must repeat a key other than authorizationFilters and Rust's refusal must name it: main keeps the last authorizationFilters value as Jackson does (Decision 6), so a refusal of that repetition stays reported."
     },
     {
       "name": "values-on-numeric-status",

@@ -10,7 +10,7 @@ use hpds_bench::compare::{CompareReport, Mismatch, compare_corpus};
 use hpds_bench::consents::{
     ConsentPlan, expand, parse_variants, partitions_in_dir, partitions_of_files,
 };
-use hpds_bench::corpus::{generate, read_corpus, write_corpus};
+use hpds_bench::corpus::{Corpus, CorpusEntry, generate, read_corpus, write_corpus};
 use hpds_bench::divergence::{ConsentContract, Divergences, JavaBranch, Side};
 use hpds_bench::duration::parse_duration;
 use hpds_bench::golden::{read_golden, run_golden};
@@ -298,7 +298,14 @@ async fn run(cli: Cli) -> Result<bool> {
             if let Some(dir) = corpus {
                 let b = b.ok_or_else(|| BenchError::Invalid("--corpus needs --b".into()))?;
                 let client_b = Client::new(&b, timeout, concurrency)?;
-                let entries = read_corpus(&dir)?;
+                let corpus = read_corpus(&dir)?;
+                if !corpus.skipped.is_empty() {
+                    println!(
+                        "compare: skipped {} unreadable entries",
+                        corpus.skipped.len()
+                    );
+                }
+                let entries = loaded_entries(corpus);
                 let total = entries.len();
                 let mut rules = match divergences {
                     Some(path) => Divergences::read(&path)?,
@@ -353,7 +360,7 @@ async fn run(cli: Cli) -> Result<bool> {
                 timeout,
             };
             let client = Client::with_headers(&url, timeout, concurrency, &headers)?;
-            let loaded = run_load(&client, read_corpus(&corpus)?, &config).await?;
+            let loaded = run_load(&client, loaded_entries(read_corpus(&corpus)?), &config).await?;
             eprint!("{}", render_table(&loaded));
             println!(
                 "{}",
@@ -423,6 +430,21 @@ enum JavaBranchArg {
     Main,
     /// The consent-partitioned HPDS, `feature-harmonization`.
     Consent,
+}
+
+/// The entries of a corpus, after printing to stderr each entry file that could not be parsed
+/// and how many there were, so a run never leaves entries out silently.
+fn loaded_entries(corpus: Corpus) -> Vec<CorpusEntry> {
+    for skipped in &corpus.skipped {
+        eprintln!("SKIPPED {}: {}", skipped.file, skipped.reason);
+    }
+    if !corpus.skipped.is_empty() {
+        eprintln!(
+            "corpus: skipped {} unreadable entries",
+            corpus.skipped.len()
+        );
+    }
+    corpus.entries
 }
 
 /// An `on` or `off` setting.
