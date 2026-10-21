@@ -1480,7 +1480,9 @@ impl<'a> Selection<'a> {
     /// Concepts found in the cache are charged to the cache, not the permit. The read holds
     /// each of them ([`CachedHolds`]), so one the cache drops before the read lets it go is
     /// charged to the budget from the drop until then, and the read never holds a block
-    /// that neither the cache nor the budget counts. They are never held while the read
+    /// that neither the cache nor the budget counts. What deferred reclamation keeps alive
+    /// once the read has let go is bounded apart ([`crate::store::reclaim_unlinked`]), which
+    /// the caller runs after each chunk. They are never held while the read
     /// waits: when the permit is not granted at once, the entries
     /// found are dropped, the read waits for its permit, and then looks the chunk up again.
     /// When the cache dropped some of them meanwhile and the permit does not cover what is

@@ -2312,6 +2312,28 @@ mod tests {
             }
         }
 
+        /// Once a read returns, nothing it dropped is alive, without the test driving any
+        /// reclamation: `moka` hands every load's shared copy to deferred reclamation, and
+        /// the read lets that run after each chunk.
+        #[test]
+        fn a_chunk_read_leaves_no_dropped_entry_alive_when_it_returns() {
+            let concepts = prefix_concepts();
+            let (_dir, out) = prefix_store(&concepts);
+            let query = any_record_of_prefix("\\c\\", &["p1", "p2", "p3"]);
+            for share in [0.0, 2.0] {
+                for round in 0..20 {
+                    let engine = engine_with(&out, share, 20_000, 0);
+                    let set = engine.partitions();
+                    assert!(!engine.patients(&query).unwrap().is_empty());
+                    assert_eq!(
+                        crate::partition::test_support::live(set).live(),
+                        0,
+                        "share {share}, round {round}: entries alive after the read returned"
+                    );
+                }
+            }
+        }
+
         #[test]
         fn a_cohort_left_holding_another_partition_fails_every_result_type() {
             let (_dir, out) = two_partitions();
