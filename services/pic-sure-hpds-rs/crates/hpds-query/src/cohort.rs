@@ -116,6 +116,20 @@ fn main_cohort<'s>(selection: &Selection<'s>, query: &Query) -> Result<Cow<'s, R
     Ok(cohort)
 }
 
+/// Fails, under the main contract, on a `null` in `query`'s authorization filters that Java
+/// main's executor throws on before it reads anything ([`authorization_clauses`]). The variant
+/// list and the excerpts call it where they would otherwise answer without evaluating the
+/// cohort: Java evaluates it first for both.
+///
+/// # Errors
+/// [`QueryError::AuthorizationFilterNull`] as [`authorization_clauses`] raises it.
+pub(crate) fn check_authorization_nulls(selection: &Selection<'_>, query: &Query) -> Result<()> {
+    if selection.set().contract() == ConsentContract::Main {
+        authorization_clauses(query)?;
+    }
+    Ok(())
+}
+
 /// Each authorization filter of `query` as the `FILTER` Java main's
 /// `authorizationFiltersToPhenotypicClause` makes of it, in request order. A `null` value is
 /// dropped and marked on the filter ([`PhenotypicFilter::null_values`]), so the evaluator

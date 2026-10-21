@@ -12,7 +12,7 @@ use hpds_query::{
     GenomicFilter, GenomicOptions, GenomicStore, MainQueryValidator,
     NULL_AUTHORIZATION_CONCEPT_PATH_MESSAGE, NULL_AUTHORIZATION_FILTER_MESSAGE,
     NULL_AUTHORIZATION_VALUE_MESSAGE, NULL_AUTHORIZATION_VALUES_MESSAGE, PartitionOptions, Query,
-    QueryError, ResultType, parse_strict_for,
+    QueryError, ResultType, VariantResultSettings, parse_strict_for,
 };
 use serde_json::{Value, json};
 
@@ -687,7 +687,11 @@ fn genomic_answers_run_over_the_authorized_set() {
         GenomicStore::open_with_key_file(&out, &key, &GenomicOptions::default()).unwrap();
     let engine = Engine::open(&store.out, &main_options(true))
         .unwrap()
-        .with_genomic(genomic_store);
+        .with_genomic(genomic_store)
+        .with_variant_settings(VariantResultSettings {
+            vcf_excerpt_enabled: true,
+            ..VariantResultSettings::default()
+        });
     let query = |result_type: ResultType, filters: Value, genes: &[&str]| Query {
         genomic_filters: genes.iter().map(|g| gene(g)).collect(),
         ..with_filters(result_type.java_name(), filters, json!({}))
@@ -729,6 +733,28 @@ fn genomic_answers_run_over_the_authorized_set() {
         &["G2"],
     ));
     assert!(list.is_ok(), "{list:?}");
+    let unfiltered =
+        |result_type: ResultType| with_filters(result_type.java_name(), json!([null]), json!({}));
+    assert!(matches!(
+        engine.variant_list(&unfiltered(ResultType::VariantListForQuery)),
+        Err(QueryError::AuthorizationFilterNull(
+            NULL_AUTHORIZATION_FILTER_MESSAGE
+        ))
+    ));
+    for result_type in [ResultType::VcfExcerpt, ResultType::AggregateVcfExcerpt] {
+        assert!(matches!(
+            engine.vcf_excerpt(&unfiltered(result_type)),
+            Err(QueryError::AuthorizationFilterNull(
+                NULL_AUTHORIZATION_FILTER_MESSAGE
+            ))
+        ));
+    }
+    assert_eq!(
+        engine
+            .variant_count(&unfiltered(ResultType::VariantCountForQuery))
+            .unwrap(),
+        None
+    );
 }
 
 #[test]

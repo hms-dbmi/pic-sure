@@ -730,6 +730,7 @@ impl Engine {
             return Ok(not_allowed("VARIANT_LIST"));
         }
         let checked = self.admit_genomic(checked)?;
+        crate::cohort::check_authorization_nulls(checked.selection(), query)?;
         let max = self.variant_settings.max_excerpt_bytes;
         let mut body = String::from("[");
         if let Some((store, lists)) = self.variant_lists_in(&checked)? {
@@ -781,6 +782,7 @@ impl Engine {
             return Ok(ExcerptAnswer::Text(not_allowed(&name.to_string())));
         }
         let checked = self.admit_genomic(checked)?;
+        crate::cohort::check_authorization_nulls(checked.selection(), query)?;
         let Some((store, lists)) = self.variant_lists_in(&checked)? else {
             return Ok(ExcerptAnswer::Text(NO_VARIANTS_FOUND.to_owned()));
         };
