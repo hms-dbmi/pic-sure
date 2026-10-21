@@ -73,9 +73,9 @@ test('tests with assertions are low risk', () => {
 test('small production changes are low risk; larger ones need review', () => {
   const small = run([file('services/a/src/main/java/com/x/Foo.java', ['int a = 1;'])]);
   assert.equal(small.risk, 'low', JSON.stringify(small.findings));
-  const big = run([file('services/a/src/main/java/com/x/Foo.java', Array(61).fill('int a = 1;'))]);
+  const big = run([file('services/a/src/main/java/com/x/Foo.java', Array(301).fill('int a = 1;'))]);
   assert.ok(rules(big).includes('category:production-source'));
-  const split = run([file('a/src/main/java/A.java', Array(40).fill('int a;')), file('b/src/main/java/B.java', Array(40).fill('int b;'))]);
+  const split = run([file('a/src/main/java/A.java', Array(160).fill('int a;')), file('b/src/main/java/B.java', Array(160).fill('int b;'))]);
   assert.ok(rules(split).includes('category:production-source'), 'allowance is per PR, not per file');
 });
 
@@ -135,7 +135,7 @@ test('hardcoded secret is flagged even in docs', () => {
 });
 
 test('size and file-count limits', () => {
-  assert.ok(rules(run([file('README.md', Array(200).fill('line'))])).includes('size'));
+  assert.ok(rules(run([file('README.md', Array(451).fill('line'))])).includes('size'));
   const many = Array.from({ length: 11 }, (_, i) => file(`docs/${i}.md`, ['x']));
   assert.ok(rules(run(many)).includes('size'));
 });
@@ -226,7 +226,9 @@ test('risk:low waives review; risk:needs-review needs a human approval', () => {
 test('approvals must be from a human, not the author, on the current commit', () => {
   assert.equal(decide([rv('author', 'APPROVED')], 'review').state, 'pending');
   assert.equal(decide([rv('some-bot', 'APPROVED', 'sha1', 'Bot')], 'review').state, 'pending');
-  assert.equal(decide([rv('alice', 'APPROVED', 'old-sha')], 'review').state, 'pending');
+  const latestOnly = { ...policy, review: { ...policy.review, requireApprovalOnLatestCommit: true } };
+  const decideLatest = (reviews, risk) => reviewDecision({ pr: headPr, reviews, risk, policy: latestOnly });
+  assert.equal(decideLatest([rv('alice', 'APPROVED', 'old-sha')], 'review').state, 'pending');
 });
 
 test('requireApprovalOnLatestCommit: false accepts an approval on an older commit', () => {

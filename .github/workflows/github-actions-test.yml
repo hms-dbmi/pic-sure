@@ -138,6 +138,23 @@ jobs:
           fi
           node ../.github/scripts/risk/diff-coverage.mjs jacoco "${reports[@]}"
 
+  # Unit tests for the risk classifier and review-policy scripts. Needs no dependencies, so it
+  # runs on every PR and push; without it a change to .github/scripts/risk or policy.json could
+  # break the classifier unnoticed.
+  risk-scripts:
+    name: Risk script tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          sparse-checkout: .github
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - name: Run risk script tests
+        run: node --test .github/scripts/risk/risk.test.mjs
+
   lint:
     name: Spotless (dictionary)
     runs-on: ubuntu-latest
