@@ -2682,6 +2682,14 @@ mod tests {
         /// clock's reading, so one dropped before the read looked is told apart from one
         /// dropped while it was being checked; and an entry the cache was removing when
         /// checked must carry its drop mark once every read has returned.
+        ///
+        /// The read takes the clock reading just before it looks its concepts up in the
+        /// table, so an entry the cache drops between the two carries a later reading and
+        /// counts as dropped after the serve. The table's own drop filter keeps such an entry
+        /// from being served once its mark is set, but the test does not tell that window
+        /// apart: it catches a missing filter only for entries dropped before the clock
+        /// reading. The store test that a dropped entry is never served covers the filter
+        /// directly.
         #[test]
         fn concurrent_study_level_reads_on_a_small_cache_serve_only_cached_entries() {
             let concepts = 40;
