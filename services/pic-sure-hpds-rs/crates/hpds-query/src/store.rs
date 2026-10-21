@@ -83,6 +83,32 @@ pub(crate) fn block_cache(
         .build()
 }
 
+/// Collections [`reclaim_unlinked`] runs on the calling thread. Memory unlinked in epoch `e`
+/// is freed once the global epoch reaches `e + 2`, and each collection advances it at most
+/// once, so the last two may free what the first two let expire.
+const RECLAIM_COLLECTIONS: usize = 4;
+
+/// Lets deferred reclamation free the decoded entries the block cache has unlinked but still
+/// keeps alive. `moka` unlinks through `crossbeam-epoch`: an entry it evicts, and the copy a
+/// load shares with concurrent loaders of the same concept, stay alive in a thread's bag of
+/// deferred frees until that bag is pushed to the global queue and the global epoch has
+/// advanced twice past it. A bag holds up to 64 frees and is pushed only when full, when its
+/// thread flushes, or every 128th pin of that thread, so after a burst of reads the copies
+/// could outlive the reads by any length of time while the service is idle.
+///
+/// Every worker of the rayon pool pushes its own bag when it is next free (a broadcast that
+/// does not wait for them), and the calling thread then collects [`RECLAIM_COLLECTIONS`]
+/// times, freeing every expired bag in the queue up to the collector's eight per collection.
+/// What may stay alive after a read returns is therefore bounded by the bags of pool workers
+/// that have not run the broadcast yet, at most 63 unlinked frees each, and the bags pushed
+/// in the last two epochs, until the next collection anywhere in the process.
+pub(crate) fn reclaim_unlinked() {
+    rayon::spawn_broadcast(|_| crossbeam_epoch::pin().flush());
+    for _ in 0..RECLAIM_COLLECTIONS {
+        crossbeam_epoch::pin().flush();
+    }
+}
+
 /// A multi-concept read sends a concept's lookup through the block cache on one call in
 /// this many, and takes it from [`RecentEntries`] on the others, so the cache keeps
 /// seeing how often and how recently each concept is read, at this fraction of the reads.
@@ -222,7 +248,7 @@ pub(crate) struct CachedConcept {
     building: Mutex<()>,
     dropped: AtomicBool,
     holds: AtomicU64,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "live-entry-count"))]
     ticket: OnceLock<test_support::LiveTicket>,
     #[cfg(test)]
     dropped_at: OnceLock<u64>,
@@ -237,7 +263,7 @@ impl CachedConcept {
             building: Mutex::new(()),
             dropped: AtomicBool::new(false),
             holds: AtomicU64::new(0),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "live-entry-count"))]
             ticket: OnceLock::new(),
             #[cfg(test)]
             dropped_at: OnceLock::new(),
@@ -245,7 +271,7 @@ impl CachedConcept {
     }
 
     /// Counts the entry in `live` until it is dropped.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "live-entry-count"))]
     pub(crate) fn track(&self, live: &Arc<test_support::LiveEntries>) {
         let _ = self.ticket.set(test_support::LiveTicket::new(live));
     }
@@ -900,21 +926,27 @@ fn open_error(dir: &Path, error: impl std::fmt::Display) -> QueryError {
     }
 }
 
-/// Counting of decoded entries alive, for tests that bound what a read holds at once.
-#[cfg(test)]
+/// Counting of decoded entries alive, for tests that bound what a read holds at once, built
+/// for the crate's own tests and with the `live-entry-count` feature.
+#[cfg(any(test, feature = "live-entry-count"))]
 pub(crate) mod test_support {
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+    #[cfg(test)]
+    use std::sync::atomic::AtomicU64;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
+    #[cfg(test)]
     static DROP_CLOCK: AtomicU64 = AtomicU64::new(0);
 
     /// The number of entries marked dropped so far, process-wide: an entry marked after a
     /// reading of it carries a later value ([`super::CachedConcept::dropped_at`]).
+    #[cfg(test)]
     pub(crate) fn drop_clock() -> u64 {
         DROP_CLOCK.load(Ordering::SeqCst)
     }
 
     /// Advances the drop clock for one entry being marked dropped and returns its new value.
+    #[cfg(test)]
     pub(super) fn tick_drop_clock() -> u64 {
         DROP_CLOCK.fetch_add(1, Ordering::SeqCst) + 1
     }
@@ -928,6 +960,7 @@ pub(crate) mod test_support {
 
     impl LiveEntries {
         /// The most tracked entries alive at once since the last [`LiveEntries::reset_peak`].
+        #[cfg(test)]
         pub(crate) fn peak(&self) -> usize {
             self.peak.load(Ordering::SeqCst)
         }
@@ -938,6 +971,7 @@ pub(crate) mod test_support {
         }
 
         /// Starts the peak again from the entries alive now.
+        #[cfg(test)]
         pub(crate) fn reset_peak(&self) {
             self.peak.store(self.live(), Ordering::SeqCst);
         }
@@ -949,6 +983,7 @@ pub(crate) mod test_support {
         /// holds, only after the global epoch has advanced past every pinned thread. Pinning
         /// and flushing here drives that, so an entry no read holds any longer is counted
         /// as dropped.
+        #[cfg(test)]
         pub(crate) fn live_after_reclaim(&self, bound: std::time::Duration) -> usize {
             let deadline = std::time::Instant::now() + bound;
             while self.live() > 0 && std::time::Instant::now() < deadline {

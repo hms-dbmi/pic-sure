@@ -410,7 +410,7 @@ pub struct PartitionSet {
     scopes: Cache<Box<[u64]>, Arc<Scope>>,
     generation: u128,
     serving: ServingLock,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "live-entry-count"))]
     live: Arc<crate::store::test_support::LiveEntries>,
     #[cfg(test)]
     chunk_threads: std::sync::Mutex<test_support::ChunkThreads>,
@@ -607,7 +607,7 @@ impl PartitionSet {
                 .build(),
             generation,
             serving,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "live-entry-count"))]
             live: Arc::default(),
             #[cfg(test)]
             chunk_threads: std::sync::Mutex::default(),
@@ -933,6 +933,15 @@ impl PartitionSet {
         (rayon::current_num_threads() / running).max(1)
     }
 
+    /// The decoded entries this set has loaded that are still alive anywhere, the block
+    /// cache, a read or deferred reclamation holding them. Counted only in builds with the
+    /// `live-entry-count` feature, for tests that bound what reads leave alive.
+    #[cfg(feature = "live-entry-count")]
+    #[doc(hidden)]
+    pub fn live_entries(&self) -> usize {
+        self.live.live()
+    }
+
     /// Drops every cached block and view.
     pub fn clear_cache(&self) {
         self.cache.invalidate_all();
@@ -1031,7 +1040,7 @@ impl PartitionSet {
                     .record_load(started.elapsed(), block.is_ok());
                 block.map(|block| {
                     let entry = Arc::new(CachedConcept::new(block));
-                    #[cfg(test)]
+                    #[cfg(any(test, feature = "live-entry-count"))]
                     entry.track(&self.live);
                     entry
                 })
@@ -1480,7 +1489,9 @@ impl<'a> Selection<'a> {
     /// Concepts found in the cache are charged to the cache, not the permit. The read holds
     /// each of them ([`CachedHolds`]), so one the cache drops before the read lets it go is
     /// charged to the budget from the drop until then, and the read never holds a block
-    /// that neither the cache nor the budget counts. They are never held while the read
+    /// that neither the cache nor the budget counts. What deferred reclamation keeps alive
+    /// once the read has let go is bounded apart ([`crate::store::reclaim_unlinked`]), which
+    /// the caller runs after each chunk. They are never held while the read
     /// waits: when the permit is not granted at once, the entries
     /// found are dropped, the read waits for its permit, and then looks the chunk up again.
     /// When the cache dropped some of them meanwhile and the permit does not cover what is
