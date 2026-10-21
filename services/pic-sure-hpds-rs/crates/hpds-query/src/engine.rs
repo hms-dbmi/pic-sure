@@ -1956,6 +1956,59 @@ mod tests {
             assert!(peak <= clause_thread_cap(), "{peak} clause threads at once");
         }
 
+        /// While one clause of an OR waits for the budget, the clauses that finished before it
+        /// are already merged into the OR's set, so none of their results is held apart.
+        #[test]
+        fn a_clause_waiting_for_the_budget_holds_no_finished_clause_result() {
+            use crate::partition::test_support::{clause_results, hold_budget};
+            let concepts = prefix_concepts();
+            let (_dir, out) = prefix_store(&concepts);
+            let clause = || {
+                subquery(
+                    Operator::Or,
+                    vec![
+                        any_record("\\c\\0"),
+                        any_record("\\c\\1"),
+                        any_record("\\c\\2"),
+                    ],
+                )
+            };
+            let query = patients_of(clause(), &["p1"]);
+            let expected = engine_with(&out, 2.0, u64::MAX, 0)
+                .patients(&query)
+                .unwrap();
+            let engine = engine_budgeted(&out, 2.0, u64::MAX, 1 << 30, 1 << 30);
+            let set = engine.partitions();
+            for prefix in ["\\c\\0", "\\c\\1"] {
+                engine
+                    .patients(&any_record_of_prefix(prefix, &["p1"]))
+                    .unwrap();
+            }
+            let held = hold_budget(set, 1 << 30);
+            let waits = set.prefix_read_stats().waits;
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            std::thread::scope(|scope| {
+                let reader = scope.spawn(|| engine.patients(&query));
+                while (set.prefix_read_stats().waits == waits || clause_results(set).0 < 2)
+                    && std::time::Instant::now() < deadline
+                {
+                    std::thread::sleep(std::time::Duration::from_micros(50));
+                }
+                assert_eq!(clause_results(set).0, 2, "the two cached clauses finished");
+                while clause_results(set).1 > 0 && std::time::Instant::now() < deadline {
+                    std::thread::sleep(std::time::Duration::from_micros(50));
+                }
+                let (_, held_apart) = clause_results(set);
+                drop(held);
+                assert_eq!(reader.join().unwrap().unwrap(), expected);
+                assert_eq!(
+                    held_apart, 0,
+                    "the finished clauses' results are merged while the third waits"
+                );
+            });
+            assert_eq!(set.prefix_read_stats().held, 0);
+        }
+
         #[test]
         fn nested_broad_filters_spawn_threads_at_one_level_only() {
             use crate::partition::test_support::take_chunk_threads;

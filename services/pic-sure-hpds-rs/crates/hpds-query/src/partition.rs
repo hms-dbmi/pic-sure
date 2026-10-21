@@ -414,6 +414,8 @@ pub struct PartitionSet {
     live: Arc<crate::store::test_support::LiveEntries>,
     #[cfg(test)]
     chunk_threads: std::sync::Mutex<test_support::ChunkThreads>,
+    #[cfg(test)]
+    clause_results: test_support::ClauseResults,
 }
 
 impl std::fmt::Debug for PartitionSet {
@@ -609,6 +611,8 @@ impl PartitionSet {
             live: Arc::default(),
             #[cfg(test)]
             chunk_threads: std::sync::Mutex::default(),
+            #[cfg(test)]
+            clause_results: test_support::ClauseResults::default(),
         })
     }
 
@@ -1804,6 +1808,33 @@ pub(crate) mod test_support {
     pub(crate) fn take_chunk_threads(set: &PartitionSet) -> (usize, usize) {
         let seen = std::mem::take(&mut *set.chunk_threads.lock().unwrap());
         (seen.threads.len(), seen.on_workers)
+    }
+
+    /// Results of clauses holding an `ANY_RECORD_OF` that subqueries over `set` have
+    /// finished, and how many of them are held apart from the subquery's merged set.
+    #[derive(Debug, Default)]
+    pub(crate) struct ClauseResults {
+        finished: AtomicUsize,
+        held: AtomicUsize,
+    }
+
+    /// Records that a clause holding an `ANY_RECORD_OF` finished, its result held.
+    pub(crate) fn note_clause_finished(set: &PartitionSet) {
+        set.clause_results.finished.fetch_add(1, Ordering::SeqCst);
+        set.clause_results.held.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// Records that `count` finished clause results were merged and dropped.
+    pub(crate) fn note_clause_results_merged(set: &PartitionSet, count: usize) {
+        set.clause_results.held.fetch_sub(count, Ordering::SeqCst);
+    }
+
+    /// The clause results finished so far and those held now ([`ClauseResults`]).
+    pub(crate) fn clause_results(set: &PartitionSet) -> (usize, usize) {
+        (
+            set.clause_results.finished.load(Ordering::SeqCst),
+            set.clause_results.held.load(Ordering::SeqCst),
+        )
     }
 
     /// Where in `pheno.blocks` the block of the concept at `index` is stored.

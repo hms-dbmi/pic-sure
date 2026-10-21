@@ -707,10 +707,14 @@ fn evaluate_checked(selection: &Selection<'_>, clause: &PhenotypicClause) -> Res
     }
 }
 
-/// Evaluates `clauses` ([`evaluate_all`]) and combines them with `operator`: one multi-way union
-/// for OR, and for AND one multi-way intersection over the sets ordered smallest first,
-/// which stops once the result is empty. Borrowed bitmaps are read in place (an AND copies
-/// only its starting operand), and a single clause is returned as it is.
+/// Evaluates `clauses` and combines them with `operator`. A single clause is returned as it
+/// is. Clauses holding no `ANY_RECORD_OF` are evaluated in parallel on the rayon pool
+/// ([`fan_out::map`]) and combined in one multi-way union for OR, and for AND one
+/// multi-way intersection over the sets ordered smallest first, which stops once the result
+/// is empty; borrowed bitmaps are read in place (an AND copies only its starting operand).
+/// A subquery holding an `ANY_RECORD_OF` is merged as its clauses finish instead
+/// ([`merge_as_finished`]). Either way the first error in clause order is returned, as when
+/// every clause ran in parallel.
 ///
 /// An OR is exact when every operand is. An AND is exact when any operand is: the exact
 /// operand holds only patients the selection reaches, on whom every operand agrees with
@@ -720,10 +724,17 @@ fn combine(
     clauses: &[PhenotypicClause],
     operator: Operator,
 ) -> Result<Found> {
-    let mut sets = evaluate_all(selection, clauses)?;
-    if sets.len() <= 1 {
-        return sets.pop().ok_or(QueryError::EmptySubquery);
+    match clauses {
+        [] => return Err(QueryError::EmptySubquery),
+        [only] => return evaluate_checked(selection, only),
+        _ => {}
     }
+    if clauses.iter().any(holds_any_record_of) {
+        return merge_as_finished(selection, clauses, operator);
+    }
+    let sets = fan_out::map(clauses, |clause| evaluate_checked(selection, clause))
+        .into_iter()
+        .collect::<Result<Vec<Found>>>()?;
     let mut bitmaps: Vec<&RoaringBitmap> = sets.iter().map(|s| s.patients.bitmap()).collect();
     Ok(match operator {
         Operator::Or => Found::new(
@@ -740,50 +751,126 @@ fn combine(
     })
 }
 
-/// Each of `clauses` evaluated, in order. The first error in clause order is returned, as
-/// when every clause ran in parallel.
+/// A subquery's result built up as its clauses finish: the patients merged so far, whether
+/// the merge is exact so far, and the error of the earliest failing clause in clause order.
+struct Merge {
+    operator: Operator,
+    patients: Option<RoaringBitmap>,
+    exact: bool,
+    error: Option<(usize, QueryError)>,
+}
+
+impl Merge {
+    /// Nothing merged yet: exact for OR, which needs every operand exact, and not for AND,
+    /// which needs one.
+    fn new(operator: Operator) -> Self {
+        Merge {
+            operator,
+            patients: None,
+            exact: operator == Operator::Or,
+            error: None,
+        }
+    }
+
+    /// Merges the result of the clause at position `index` and drops it. An error is kept
+    /// when no earlier clause has failed; a result arriving once a clause has failed is
+    /// dropped unmerged, since the subquery fails.
+    fn add(&mut self, index: usize, found: Result<Found>) {
+        let found = match found {
+            Err(error) => {
+                if self.error.as_ref().is_none_or(|(at, _)| index < *at) {
+                    self.error = Some((index, error));
+                }
+                return;
+            }
+            Ok(_) if self.error.is_some() => return,
+            Ok(found) => found,
+        };
+        self.exact = match self.operator {
+            Operator::Or => self.exact && found.exact,
+            Operator::And => self.exact || found.exact,
+        };
+        match (&mut self.patients, self.operator) {
+            (None, _) => self.patients = Some(found.patients.into_owned()),
+            (Some(patients), Operator::Or) => *patients |= found.patients.bitmap(),
+            (Some(patients), Operator::And) => {
+                if !patients.is_empty() {
+                    *patients &= found.patients.bitmap();
+                }
+            }
+        }
+    }
+
+    /// The merged patients, or the error of the earliest failing clause.
+    fn finish(self) -> Result<Found> {
+        match self.error {
+            Some((_, error)) => Err(error),
+            None => Ok(Found::new(
+                Patients::Computed(self.patients.unwrap_or_default()),
+                self.exact,
+            )),
+        }
+    }
+}
+
+/// Evaluates `clauses`, at least one holding an `ANY_RECORD_OF`, and merges each result with
+/// `operator` into one running set ([`Merge`]) as soon as it is ready, dropping it there, so
+/// a clause waiting on the process prefix read budget never keeps the results of the
+/// clauses that finished before it. Union and intersection do not depend on order, so the
+/// answer is the one a merge of every result at the end gives.
 ///
-/// Clauses holding no `ANY_RECORD_OF` run in parallel on the rayon pool ([`fan_out::map`]).
-/// The others run on threads of their own ([`on_clause_threads`]): an `ANY_RECORD_OF`
-/// waits on the process prefix read budget, and a wait on a rayon worker could sit above a
+/// Clauses holding no `ANY_RECORD_OF` run first, in parallel on the rayon pool
+/// ([`fan_out::map`]). The others run on threads of their own ([`on_clause_threads_each`]):
+/// an `ANY_RECORD_OF` waits on the budget, and a wait on a rayon worker could sit above a
 /// permit that same worker holds lower on its stack, one it took for another clause before
 /// stealing this one. A clause thread runs one clause at a time and holds no permit while
 /// it waits for one, so those threads never wait on each other.
-fn evaluate_all(selection: &Selection<'_>, clauses: &[PhenotypicClause]) -> Result<Vec<Found>> {
-    let reads_many: Vec<bool> = clauses.iter().map(holds_any_record_of).collect();
-    if !reads_many.contains(&true) {
-        return fan_out::map(clauses, |clause| evaluate_checked(selection, clause))
-            .into_iter()
-            .collect();
-    }
+fn merge_as_finished(
+    selection: &Selection<'_>,
+    clauses: &[PhenotypicClause],
+    operator: Operator,
+) -> Result<Found> {
     debug_assert!(
         rayon::current_thread_index().is_none(),
         "a clause holding an ANY_RECORD_OF was evaluated on a rayon worker"
     );
-    let (many, parallel): (Vec<&PhenotypicClause>, Vec<&PhenotypicClause>) = clauses
+    let (many, parallel): (Vec<_>, Vec<_>) = clauses
         .iter()
-        .partition(|clause| holds_any_record_of(clause));
-    let mut parallel =
-        fan_out::map(&parallel, |clause| evaluate_checked(selection, clause)).into_iter();
+        .enumerate()
+        .partition(|(_, clause)| holds_any_record_of(clause));
+    let merge = std::sync::Mutex::new(Merge::new(operator));
+    let lock = || {
+        merge
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    };
+    let evaluated = fan_out::map(&parallel, |(_, clause)| evaluate_checked(selection, clause));
+    for (&(index, _), found) in parallel.iter().zip(evaluated) {
+        lock().add(index, found);
+    }
     let threads = selection.set().spare_parallelism();
-    let mut many =
-        on_clause_threads(&many, threads, |clause| evaluate_checked(selection, clause)).into_iter();
-    reads_many
-        .iter()
-        .map(|&many_reads| {
-            if many_reads {
-                many.next()
-                    .expect("one result for each clause holding an ANY_RECORD_OF")
-            } else {
-                parallel
-                    .next()
-                    .expect("one result for each clause holding no ANY_RECORD_OF")
-            }
-        })
-        .collect()
+    on_clause_threads_each(
+        &many,
+        threads,
+        |(_, clause)| {
+            let found = evaluate_checked(selection, clause);
+            #[cfg(test)]
+            crate::partition::test_support::note_clause_finished(selection.set());
+            found
+        },
+        |position, found| {
+            lock().add(many[position].0, found);
+            #[cfg(test)]
+            crate::partition::test_support::note_clause_results_merged(selection.set(), 1);
+        },
+    );
+    merge
+        .into_inner()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .finish()
 }
 
-/// Clause threads ([`on_clause_threads`]) running now across the process.
+/// Clause threads ([`on_clause_threads_each`]) running now across the process.
 static CLAUSE_THREADS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 /// The most clause threads that ran at once since the process started.
@@ -795,7 +882,7 @@ thread_local! {
     static ON_CLAUSE_THREAD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// Held shared by every [`on_clause_threads`] call that may take slots, and exclusively by a
+/// Held shared by every [`on_clause_threads_each`] call that may take slots, and exclusively by a
 /// test that needs every slot free ([`clause_threads_to_itself`]).
 #[cfg(test)]
 static CLAUSE_THREAD_GATE: std::sync::RwLock<()> = std::sync::RwLock::new(());
@@ -899,11 +986,38 @@ fn as_clause_thread<R>(work: impl FnOnce() -> R) -> R {
     work()
 }
 
-/// `evaluate` applied to each of `items`, in order, on the calling thread and up to
-/// `threads - 1` clause threads: scoped threads, not rayon workers, each taking the next
-/// item until none is left. A panic in `evaluate` stops every thread from taking another
-/// item, and the first one caught is raised again on the calling thread with its own
-/// payload once all of them are joined.
+/// `evaluate` applied to each of `items`, in order, as [`on_clause_threads_each`] runs it.
+#[cfg(test)]
+fn on_clause_threads<T, R, F>(items: &[T], threads: usize, evaluate: F) -> Vec<R>
+where
+    T: Sync,
+    R: Send,
+    F: Fn(&T) -> R + Sync,
+{
+    let results: Vec<std::sync::Mutex<Option<R>>> =
+        items.iter().map(|_| std::sync::Mutex::new(None)).collect();
+    on_clause_threads_each(items, threads, evaluate, |i, result| {
+        *results[i]
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(result);
+    });
+    results
+        .into_iter()
+        .map(|result| {
+            result
+                .into_inner()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .expect("every item is evaluated once the threads are joined")
+        })
+        .collect()
+}
+
+/// `evaluate` applied to each of `items` on the calling thread and up to `threads - 1`
+/// clause threads: scoped threads, not rayon workers, each taking the next item until none
+/// is left, and handing each result to `sink` with the item's position as soon as it is
+/// ready, on the thread that computed it. A panic in `evaluate` or `sink` stops every thread
+/// from taking another item, and the first one caught is raised again on the calling thread
+/// with its own payload once all of them are joined.
 ///
 /// Clause threads are bounded across the process by [`clause_thread_cap`]. The slots are
 /// taken without waiting, so a call that finds none free, or fewer than it wants, runs its
@@ -913,28 +1027,34 @@ fn as_clause_thread<R>(work: impl FnOnce() -> R) -> R {
 /// call on any of them runs everything on its own calling thread. That holds as well when
 /// the call found no slot free and runs every item itself. A call with a single item, or
 /// allowed a single thread, runs it as a plain call, so a nested call under it may spawn.
-fn on_clause_threads<T, R, F>(items: &[T], threads: usize, evaluate: F) -> Vec<R>
+fn on_clause_threads_each<T, R, F, S>(items: &[T], threads: usize, evaluate: F, sink: S)
 where
     T: Sync,
-    R: Send,
     F: Fn(&T) -> R + Sync,
+    S: Fn(usize, R) + Sync,
 {
     let wanted = threads.min(items.len()).saturating_sub(1);
     if wanted == 0 || ON_CLAUSE_THREAD.with(std::cell::Cell::get) {
-        return items.iter().map(evaluate).collect();
+        for (i, item) in items.iter().enumerate() {
+            sink(i, evaluate(item));
+        }
+        return;
     }
     #[cfg(test)]
     let _gate = share_clause_thread_gate();
     let slots = take_clause_threads(wanted);
     if slots.is_empty() {
-        return as_clause_thread(|| items.iter().map(evaluate).collect());
+        as_clause_thread(|| {
+            for (i, item) in items.iter().enumerate() {
+                sink(i, evaluate(item));
+            }
+        });
+        return;
     }
     let next = std::sync::atomic::AtomicUsize::new(0);
     let panicked = std::sync::atomic::AtomicBool::new(false);
     let first_panic: std::sync::Mutex<Option<Box<dyn std::any::Any + Send>>> =
         std::sync::Mutex::new(None);
-    let results: Vec<std::sync::Mutex<Option<R>>> =
-        items.iter().map(|_| std::sync::Mutex::new(None)).collect();
     let work = || {
         loop {
             if panicked.load(std::sync::atomic::Ordering::Relaxed) {
@@ -944,20 +1064,15 @@ where
             let Some(item) = items.get(i) else {
                 break;
             };
-            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| evaluate(item))) {
-                Ok(result) => {
-                    *results[i]
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(result);
-                }
-                Err(payload) => {
-                    panicked.store(true, std::sync::atomic::Ordering::Relaxed);
-                    first_panic
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .get_or_insert(payload);
-                    break;
-                }
+            if let Err(payload) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                sink(i, evaluate(item));
+            })) {
+                panicked.store(true, std::sync::atomic::Ordering::Relaxed);
+                first_panic
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .get_or_insert(payload);
+                break;
             }
         }
     };
@@ -982,15 +1097,6 @@ where
     {
         std::panic::resume_unwind(payload);
     }
-    results
-        .into_iter()
-        .map(|result| {
-            result
-                .into_inner()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .expect("every item is evaluated once the threads are joined")
-        })
-        .collect()
 }
 
 /// True when `clause` is or holds an `ANY_RECORD_OF` filter.
