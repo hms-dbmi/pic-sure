@@ -21,6 +21,7 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import edu.harvard.hms.dbmi.avillach.openapi.OpenApiConfiguration;
 import edu.harvard.hms.dbmi.avillach.openapi.OpenApiDocumentAssertions;
 
@@ -119,16 +120,42 @@ class OpenApiDocumentTest {
         JsonNode document = document();
 
         for (String path : List.of("/concepts/detail/{dataset}", "/concepts/tree/{dataset}", "/concepts/hierarchy/{dataset}")) {
-            JsonNode body = requestSchema(document, "post", path);
-            assertThat(body.path("type").asText()).as(path).isEqualTo("string");
-            assertThat(body.path("description").asText()).as(path).contains("raw string body");
-            assertThat(body.path("example").asText()).as(path).isEqualTo("\\demographics\\AGE\\");
+            JsonNode content = document.path("paths").path(path).path("post").path("requestBody").path("content");
+            assertThat(content.has("text/plain")).as("%s text/plain body", path).isTrue();
+            for (JsonNode body : List.of(requestSchema(document, "post", path), content.path("text/plain").path("schema"))) {
+                assertThat(body.path("type").asText()).as(path).isEqualTo("string");
+                assertThat(body.path("description").asText()).as(path).contains("raw string body");
+                assertThat(body.path("example").asText()).as(path).startsWith("\\Synthea\\");
+            }
         }
         JsonNode bulk = requestSchema(document, "post", "/concepts/detail");
         assertThat(bulk.path("type").asText()).isEqualTo("array");
         assertThat(bulk.path("items").path("type").asText()).isEqualTo("string");
         assertThat(bulk.path("description").asText()).isNotBlank();
         assertThat(bulk.path("example")).hasSize(2);
+    }
+
+    @Test
+    void everyVisibleOperationExplainsHowToCallIt() throws Exception {
+        JsonNode document = document();
+
+        document.path("paths").properties().forEach(path -> path.getValue().properties().forEach(operation -> {
+            assertThat(operation.getValue().path("description").asText()).as("%s %s", operation.getKey(), path.getKey()).contains("curl");
+        }));
+        assertThat(document.path("paths").path("/concepts").path("post").path("description").asText())
+            .contains("page_number", "`last`", "`consents`");
+    }
+
+    @Test
+    void everyFilterExampleIsAFilter() throws Exception {
+        JsonNode document = document();
+
+        for (String path : List.of("/concepts", "/facets")) {
+            JsonNode examples = document.path("paths").path(path).path("post").path("requestBody").path("content").path("application/json")
+                .path("examples");
+            assertThat(examples.size()).as("%s examples", path).isGreaterThan(2);
+            examples.forEach(example -> objectMapper.convertValue(example.path("value"), Filter.class));
+        }
     }
 
     @Test
