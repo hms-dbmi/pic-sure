@@ -205,6 +205,20 @@ async fn the_async_validator_ends_jobs_in_error_as_java_does() {
 }
 
 #[tokio::test]
+async fn async_counts_pass_the_validator_first() {
+    let f = main_fixture(true);
+    for result_type in ["COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT"] {
+        let unscoped = submit(&f.app, query(result_type, None)).await;
+        assert_eq!(unscoped.status, StatusCode::OK, "{result_type}");
+        assert_eq!(unscoped.json()["status"], "ERROR", "{result_type}");
+        let scoped = submit(&f.app, query(result_type, Some(consents(&["phs1.c1"])))).await;
+        assert_eq!(scoped.status, StatusCode::BAD_REQUEST, "{result_type}");
+    }
+    let genomic = submit(&f.app, query("VARIANT_COUNT_FOR_QUERY", None)).await;
+    assert_eq!(genomic.status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn a_null_filter_or_path_is_refused_where_java_creates_no_job() {
     let f = main_fixture(true);
     for (filters, message) in [

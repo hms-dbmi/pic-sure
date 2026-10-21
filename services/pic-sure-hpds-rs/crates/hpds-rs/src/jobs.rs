@@ -1147,7 +1147,10 @@ pub fn genomic_type_on_async_route(result_type: ResultType) -> String {
 /// filter with empty values or on an unknown or numeric concept) registers the job already in
 /// ERROR, as Java does, and Java's message is kept on it. A `null` authorization filter or a
 /// `null` `conceptPath`, where Java's validator throws another exception and creates no job,
-/// is a 400 naming it. The export's cohort is then scoped by the authorization filters.
+/// is a 400 naming it. COUNT, CATEGORICAL_CROSS_COUNT and CONTINUOUS_CROSS_COUNT, which
+/// Java accepts here and then ends in ERROR, are validated the same way first, so a validator
+/// refusal is an ERROR job as in Java, and otherwise refused with 400. The export's cohort is
+/// then scoped by the authorization filters.
 pub async fn submit(State(state): State<AppState>, body: Bytes) -> Result<Response, ApiError> {
     let query = read_query_for(&body, state.contract())?;
     let result_type = query.expected_result_type;
@@ -1159,23 +1162,26 @@ fn submit_query(state: &AppState, query: Query) -> Result<Response, ApiError> {
     if query.select_nulls_fail(true) {
         return Err(ApiError::bad_request(hpds_query::NULL_SELECT_MESSAGE));
     }
-    match query.expected_result_type {
+    let main = state.contract() == ConsentContract::Main;
+    let result_type = query.expected_result_type;
+    let count = matches!(
+        result_type,
+        ResultType::Count | ResultType::CategoricalCrossCount | ResultType::ContinuousCrossCount
+    );
+    match result_type {
         ResultType::Patients
         | ResultType::Dataframe
         | ResultType::DataframeTimeseries
         | ResultType::DataframePfb => {}
+        _ if main && count => {}
         other if other.is_genomic() => {
             return Err(ApiError::bad_request(genomic_type_on_async_route(other)));
         }
-        other => {
-            return Err(ApiError::bad_request(format!(
-                "Result type {other} is computed synchronously. Submit it with POST /query/sync."
-            )));
-        }
+        other => return Err(computed_synchronously(other)),
     }
     state.check_genomic(!query.genomic_filters.is_empty())?;
     let engine = Arc::clone(state.engine()?);
-    if state.contract() == ConsentContract::Main {
+    if main {
         engine.limits().check_shape(&query)?;
         match engine.validate(&query) {
             Ok(()) => {}
@@ -1185,12 +1191,22 @@ fn submit_query(state: &AppState, query: Query) -> Result<Response, ApiError> {
             }
             Err(other) => return Err(other.into()),
         }
+        if count {
+            return Err(computed_synchronously(result_type));
+        }
     }
     engine.check_limits(&query)?;
     engine.validate(&query)?;
     engine.read_plan(&query)?;
     let status = state.results().submit(engine, query)?;
     Ok(axum::Json(status).into_response())
+}
+
+/// The refusal of a sync result type submitted to `POST /query`.
+fn computed_synchronously(result_type: ResultType) -> ApiError {
+    ApiError::bad_request(format!(
+        "Result type {result_type} is computed synchronously. Submit it with POST /query/sync."
+    ))
 }
 
 /// `POST /query/{id}/status`: the [`QueryStatus`] of a held result, or 404 JSON for an id
