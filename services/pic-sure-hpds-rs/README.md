@@ -187,7 +187,7 @@ JEMALLOC_SYS_WITH_LG_PAGE=16 cargo build --release -p hpds-rs
 | `RUST_LOG` | `info` | Log filter, in `tracing` `EnvFilter` syntax. The `hpds_rs::access` target logs one line per request at info with method, path, status and latency. For benchmarks use `RUST_LOG=info,hpds_rs::access=warn` to silence it. |
 | `HPDS_LOG_DIRECTORY` | unset | When set, the log is also written to a daily-rotated `hpds-rs.<date>.log` in that directory, so a mounted log directory is useful. Logging goes through a non-blocking writer; under extreme load it drops lines rather than slowing requests. |
 | `HPDS_LOG_FORMAT` | `default` | `logback` writes every line, on stdout and in the log file, in Java HPDS's `log.pattern` layout (see [Logging](#logging)). `default` keeps the `tracing` line. Anything else fails startup, naming both values. |
-| `HPDS_LOG_NAME` | `hpds` | The service tag in the first bracketed field of the `logback` format (Java uses `hpds`, `auth-hpds` and `open-hpds`). Ignored by the default format. |
+| `HPDS_LOG_NAME` | `hpds` | The service tag in the first bracketed field of the `logback` format (Java uses `hpds`, `auth-hpds` and `open-hpds`). Ignored by the default format. Control characters and `]` are refused at startup. |
 | `HPDS_SEARCH_GZIP` | `off` | `on` compresses `POST /search` answers for requests whose `Accept-Encoding` accepts gzip (see [Search compression](#search-compression)). Off, every answer has the bytes and headers it had before compression existed, whatever the request accepts. Read like `HPDS_METRICS`. |
 | `HPDS_METRICS` | `off` | `on` serves `GET /metrics` in the Prometheus text format and counts requests (see [Metrics](#metrics)). Off, `/metrics` is a 404 like any unknown path. `true`, `false`, `1`, `0`, `yes` and `no` are also read; anything else fails startup. |
 | `HPDS_EXCERPT_CONCURRENCY` | half `HPDS_ENGINE_CONCURRENCY`, at least 1 | VCF_EXCERPT, AGGREGATE_VCF_EXCERPT and VARIANT_LIST_FOR_QUERY requests computed or sent at once. An excerpt holds its excerpt slot and an engine slot until its last row is sent; a variant list holds an engine slot while it is built and its excerpt slot until it is sent. The cap must be below `HPDS_ENGINE_CONCURRENCY`, and 1 when that is 1 (startup fails otherwise; an engine concurrency of 1 logs a warning), so excerpts can never hold every engine slot and other queries keep running while they stream. A request over the cap waits up to `HPDS_EXCERPT_QUEUE_SECONDS` for a slot and is otherwise a 503 with `Retry-After`, counted in `hpds_excerpts_refused_total`; callers going through the query service see a 502 instead, without the header, since it answers 502 for any HPDS 5xx. A type whose setting is off answers its text without a slot. |
@@ -539,23 +539,24 @@ field extraction written for the Java service reads this one unchanged:
 The fields are a UTC timestamp with milliseconds, the level padded to five columns, `---`, the
 service tag from `HPDS_LOG_NAME`, the thread name, the logger name (the module path with dots,
 shortened from the left to 36 characters as `%logger{36}` does), `:` and the message. Fields an
-event carries are appended to the message as `name=value`. The default format is unchanged.
+event carries are appended to the message as `name=value`. A panic is logged as an error at the
+logger `hpds_rs.panic`, and the default hook still prints it to standard error. The default format is unchanged.
 
 #### Running under a host log directory owned by another UID
 
 The image runs as UID 1000 and, with `HPDS_LOG_DIRECTORY` set, writes `hpds-rs.<date>.log` into
 it. A bind-mounted host directory owned by another UID (root, or the account the Java service
-used) cannot be written by UID 1000. The service does not stop: it logs "cannot write the log
-file in <directory>" as a warning on stdout and keeps serving, so the file is silently missing
-until someone reads the container log. Either:
+used) cannot be written by UID 1000. Startup then fails, as Java's does when it cannot open its
+log file: the service logs "cannot write the log file in <directory>" as an error on stdout and
+exits non-zero. Either:
 
 - run the container as the directory's owner: `docker run --user <uid>:<gid> ...`. The data
   directory must be readable by that user, and `HPDS_RESULTS_DIRECTORY` must be owned by it (see
   its row above), or
 - give the directory to UID 1000 once: `chown 1000:1000 <host log directory>`.
 
-Check with `ls -ln <host log directory>` after the first start; a `hpds-rs.<date>.log` owned by
-the chosen UID means the file is being written.
+A `hpds-rs.<date>.log` owned by the chosen UID in `ls -ln <host log directory>` means the file is
+being written.
 
 ### Metrics
 

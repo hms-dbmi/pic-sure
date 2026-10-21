@@ -5,8 +5,8 @@ use std::time::Duration;
 use hpds_query::Engine;
 use hpds_rs::genomic::{GenomicStatus, attach_genomic};
 use hpds_rs::{
-    AppState, Config, LogFormat, ServerTimeouts, format_layer, log_block_cache_stats,
-    log_result_cache_stats, port_from_env, probe_health, router, serve,
+    AppState, Config, LogFormat, ServerTimeouts, format_layer, install_panic_hook,
+    log_block_cache_stats, log_result_cache_stats, port_from_env, probe_health, router, serve,
     spawn_result_cache_reporter, spawn_result_reaper,
 };
 use tracing_appender::non_blocking::WorkerGuard;
@@ -35,9 +35,14 @@ const RESULT_CACHE_REPORT_PERIOD: Duration = Duration::from_secs(60);
 const RUNTIME_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Starts logging to a non-blocking stdout writer and, when `directory` is given, to a daily
-/// rotated `hpds-rs.<date>.log` file there, both in `format`. The returned guards flush the writers when
-/// dropped, so they must live until the process ends.
-fn init_logging(format: &LogFormat, directory: Option<&std::path::Path>) -> Vec<WorkerGuard> {
+/// rotated `hpds-rs.<date>.log` file there, both in `format`. The returned guards flush the
+/// writers when dropped, so they must live until the process ends. The second value is a
+/// message when the log file could not be opened; logging then goes to stdout only and the
+/// caller refuses to start.
+fn init_logging(
+    format: &LogFormat,
+    directory: Option<&std::path::Path>,
+) -> (Vec<WorkerGuard>, Option<String>) {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     let (stdout, stdout_guard) = tracing_appender::non_blocking(std::io::stdout());
     let mut guards = vec![stdout_guard];
@@ -68,10 +73,7 @@ fn init_logging(format: &LogFormat, directory: Option<&std::path::Path>) -> Vec<
         .with(format_layer(format, stdout, None))
         .with(file_layer)
         .init();
-    if let Some(problem) = file_problem {
-        tracing::warn!("{problem}");
-    }
-    guards
+    (guards, file_problem)
 }
 
 async fn shutdown_signal() {
@@ -108,13 +110,18 @@ fn main() -> ExitCode {
         .as_ref()
         .map(|config| config.log_format.clone())
         .unwrap_or_default();
-    let _log_guards = init_logging(
+    let (_log_guards, log_file_problem) = init_logging(
         &log_format,
         config
             .as_ref()
             .ok()
             .and_then(|config| config.log_directory.as_deref()),
     );
+    install_panic_hook();
+    if let Some(problem) = log_file_problem {
+        tracing::error!("{problem}");
+        return ExitCode::FAILURE;
+    }
     let config = match config {
         Ok(config) => config,
         Err(message) => {

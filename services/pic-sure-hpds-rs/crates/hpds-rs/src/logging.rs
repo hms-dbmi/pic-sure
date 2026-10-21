@@ -34,11 +34,11 @@ impl LogFormat {
     ///
     /// # Errors
     /// A message naming `HPDS_LOG_FORMAT` and both accepted values when the value is neither,
-    /// or naming `HPDS_LOG_NAME` when it holds a control character.
+    /// or naming `HPDS_LOG_NAME` when it holds a control character or `]`.
     pub fn from_values(format: Option<&str>, name: Option<&str>) -> Result<Self, String> {
         let name = match name.map(str::trim).filter(|name| !name.is_empty()) {
-            Some(name) if name.chars().any(char::is_control) => {
-                return Err("HPDS_LOG_NAME must not contain control characters".to_owned());
+            Some(name) if name.chars().any(|c| c.is_control() || c == ']') => {
+                return Err("HPDS_LOG_NAME must not contain control characters or ]".to_owned());
             }
             Some(name) => name.to_owned(),
             None => DEFAULT_LOG_NAME.to_owned(),
@@ -80,6 +80,27 @@ where
                 .event_format(LogbackFormat { name: name.clone() }),
         ),
     }
+}
+
+/// Replaces the panic hook with one that logs the panic as an error event, at the target
+/// `hpds_rs::panic`, in the active format, then runs the hook that was installed before it (the
+/// default hook prints to standard error).
+pub fn install_panic_hook() {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let payload = info.payload();
+        let message = payload
+            .downcast_ref::<&str>()
+            .copied()
+            .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+            .unwrap_or("non-string payload");
+        let location = info.location().map_or_else(
+            || "unknown location".to_owned(),
+            |location| format!("{}:{}", location.file(), location.line()),
+        );
+        tracing::error!(target: "hpds_rs::panic", "panic: {message} at {location}");
+        previous(info);
+    }));
 }
 
 /// Formats an event as one line of Java HPDS's `log.pattern`.
@@ -168,17 +189,17 @@ fn utc_timestamp(time: SystemTime) -> String {
 /// Shortens leading dot-separated segments of `name` to their first character, left to right,
 /// until it fits `width`, as logback's `%logger{width}` does. The last segment is never shortened.
 fn abbreviate_logger(name: &str, width: usize) -> String {
-    if name.len() <= width {
+    if name.len() < width {
         return name.to_owned();
     }
     let mut segments: Vec<String> = name.split('.').map(str::to_owned).collect();
     let last = segments.len() - 1;
     for index in 0..last {
+        let first = segments[index].chars().next().map_or(0, char::len_utf8);
+        segments[index].truncate(first);
         if segments.join(".").len() <= width {
             break;
         }
-        let first = segments[index].chars().next().map_or(0, char::len_utf8);
-        segments[index].truncate(first);
     }
     segments.join(".")
 }
@@ -318,6 +339,18 @@ mod tests {
             "e.h.h.d.a.hpds.service.QueryService"
         );
         assert_eq!(
+            abbreviate_logger("abcdefghij.abcdefghij.abcdefghijklmn", 36),
+            "a.abcdefghij.abcdefghijklmn"
+        );
+        assert_eq!(
+            abbreviate_logger("abcdefghij.abcdefghij.abcdefghijklm", 36),
+            "abcdefghij.abcdefghij.abcdefghijklm"
+        );
+        assert_eq!(
+            abbreviate_logger("abc.abcdefghij.abcdefghij.abcdefghijkl", 36),
+            "a.abcdefghij.abcdefghij.abcdefghijkl"
+        );
+        assert_eq!(
             abbreviate_logger("a.b.VeryLongClassNameThatCannotFitAnywhereAtAll", 10),
             "a.b.VeryLongClassNameThatCannotFitAnywhereAtAll"
         );
@@ -384,7 +417,9 @@ mod tests {
                 && error.contains("json"),
             "{error}"
         );
-        let error = LogFormat::from_values(Some("logback"), Some("a\nb")).unwrap_err();
-        assert!(error.contains("HPDS_LOG_NAME"), "{error}");
+        for name in ["a\nb", "a]b"] {
+            let error = LogFormat::from_values(Some("logback"), Some(name)).unwrap_err();
+            assert!(error.contains("HPDS_LOG_NAME"), "{error}");
+        }
     }
 }

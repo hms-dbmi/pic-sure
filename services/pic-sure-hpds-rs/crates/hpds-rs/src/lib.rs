@@ -75,7 +75,7 @@ pub use write_stall::connections_write_stalled;
 
 pub use config::{Config, DEFAULT_PORT, port_from_env};
 pub use error::ApiError;
-pub use logging::{LogFormat, format_layer};
+pub use logging::{LogFormat, format_layer, install_panic_hook};
 pub use state::AppState;
 
 /// How long a request body may take to arrive in full, measured from the start of the request.
