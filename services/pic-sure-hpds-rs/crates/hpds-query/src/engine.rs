@@ -2070,9 +2070,14 @@ mod tests {
             let stats = set.prefix_read_stats();
             assert_eq!(
                 stats.permits - permits,
-                chunks.len() as u64 + 2,
-                "the test's permit, one per chunk, and a second for the first chunk, whose \
-                 entries the cache dropped while it waited"
+                chunks.len() as u64 + 1,
+                "the test's permit and one per chunk, though the first chunk, whose entries \
+                 the cache dropped while it waited, asked again for a larger permit"
+            );
+            assert_eq!(
+                stats.waits - waits,
+                1,
+                "the first chunk's read waited once, however many times it asked"
             );
             assert_eq!(stats.held, 0);
             assert!(stats.peak_held <= 30_000, "{stats:?}");

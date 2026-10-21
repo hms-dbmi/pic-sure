@@ -138,7 +138,26 @@ impl ByteBudget {
     /// waiting there could wait on itself. The engine never asks twice on one thread; the
     /// grant keeps a mistake from hanging the service, and a debug build panics on it.
     pub(crate) fn acquire(&self, bytes: u64) -> BudgetPermit<'_> {
-        self.grant(bytes, true)
+        self.grant(bytes, true, Count::ALL)
+            .expect("a request that may wait is always granted")
+    }
+
+    /// Gives `previous` back and asks for `bytes`, as [`ByteBudget::acquire`] does, for the
+    /// same read: the new permit is not counted as another, and its wait, if any, counts as a
+    /// wait only when `previous` did not wait. The time it waits is counted. A read that
+    /// finds its first permit too small asks again this way, so `/metrics` counts one permit
+    /// and at most one wait per read however the asks interleave with other reads.
+    pub(crate) fn acquire_again<'b>(
+        &'b self,
+        previous: BudgetPermit<'b>,
+        bytes: u64,
+    ) -> BudgetPermit<'b> {
+        let count = Count {
+            permit: false,
+            wait: !previous.waited,
+        };
+        drop(previous);
+        self.grant(bytes, true, count)
             .expect("a request that may wait is always granted")
     }
 
@@ -147,18 +166,19 @@ impl ByteBudget {
     /// neither waited nor queued. A request for 0 bytes, and a nested request (see
     /// [`ByteBudget::acquire`]), are always granted.
     pub(crate) fn try_acquire(&self, bytes: u64) -> Option<BudgetPermit<'_>> {
-        self.grant(bytes, false)
+        self.grant(bytes, false, Count::ALL)
     }
 
     /// A permit for `bytes`, capped at the whole budget: granted at once when nothing waits
     /// and the bytes are free, otherwise queued and waited for when `wait` is set, and
-    /// `None` when it is not.
-    fn grant(&self, bytes: u64, wait: bool) -> Option<BudgetPermit<'_>> {
+    /// `None` when it is not. `count` says which of the permit and its wait the stats count.
+    fn grant(&self, bytes: u64, wait: bool, count: Count) -> Option<BudgetPermit<'_>> {
         let bytes = bytes.min(self.capacity);
         if bytes == 0 {
             return Some(BudgetPermit {
                 budget: self,
                 bytes,
+                waited: false,
                 _here: PhantomData,
             });
         }
@@ -169,11 +189,15 @@ impl ByteBudget {
             "a read permit was asked for on a rayon worker outside the pool its budget allows"
         );
         let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut waited = false;
         if !nested && (state.queued() || !self.fits(&state, bytes)) {
             if !wait {
                 return None;
             }
-            self.waits.fetch_add(1, Ordering::Relaxed);
+            waited = true;
+            if count.wait {
+                self.waits.fetch_add(1, Ordering::Relaxed);
+            }
             let started = Instant::now();
             let ticket = state.next_ticket;
             state.next_ticket += 1;
@@ -203,11 +227,14 @@ impl ByteBudget {
         state.held = state.held.saturating_add(bytes);
         self.peak.fetch_max(state.held, Ordering::Relaxed);
         drop(state);
-        self.permits.fetch_add(1, Ordering::Relaxed);
-        HELD_HERE.with(|count| count.set(count.get() + 1));
+        if count.permit {
+            self.permits.fetch_add(1, Ordering::Relaxed);
+        }
+        HELD_HERE.with(|held| held.set(held.get() + 1));
         Some(BudgetPermit {
             budget: self,
             bytes,
+            waited,
             _here: PhantomData,
         })
     }
@@ -237,12 +264,28 @@ impl ByteBudget {
     }
 }
 
+/// Which of a grant's permit and wait a [`ByteBudget`]'s stats count.
+#[derive(Debug, Clone, Copy)]
+struct Count {
+    permit: bool,
+    wait: bool,
+}
+
+impl Count {
+    /// A first request: its permit, and its wait when it waits.
+    const ALL: Count = Count {
+        permit: true,
+        wait: true,
+    };
+}
+
 /// Bytes of a [`ByteBudget`] held until dropped, on the thread that took them: a permit is
 /// not `Send`, so the per-thread count of held permits stays right.
 #[derive(Debug)]
 pub(crate) struct BudgetPermit<'a> {
     budget: &'a ByteBudget,
     bytes: u64,
+    waited: bool,
     _here: PhantomData<*const ()>,
 }
 
@@ -323,6 +366,27 @@ mod tests {
         drop(whole);
         let stats = budget.stats();
         assert_eq!((stats.held, stats.permits, stats.waits), (0, 3, 1));
+    }
+
+    #[test]
+    fn a_request_asked_again_counts_as_one_permit_and_one_wait() {
+        let budget = ByteBudget::new(100);
+        let first = budget.acquire(70);
+        std::thread::scope(|scope| {
+            let reader = scope.spawn(|| {
+                let small = budget.acquire(20);
+                let larger = budget.acquire_again(small, 90);
+                assert!(larger.covers(90));
+            });
+            while budget.stats().waits < 1 {
+                std::thread::sleep(Duration::from_micros(50));
+            }
+            drop(first);
+            reader.join().unwrap();
+        });
+        let stats = budget.stats();
+        assert_eq!((stats.held, stats.permits, stats.waits), (0, 2, 1));
+        assert_eq!(stats.peak_held, 90);
     }
 
     #[test]

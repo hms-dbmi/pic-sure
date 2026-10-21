@@ -1475,8 +1475,9 @@ impl<'a> Selection<'a> {
     /// found are dropped, the read waits for its permit, and then looks the chunk up again.
     /// When the cache dropped some of them meanwhile and the permit does not cover what is
     /// missing now, the read gives the permit back and waits, again holding no entry, for
-    /// one covering the whole chunk. A waiting read therefore holds nothing outside the
-    /// budget and the cache.
+    /// one covering the whole chunk ([`crate::budget::ByteBudget::acquire_again`], so the
+    /// read still counts as one permit and at most one wait). A waiting read therefore holds
+    /// nothing outside the budget and the cache.
     ///
     /// Call it only on a thread that runs the query's clauses, never on a rayon worker, and
     /// never while holding another permit (see [`crate::budget`]).
@@ -1499,8 +1500,7 @@ impl<'a> Selection<'a> {
                 entries = self.set.cached_entries(&indexes);
                 if !permit.covers(self.missing_bytes(reads, &entries)) {
                     drop(entries);
-                    drop(permit);
-                    permit = budget.acquire(self.decoded_bound(reads.iter()));
+                    permit = budget.acquire_again(permit, self.decoded_bound(reads.iter()));
                     entries = self.set.cached_entries(&indexes);
                 }
                 permit
