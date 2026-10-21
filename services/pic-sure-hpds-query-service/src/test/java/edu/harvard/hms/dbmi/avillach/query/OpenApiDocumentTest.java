@@ -112,7 +112,7 @@ class OpenApiDocumentTest {
         JsonNode document = document();
 
         assertThat(operation(document, "post", QUERY).path("description").asText())
-            .contains("| Result type | `auth` | `open` |", "| DATAFRAME | Yes | No |", "| PATIENTS | Yes | No |", "curl -X POST");
+            .contains("| Result type | `auth` | `open` |", "| DATAFRAME | Yes | No |", "| PATIENTS | Yes | No |", "-X POST");
         assertThat(operation(document, "post", SYNC).path("description").asText()).contains(
             "| Result type | `auth` | `open` |", "| COUNT | Yes | Yes, obfuscated |", "| VARIANT_LIST_FOR_QUERY | Yes | No |",
             "curl -X POST"
@@ -128,6 +128,20 @@ class OpenApiDocumentTest {
         }
         assertThat(tag).isNotNull();
         assertThat(tag.path("description").asText()).contains("Replace `{backend}`").doesNotContain("|");
+    }
+
+    @Test
+    void asyncOperationsWalkTheCallerFromSubmitToResult() throws Exception {
+        JsonNode document = document();
+
+        assertThat(operation(document, "post", QUERY).path("description").asText()).contains(
+            "`picsureResultId`", "**Submit**", "**Poll**", "**Download**", "GET /hpds/auth/query/{id}/status",
+            "GET /hpds/auth/query/{id}/result", "jq -r .picsureResultId"
+        );
+        assertThat(operation(document, "get", STATUS).path("description").asText())
+            .contains("| `QUEUED` |", "| `PENDING` |", "| `AVAILABLE` |", "| `ERROR` |", "Step 2");
+        assertThat(operation(document, "get", RESULT).path("description").asText()).contains("Step 3", "answers 400", "DATAFRAME_PFB");
+        assertThat(operation(document, "get", SIGNED_URL).path("description").asText()).contains("`signedUrl`", "answers 400");
     }
 
     @Test

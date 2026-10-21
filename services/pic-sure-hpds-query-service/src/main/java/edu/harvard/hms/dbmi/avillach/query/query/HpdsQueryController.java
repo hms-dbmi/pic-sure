@@ -53,8 +53,81 @@ public class HpdsQueryController {
         "\n\nPick a request body under **Examples** to fill the body, then **Execute**. Each example also "
             + "runs from a shell; paste it in place of `<example>`:\n\n";
 
-    private static final String AUTH_ONLY_READ = "| Backend | Supported |\n|---|---|\n| `auth` | Yes |\n| `open` | No |\n\nReads a query "
-        + "submitted with `POST /hpds/auth/query` (PATIENTS, DATAFRAME, DATAFRAME_TIMESERIES or DATAFRAME_PFB).";
+    private static final String AUTH_ONLY_TABLE = "| Backend | Supported |\n|---|---|\n| `auth` | Yes |\n| `open` | No |";
+
+    private static final String SUBMIT_DESCRIPTION = """
+        Queues a participant-level query and returns right away. Collecting the result takes three requests that share one id:
+
+        1. **Submit** this request. The response's `picsureResultId` is the `{id}` for the next two steps.
+        2. **Poll** `GET /hpds/auth/query/{id}/status` until `status` is `AVAILABLE`. `QUEUED` and `PENDING` mean the query is \
+        still waiting or running. `ERROR` means it failed and will not produce a result.
+        3. **Download** `GET /hpds/auth/query/{id}/result`, or call `GET /hpds/auth/query/{id}/signed-url` for a download link.
+
+        In Swagger UI, run this request, then open **Status of a submitted query** and **Result bytes of a completed query** \
+        below and paste `picsureResultId` into `id` on each.
+
+        | Result type | `auth` | `open` |
+        |---|---|---|
+        | PATIENTS | Yes | No |
+        | DATAFRAME | Yes | No |
+        | DATAFRAME_TIMESERIES | Yes | No |
+        | DATAFRAME_PFB | Yes | No |
+
+        Counts, cross counts and the genomic result types run on `POST /hpds/{backend}/query/sync`.
+
+        Pick a request body under **Examples** to fill the body, then **Execute**. From a shell with `jq` installed, paste an \
+        example in place of `<example>`:
+
+            ID=$(curl -s -X POST "https://<host>/picsure/hpds/auth/query" \\
+              -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \\
+              -d '<example>' | jq -r .picsureResultId)
+            curl -s "https://<host>/picsure/hpds/auth/query/$ID/status" -H "Authorization: Bearer $TOKEN" | jq -r .status
+            curl -s "https://<host>/picsure/hpds/auth/query/$ID/result" -H "Authorization: Bearer $TOKEN" -o result.csv
+
+        Repeat the status call until it prints `AVAILABLE`, then run the last line. For DATAFRAME_PFB, save to `result.avro`.
+        """;
+
+    private static final String STATUS_DESCRIPTION = """
+        Step 2 of collecting an asynchronous query: poll this until the query finishes. `{id}` is the `picsureResultId` that \
+        `POST /hpds/auth/query` returned.
+
+        | `status` | Meaning | Next step |
+        |---|---|---|
+        | `QUEUED` | Accepted and waiting for a worker | Poll again |
+        | `PENDING` | Running | Poll again |
+        | `AVAILABLE` | Finished; `sizeInBytes` is the result's size | Fetch `GET /hpds/auth/query/{id}/result` |
+        | `ERROR` | Failed | Stop polling. This query will not produce a result; fix it and submit it again |
+
+        Poll every few seconds at first, backing off to about every 10 seconds for a long-running query.
+
+        """ + AUTH_ONLY_TABLE;
+
+    private static final String RESULT_DESCRIPTION = """
+        Step 3 of collecting an asynchronous query: download the result once `GET /hpds/auth/query/{id}/status` reports \
+        `AVAILABLE`. Before that, this answers 400. `{id}` is the `picsureResultId` that `POST /hpds/auth/query` returned.
+
+        | Result type | Body |
+        |---|---|
+        | PATIENTS | CSV as `text/plain`: a header row, then one patient id per line |
+        | DATAFRAME, DATAFRAME_TIMESERIES | CSV as `text/plain`: a header row, then the data rows |
+        | DATAFRAME_PFB | An Avro PFB file as `application/octet-stream` |
+
+        Swagger UI offers the body as a download. For a large result, `GET /hpds/auth/query/{id}/signed-url` returns a link to \
+        the same file instead.
+
+        """ + AUTH_ONLY_TABLE;
+
+    private static final String SIGNED_URL_DESCRIPTION = """
+        An alternative to step 3 of collecting an asynchronous query. Once `GET /hpds/auth/query/{id}/status` reports \
+        `AVAILABLE`, this copies the result to the deployment's storage bucket and returns a pre-signed download link in \
+        `signedUrl`. Before that, this answers 400.
+
+        Download the link with any HTTP client and without the PIC-SURE token: the link carries its own authorization, and \
+        storage rejects a request that sends both.
+
+        """ + AUTH_ONLY_TABLE;
+
+    private static final String AUTH_ONLY_READ = AUTH_ONLY_TABLE + "\n\nReads a query submitted with `POST /hpds/auth/query`.";
 
     private static final String UNREADABLE_BODY = " or a body that cannot be read as a query request.";
 
@@ -103,16 +176,7 @@ public class HpdsQueryController {
 
     @AuditEvent(type = "QUERY", action = "query.submitted")
     @PostMapping("/query")
-    @Operation(
-        summary = "Submit an asynchronous query",
-        description = "Queues a participant-level query. Poll `GET /hpds/auth/query/{id}/status` until it is AVAILABLE, then fetch "
-            + "`GET /hpds/auth/query/{id}/result`. The `{id}` is the `picsureResultId` in the response.\n\n"
-            + "| Result type | `auth` | `open` |\n|---|---|---|\n"
-            + "| PATIENTS | Yes | No |\n| DATAFRAME | Yes | No |\n| DATAFRAME_TIMESERIES | Yes | No |\n| DATAFRAME_PFB | Yes | No |\n\n"
-            + "Counts, cross counts and the genomic result types run on `POST /hpds/{backend}/query/sync`." + CURL_TEMPLATE
-            + "    curl -X POST \"https://<host>/picsure/hpds/auth/query\" \\\n"
-            + "      -H \"Authorization: Bearer $TOKEN\" -H \"Content-Type: application/json\" \\\n      -d '<example>'"
-    )
+    @Operation(summary = "Submit an asynchronous query", description = SUBMIT_DESCRIPTION)
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The status of the submitted query."),
             @ApiResponse(responseCode = "400", description = "Unknown backend, missing query data," + UNREADABLE_BODY),
@@ -253,7 +317,7 @@ public class HpdsQueryController {
 
     @AuditEvent(type = "QUERY", action = "query.status")
     @GetMapping("/query/{id}/status")
-    @Operation(summary = "Status of a submitted query", description = AUTH_ONLY_READ)
+    @Operation(summary = "Status of a submitted query", description = STATUS_DESCRIPTION)
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The status of the query."),
             @ApiResponse(responseCode = "400", description = "Unknown backend."),
@@ -276,7 +340,7 @@ public class HpdsQueryController {
 
     @AuditEvent(type = "DATA_ACCESS", action = "query.result")
     @GetMapping(value = "/query/{id}/result", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
-    @Operation(summary = "Result bytes of a completed query", description = AUTH_ONLY_READ)
+    @Operation(summary = "Result bytes of a completed query", description = RESULT_DESCRIPTION)
     @ApiResponses(
         {@ApiResponse(
             responseCode = "200",
@@ -314,7 +378,7 @@ public class HpdsQueryController {
 
     @AuditEvent(type = "DATA_ACCESS", action = "query.signed_url")
     @GetMapping(value = "/query/{id}/signed-url", produces = MediaType.APPLICATION_JSON_VALUE)
-    @Operation(summary = "A signed URL for a completed query's result", description = AUTH_ONLY_READ)
+    @Operation(summary = "A signed URL for a completed query's result", description = SIGNED_URL_DESCRIPTION)
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The signed URL for the completed query's result."),
             @ApiResponse(responseCode = "400", description = "Unknown backend or a result that is not ready yet."),
