@@ -1,12 +1,9 @@
 package edu.harvard.hms.dbmi.avillach.openapi;
 
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import org.springdoc.core.customizers.GlobalOpenApiCustomizer;
 import org.springframework.core.env.PropertyResolver;
@@ -19,12 +16,11 @@ import com.fasterxml.jackson.databind.node.TextNode;
 
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Operation;
-import io.swagger.v3.oas.models.PathItem;
 import io.swagger.v3.oas.models.examples.Example;
-import io.swagger.v3.oas.models.media.Content;
 import io.swagger.v3.oas.models.media.MediaType;
 import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.parameters.Parameter;
+import io.swagger.v3.oas.models.parameters.RequestBody;
 import io.swagger.v3.oas.models.responses.ApiResponse;
 import io.swagger.v3.oas.models.tags.Tag;
 
@@ -36,8 +32,8 @@ import io.swagger.v3.oas.models.tags.Tag;
  *
  * <p>Tag, operation, parameter, request body and response descriptions and summaries are resolved, as are examples on parameters, media
  * types and schemas. An example parsed from JSON is rebuilt with each text value resolved, so a substituted value is escaped as JSON
- * requires. Schemas are walked through properties, items, additional properties and composed schemas, each once. An example that is absent
- * stays absent: swagger's setters mark an example as present even when given null, which would publish {@code "example": null}.
+ * requires. {@link OpenApiDocumentWalker} reaches each part, and every schema once. An example that is absent stays absent: swagger's
+ * setters mark an example as present even when given null, which would publish {@code "example": null}.
  */
 public class ExamplePlaceholderCustomizer implements GlobalOpenApiCustomizer {
 
@@ -59,67 +55,59 @@ public class ExamplePlaceholderCustomizer implements GlobalOpenApiCustomizer {
      */
     @Override
     public void customise(OpenAPI openApi) {
-        Set<Schema<?>> seen = Collections.newSetFromMap(new IdentityHashMap<>());
-        if (openApi.getTags() != null) {
-            for (Tag tag : openApi.getTags()) {
+        OpenApiDocumentWalker.walk(openApi, new OpenApiDocumentWalker.Visitor() {
+            @Override
+            public void tag(Tag tag) {
                 tag.setDescription(resolve(tag.getDescription()));
             }
-        }
-        if (openApi.getComponents() != null && openApi.getComponents().getSchemas() != null) {
-            openApi.getComponents().getSchemas().values().forEach(schema -> visitSchema(schema, seen));
-        }
-        if (openApi.getPaths() == null) {
-            return;
-        }
-        for (PathItem item : openApi.getPaths().values()) {
-            for (Operation operation : item.readOperations()) {
-                visitOperation(operation, seen);
-            }
-        }
-    }
 
-    private void visitOperation(Operation operation, Set<Schema<?>> seen) {
-        operation.setSummary(resolve(operation.getSummary()));
-        operation.setDescription(resolve(operation.getDescription()));
-        if (operation.getParameters() != null) {
-            for (Parameter parameter : operation.getParameters()) {
+            @Override
+            public void operation(Operation operation) {
+                operation.setSummary(resolve(operation.getSummary()));
+                operation.setDescription(resolve(operation.getDescription()));
+            }
+
+            @Override
+            public void parameter(Parameter parameter) {
                 parameter.setDescription(resolve(parameter.getDescription()));
-                Object parameterExample = parameter.getExample();
-                if (parameterExample != null) {
-                    parameter.setExample(resolveValue(parameterExample));
+                Object example = parameter.getExample();
+                if (example != null) {
+                    parameter.setExample(resolveValue(example));
                 }
-                visitExamples(parameter.getExamples());
-                visitSchema(parameter.getSchema(), seen);
-                visitContent(parameter.getContent(), seen);
+                resolveExamples(parameter.getExamples());
             }
-        }
-        if (operation.getRequestBody() != null) {
-            operation.getRequestBody().setDescription(resolve(operation.getRequestBody().getDescription()));
-            visitContent(operation.getRequestBody().getContent(), seen);
-        }
-        if (operation.getResponses() != null) {
-            for (ApiResponse response : operation.getResponses().values()) {
+
+            @Override
+            public void requestBody(RequestBody requestBody) {
+                requestBody.setDescription(resolve(requestBody.getDescription()));
+            }
+
+            @Override
+            public void response(ApiResponse response) {
                 response.setDescription(resolve(response.getDescription()));
-                visitContent(response.getContent(), seen);
             }
-        }
+
+            @Override
+            public void mediaType(MediaType mediaType) {
+                Object example = mediaType.getExample();
+                if (example != null) {
+                    mediaType.setExample(resolveValue(example));
+                }
+                resolveExamples(mediaType.getExamples());
+            }
+
+            @Override
+            public void schema(Schema<?> schema) {
+                schema.setDescription(resolve(schema.getDescription()));
+                Object example = schema.getExample();
+                if (example != null) {
+                    schema.setExample(resolveValue(example));
+                }
+            }
+        });
     }
 
-    private void visitContent(Content content, Set<Schema<?>> seen) {
-        if (content == null) {
-            return;
-        }
-        for (MediaType mediaType : content.values()) {
-            Object mediaTypeExample = mediaType.getExample();
-            if (mediaTypeExample != null) {
-                mediaType.setExample(resolveValue(mediaTypeExample));
-            }
-            visitExamples(mediaType.getExamples());
-            visitSchema(mediaType.getSchema(), seen);
-        }
-    }
-
-    private void visitExamples(Map<String, Example> examples) {
+    private void resolveExamples(Map<String, Example> examples) {
         if (examples == null) {
             return;
         }
@@ -129,30 +117,6 @@ public class ExamplePlaceholderCustomizer implements GlobalOpenApiCustomizer {
             Object value = example.getValue();
             if (value != null) {
                 example.setValue(resolveValue(value));
-            }
-        }
-    }
-
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private void visitSchema(Schema schema, Set<Schema<?>> seen) {
-        if (schema == null || !seen.add(schema)) {
-            return;
-        }
-        schema.setDescription(resolve(schema.getDescription()));
-        Object schemaExample = schema.getExample();
-        if (schemaExample != null) {
-            schema.setExample(resolveValue(schemaExample));
-        }
-        if (schema.getProperties() != null) {
-            ((Map<String, Schema>) schema.getProperties()).values().forEach(property -> visitSchema(property, seen));
-        }
-        visitSchema(schema.getItems(), seen);
-        if (schema.getAdditionalProperties() instanceof Schema additional) {
-            visitSchema(additional, seen);
-        }
-        for (List<Schema> composed : new List[] {schema.getAllOf(), schema.getAnyOf(), schema.getOneOf()}) {
-            if (composed != null) {
-                composed.forEach(part -> visitSchema(part, seen));
             }
         }
     }
