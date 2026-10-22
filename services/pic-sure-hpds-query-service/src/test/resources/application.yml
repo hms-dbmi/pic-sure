@@ -12,7 +12,7 @@ hpds:
 
 picsure:
   openapi:
-    title: PIC-SURE High Performance Data Store (HPDS) Query Service
+    title: PIC-SURE High Performance Data Store (HPDS) - Authorized Access
   query:
     operations:
       base-url: http://localhost:1

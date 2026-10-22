@@ -31,7 +31,7 @@ public class OpenApiGroupsConfig {
 
     static final String OPEN_GROUP = "open";
 
-    static final String OPEN_TITLE = "PIC-SURE High Performance Data Store (HPDS) Open Access";
+    static final String OPEN_TITLE = "PIC-SURE High Performance Data Store (HPDS) - Open Access";
 
     private static final String BACKEND_SEGMENT = "{backend}";
 

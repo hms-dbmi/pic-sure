@@ -62,7 +62,8 @@ class OpenApiDocumentTest {
             .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON)).andReturn().getResponse().getContentAsString();
         JsonNode document = objectMapper.readTree(body);
 
-        assertThat(document.path("info").path("title").asText()).isEqualTo("PIC-SURE High Performance Data Store (HPDS) Query Service");
+        assertThat(document.path("info").path("title").asText())
+            .isEqualTo("PIC-SURE High Performance Data Store (HPDS) - Authorized Access");
         assertThat(document.path("info").path("version").asText()).isNotBlank();
         assertThat(document.path("components").path("securitySchemes").has(OpenApiConfiguration.BEARER_SCHEME)).isTrue();
         assertThat(document.path("security").get(0).has(OpenApiConfiguration.BEARER_SCHEME)).isTrue();
@@ -98,7 +99,8 @@ class OpenApiDocumentTest {
     void theAuthGroupDocumentsExactAuthPathsAndNothingOpen() throws Exception {
         JsonNode document = groupDocument("auth");
 
-        assertThat(document.path("info").path("title").asText()).isEqualTo("PIC-SURE High Performance Data Store (HPDS) Query Service");
+        assertThat(document.path("info").path("title").asText())
+            .isEqualTo("PIC-SURE High Performance Data Store (HPDS) - Authorized Access");
         List<String> paths = new ArrayList<>();
         document.path("paths").fieldNames().forEachRemaining(paths::add);
         assertThat(paths).containsExactlyInAnyOrder(
@@ -115,21 +117,30 @@ class OpenApiDocumentTest {
     void theOpenGroupDocumentsOnlyTheOpenSyncAndWhatOpenAccessDoesNotAccept() throws Exception {
         JsonNode document = groupDocument("open");
 
-        assertThat(document.path("info").path("title").asText()).isEqualTo("PIC-SURE High Performance Data Store (HPDS) Open Access");
+        assertThat(document.path("info").path("title").asText()).isEqualTo("PIC-SURE High Performance Data Store (HPDS) - Open Access");
         List<String> paths = new ArrayList<>();
         document.path("paths").fieldNames().forEachRemaining(paths::add);
         assertThat(paths).containsExactly(OPEN_SYNC);
         JsonNode sync = operation(document, "post", OPEN_SYNC);
         assertThat(sync.path("description").asText()).contains(
-            "Not supported on open access", "Leave `genomicFilters` empty", "PATIENTS and the DATAFRAME types", "/hpds/open/query/sync"
+            "Not supported on open access", "A query with `genomicFilters` is answered with 400", "no asynchronous submit",
+            "PATIENTS and the DATAFRAME types", "/hpds/open/query/sync"
         );
         JsonNode examples = sync.path("requestBody").path("content").path("application/json").path("examples");
         assertThat(examples.size()).isEqualTo(5);
         examples.forEach(example -> {
-            assertThat(example.path("description").asText()).contains("`genomicFilters` stays empty").containsIgnoringCase("counts");
-            assertThat(example.path("value").path("query").path("genomicFilters")).isEmpty();
+            assertThat(example.path("description").asText()).contains("no genomic filters").containsIgnoringCase("counts");
+            assertThat(example.path("value").path("query").has("genomicFilters")).isFalse();
         });
         assertThat(examples.path("CROSS_COUNT").path("value").path("query").path("select")).isEmpty();
+        assertThat(sync.path("requestBody").path("content").path("application/json").path("schema").path("$ref").asText())
+            .endsWith("/OpenQueryRequest");
+        JsonNode openQuery = document.path("components").path("schemas").path("OpenQuery");
+        List<String> fields = new ArrayList<>();
+        openQuery.path("properties").fieldNames().forEachRemaining(fields::add);
+        assertThat(fields).containsExactlyInAnyOrder("select", "phenotypicClause", "expectedResultType");
+        assertThat(openQuery.path("properties").path("expectedResultType").path("enum")).extracting(JsonNode::asText)
+            .containsExactly("COUNT", "CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT", "OBSERVATION_CROSS_COUNT");
         JsonNode response = sync.path("responses").path("200").path("content").path("application/json");
         assertThat(response.path("examples").path("COUNT below the threshold").path("value").asText()).isEqualTo("< 10");
     }

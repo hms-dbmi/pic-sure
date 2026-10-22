@@ -10,11 +10,6 @@ public final class QueryRequestExamples {
     public static final String COUNT =
         "{\"query\":{\"select\":[],\"phenotypicClause\":{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\Synthea\\\\ACT Demographics\\\\Sex\\\\\",\"values\":[\"Female\"]},\"genomicFilters\":[],\"expectedResultType\":\"COUNT\"}}";
 
-    /** A CROSS_COUNT for open access, whose {@code select} is empty because open access replaces it with every study consent. */
-    public static final String OPEN_CROSS_COUNT =
-        "{\"query\":{\"select\":[],\"phenotypicClause\":{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\""
-            + CATEGORICAL_CONCEPT_PATH_IN_JSON + "\",\"values\":[\"" + CATEGORICAL_VALUE
-            + "\"]},\"genomicFilters\":[],\"expectedResultType\":\"CROSS_COUNT\"}}";
 
     public static final String CROSS_COUNT =
         "{\"query\":{\"select\":[\"\\\\Synthea\\\\ACT Demographics\\\\Sex\\\\\",\"\\\\Synthea\\\\ACT Demographics\\\\Race\\\\\"],\"phenotypicClause\":{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\Synthea\\\\ACT Demographics\\\\Sex\\\\\",\"values\":[\"Female\"]},\"genomicFilters\":[],\"expectedResultType\":\"CROSS_COUNT\"}}";

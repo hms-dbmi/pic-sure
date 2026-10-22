@@ -34,7 +34,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
  * to the generic controller: the async submit stores the rewritten, consent-scoped query through {@code QueryService}, so those reads
  * already operate on the safe stored query and re-implementing them here would only shadow the generic mappings.
  *
- * <p>Both bodies bind {@link HpdsQueryRequest}, the same v3 request the generic controller binds, and hand its typed query to
+ * <p>The sync body binds {@link OpenQueryRequest}, which documents only what open access accepts and refuses genomic filters with a 400.
+ * The hidden async submit still binds {@link HpdsQueryRequest}, the v3 request the generic controller binds. Both hand a typed v3 query to
  * {@link AggregateService}.
  *
  * <p>This controller is the open access OpenAPI document: {@code OpenApiGroupsConfig} publishes its paths as their own group, only when an
@@ -49,7 +50,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 )
 public class AggregateController {
 
-    private static final String OPEN_EXAMPLE_NOTE = "`genomicFilters` stays empty: genomic data is not supported on open access.";
+    private static final String OPEN_EXAMPLE_NOTE =
+        "Open access takes no genomic filters; a query with `genomicFilters` is answered with 400.";
 
     private static final String SYNC_DESCRIPTION = """
         Runs a query on the open access HPDS backend and returns aggregate counts in the response. Small counts are \
@@ -64,17 +66,17 @@ public class AggregateController {
         | CONTINUOUS_CROSS_COUNT | Obfuscated counts per bin of each continuous concept the filters name |
         | OBSERVATION_CROSS_COUNT | Observation counts per concept in `select` |
 
-        These are the only result types open access supports.
+        These are the only result types open access supports, and every one is answered inline in this response: open access \
+        has no asynchronous submit, status, result or download.
 
         **Not supported on open access**
-        - **Genomic data.** Leave `genomicFilters` empty, and do not request INFO_COLUMN_LISTING, VARIANT_COUNT_FOR_QUERY, \
-        VARIANT_LIST_FOR_QUERY, VCF_EXCERPT or AGGREGATE_VCF_EXCERPT. Genomic queries need the authorized backend, \
-        `POST /hpds/auth/query/sync`, and a token.
-        - **Participant-level results.** PATIENTS and the DATAFRAME types, and asynchronous queries and downloads, are not \
-        available.
+        - **Genomic data.** A query with `genomicFilters` is answered with 400, and the genomic result types \
+        (INFO_COLUMN_LISTING, VARIANT_COUNT_FOR_QUERY, VARIANT_LIST_FOR_QUERY, VCF_EXCERPT, AGGREGATE_VCF_EXCERPT) are not \
+        available. Genomic queries need the authorized backend, `POST /hpds/auth/query/sync`, and a token.
+        - **Participant-level results.** PATIENTS and the DATAFRAME types are not available.
         - **`select` on a CROSS_COUNT.** It is ignored and replaced by every study consent.
 
-        **Body**: the same query shape as the authorized backend. Filter with `phenotypicClause`, name the concepts of an \
+        **Body**: phenotypic filters and a result type. Filter with `phenotypicClause`, name the concepts of an \
         OBSERVATION_CROSS_COUNT in `select`, and set `expectedResultType`. Find concept paths with the dictionary's \
         `POST /picsure/dictionary/concepts`.
 
@@ -130,46 +132,46 @@ public class AggregateController {
                     @ExampleObject(name = "CATEGORICAL_CROSS_COUNT", value = CATEGORICAL_CROSS_COUNT_EXAMPLE),
                     @ExampleObject(name = "CONTINUOUS_CROSS_COUNT", value = CONTINUOUS_CROSS_COUNT_EXAMPLE)}
             )
-        ), @ApiResponse(responseCode = "400", description = "Missing query data, a result type open access does not serve, or a body that cannot be read as a query request."), @ApiResponse(responseCode = "502", description = "Aggregate backend call failed.")}
+        ), @ApiResponse(responseCode = "400", description = "Missing query data, a query with genomic filters, a result type open access does not serve, or a body that cannot be read as a query request."), @ApiResponse(responseCode = "502", description = "Aggregate backend call failed.")}
     )
     public ResponseEntity<String> querySync(
         @io.swagger.v3.oas.annotations.parameters.RequestBody(
             required = true,
             content = @Content(
-                mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = HpdsQueryRequest.class),
+                mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = OpenQueryRequest.class),
                 examples = {
                     @ExampleObject(
                         name = "COUNT",
                         description = QueryRequestExamples.COUNT_DESCRIPTION + " The count is obfuscated.\n\n" + OPEN_EXAMPLE_NOTE,
-                        value = QueryRequestExamples.COUNT
+                        value = OpenQueryExamples.COUNT
                     ),
                     @ExampleObject(
                         name = "CROSS_COUNT",
                         description = "Counts the matching patients in each study consent, each count obfuscated. "
                             + "`select` stays empty: open access replaces it with every study consent.\n\n" + OPEN_EXAMPLE_NOTE,
-                        value = QueryRequestExamples.OPEN_CROSS_COUNT
+                        value = OpenQueryExamples.CROSS_COUNT
                     ),
                     @ExampleObject(
                         name = "CATEGORICAL_CROSS_COUNT",
                         description = QueryRequestExamples.CATEGORICAL_CROSS_COUNT_DESCRIPTION + " Each count is obfuscated.\n\n"
                             + OPEN_EXAMPLE_NOTE,
-                        value = QueryRequestExamples.CATEGORICAL_CROSS_COUNT
+                        value = OpenQueryExamples.CATEGORICAL_CROSS_COUNT
                     ),
                     @ExampleObject(
                         name = "CONTINUOUS_CROSS_COUNT",
                         description = "For each continuous concept the filters name, counts the matching patients in each bin of its "
                             + "values, each count obfuscated.\n\n" + OPEN_EXAMPLE_NOTE,
-                        value = QueryRequestExamples.CONTINUOUS_CROSS_COUNT
+                        value = OpenQueryExamples.CONTINUOUS_CROSS_COUNT
                     ),
                     @ExampleObject(
                         name = "OBSERVATION_CROSS_COUNT",
                         description = QueryRequestExamples.OBSERVATION_CROSS_COUNT_DESCRIPTION + "\n\n" + OPEN_EXAMPLE_NOTE,
-                        value = QueryRequestExamples.OBSERVATION_CROSS_COUNT
+                        value = OpenQueryExamples.OBSERVATION_CROSS_COUNT
                     )}
             )
-        ) @RequestBody HpdsQueryRequest req
+        ) @RequestBody OpenQueryRequest req
     ) {
-        return service.querySync(req.query());
+        return service.querySync(req.query() == null ? null : req.query().toQuery());
     }
 
     @Hidden
