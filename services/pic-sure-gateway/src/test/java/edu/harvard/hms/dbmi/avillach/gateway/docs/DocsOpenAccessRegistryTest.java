@@ -65,7 +65,7 @@ class DocsOpenAccessRegistryTest {
             }
         }
         assertThat(entry).isNotNull();
-        assertThat(entry.get("title").asText()).isEqualTo("PIC-SURE High Performance Data Store (HPDS) Open Access");
+        assertThat(entry.get("title").asText()).isEqualTo("Open Queries");
         JsonNode served =
             json.readTree(rest.getForEntity("http://127.0.0.1:" + port + "/openapi/hpds-open-access", String.class).getBody());
         assertThat(served.get("servers").get(0).get("url").asText()).isEqualTo("/picsure");

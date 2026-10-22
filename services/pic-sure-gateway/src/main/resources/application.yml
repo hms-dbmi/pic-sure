@@ -124,12 +124,12 @@ picsure:
           docs-path: /v3/api-docs
           public-prefix: ${picsure.gateway.docs.public-base}/dictionary
         - name: hpds-query-service
-          title: PIC-SURE High Performance Data Store (HPDS) Query Service
+          title: Authorized Queries
           url: ${HPDS_QUERY_SERVICE_URL:http://pic-sure-hpds-query-service:8080}
           docs-path: /v3/api-docs/auth
           public-prefix: ${picsure.gateway.docs.public-base}
         - name: hpds-open-access
-          title: PIC-SURE High Performance Data Store (HPDS) Open Access
+          title: Open Queries
           url: ${HPDS_QUERY_SERVICE_URL:http://pic-sure-hpds-query-service:8080}
           docs-path: /v3/api-docs/open
           public-prefix: ${picsure.gateway.docs.public-base}

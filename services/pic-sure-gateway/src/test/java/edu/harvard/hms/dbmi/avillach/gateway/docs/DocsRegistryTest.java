@@ -94,9 +94,7 @@ class DocsRegistryTest {
 
     @Test
     void hpdsQueryServiceIsRegistered() throws Exception {
-        assertRegistered(
-            "hpds-query-service", "PIC-SURE High Performance Data Store (HPDS) Query Service", "/v3/api-docs/auth", "/picsure"
-        );
+        assertRegistered("hpds-query-service", "Authorized Queries", "/v3/api-docs/auth", "/picsure");
     }
 
     @Test
