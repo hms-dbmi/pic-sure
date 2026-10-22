@@ -410,7 +410,7 @@ pub struct PartitionSet {
     scopes: Cache<Box<[u64]>, Arc<Scope>>,
     generation: u128,
     serving: ServingLock,
-    #[cfg(any(test, feature = "live-entry-count"))]
+    #[cfg(test)]
     live: Arc<crate::store::test_support::LiveEntries>,
     #[cfg(test)]
     chunk_threads: std::sync::Mutex<test_support::ChunkThreads>,
@@ -607,7 +607,7 @@ impl PartitionSet {
                 .build(),
             generation,
             serving,
-            #[cfg(any(test, feature = "live-entry-count"))]
+            #[cfg(test)]
             live: Arc::default(),
             #[cfg(test)]
             chunk_threads: std::sync::Mutex::default(),
@@ -933,15 +933,6 @@ impl PartitionSet {
         (rayon::current_num_threads() / running).max(1)
     }
 
-    /// The decoded entries this set has loaded that are still alive anywhere, the block
-    /// cache, a read or deferred reclamation holding them. Counted only in builds with the
-    /// `live-entry-count` feature, for tests that bound what reads leave alive.
-    #[cfg(feature = "live-entry-count")]
-    #[doc(hidden)]
-    pub fn live_entries(&self) -> usize {
-        self.live.live()
-    }
-
     /// Drops every cached block and view.
     pub fn clear_cache(&self) {
         self.cache.invalidate_all();
@@ -1040,7 +1031,7 @@ impl PartitionSet {
                     .record_load(started.elapsed(), block.is_ok());
                 block.map(|block| {
                     let entry = Arc::new(CachedConcept::new(block));
-                    #[cfg(any(test, feature = "live-entry-count"))]
+                    #[cfg(test)]
                     entry.track(&self.live);
                     entry
                 })

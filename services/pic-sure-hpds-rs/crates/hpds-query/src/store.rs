@@ -248,7 +248,7 @@ pub(crate) struct CachedConcept {
     building: Mutex<()>,
     dropped: AtomicBool,
     holds: AtomicU64,
-    #[cfg(any(test, feature = "live-entry-count"))]
+    #[cfg(test)]
     ticket: OnceLock<test_support::LiveTicket>,
     #[cfg(test)]
     dropped_at: OnceLock<u64>,
@@ -263,7 +263,7 @@ impl CachedConcept {
             building: Mutex::new(()),
             dropped: AtomicBool::new(false),
             holds: AtomicU64::new(0),
-            #[cfg(any(test, feature = "live-entry-count"))]
+            #[cfg(test)]
             ticket: OnceLock::new(),
             #[cfg(test)]
             dropped_at: OnceLock::new(),
@@ -271,7 +271,7 @@ impl CachedConcept {
     }
 
     /// Counts the entry in `live` until it is dropped.
-    #[cfg(any(test, feature = "live-entry-count"))]
+    #[cfg(test)]
     pub(crate) fn track(&self, live: &Arc<test_support::LiveEntries>) {
         let _ = self.ticket.set(test_support::LiveTicket::new(live));
     }
@@ -926,27 +926,21 @@ fn open_error(dir: &Path, error: impl std::fmt::Display) -> QueryError {
     }
 }
 
-/// Counting of decoded entries alive, for tests that bound what a read holds at once, built
-/// for the crate's own tests and with the `live-entry-count` feature.
-#[cfg(any(test, feature = "live-entry-count"))]
+/// Counting of decoded entries alive, for tests that bound what a read holds at once.
+#[cfg(test)]
 pub(crate) mod test_support {
     use std::sync::Arc;
-    #[cfg(test)]
-    use std::sync::atomic::AtomicU64;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
-    #[cfg(test)]
     static DROP_CLOCK: AtomicU64 = AtomicU64::new(0);
 
     /// The number of entries marked dropped so far, process-wide: an entry marked after a
     /// reading of it carries a later value ([`super::CachedConcept::dropped_at`]).
-    #[cfg(test)]
     pub(crate) fn drop_clock() -> u64 {
         DROP_CLOCK.load(Ordering::SeqCst)
     }
 
     /// Advances the drop clock for one entry being marked dropped and returns its new value.
-    #[cfg(test)]
     pub(super) fn tick_drop_clock() -> u64 {
         DROP_CLOCK.fetch_add(1, Ordering::SeqCst) + 1
     }
@@ -960,7 +954,6 @@ pub(crate) mod test_support {
 
     impl LiveEntries {
         /// The most tracked entries alive at once since the last [`LiveEntries::reset_peak`].
-        #[cfg(test)]
         pub(crate) fn peak(&self) -> usize {
             self.peak.load(Ordering::SeqCst)
         }
@@ -971,7 +964,6 @@ pub(crate) mod test_support {
         }
 
         /// Starts the peak again from the entries alive now.
-        #[cfg(test)]
         pub(crate) fn reset_peak(&self) {
             self.peak.store(self.live(), Ordering::SeqCst);
         }
@@ -983,7 +975,6 @@ pub(crate) mod test_support {
         /// holds, only after the global epoch has advanced past every pinned thread. Pinning
         /// and flushing here drives that, so an entry no read holds any longer is counted
         /// as dropped.
-        #[cfg(test)]
         pub(crate) fn live_after_reclaim(&self, bound: std::time::Duration) -> usize {
             let deadline = std::time::Instant::now() + bound;
             while self.live() > 0 && std::time::Instant::now() < deadline {
