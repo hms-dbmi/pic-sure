@@ -16,14 +16,23 @@ import org.springframework.boot.context.properties.source.MapConfigurationProper
 class DocsPropertiesTest {
 
     private static DocumentedService entry(String name) {
-        return new DocumentedService(name, "Title", "http://upstream:8080", null, "/picsure/" + name);
+        return new DocumentedService(name, "Title", "http://upstream:8080", null, "/picsure/" + name, null);
     }
 
     @Test
     void docsPathDefaultsAndDocumentUrlJoinsWithoutDoubleSlash() {
-        DocumentedService service = new DocumentedService("ops", "Operations", "http://upstream:8080/", null, "/picsure/operations");
+        DocumentedService service = new DocumentedService("ops", "Operations", "http://upstream:8080/", null, "/picsure/operations", null);
         assertThat(service.docsPath()).isEqualTo("/v3/api-docs");
         assertThat(service.documentUrl()).isEqualTo("http://upstream:8080/v3/api-docs");
+    }
+
+    @Test
+    void aDisabledServiceIsDroppedAndEnabledDefaultsToTrue() {
+        DocumentedService on = new DocumentedService("on", "On", "http://upstream:8080", null, "/picsure", null);
+        DocumentedService off = new DocumentedService("off", "Off", "http://upstream:8080", null, "/picsure", false);
+
+        assertThat(on.enabled()).isTrue();
+        assertThat(new DocsProperties(null, null, null, List.of(on, off)).services()).containsExactly(on);
     }
 
     @Test
@@ -37,24 +46,24 @@ class DocsPropertiesTest {
 
     @Test
     void aBlankOrMissingTitleDefaultsToTheServiceName() {
-        assertThat(new DocumentedService("ops", null, "http://upstream:8080", null, "/picsure/ops").title()).isEqualTo("ops");
-        assertThat(new DocumentedService("ops", "   ", "http://upstream:8080", null, "/picsure/ops").title()).isEqualTo("ops");
+        assertThat(new DocumentedService("ops", null, "http://upstream:8080", null, "/picsure/ops", null).title()).isEqualTo("ops");
+        assertThat(new DocumentedService("ops", "   ", "http://upstream:8080", null, "/picsure/ops", null).title()).isEqualTo("ops");
     }
 
     @Test
     void aMissingUrlIsRejected() {
-        assertThatThrownBy(() -> new DocumentedService("ops", "Title", null, null, "/picsure/ops"))
+        assertThatThrownBy(() -> new DocumentedService("ops", "Title", null, null, "/picsure/ops", null))
             .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("ops").hasMessageContaining("no url");
         for (String blank : List.of("", "   ")) {
-            assertThatThrownBy(() -> new DocumentedService("ops", "Title", blank, null, "/picsure/ops")).as(blank)
+            assertThatThrownBy(() -> new DocumentedService("ops", "Title", blank, null, "/picsure/ops", null)).as(blank)
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("no url");
         }
     }
 
     @Test
     void anEmptyPublicPrefixIsAllowedButAMissingOneIsNot() {
-        assertThat(new DocumentedService("ops", "Title", "http://upstream:8080", null, "").publicPrefix()).isEmpty();
-        assertThatThrownBy(() -> new DocumentedService("ops", "Title", "http://upstream:8080", null, null))
+        assertThat(new DocumentedService("ops", "Title", "http://upstream:8080", null, "", null).publicPrefix()).isEmpty();
+        assertThatThrownBy(() -> new DocumentedService("ops", "Title", "http://upstream:8080", null, null, null))
             .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("ops").hasMessageContaining("public-prefix");
     }
 
