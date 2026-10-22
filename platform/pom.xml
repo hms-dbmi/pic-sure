@@ -30,7 +30,7 @@
         <httpcore5.version>5.4.3</httpcore5.version>
         <logback.version>1.6.3</logback.version>
         <!-- Structured logging encoder (not governed by the Spring BOMs) -->
-        <logstash-logback-encoder.version>8.1</logstash-logback-encoder.version>
+        <logstash-logback-encoder.version>9.0</logstash-logback-encoder.version>
         <!-- Ahead of the 2.21.4 that spring-boot-dependencies ${spring-boot.version}
              manages. 2.21.5 carries the jackson-databind fix; drop this override once
              the Spring BOM catches up. -->
