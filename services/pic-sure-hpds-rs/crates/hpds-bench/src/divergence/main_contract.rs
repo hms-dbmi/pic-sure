@@ -130,7 +130,7 @@ pub(super) fn sync_flag_refusal(
     let (java_outcome, rust_outcome) = sides(a, b, java);
     unscoped
         && refusal(rust_outcome).is_some_and(|body| body == AUTHORIZATION_FILTER_REQUIRED)
-        && matches!(java_outcome, Outcome::Sync(s) if s.status == 200 && !s.body.is_empty())
+        && matches!(java_outcome, Outcome::Sync(s) if s.status == 200 || s.status == 500)
 }
 
 /// Every field name in `object` outside `declared`.

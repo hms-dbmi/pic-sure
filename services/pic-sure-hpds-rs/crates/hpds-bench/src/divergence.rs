@@ -286,7 +286,8 @@ pub enum Condition {
     /// with a 400 holding exactly main mode's message ("Authorization filter is required for
     /// this query: authorizationFilters is missing or empty and hpds.requireAuthorizationFilter
     /// is on"), and the Java side (which must be known) answered 200 with a body over every
-    /// patient.
+    /// patient, or failed on another part of the query (a 200 with an empty body, or a 500),
+    /// which Rust's earlier refusal never reaches.
     SyncFlagRefusal,
     /// Always under the harmonization contract. Under the main contract, the entry's raw body
     /// or string query repeats a key other than `authorizationFilters`, whose repetition main
@@ -3759,8 +3760,14 @@ mod tests {
                 None
             );
             assert_eq!(rule_name(&main_contract(), &e, &refusal, &answer), None);
+            for failed in [sync(200, ""), sync(500, "")] {
+                assert_eq!(
+                    rule_name(&main_contract(), &e, &failed, &refusal).as_deref(),
+                    Some("sync-requires-authorization-filter-main")
+                );
+            }
             assert_eq!(
-                rule_name(&main_contract(), &e, &sync(200, ""), &refusal),
+                rule_name(&main_contract(), &e, &sync(400, "bad"), &refusal),
                 None
             );
             for other in [
