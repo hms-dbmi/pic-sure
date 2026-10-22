@@ -24,6 +24,13 @@
       "reason": "Decision 2 (spec-v6-bdc-readiness.md), main consent contract only: a null element of authorizationFilters, a null or missing conceptPath, null or missing values, or a null value looked up in a categorical concept makes Java main throw while evaluating (a NullPointerException in authorizationFiltersToPhenotypicClause or the cube cache, or IllegalArgumentException 'Either values or one of min/max must be set for a filter'), which AuditLoggingFilter answers 200 with an empty body with audit logging off (BDC's configuration) and 500 with it on. On POST /query a null element or null path throws a NullPointerException in QueryValidator that escapes runQuery: 200 with an empty body (or 500) and no job. Null or empty values there end the job in ERROR, which Rust matches. Rust refuses the sync request and the submit with 400 and exactly one of main mode's messages: 'an authorization filter is null', 'an authorization filter's conceptPath is null', 'an authorization filter's values are null' or 'an authorization filter's values hold null'. Accepted only when the query holds such a null and Rust's message is the one for a kind of null it holds (a null filter, a null or missing path, null or missing values, a null value), with that refusal against Java's empty 200, its 500, or its submit answered 200 or 500 with no status. In main mode it replaces null-authorization-filter-main."
     },
     {
+      "name": "genomic-static-refusal-empty-cohort-main",
+      "when": "genomic-static-refusal-empty-cohort",
+      "javaBranch": "main",
+      "consentContract": "main",
+      "reason": "spec-v6-bdc-readiness.md section 4 and the plan-v6.md decision of 2026-10-22, main consent contract only: Rust keeps v5's refusals of a genomic filter that is invalid as sent (a null filter, key, zygosity or categorical value, a spec key whose position Java cannot read, a numeric filter with one bound or with min above max), decided from the request alone. Java main skips the genomic step when the phenotype cohort is empty, which in main mode includes every query whose authorization filters select nobody, and answers as over no patients. Accepted only when Rust's 400 is exactly one of the refusals the request's genomic filters draw, and Java's answer is the answer over no patients or no variants (a count of 0, cross counts of 0, an empty list, No Variants Found, an export with no rows)."
+    },
+    {
       "name": "invalid-request-status",
       "entry": "error-*",
       "statuses": [400, 500],
@@ -233,6 +240,11 @@
       "name": "unknown-result-type-status",
       "when": "unknown-result-type-refused",
       "reason": "Jackson error, invalid input: an expectedResultType string that is not a name or ordinal of Java's ResultType makes Jackson refuse the query in convertIncomingQuery, which answers 500 with an empty body. Rust refuses it with 400 and exactly \"the query is not valid: invalid value: string \\\"<value>\\\", expected one of [...]\" listing the 14 names. Accepted only for such a value, that exact message and Java's empty 500."
+    },
+    {
+      "name": "result-type-out-of-range-status",
+      "when": "result-type-out-of-range-refused",
+      "reason": "Jackson error, invalid input: an expectedResultType that is a boolean, or an integer outside the ordinals of Java's ResultType (0 to 13), makes Jackson's enum coercion refuse the query in convertIncomingQuery, which answers 500 with an empty body on /query/sync and POST /query. Rust refuses it with 400 and exactly \"the query is not valid: invalid value: integer `<n>`, expected one of [...]\" or \"the query is not valid: invalid type: boolean `<b>`, expected one of [...]\" listing the 14 names. Accepted only for such a value, that exact message and Java's empty 500."
     },
     {
       "name": "invalid-uuid-status",

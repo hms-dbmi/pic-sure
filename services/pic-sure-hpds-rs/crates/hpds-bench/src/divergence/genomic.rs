@@ -231,6 +231,103 @@ fn static_refusals(filters: &[Value]) -> Vec<Refusal> {
     out
 }
 
+/// The most characters of a key or column Rust repeats in a refusal, as `hpds_query`'s
+/// `ECHO_CHARS`.
+const ECHO_CHARS: usize = 200;
+
+/// `text` as Rust's refusals repeat it: whole up to [`ECHO_CHARS`] characters, otherwise its
+/// first [`ECHO_CHARS`] characters followed by `…`, as `hpds_query`'s `echo`.
+fn echo(text: &str) -> String {
+    match text.char_indices().nth(ECHO_CHARS) {
+        None => text.to_owned(),
+        Some((end, _)) => format!("{}…", &text[..end]),
+    }
+}
+
+/// The exact refusals Rust can decide from the request's genomic filters alone, in the words
+/// of `GenomicFilters::translate`: one for each filter that draws one (a `null` filter or key,
+/// a spec key whose position Java cannot read, a `null` zygosity or categorical value, a
+/// numeric filter with one bound or with `min` above `max` in `Float.compare` order). Rust
+/// answers with the first of them in its own order, which this list does not model, so a
+/// refusal is one of these when it equals any of them.
+fn static_refusal_messages(filters: &[Value]) -> Vec<String> {
+    let mut out = Vec::new();
+    for filter in filters {
+        if filter.is_null() {
+            out.push("a genomic filter is null".to_owned());
+            continue;
+        }
+        let Some(key) = filter.get("key").and_then(Value::as_str) else {
+            if filter.get("key").is_none_or(Value::is_null) {
+                out.push("a genomic filter's key is null".to_owned());
+            }
+            continue;
+        };
+        let values = filter.get("values").and_then(Value::as_array);
+        let holds_null = values.is_some_and(|v| v.iter().any(Value::is_null));
+        if is_variant_spec(key) {
+            if hpds_format::VariantSpecKey::parse(key).is_none() {
+                out.push(format!(
+                    "the variant spec {} has no position Java can read: it needs a contig and \
+                     an integer position, comma separated",
+                    echo(key)
+                ));
+            } else if holds_null {
+                out.push(format!(
+                    "the zygosities of the variant spec filter {} hold null",
+                    echo(key)
+                ));
+            }
+        } else if values.is_some() {
+            if holds_null {
+                out.push(format!(
+                    "the values of the genomic filter on {} hold null",
+                    echo(key)
+                ));
+            }
+        } else {
+            let bound = |name: &str| filter.get(name).and_then(Value::as_f64).map(|x| x as f32);
+            match (bound("min"), bound("max")) {
+                (None, None) => {}
+                (Some(min), Some(max)) => {
+                    if hpds_format::java_float_cmp(min, max) == std::cmp::Ordering::Greater {
+                        out.push(format!(
+                            "the numeric genomic filter on {} has min {min} above max {max}",
+                            echo(key)
+                        ));
+                    }
+                }
+                _ => out.push(format!(
+                    "the numeric genomic filter on {} needs both min and max",
+                    echo(key)
+                )),
+            }
+        }
+    }
+    out
+}
+
+/// [`super::Condition::GenomicStaticRefusalEmptyCohort`]: the Rust side refused with exactly
+/// one of the refusals it decides from the request's genomic filters alone
+/// ([`static_refusal_messages`]), and the Java side answered as over an empty cohort or an
+/// empty variant list ([`empty_answer`]), because it never ran the genomic step.
+pub(super) fn static_refusal_empty_cohort(
+    entry: &CorpusEntry,
+    a: &Outcome,
+    b: &Outcome,
+    java: Option<JavaService>,
+) -> bool {
+    let messages = static_refusal_messages(&genomic_filters(entry));
+    !messages.is_empty()
+        && rust_refused_java_failed(
+            a,
+            b,
+            java,
+            |body| messages.iter().any(|m| m == body),
+            empty_answer,
+        )
+}
+
 /// Whether a genomic filter's key or one of its values cannot pass Java's `"_____"` lookup: a
 /// non-spec key holding the delimiter, or a value that holds it or is empty.
 fn holds_delimiter_shape(filters: &[Value]) -> bool {
@@ -824,6 +921,129 @@ mod tests {
             ..AsyncOutcome::default()
         });
         assert!(invalid_filter_not_evaluated(&rs, &export, &refused, None));
+    }
+
+    #[test]
+    fn a_static_refusal_over_an_empty_cohort_needs_its_exact_message_and_an_empty_java_answer() {
+        let e = entry(
+            Kind::Sync,
+            "COUNT",
+            json!({"genomicFilters": [
+                {"key": "chr20,5033988,C,G,ABC1,synonymous_variant", "values": [null]},
+                {"key": "Variant_frequency_in_gnomAD", "min": 0.1},
+                {"key": "Gene_with_variant", "values": ["ABC1", null]},
+                {"key": "rs12", "values": null},
+                {"key": "AF", "min": 0.5, "max": 0.25},
+                {"key": null}
+            ]}),
+        );
+        for message in [
+            "the zygosities of the variant spec filter chr20,5033988,C,G,ABC1,synonymous_variant hold null",
+            "the numeric genomic filter on Variant_frequency_in_gnomAD needs both min and max",
+            "the values of the genomic filter on Gene_with_variant hold null",
+            "the variant spec rs12 has no position Java can read: it needs a contig and an integer \
+             position, comma separated",
+            "the numeric genomic filter on AF has min 0.5 above max 0.25",
+            "a genomic filter's key is null",
+        ] {
+            let refused = sync(400, message);
+            for java in [
+                "0",
+                "{}",
+                "No Variants Found\n",
+                r#"{"count":0,"message":"Query ran successfully"}"#,
+            ] {
+                assert!(
+                    static_refusal_empty_cohort(&e, &sync(200, java), &refused, None),
+                    "{message} against {java}"
+                );
+            }
+            assert!(
+                !static_refusal_empty_cohort(&e, &sync(200, "3"), &refused, None),
+                "{message}"
+            );
+            assert!(
+                !static_refusal_empty_cohort(&e, &sync(200, ""), &refused, None),
+                "{message}"
+            );
+        }
+        let near = sync(
+            400,
+            "the numeric genomic filter on Variant_frequency_in_gnomAD needs both min and max!",
+        );
+        assert!(!static_refusal_empty_cohort(
+            &e,
+            &sync(200, "0"),
+            &near,
+            None
+        ));
+        let other_key = sync(
+            400,
+            "the numeric genomic filter on AF needs both min and max",
+        );
+        assert!(!static_refusal_empty_cohort(
+            &e,
+            &sync(200, "0"),
+            &other_key,
+            None
+        ));
+        let store_dependent = sync(
+            400,
+            "the numeric genomic filter on AF names a column that is categorical on some genomic node",
+        );
+        assert!(!static_refusal_empty_cohort(
+            &e,
+            &sync(200, "0"),
+            &store_dependent,
+            None
+        ));
+        let valid = entry(
+            Kind::Sync,
+            "COUNT",
+            json!({"genomicFilters": [{"key": "Variant_frequency_in_gnomAD", "min": 0.1, "max": 0.2}]}),
+        );
+        let refused = sync(
+            400,
+            "the numeric genomic filter on Variant_frequency_in_gnomAD needs both min and max",
+        );
+        assert!(!static_refusal_empty_cohort(
+            &valid,
+            &sync(200, "0"),
+            &refused,
+            None
+        ));
+        let long = "G".repeat(250);
+        let echoed = entry(
+            Kind::Sync,
+            "COUNT",
+            json!({"genomicFilters": [{"key": long, "values": [null]}]}),
+        );
+        let refusal = format!(
+            "the values of the genomic filter on {}… hold null",
+            "G".repeat(200)
+        );
+        assert!(static_refusal_empty_cohort(
+            &echoed,
+            &sync(200, "0"),
+            &sync(400, &refusal),
+            None
+        ));
+        let export = Outcome::Async(AsyncOutcome {
+            submit_status: 200,
+            resource_status: Some("SUCCESS".into()),
+            result_body: Some("PATIENT_NUM\n".into()),
+            ..AsyncOutcome::default()
+        });
+        let async_refused = sync(
+            400,
+            "the values of the genomic filter on Gene_with_variant hold null",
+        );
+        assert!(static_refusal_empty_cohort(
+            &e,
+            &export,
+            &async_refused,
+            None
+        ));
     }
 
     #[test]

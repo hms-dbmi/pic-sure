@@ -172,6 +172,13 @@ pub enum Condition {
     /// answered 500 with an empty body, and the Rust side refused with exactly `the query is
     /// not valid: invalid value: string "<value>", expected one of [<the 14 names>]`.
     UnknownResultTypeRefused,
+    /// The entry's query holds an `expectedResultType` that is a boolean, or an integer
+    /// outside the ordinals of Java's `ResultType` (0 to 13); the Java side answered 500 with
+    /// an empty body (Jackson's enum coercion refuses it in convertIncomingQuery), and the Rust
+    /// side refused with exactly `the query is not valid: invalid value: integer `<n>`,
+    /// expected one of [<the 14 names>]` or `the query is not valid: invalid type: boolean
+    /// `<b>`, expected one of [<the 14 names>]`.
+    ResultTypeOutOfRangeRefused,
     /// The entry's query holds a `picsureId` or `id` string Jackson's `UUIDDeserializer`
     /// refuses (see `hpds_format::jackson_uuid`); the Java side answered 500 with an empty
     /// body, and the Rust side refused with exactly `the query is not valid: "<value>" is not
@@ -240,6 +247,13 @@ pub enum Condition {
     /// empty, or a variant result type had no INFO filter. Rust decides a filter's validity
     /// from the request alone.
     InvalidGenomicFilterNotEvaluated,
+    /// The Rust side refused with exactly one of the refusals it decides from the request's
+    /// genomic filters alone (a `null` filter, key, zygosity or categorical value, a spec key
+    /// whose position Java cannot read, a numeric filter with one bound or with `min` above
+    /// `max`), and the Java side answered as over an empty cohort or an empty variant list,
+    /// because it never ran the genomic step. Under the main contract an empty authorized set
+    /// makes the cohort empty.
+    GenomicStaticRefusalEmptyCohort,
     /// A `/search/values` entry the Rust side refused with 400 and the Java side answered
     /// 500 or 200 with an empty body.
     SearchValuesRefused,
@@ -288,11 +302,11 @@ pub enum Condition {
     /// Main consent contract only. The entry's query holds an authorization filter that is
     /// `null`, or whose `conceptPath` or `values` is `null` or missing, or whose `values` hold
     /// a `null`; the Rust side refused with a 400 holding exactly the one of main mode's four
-    /// messages that names a kind of `null` the query holds ("an authorization filter is null", "an authorization filter's conceptPath is
-    /// null", "an authorization filter's values are null", "an authorization filter's values
-    /// hold null"), and the Java side (which
-    /// must be known) failed while evaluating: a sync 200 with an empty body or a sync 500, or
-    /// an async submit answered 200 or 500 with no status.
+    /// messages that names a kind of `null` the query holds ("an authorization filter is
+    /// null", "an authorization filter's conceptPath is null", "an authorization filter's
+    /// values are null", "an authorization filter's values hold null"), and the Java side
+    /// (which must be known) failed while evaluating: a sync 200 with an empty body or a sync
+    /// 500, or an async submit answered 200 or 500 with no status.
     NullAuthorizationFilterMainRefused,
 }
 
@@ -1585,6 +1599,44 @@ fn unknown_result_type_refused(
     rust_refused_java_failed(a, b, java, |body| body == expected, empty_500)
 }
 
+/// The words of Rust's refusal of an `expectedResultType` Jackson refuses for its JSON type: a
+/// boolean, or an integer outside the ordinals of Java's `ResultType`. `None` for any other
+/// value.
+fn out_of_range_result_type(value: &Value) -> Option<String> {
+    match value {
+        Value::Bool(b) => Some(format!("invalid type: boolean `{b}`")),
+        Value::Number(n) if n.is_i64() || n.is_u64() => {
+            let ordinal = n.as_u64().and_then(|i| usize::try_from(i).ok());
+            if ordinal.is_some_and(|i| i < RESULT_TYPE_NAMES.len()) {
+                None
+            } else {
+                Some(format!("invalid value: integer `{n}`"))
+            }
+        }
+        _ => None,
+    }
+}
+
+fn result_type_out_of_range_refused(
+    entry: &CorpusEntry,
+    a: &Outcome,
+    b: &Outcome,
+    java: Option<JavaService>,
+) -> bool {
+    let Some(words) = entry_query(entry)
+        .and_then(|q| q.get("expectedResultType").cloned())
+        .and_then(|value| out_of_range_result_type(&value))
+    else {
+        return false;
+    };
+    let names: Vec<String> = RESULT_TYPE_NAMES.iter().map(|n| format!("{n:?}")).collect();
+    let expected = format!(
+        "the query is not valid: {words}, expected one of [{}]",
+        names.join(", ")
+    );
+    rust_refused_java_failed(a, b, java, |body| body == expected, empty_500)
+}
+
 fn invalid_uuid_refused(
     entry: &CorpusEntry,
     a: &Outcome,
@@ -1814,6 +1866,9 @@ impl Condition {
                 duplicate_key_in_string_query(entry, a, b, java)
             }
             Condition::UnknownResultTypeRefused => unknown_result_type_refused(entry, a, b, java),
+            Condition::ResultTypeOutOfRangeRefused => {
+                result_type_out_of_range_refused(entry, a, b, java)
+            }
             Condition::InvalidUuidRefused => invalid_uuid_refused(entry, a, b, java),
             Condition::MissingOperatorRefused => missing_operator_refused(entry, a, b, java),
             Condition::ConsentExtraFieldRefused => consent_extra_field_refused(entry, a, b, java),
@@ -1845,6 +1900,9 @@ impl Condition {
             }
             Condition::InvalidGenomicFilterNotEvaluated => {
                 genomic::invalid_filter_not_evaluated(entry, a, b, java)
+            }
+            Condition::GenomicStaticRefusalEmptyCohort => {
+                genomic::static_refusal_empty_cohort(entry, a, b, java)
             }
             Condition::SearchValuesRefused => genomic::search_values_refused(entry, a, b),
             Condition::SearchInfoColumnMissingRefused => {
@@ -3441,6 +3499,75 @@ mod tests {
     }
 
     #[test]
+    fn an_out_of_range_or_boolean_result_type_is_accepted_only_with_the_exact_refusal() {
+        let names = RESULT_TYPE_NAMES
+            .iter()
+            .map(|n| format!("{n:?}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        for set in [
+            main_contract(),
+            checked_in().for_java(Side::A, JavaBranch::Consent),
+        ] {
+            for (value, words) in [
+                (json!(14), "invalid value: integer `14`"),
+                (json!(-1), "invalid value: integer `-1`"),
+                (json!(true), "invalid type: boolean `true`"),
+                (json!(false), "invalid type: boolean `false`"),
+            ] {
+                let e = raw_entry(
+                    "result-type-out-of-range",
+                    json!({"query": {"expectedResultType": value, "authorizationFilters": [{"conceptPath": "\\s\\", "values": ["a"]}]}, "resourceUUID": null}),
+                );
+                let exact = sync(
+                    400,
+                    &format!("the query is not valid: {words}, expected one of [{names}]"),
+                );
+                assert_eq!(
+                    rule_name(&set, &e, &sync(500, ""), &exact).as_deref(),
+                    Some("result-type-out-of-range-status"),
+                    "{value}"
+                );
+                let submit_500 = async_outcome(500, None, None);
+                let async_e = CorpusEntry {
+                    kind: Kind::Async,
+                    ..e.clone()
+                };
+                let exact_submit = refused_submit(&format!(
+                    "the query is not valid: {words}, expected one of [{names}]"
+                ));
+                assert_eq!(
+                    rule_name(&set, &async_e, &submit_500, &exact_submit).as_deref(),
+                    Some("result-type-out-of-range-status"),
+                    "{value} async"
+                );
+                assert_eq!(
+                    rule_name(&set, &e, &sync(200, "3"), &exact),
+                    None,
+                    "{value}"
+                );
+                assert_eq!(rule_name(&set, &e, &exact, &sync(500, "")), None, "{value}");
+                assert_eq!(
+                    rule_name(&set, &e, &sync(500, ""), &sync(400, "bad")),
+                    None,
+                    "{value}"
+                );
+            }
+            let in_range = raw_entry(
+                "result-type-ordinal",
+                json!({"query": {"expectedResultType": 13}, "resourceUUID": null}),
+            );
+            let refusal = sync(
+                400,
+                &format!(
+                    "the query is not valid: invalid value: integer `13`, expected one of [{names}]"
+                ),
+            );
+            assert_eq!(rule_name(&set, &in_range, &sync(500, ""), &refusal), None);
+        }
+    }
+
+    #[test]
     fn an_invalid_uuid_is_accepted_only_with_the_exact_refusal() {
         let set = checked_in().for_java(Side::A, JavaBranch::Main);
         let e = raw_entry(
@@ -4167,6 +4294,33 @@ mod tests {
         );
         assert_eq!(
             rule_name(&main_contract(), &raw_authz, &answer, &names_authz),
+            None
+        );
+    }
+
+    #[test]
+    fn a_static_genomic_refusal_over_an_empty_cohort_has_its_own_name_only_under_main() {
+        let e = query_entry(
+            "static-genomic-empty",
+            Kind::Sync,
+            json!({"expectedResultType": "COUNT",
+                   "authorizationFilters": [{"conceptPath": "\\_consents\\", "values": ["nobody"]}],
+                   "genomicFilters": [{"key": "Variant_frequency_in_gnomAD", "min": 0.1}]}),
+        );
+        let refused = sync(
+            400,
+            "the numeric genomic filter on Variant_frequency_in_gnomAD needs both min and max",
+        );
+        assert_eq!(
+            rule_name(&main_contract(), &e, &sync(200, "0"), &refused).as_deref(),
+            Some("genomic-static-refusal-empty-cohort-main")
+        );
+        assert_eq!(
+            rule_name(&harmonization_contract(), &e, &sync(200, "0"), &refused).as_deref(),
+            Some("invalid-genomic-filter-not-evaluated")
+        );
+        assert_eq!(
+            rule_name(&main_contract(), &e, &sync(200, "4"), &refused),
             None
         );
     }
