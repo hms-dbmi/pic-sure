@@ -171,11 +171,21 @@ public class HpdsQueryController {
             required = true,
             content = @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = HpdsQueryRequest.class),
-                examples = {@ExampleObject(name = "PATIENTS", summary = "PATIENTS", value = QueryRequestExamples.PATIENTS),
-                    @ExampleObject(name = "DATAFRAME", summary = "DATAFRAME", value = QueryRequestExamples.DATAFRAME),
+                examples = {
                     @ExampleObject(
-                        name = "DATAFRAME_TIMESERIES", summary = "DATAFRAME_TIMESERIES", value = QueryRequestExamples.DATAFRAME_TIMESERIES
-                    ), @ExampleObject(name = "DATAFRAME_PFB", summary = "DATAFRAME_PFB", value = QueryRequestExamples.DATAFRAME_PFB)}
+                        name = "PATIENTS", description = QueryRequestExamples.PATIENTS_DESCRIPTION, value = QueryRequestExamples.PATIENTS
+                    ),
+                    @ExampleObject(
+                        name = "DATAFRAME", description = QueryRequestExamples.DATAFRAME_DESCRIPTION, value = QueryRequestExamples.DATAFRAME
+                    ),
+                    @ExampleObject(
+                        name = "DATAFRAME_TIMESERIES", description = QueryRequestExamples.DATAFRAME_TIMESERIES_DESCRIPTION,
+                        value = QueryRequestExamples.DATAFRAME_TIMESERIES
+                    ),
+                    @ExampleObject(
+                        name = "DATAFRAME_PFB", description = QueryRequestExamples.DATAFRAME_PFB_DESCRIPTION,
+                        value = QueryRequestExamples.DATAFRAME_PFB
+                    )}
             )
         ) @RequestBody HpdsQueryRequest req, @RequestParam(name = "isInstitute", required = false) Boolean isInstitute,
         @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
@@ -235,33 +245,44 @@ public class HpdsQueryController {
             required = true,
             content = @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = HpdsQueryRequest.class),
-                examples = {@ExampleObject(name = "COUNT", summary = "COUNT", value = QueryRequestExamples.COUNT),
-                    @ExampleObject(name = "CROSS_COUNT", summary = "CROSS_COUNT", value = QueryRequestExamples.CROSS_COUNT),
+                examples = {
                     @ExampleObject(
-                        name = "CATEGORICAL_CROSS_COUNT", summary = "CATEGORICAL_CROSS_COUNT",
+                        name = "COUNT", description = QueryRequestExamples.COUNT_DESCRIPTION, value = QueryRequestExamples.COUNT
+                    ),
+                    @ExampleObject(
+                        name = "CROSS_COUNT", description = QueryRequestExamples.CROSS_COUNT_DESCRIPTION,
+                        value = QueryRequestExamples.CROSS_COUNT
+                    ),
+                    @ExampleObject(
+                        name = "CATEGORICAL_CROSS_COUNT", description = QueryRequestExamples.CATEGORICAL_CROSS_COUNT_DESCRIPTION,
                         value = QueryRequestExamples.CATEGORICAL_CROSS_COUNT
                     ),
                     @ExampleObject(
-                        name = "CONTINUOUS_CROSS_COUNT", summary = "CONTINUOUS_CROSS_COUNT",
+                        name = "CONTINUOUS_CROSS_COUNT", description = QueryRequestExamples.CONTINUOUS_CROSS_COUNT_DESCRIPTION,
                         value = QueryRequestExamples.CONTINUOUS_CROSS_COUNT
                     ),
                     @ExampleObject(
-                        name = "OBSERVATION_CROSS_COUNT", summary = "OBSERVATION_CROSS_COUNT",
+                        name = "OBSERVATION_CROSS_COUNT", description = QueryRequestExamples.OBSERVATION_CROSS_COUNT_DESCRIPTION,
                         value = QueryRequestExamples.OBSERVATION_CROSS_COUNT
                     ),
                     @ExampleObject(
-                        name = "INFO_COLUMN_LISTING", summary = "INFO_COLUMN_LISTING", value = QueryRequestExamples.INFO_COLUMN_LISTING
+                        name = "INFO_COLUMN_LISTING", description = QueryRequestExamples.INFO_COLUMN_LISTING_DESCRIPTION,
+                        value = QueryRequestExamples.INFO_COLUMN_LISTING
                     ),
                     @ExampleObject(
-                        name = "VARIANT_COUNT_FOR_QUERY", summary = "VARIANT_COUNT_FOR_QUERY",
+                        name = "VARIANT_COUNT_FOR_QUERY", description = QueryRequestExamples.VARIANT_COUNT_FOR_QUERY_DESCRIPTION,
                         value = QueryRequestExamples.VARIANT_COUNT_FOR_QUERY
                     ),
                     @ExampleObject(
-                        name = "VARIANT_LIST_FOR_QUERY", summary = "VARIANT_LIST_FOR_QUERY",
+                        name = "VARIANT_LIST_FOR_QUERY", description = QueryRequestExamples.VARIANT_LIST_FOR_QUERY_DESCRIPTION,
                         value = QueryRequestExamples.VARIANT_LIST_FOR_QUERY
-                    ), @ExampleObject(name = "VCF_EXCERPT", summary = "VCF_EXCERPT", value = QueryRequestExamples.VCF_EXCERPT),
+                    ),
                     @ExampleObject(
-                        name = "AGGREGATE_VCF_EXCERPT", summary = "AGGREGATE_VCF_EXCERPT",
+                        name = "VCF_EXCERPT", description = QueryRequestExamples.VCF_EXCERPT_DESCRIPTION,
+                        value = QueryRequestExamples.VCF_EXCERPT
+                    ),
+                    @ExampleObject(
+                        name = "AGGREGATE_VCF_EXCERPT", description = QueryRequestExamples.AGGREGATE_VCF_EXCERPT_DESCRIPTION,
                         value = QueryRequestExamples.AGGREGATE_VCF_EXCERPT
                     )}
             )

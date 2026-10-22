@@ -126,7 +126,7 @@ class OpenApiDocumentTest {
         JsonNode examples = sync.path("requestBody").path("content").path("application/json").path("examples");
         assertThat(examples.size()).isEqualTo(5);
         examples.forEach(example -> {
-            assertThat(example.path("description").asText()).contains("`genomicFilters` stays empty");
+            assertThat(example.path("description").asText()).contains("`genomicFilters` stays empty").containsIgnoringCase("counts");
             assertThat(example.path("value").path("query").path("genomicFilters")).isEmpty();
         });
         assertThat(examples.path("CROSS_COUNT").path("value").path("query").path("select")).isEmpty();
@@ -206,6 +206,8 @@ class OpenApiDocumentTest {
                 assertThat(body.path("query").path("expectedResultType").asText()).as("%s %s", entry.getKey(), resultType)
                     .isEqualTo(resultType);
                 objectMapper.treeToValue(body, HpdsQueryRequest.class);
+                assertThat(examples.path(resultType).path("description").asText()).as("%s %s description", entry.getKey(), resultType)
+                    .isNotBlank();
             }
         }
     }

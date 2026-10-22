@@ -137,22 +137,33 @@ public class AggregateController {
             required = true,
             content = @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = HpdsQueryRequest.class),
-                examples = {@ExampleObject(name = "COUNT", description = OPEN_EXAMPLE_NOTE, value = QueryRequestExamples.COUNT),
+                examples = {
+                    @ExampleObject(
+                        name = "COUNT",
+                        description = QueryRequestExamples.COUNT_DESCRIPTION + " The count is obfuscated.\n\n" + OPEN_EXAMPLE_NOTE,
+                        value = QueryRequestExamples.COUNT
+                    ),
                     @ExampleObject(
                         name = "CROSS_COUNT",
-                        description = OPEN_EXAMPLE_NOTE + " `select` stays empty: open access replaces it with every " + "study consent.",
+                        description = "Counts the matching patients in each study consent, each count obfuscated. "
+                            + "`select` stays empty: open access replaces it with every study consent.\n\n" + OPEN_EXAMPLE_NOTE,
                         value = QueryRequestExamples.OPEN_CROSS_COUNT
                     ),
                     @ExampleObject(
-                        name = "CATEGORICAL_CROSS_COUNT", description = OPEN_EXAMPLE_NOTE,
+                        name = "CATEGORICAL_CROSS_COUNT",
+                        description = QueryRequestExamples.CATEGORICAL_CROSS_COUNT_DESCRIPTION + " Each count is obfuscated.\n\n"
+                            + OPEN_EXAMPLE_NOTE,
                         value = QueryRequestExamples.CATEGORICAL_CROSS_COUNT
                     ),
                     @ExampleObject(
-                        name = "CONTINUOUS_CROSS_COUNT", description = OPEN_EXAMPLE_NOTE,
+                        name = "CONTINUOUS_CROSS_COUNT",
+                        description = "For each continuous concept the filters name, counts the matching patients in each bin of its "
+                            + "values, each count obfuscated.\n\n" + OPEN_EXAMPLE_NOTE,
                         value = QueryRequestExamples.CONTINUOUS_CROSS_COUNT
                     ),
                     @ExampleObject(
-                        name = "OBSERVATION_CROSS_COUNT", description = OPEN_EXAMPLE_NOTE,
+                        name = "OBSERVATION_CROSS_COUNT",
+                        description = QueryRequestExamples.OBSERVATION_CROSS_COUNT_DESCRIPTION + "\n\n" + OPEN_EXAMPLE_NOTE,
                         value = QueryRequestExamples.OBSERVATION_CROSS_COUNT
                     )}
             )
