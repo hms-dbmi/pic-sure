@@ -14,7 +14,8 @@ public class AggregateProperties {
     /** Bearer token for the open HPDS backend and visualization service; same value as HPDS_OPEN_TOKEN. */
     private String hpdsOpenToken;
     /**
-     * Visualization service base URL. Blank means continuous obfuscation uses raw per-value counts without binning.
+     * Visualization service base URL, which bins open continuous charts. Blank disables open continuous charts, since unbinned counts would
+     * reveal every observed value.
      */
     private String visualizationUrl;
     private int connectTimeoutSec = 10;
@@ -102,7 +103,7 @@ public class AggregateProperties {
         return obfuscation;
     }
 
-    /** True when a visualization service is configured (gate for continuous binning). */
+    /** True when a visualization service is configured; open continuous charts need it. */
     public boolean hasVisualization() {
         return visualizationUrl != null && !visualizationUrl.isBlank();
     }

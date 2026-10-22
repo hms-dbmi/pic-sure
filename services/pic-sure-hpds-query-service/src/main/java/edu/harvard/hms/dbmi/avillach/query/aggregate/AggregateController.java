@@ -68,7 +68,8 @@ public class AggregateController {
             responseCode = "200",
             description = "The obfuscated result. Its shape follows the query's expectedResultType, and the body is labelled "
                 + "application/json for every result type, the plain-text ones included. A CONTINUOUS_CROSS_COUNT whose study consent "
-                + "count is below the obfuscation threshold answers 200 with an empty body.",
+                + "count is below the obfuscation threshold, or sent when no visualization service is configured, answers 200 with an "
+                + "empty body.",
             content = @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE,
                 schema = @Schema(
