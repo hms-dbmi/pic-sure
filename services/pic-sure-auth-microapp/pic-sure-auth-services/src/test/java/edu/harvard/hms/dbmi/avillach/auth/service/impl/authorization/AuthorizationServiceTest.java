@@ -2,23 +2,18 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
-import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
+import edu.harvard.hms.dbmi.avillach.auth.model.EvaluateAccessRuleResult;
 import edu.harvard.hms.dbmi.avillach.auth.repository.AccessRuleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.MockitoAnnotations;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContext;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.context.ContextConfiguration;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
 import java.util.*;
@@ -26,33 +21,29 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-@SpringBootTest
-@ContextConfiguration(classes = {AuthorizationService.class, AccessRuleService.class})
+@ExtendWith(MockitoExtension.class)
 public class AuthorizationServiceTest {
-
-    @MockBean
-    private SecurityContext securityContext;
 
     private AuthorizationService authorizationService;
 
     private AccessRuleService accessRuleService;
 
-    @MockBean
+    @Mock
     private SessionService sessionService;
 
-    @MockBean
+    @Mock
     private AccessRuleRepository accessRuleRepository;
 
-    @MockBean
+    @Mock
     private RoleService roleService;
 
-    @MockBean
+    @Mock
     private UserConsentsRepository userConsentsRepository;
 
-    @MockBean
+    @Mock
     private edu.harvard.hms.dbmi.avillach.auth.service.impl.ApiKeyService apiKeyService;
 
-    @MockBean
+    @Mock
     private edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionService openSessionService;
 
     private final ObjectMapper mapper = new ObjectMapper();
@@ -211,17 +202,8 @@ public class AuthorizationServiceTest {
         AR_Fields_IS_NOT_EMPTY.setType(AccessRule.TypeNaming.IS_NOT_EMPTY);
     }
 
-    @AfterEach
-    void clearSecurityContext() {
-        SecurityContextHolder.clearContext();
-    }
-
     @BeforeEach
     public void setUp() {
-        MockitoAnnotations.openMocks(this);
-        SecurityContextHolder.setContext(securityContext);
-
-        when(sessionService.isSessionExpired(any(String.class))).thenReturn(false);
         accessRuleService = new AccessRuleService(accessRuleRepository, "false");
         authorizationService = new AuthorizationService(
             accessRuleService, sessionService, roleService, "fence,okta", userConsentsRepository, false, false, apiKeyService,
@@ -247,7 +229,6 @@ public class AuthorizationServiceTest {
             privilege1.setAccessRules(Collections.singleton(accessRule));
             privilege1.setApplication(application);
         }
-        configureUserSecurityContext(user);
         user.setConnection(createFenceTestConnection());
 
         Map<String, Object> requestBody = new HashMap<>();
@@ -263,30 +244,97 @@ public class AuthorizationServiceTest {
     public void testIsAuthorized_AccessRuleFailed() {
         Application application = createTestApplication();
         User user = createTestUser();
-        configureUserSecurityContext(user);
+
+        AccessRule accessRule = new AccessRule();
+        accessRule.setUuid(UUID.randomUUID());
+        accessRule.setRule("$.test");
+        accessRule.setType(AccessRule.TypeNaming.ALL_EQUALS);
+        accessRule.setValue("value");
+
+        for (Privilege privilege1 : user.getRoles().iterator().next().getPrivileges()) {
+            privilege1.setAccessRules(Collections.singleton(accessRule));
+            privilege1.setApplication(application);
+        }
         user.setConnection(createFenceTestConnection());
 
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("test", "differentValue");
 
-        boolean result = authorizationService.isAuthorized(application, requestBody, user, false).result();
+        EvaluateAccessRuleResult result = authorizationService.isAuthorized(application, requestBody, user, false);
 
-        assertFalse(result);
+        assertFalse(result.result());
+        assertEquals(Set.of(accessRule), result.failedRules());
+        assertTrue(result.denialReason().isEmpty());
     }
 
+    /**
+     * Pins that the strict path evaluates the privilege's rules and reports the failing one in failedRules, the same denial a non-strict
+     * connection gets. Strict connections are matched against the constructor's label set case-sensitively, so the label must be exactly
+     * {@code fence}, not the {@code FENCE} the non-strict tests use.
+     */
     @Test
     public void testIsAuthorized_AccessRuleFailed_strict() {
         Application application = createTestApplication();
         User user = createTestUser();
-        configureUserSecurityContext(user);
-        user.setConnection(createFenceTestConnection());
+
+        AccessRule accessRule = new AccessRule();
+        accessRule.setUuid(UUID.randomUUID());
+        accessRule.setRule("$.test");
+        accessRule.setType(AccessRule.TypeNaming.ALL_EQUALS);
+        accessRule.setValue("value");
+
+        for (Privilege privilege1 : user.getRoles().iterator().next().getPrivileges()) {
+            privilege1.setAccessRules(Collections.singleton(accessRule));
+            privilege1.setApplication(application);
+        }
+        Connection strictConnection = createFenceTestConnection();
+        strictConnection.setLabel("fence");
+        user.setConnection(strictConnection);
 
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("test", "differentValue");
 
-        boolean result = authorizationService.isAuthorized(application, requestBody, user, false).result();
+        EvaluateAccessRuleResult result = authorizationService.isAuthorized(application, requestBody, user, false);
 
-        assertFalse(result);
+        assertFalse(result.result());
+        assertEquals(Set.of(accessRule), result.failedRules());
+        assertTrue(result.denialReason().isEmpty());
+    }
+
+    /**
+     * Only the strict path reports a user with no privileges for the application as a missing access rule; the non-strict path denies the
+     * same user with no reason at all.
+     */
+    @Test
+    public void testIsAuthorized_strictConnectionWithoutPrivilegesIsDeniedWithNoRulesReason() {
+        Application application = createTestApplication();
+        User user = createTestUser();
+        Connection strictConnection = createFenceTestConnection();
+        strictConnection.setLabel("fence");
+        user.setConnection(strictConnection);
+
+        EvaluateAccessRuleResult result = authorizationService.isAuthorized(application, Map.of("test", "value"), user, false);
+
+        assertFalse(result.result());
+        assertTrue(result.failedRules().isEmpty());
+        assertEquals(Optional.of(AuthorizationService.NO_ACCESS_RULES_MESSAGE), result.denialReason());
+    }
+
+    /**
+     * The non-strict counterpart of {@link #testIsAuthorized_strictConnectionWithoutPrivilegesIsDeniedWithNoRulesReason()}: the same
+     * privilege-less user on the {@code FENCE} connection, which is not in the strict set, is denied with no failed rules and no reason.
+     */
+    @Test
+    public void testIsAuthorized_nonStrictConnectionWithoutPrivilegesIsDeniedWithoutReason() {
+        Application application = createTestApplication();
+        User user = createTestUser();
+        user.setConnection(createFenceTestConnection());
+
+        EvaluateAccessRuleResult result = authorizationService.isAuthorized(application, Map.of("test", "value"), user, false);
+
+        assertFalse(result.result());
+        assertTrue(result.failedRules().isEmpty());
+        assertTrue(result.denialReason().isEmpty());
     }
 
     private Connection createFenceTestConnection() {
@@ -384,7 +432,6 @@ public class AuthorizationServiceTest {
     public void testIsAuthorized_RulelessPrivilegeIsDenied() {
         Application application = createTestApplication();
         User user = createTestUser();
-        configureUserSecurityContext(user);
         user.getRoles().iterator().next().getPrivileges().forEach(privilege -> {
             privilege.setApplication(application);
             privilege.setAccessRules(Set.of());
@@ -409,7 +456,6 @@ public class AuthorizationServiceTest {
             privilege.setAccessRules(Set.of(accessRule));
             privilege.setApplication(application);
         }
-        configureUserSecurityContext(user);
         application.setPrivileges(user.getPrivilegesByApplication(application));
 
         boolean result = authorizationService.isAuthorized(application, null, user, false).result();
@@ -829,13 +875,6 @@ public class AuthorizationServiceTest {
         privilege.setName("TEST_PRIVILEGE");
         privilege.setUuid(UUID.randomUUID());
         return privilege;
-    }
-
-    private void configureUserSecurityContext(User user) {
-        CustomUserDetails customUserDetails = new CustomUserDetails(user);
-        UsernamePasswordAuthenticationToken authentication =
-            new UsernamePasswordAuthenticationToken(customUserDetails, null, customUserDetails.getAuthorities());
-        when(securityContext.getAuthentication()).thenReturn(authentication);
     }
 
     private User createTestUser() {

@@ -69,7 +69,7 @@ class OpenApiDocumentTest {
     void signedUrlAnswersTheSignedUrlObject() throws Exception {
         JsonNode document = document();
 
-        OpenApiDocumentAssertions.assertResponseSchema(document, "post", SIGNED_URL, "200", "SignedUrlResponse");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", SIGNED_URL, "200", "SignedUrlResponse");
         OpenApiDocumentAssertions.assertSchemaHasFields(document, "SignedUrlResponse", "signedUrl");
     }
 
@@ -100,10 +100,10 @@ class OpenApiDocumentTest {
     }
 
     @Test
-    void queryLifecycleEndpointsBindTheDocumentedQueryRequest() throws Exception {
+    void submitAndSyncBindTheDocumentedQueryRequest() throws Exception {
         JsonNode document = document();
 
-        for (String path : List.of(QUERY, SYNC, STATUS, RESULT, SIGNED_URL)) {
+        for (String path : List.of(QUERY, SYNC)) {
             OpenApiDocumentAssertions.assertRequestSchema(document, "post", path, "HpdsQueryRequest");
         }
         OpenApiDocumentAssertions.assertSchemaDocumented(document, "HpdsQueryRequest");
@@ -117,11 +117,25 @@ class OpenApiDocumentTest {
     }
 
     @Test
+    void storedQueryReadsAreGetWithNoBodyAndDocument405() throws Exception {
+        JsonNode document = document();
+
+        for (String path : List.of(STATUS, RESULT, SIGNED_URL)) {
+            assertThat(operation(document, "get", path).isMissingNode()).as("GET %s", path).isFalse();
+            assertThat(operation(document, "get", path).has("requestBody")).as("GET %s request body", path).isFalse();
+            assertThat(operation(document, "post", path).isMissingNode()).as("POST %s", path).isTrue();
+            assertThat(operation(document, "get", path).path("responses").has("405")).as("GET %s 405", path).isTrue();
+            assertThat(operation(document, "get", path).path("responses").path("400").path("description").asText()).as("GET %s 400", path)
+                .doesNotContain("body");
+        }
+    }
+
+    @Test
     void queryStatusIsTheResponseOfSubmitStatusAndMetadata() throws Exception {
         JsonNode document = document();
 
         OpenApiDocumentAssertions.assertResponseSchema(document, "post", QUERY, "200", "QueryStatus");
-        OpenApiDocumentAssertions.assertResponseSchema(document, "post", STATUS, "200", "QueryStatus");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", STATUS, "200", "QueryStatus");
         OpenApiDocumentAssertions.assertResponseSchema(document, "get", METADATA, "200", "QueryStatus");
         OpenApiDocumentAssertions.assertResponseSchema(document, "post", METADATA, "200", "QueryStatus");
         OpenApiDocumentAssertions.assertSchemaHasFields(
@@ -135,8 +149,8 @@ class OpenApiDocumentTest {
 
         OpenApiDocumentAssertions.assertMediaType(document, "post", SYNC, "200", "application/json", "string");
         OpenApiDocumentAssertions.assertMediaType(document, "post", OPEN_SYNC, "200", "application/json", "string");
-        OpenApiDocumentAssertions.assertMediaType(document, "post", RESULT, "200", "application/octet-stream", "string");
-        OpenApiDocumentAssertions.assertMediaType(document, "post", RESULT, "200", "text/plain", "string");
+        OpenApiDocumentAssertions.assertMediaType(document, "get", RESULT, "200", "application/octet-stream", "string");
+        OpenApiDocumentAssertions.assertMediaType(document, "get", RESULT, "200", "text/plain", "string");
 
         JsonNode sync = operation(document, "post", SYNC).path("responses").path("200").path("content").path("application/json");
         assertThat(sync.path("schema").path("description").asText()).contains(

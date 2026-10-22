@@ -3,7 +3,7 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 
 import edu.harvard.hms.dbmi.avillach.auth.enums.ApiKeyType;
-import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
+import edu.harvard.hms.dbmi.avillach.auth.model.EvaluateAccessRuleResult;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.OpenAccessValidationResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.OpenAccessValidationResponse.Denial;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.OpenAccessValidationResponse.KeyType;
@@ -13,16 +13,11 @@ import edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionFixtures.Mutab
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionService.IssuedSession;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.MockitoAnnotations;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContext;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.context.ContextConfiguration;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -39,48 +34,32 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@SpringBootTest
-@ContextConfiguration(classes = {AuthorizationService.class, AccessRuleService.class})
+@ExtendWith(MockitoExtension.class)
 public class AuthorizationServiceTest {
-
-    @MockBean
-    private SecurityContext securityContext;
 
     private AuthorizationService authorizationService;
     private AccessRuleService accessRuleService;
 
-    @MockBean
+    @Mock
     private SessionService sessionService;
 
-    @MockBean
+    @Mock
     private AccessRuleRepository accessRuleRepository;
 
-    @MockBean
+    @Mock
     private RoleService roleService;
 
-    @MockBean
+    @Mock
     private UserConsentsRepository userConsentsRepository;
 
-    @MockBean
+    @Mock
     private ApiKeyService apiKeyService;
-
-    // satisfies the context's own AuthorizationService bean; the tests build theirs over a real service on a test clock
-    @MockBean
-    private OpenSessionService contextOpenSessionService;
 
     private MutableClock clock;
     private OpenSessionService openSessionService;
 
-    @AfterEach
-    void clearSecurityContext() {
-        SecurityContextHolder.clearContext();
-    }
-
     @BeforeEach
     public void setUp() {
-        MockitoAnnotations.openMocks(this);
-        SecurityContextHolder.setContext(securityContext);
-
         accessRuleService = new AccessRuleService(accessRuleRepository, "false");
         clock = new MutableClock(Instant.parse("2026-09-28T12:00:00Z"));
         openSessionService = OpenSessionFixtures.enabledService(clock);
@@ -388,7 +367,6 @@ public class AuthorizationServiceTest {
             privilege1.setAccessRules(Collections.singleton(accessRule));
             privilege1.setApplication(application);
         }
-        configureUserSecurityContext(user);
 
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("test", "value");
@@ -403,14 +381,26 @@ public class AuthorizationServiceTest {
     public void testIsAuthorized_AccessRuleFailed() {
         Application application = createTestApplication();
         User user = createTestUser();
-        configureUserSecurityContext(user);
+
+        AccessRule accessRule = new AccessRule();
+        accessRule.setUuid(UUID.randomUUID());
+        accessRule.setRule("$.test");
+        accessRule.setType(AccessRule.TypeNaming.ALL_EQUALS);
+        accessRule.setValue("value");
+
+        for (Privilege privilege1 : user.getRoles().iterator().next().getPrivileges()) {
+            privilege1.setAccessRules(Collections.singleton(accessRule));
+            privilege1.setApplication(application);
+        }
 
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("test", "differentValue");
 
-        boolean result = authorizationService.isAuthorized(application, requestBody, user, false).result();
+        EvaluateAccessRuleResult result = authorizationService.isAuthorized(application, requestBody, user, false);
 
-        assertFalse(result);
+        assertFalse(result.result());
+        assertEquals(Set.of(accessRule), result.failedRules());
+        assertTrue(result.denialReason().isEmpty());
     }
 
     @Test
@@ -500,7 +490,6 @@ public class AuthorizationServiceTest {
     public void testIsAuthorized_RulelessPrivilegeIsDenied() {
         Application application = createTestApplication();
         User user = createTestUser();
-        configureUserSecurityContext(user);
         user.getRoles().iterator().next().getPrivileges().forEach(privilege -> {
             privilege.setApplication(application);
             privilege.setAccessRules(Set.of());
@@ -525,7 +514,6 @@ public class AuthorizationServiceTest {
             privilege.setAccessRules(Set.of(accessRule));
             privilege.setApplication(application);
         }
-        configureUserSecurityContext(user);
         application.setPrivileges(user.getPrivilegesByApplication(application));
 
         boolean result = authorizationService.isAuthorized(application, null, user, false).result();
@@ -711,13 +699,6 @@ public class AuthorizationServiceTest {
         privilege.setName("TEST_PRIVILEGE");
         privilege.setUuid(UUID.randomUUID());
         return privilege;
-    }
-
-    private void configureUserSecurityContext(User user) {
-        CustomUserDetails customUserDetails = new CustomUserDetails(user);
-        UsernamePasswordAuthenticationToken authentication =
-            new UsernamePasswordAuthenticationToken(customUserDetails, null, customUserDetails.getAuthorities());
-        when(securityContext.getAuthentication()).thenReturn(authentication);
     }
 
     private Role createSuperAdminRole() {

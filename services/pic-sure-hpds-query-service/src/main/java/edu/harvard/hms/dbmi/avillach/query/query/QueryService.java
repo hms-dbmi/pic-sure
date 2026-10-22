@@ -195,37 +195,37 @@ public class QueryService {
 
     // --- read ops: stored rows older than v3 are upgraded before dispatch ---
 
-    public QueryStatus queryStatus(String backend, UUID picsureId, QueryRequest req) {
-        return queryStatus(backend, picsureId, req, null);
+    public QueryStatus queryStatus(String backend, UUID picsureId) {
+        return queryStatus(backend, picsureId, null);
     }
 
-    public QueryStatus queryStatus(String backend, UUID picsureId, QueryRequest req, String authorizationHeader) {
+    public QueryStatus queryStatus(String backend, UUID picsureId, String authorizationHeader) {
         StoredQuery stored = upgradeToV3(backend, load(picsureId), authorizationHeader);
-        QueryStatus status = hpds.queryStatus(selector.select(backend), stored.resourceResultId(), req);
+        QueryStatus status = hpds.queryStatus(selector.select(backend), stored.resourceResultId());
         status.setPicsureResultId(picsureId);
         operationsClient.update(picsureId, new UpdateQueryRequest(statusName(status.getStatus()), null, null, null, null));
         status.setResourceID(resourceUuidFromStored(stored));
         return status;
     }
 
-    public ResponseEntity<byte[]> queryResult(String backend, UUID picsureId, QueryRequest req) {
-        return queryResult(backend, picsureId, req, null);
+    public ResponseEntity<byte[]> queryResult(String backend, UUID picsureId) {
+        return queryResult(backend, picsureId, null);
     }
 
-    public ResponseEntity<byte[]> queryResult(String backend, UUID picsureId, QueryRequest req, String authorizationHeader) {
+    public ResponseEntity<byte[]> queryResult(String backend, UUID picsureId, String authorizationHeader) {
         StoredQuery stored = upgradeToV3(backend, load(picsureId), authorizationHeader);
         consentAuthorization.verifyReadAccess(backend, stored, authorizationHeader);
-        return hpds.queryResult(selector.select(backend), stored.resourceResultId(), req);
+        return hpds.queryResult(selector.select(backend), stored.resourceResultId());
     }
 
-    public SignedUrlResponse queryResultSignedUrl(String backend, UUID picsureId, QueryRequest req) {
-        return queryResultSignedUrl(backend, picsureId, req, null);
+    public SignedUrlResponse queryResultSignedUrl(String backend, UUID picsureId) {
+        return queryResultSignedUrl(backend, picsureId, null);
     }
 
-    public SignedUrlResponse queryResultSignedUrl(String backend, UUID picsureId, QueryRequest req, String authorizationHeader) {
+    public SignedUrlResponse queryResultSignedUrl(String backend, UUID picsureId, String authorizationHeader) {
         StoredQuery stored = upgradeToV3(backend, load(picsureId), authorizationHeader);
         consentAuthorization.verifyReadAccess(backend, stored, authorizationHeader);
-        return hpds.queryResultSignedUrl(selector.select(backend), stored.resourceResultId(), req);
+        return hpds.queryResultSignedUrl(selector.select(backend), stored.resourceResultId());
     }
 
     /**

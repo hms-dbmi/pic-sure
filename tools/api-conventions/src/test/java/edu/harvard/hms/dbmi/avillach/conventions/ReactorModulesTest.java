@@ -38,6 +38,32 @@ class ReactorModulesTest {
     }
 
     @Test
+    void findsTestClassesAndLeavesToolsOut(@TempDir Path root) throws IOException {
+        makeModule(root, "services/tested");
+        Files.createDirectories(root.resolve("services/tested/target/test-classes"));
+        makeModule(root, "services/untested");
+        makeModule(root, "tools/api-conventions");
+        Files.createDirectories(root.resolve("tools/api-conventions/target/test-classes"));
+
+        Map<String, JavaClasses> modules = ReactorModules.discoverTests(root);
+
+        assertEquals(Set.of("services/tested"), modules.keySet());
+    }
+
+    @Test
+    void importsRealTestClassesFromTheReactor() {
+        Path root = Path.of(System.getProperty("reactor.root"));
+
+        Map<String, JavaClasses> modules = ReactorModules.discoverTests(root);
+
+        assertTrue(modules.containsKey("services/pic-sure-hpds/processing"), modules.keySet().toString());
+        assertTrue(
+            modules.get("services/pic-sure-hpds/processing").stream()
+                .anyMatch(type -> type.getSimpleName().equals("CountProcessorTest"))
+        );
+    }
+
+    @Test
     void importsRealClassesFromTheReactor() {
         Path root = Path.of(System.getProperty("reactor.root"));
 

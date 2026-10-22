@@ -1,0 +1,8 @@
+{
+  "name": "risk-scripts",
+  "private": true,
+  "description": "Pins the tools the risk workflows run, so Dependabot can update them. The risk scripts themselves have no dependencies.",
+  "devDependencies": {
+    "jscpd": "5.4.0"
+  }
+}
