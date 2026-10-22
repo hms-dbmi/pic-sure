@@ -254,18 +254,23 @@ public class ExportForMigration {
 
     /**
      * Resolves {@code path} to its real path when it exists, else the real path of its nearest existing ancestor with the missing names
-     * appended, so a symbolic link anywhere along an existing prefix is followed.
+     * appended, so a symbolic link anywhere along an existing prefix is followed. A {@code ..} segment is resolved by the operating system
+     * against the existing prefix, never lexically.
      *
      * @param path the path to resolve
      * @return the resolved path
-     * @throws IOException when an existing prefix cannot be resolved
+     * @throws IOException when an existing prefix cannot be resolved or a {@code ..} segment follows a part that does not exist
      */
     public static Path realPathAllowingMissing(Path path) throws IOException {
-        Path absolute = path.toAbsolutePath().normalize();
+        Path absolute = path.toAbsolutePath();
         Deque<Path> missing = new ArrayDeque<>();
         Path existing = absolute;
         while (existing != null && !Files.exists(existing)) {
-            missing.push(existing.getFileName());
+            Path name = existing.getFileName();
+            if (name.toString().equals("..")) {
+                throw new IOException("refusing the path " + path + ": a .. segment follows a part that does not exist");
+            }
+            missing.push(name);
             existing = existing.getParent();
         }
         Path resolved = existing == null ? absolute.getRoot() : existing.toRealPath();
