@@ -314,9 +314,10 @@ impl<'a> ColumnMeta<'a> {
     /// `@JsonInclude(NON_NULL)` with the storage getters ignored: `name`, `categorical`, then
     /// `categoryValues` for a categorical concept, then `min` and `max` when set, then
     /// `observationCount` and `patientCount`. `timestampMin` and `timestampMax` are left out:
-    /// no Java loader sets them, so Java never writes them. Doubles are written as
-    /// `Double.toString` writes them, NaN and the infinities as strings, and category values
-    /// in Java string order, a `TreeSet`'s.
+    /// no Java loader sets them, so Java never writes them. A numeric concept's `min` and
+    /// `max` are the bounds Java's loader leaves ([`java_loader_bounds`]), so they are always
+    /// written. Doubles are written as `Double.toString` writes them, NaN and the infinities as
+    /// strings, and category values in Java string order, a `TreeSet`'s.
     pub fn write_json(&self, out: &mut String) {
         let summary = self.summary;
         out.push_str(r#"{"name":"#);
@@ -332,16 +333,15 @@ impl<'a> ColumnMeta<'a> {
             }
             out.push(']');
         }
-        for (name, value) in [("min", summary.min), ("max", summary.max)] {
-            match value {
-                Some(v) if v.is_finite() => {
+        if !summary.categorical {
+            let (min, max) = java_loader_bounds(summary.min, summary.max);
+            for (name, v) in [("min", min), ("max", max)] {
+                if v.is_finite() {
                     let _ = write!(out, r#","{name}":{}"#, java_double_to_string(v));
-                }
-                Some(v) => {
+                } else {
                     let _ = write!(out, r#","{name}":"#);
                     push_json_string(out, &java_double_to_string(v));
                 }
-                None => {}
             }
         }
         let _ = write!(
@@ -349,6 +349,47 @@ impl<'a> ColumnMeta<'a> {
             r#","observationCount":{},"patientCount":{}}}"#,
             self.observation_count, self.patient_count
         );
+    }
+}
+
+/// `min` and `max` as Java main's loader leaves them in a numeric concept's `ColumnMeta`:
+/// `LoadingStore` starts `min` at `Double.MAX_VALUE` and `max` at `Double.MIN_VALUE`, the
+/// smallest positive double, and folds every value in with `Math.min` and `Math.max`. So a
+/// concept with no value above zero reports a `max` of `4.9E-324`, one with no value at all
+/// reports both starting bounds, and a `NaN` value makes both `NaN`. `min` and `max` are the
+/// concept's real smallest and largest values, `None` when it has none.
+fn java_loader_bounds(min: Option<f64>, max: Option<f64>) -> (f64, f64) {
+    let start_min = f64::MAX;
+    let start_max = f64::from_bits(1);
+    (
+        min.map_or(start_min, |v| java_math_min(start_min, v)),
+        max.map_or(start_max, |v| java_math_max(start_max, v)),
+    )
+}
+
+/// Java's `Math.min`: `NaN` when either side is, and `-0.0` below `0.0`.
+fn java_math_min(a: f64, b: f64) -> f64 {
+    if a.is_nan() || b.is_nan() {
+        f64::NAN
+    } else if a == b {
+        if a.is_sign_negative() { a } else { b }
+    } else if a < b {
+        a
+    } else {
+        b
+    }
+}
+
+/// Java's `Math.max`: `NaN` when either side is, and `0.0` above `-0.0`.
+fn java_math_max(a: f64, b: f64) -> f64 {
+    if a.is_nan() || b.is_nan() {
+        f64::NAN
+    } else if a == b {
+        if a.is_sign_negative() { b } else { a }
+    } else if a > b {
+        a
+    } else {
+        b
     }
 }
 
@@ -1754,6 +1795,72 @@ mod tests {
         assert_eq!(
             summary.to_json(),
             r#"{"name":"\\a\\","widthInBytes":8,"categorical":false,"categoryValues":[],"min":31.0,"max":"Infinity","patientCount":1126,"timestampMin":null,"timestampMax":5}"#
+        );
+    }
+
+    fn numeric(min: Option<f64>, max: Option<f64>) -> SummaryColumnMeta {
+        SummaryColumnMeta {
+            name: "\\n\\".into(),
+            width_in_bytes: 8,
+            categorical: false,
+            category_values: Vec::new(),
+            min,
+            max,
+            patient_count: 3,
+            has_timestamp: false,
+            timestamp_min: None,
+            timestamp_max: None,
+        }
+    }
+
+    fn main_json(summary: &SummaryColumnMeta) -> String {
+        let mut out = String::new();
+        ColumnMeta {
+            summary,
+            observation_count: 4,
+            patient_count: 3,
+        }
+        .write_json(&mut out);
+        out
+    }
+
+    #[test]
+    fn main_column_meta_bounds_start_where_javas_loader_starts_them() {
+        let bounds = |min, max| {
+            let json: Value = serde_json::from_str(&main_json(&numeric(min, max))).unwrap();
+            let text = main_json(&numeric(min, max));
+            (json.get("min").cloned(), json.get("max").cloned(), text)
+        };
+        let (_, _, text) = bounds(Some(-100.0), Some(-1.5));
+        assert!(
+            text.contains(r#""min":-100.0,"max":4.9E-324,"#),
+            "a concept with no value above zero keeps Double.MIN_VALUE as its max: {text}"
+        );
+        let (_, _, text) = bounds(Some(-0.0), Some(0.0));
+        assert!(text.contains(r#""min":-0.0,"max":4.9E-324,"#), "{text}");
+        let (_, _, text) = bounds(None, None);
+        assert!(
+            text.contains(r#""min":1.7976931348623157E308,"max":4.9E-324,"#),
+            "a numeric concept with no value keeps both starting bounds: {text}"
+        );
+        let (_, _, text) = bounds(Some(2.0), Some(40.0));
+        assert!(text.contains(r#""min":2.0,"max":40.0,"#), "{text}");
+        let (_, _, text) = bounds(Some(0.0), Some(f64::INFINITY));
+        assert!(text.contains(r#""min":0.0,"max":"Infinity","#), "{text}");
+        let (_, _, text) = bounds(Some(f64::INFINITY), Some(f64::INFINITY));
+        assert!(
+            text.contains(r#""min":1.7976931348623157E308,"max":"Infinity","#),
+            "Math.min keeps Double.MAX_VALUE below infinity: {text}"
+        );
+        let (_, _, text) = bounds(Some(f64::NEG_INFINITY), Some(f64::NEG_INFINITY));
+        assert!(
+            text.contains(r#""min":"-Infinity","max":4.9E-324,"#),
+            "{text}"
+        );
+        let (min, max, _) = bounds(Some(f64::NAN), Some(f64::NAN));
+        assert_eq!(
+            (min, max),
+            (Some(Value::from("NaN")), Some(Value::from("NaN")))
         );
     }
 }

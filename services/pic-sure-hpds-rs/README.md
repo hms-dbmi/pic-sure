@@ -268,7 +268,11 @@ What a caller sees under `main`, against Java `v4.1.1`:
 - `/search` answers Java main's `ColumnMeta`: `name`, `categorical`, then `categoryValues` for
   a categorical concept or `min` and `max` for a numeric one, then `observationCount` and
   `patientCount` (distinct patients over the whole store). No storage field and no timestamp,
-  as Java writes none. A null term answers the array of one-entry objects, as under
+  as Java writes none. `min` and `max` are the bounds Java's loader leaves: it starts them at
+  `Double.MAX_VALUE` and `Double.MIN_VALUE` (`4.9E-324`) and folds the values in with
+  `Math.min` and `Math.max`, so a concept with no value above zero reports a `max` of
+  `4.9E-324`, and one with no value at all reports both starting bounds. Under `harmonization`
+  the real bounds stay, as before. A null term answers the array of one-entry objects, as under
   `harmonization`; the INFO block and `/search/values/` are the same under both contracts.
 - `GET /actuator/health` adds `"consentContract":"main"`.
 - The sync `queryMetadata` header stays a random UUID, where Java derives a UUIDv5 from the
