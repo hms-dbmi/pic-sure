@@ -115,7 +115,8 @@ class OpenApiDocumentTest {
             .contains("| Result type | `auth` | `open` |", "| DATAFRAME | Yes | No |", "| PATIENTS | Yes | No |", "-X POST");
         assertThat(operation(document, "post", SYNC).path("description").asText()).contains(
             "| Result type | `auth` | `open` |", "| COUNT | Yes | Yes, obfuscated |", "| VARIANT_LIST_FOR_QUERY | Yes | No |",
-            "curl -X POST"
+            "| INFO_COLUMN_LISTING | Yes | No |", "| VARIANT_COUNT_FOR_QUERY | Yes | No |", "| VCF_EXCERPT | Yes | No |",
+            "| AGGREGATE_VCF_EXCERPT | Yes | No |", "Genomic data is not supported on `open`", "curl -X POST"
         );
         for (String path : List.of(STATUS, RESULT, SIGNED_URL, METADATA)) {
             assertThat(operation(document, "get", path).path("description").asText()).as("GET %s", path).contains("| `open` | No |");
@@ -127,7 +128,7 @@ class OpenApiDocumentTest {
             }
         }
         assertThat(tag).isNotNull();
-        assertThat(tag.path("description").asText()).contains("Replace `{backend}`").doesNotContain("|");
+        assertThat(tag.path("description").asText()).contains("Replace `{backend}`", "no genomic data").doesNotContain("|");
     }
 
     @Test

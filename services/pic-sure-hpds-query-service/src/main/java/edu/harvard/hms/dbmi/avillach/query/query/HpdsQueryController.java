@@ -44,10 +44,11 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 public class HpdsQueryController {
 
     static final String TAG_DESCRIPTION = "Run, poll, and fetch HPDS queries. Replace `{backend}` with `auth` (authorized, scoped to the "
-        + "caller's consents) or `open` (open access, obfuscated counts, only where the environment enables it). Each operation lists the "
-        + "result types it accepts on each backend.";
+        + "caller's consents) or `open` (open access: obfuscated counts and no genomic data, only where the environment enables it). "
+        + "Each operation lists the result types it accepts on each backend.";
 
-    private static final String BACKEND = "`auth` or `open`. `open` answers only where the environment enables open HPDS.";
+    private static final String BACKEND =
+        "`auth` or `open`. `open` answers only where the environment enables open HPDS, and serves no genomic data.";
 
     private static final String CURL_TEMPLATE =
         "\n\nPick a request body under **Examples** to fill the body, then **Execute**. Each example also "
@@ -219,10 +220,12 @@ public class HpdsQueryController {
             + "| COUNT | Yes | Yes, obfuscated |\n"
             + "| CROSS_COUNT | Yes | Yes, obfuscated; `select` is replaced by the study consents |\n"
             + "| CATEGORICAL_CROSS_COUNT | Yes | Yes, obfuscated |\n" + "| CONTINUOUS_CROSS_COUNT | Yes | Yes, obfuscated |\n"
-            + "| OBSERVATION_CROSS_COUNT | Yes | Yes |\n" + "| INFO_COLUMN_LISTING | Yes | Yes |\n"
-            + "| VARIANT_COUNT_FOR_QUERY | Yes | Yes |\n" + "| VARIANT_LIST_FOR_QUERY | Yes | No |\n" + "| VCF_EXCERPT | Yes | Yes |\n"
-            + "| AGGREGATE_VCF_EXCERPT | Yes | Yes |\n\n"
-            + "A result type marked No, and PATIENTS or any DATAFRAME type, answers 400. Submit those with `POST /hpds/auth/query`."
+            + "| OBSERVATION_CROSS_COUNT | Yes | Yes |\n" + "| INFO_COLUMN_LISTING | Yes | No |\n"
+            + "| VARIANT_COUNT_FOR_QUERY | Yes | No |\n" + "| VARIANT_LIST_FOR_QUERY | Yes | No |\n" + "| VCF_EXCERPT | Yes | No |\n"
+            + "| AGGREGATE_VCF_EXCERPT | Yes | No |\n\n"
+            + "**Genomic data is not supported on `open`.** Send the genomic result types, and any query with `genomicFilters`, to "
+            + "`auth` only.\n\n"
+            + "PATIENTS and the DATAFRAME types are not served here on either backend; submit them with `POST /hpds/auth/query`."
             + CURL_TEMPLATE + "    curl -X POST \"https://<host>/picsure/hpds/auth/query/sync\" \\\n"
             + "      -H \"Authorization: Bearer $TOKEN\" -H \"Content-Type: application/json\" \\\n      -d '<example>'\n\n"
             + "On `open`, change `auth` to `open` in the URL."
@@ -292,20 +295,19 @@ public class HpdsQueryController {
                         value = QueryRequestExamples.OBSERVATION_CROSS_COUNT
                     ),
                     @ExampleObject(
-                        name = "INFO_COLUMN_LISTING", summary = "INFO_COLUMN_LISTING (auth and open)",
+                        name = "INFO_COLUMN_LISTING", summary = "INFO_COLUMN_LISTING (auth only)",
                         value = QueryRequestExamples.INFO_COLUMN_LISTING
                     ),
                     @ExampleObject(
-                        name = "VARIANT_COUNT_FOR_QUERY", summary = "VARIANT_COUNT_FOR_QUERY (auth and open)",
+                        name = "VARIANT_COUNT_FOR_QUERY", summary = "VARIANT_COUNT_FOR_QUERY (auth only)",
                         value = QueryRequestExamples.VARIANT_COUNT_FOR_QUERY
                     ),
                     @ExampleObject(
                         name = "VARIANT_LIST_FOR_QUERY", summary = "VARIANT_LIST_FOR_QUERY (auth only)",
                         value = QueryRequestExamples.VARIANT_LIST_FOR_QUERY
-                    ),
-                    @ExampleObject(name = "VCF_EXCERPT", summary = "VCF_EXCERPT (auth and open)", value = QueryRequestExamples.VCF_EXCERPT),
+                    ), @ExampleObject(name = "VCF_EXCERPT", summary = "VCF_EXCERPT (auth only)", value = QueryRequestExamples.VCF_EXCERPT),
                     @ExampleObject(
-                        name = "AGGREGATE_VCF_EXCERPT", summary = "AGGREGATE_VCF_EXCERPT (auth and open)",
+                        name = "AGGREGATE_VCF_EXCERPT", summary = "AGGREGATE_VCF_EXCERPT (auth only)",
                         value = QueryRequestExamples.AGGREGATE_VCF_EXCERPT
                     )}
             )
