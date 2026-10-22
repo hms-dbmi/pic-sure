@@ -43,9 +43,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 @Tag(name = "Queries", description = HpdsQueryController.TAG_DESCRIPTION)
 public class HpdsQueryController {
 
-    static final String TAG_DESCRIPTION = "Run, poll, and fetch HPDS queries. Replace `{backend}` with `auth` (authorized, scoped to the "
-        + "caller's consents) or `open` (open access: obfuscated counts and no genomic data, only where the environment enables it). "
-        + "Each operation lists the result types it accepts on each backend.";
+    static final String TAG_DESCRIPTION = "Run, poll, and fetch queries on the authorized HPDS backend. Results are limited to the studies "
+        + "the caller is consented to. Open access, where a deployment enables it, has its own document.";
 
     private static final String BACKEND =
         "`auth` or `open`. `open` answers only where the environment enables open HPDS, and serves no genomic data.";
@@ -53,8 +52,6 @@ public class HpdsQueryController {
     private static final String CURL_TEMPLATE =
         "\n\nPick a request body under **Examples** to fill the body, then **Execute**. Each example also "
             + "runs from a shell; paste it in place of `<example>`:\n\n";
-
-    private static final String AUTH_ONLY_TABLE = "| Backend | Supported |\n|---|---|\n| `auth` | Yes |\n| `open` | No |";
 
     private static final String SUBMIT_DESCRIPTION = """
         Queues a participant-level query and returns right away. Collecting the result takes three requests that share one id:
@@ -67,14 +64,8 @@ public class HpdsQueryController {
         In Swagger UI, run this request, then open **Status of a submitted query** and **Result bytes of a completed query** \
         below and paste `picsureResultId` into `id` on each.
 
-        | Result type | `auth` | `open` |
-        |---|---|---|
-        | PATIENTS | Yes | No |
-        | DATAFRAME | Yes | No |
-        | DATAFRAME_TIMESERIES | Yes | No |
-        | DATAFRAME_PFB | Yes | No |
-
-        Counts, cross counts and the genomic result types run on `POST /hpds/{backend}/query/sync`.
+        **Result types**: PATIENTS, DATAFRAME, DATAFRAME_TIMESERIES and DATAFRAME_PFB. Counts, cross counts and the genomic \
+        result types run on `POST /hpds/auth/query/sync`.
 
         Pick a request body under **Examples** to fill the body, then **Execute**. From a shell with `jq` installed, paste an \
         example in place of `<example>`:
@@ -100,8 +91,7 @@ public class HpdsQueryController {
         | `ERROR` | Failed | Stop polling. This query will not produce a result; fix it and submit it again |
 
         Poll every few seconds at first, backing off to about every 10 seconds for a long-running query.
-
-        """ + AUTH_ONLY_TABLE;
+        """;
 
     private static final String RESULT_DESCRIPTION = """
         Step 3 of collecting an asynchronous query: download the result once `GET /hpds/auth/query/{id}/status` reports \
@@ -115,8 +105,7 @@ public class HpdsQueryController {
 
         Swagger UI offers the body as a download. For a large result, `GET /hpds/auth/query/{id}/signed-url` returns a link to \
         the same file instead.
-
-        """ + AUTH_ONLY_TABLE;
+        """;
 
     private static final String SIGNED_URL_DESCRIPTION = """
         An alternative to step 3 of collecting an asynchronous query. Once `GET /hpds/auth/query/{id}/status` reports \
@@ -125,10 +114,9 @@ public class HpdsQueryController {
 
         Download the link with any HTTP client and without the PIC-SURE token: the link carries its own authorization, and \
         storage rejects a request that sends both.
+        """;
 
-        """ + AUTH_ONLY_TABLE;
-
-    private static final String AUTH_ONLY_READ = AUTH_ONLY_TABLE + "\n\nReads a query submitted with `POST /hpds/auth/query`.";
+    private static final String AUTH_ONLY_READ = "Reads a query submitted with `POST /hpds/auth/query`.";
 
     private static final String UNREADABLE_BODY = " or a body that cannot be read as a query request.";
 
@@ -155,19 +143,7 @@ public class HpdsQueryController {
         "CHROM\tPOSITION\tREF\tALT\tPatients with this variant in subset\tPatients with this variant NOT in subset\n"
             + "19\t44908684\tT\tC\t12/1234\t3/4000\n";
 
-    private static final String OPEN_COUNT_ABOVE_THRESHOLD_EXAMPLE = "1237 \u00b13";
 
-    private static final String OPEN_COUNT_BELOW_THRESHOLD_EXAMPLE = "< 10";
-
-    private static final String OPEN_CROSS_COUNT_EXAMPLE =
-        "{\"\\\\_studies_consents\\\\\":\"1232 \u00b13\",\"\\\\_studies_consents\\\\phs000007\\\\\":\"< 10\"}";
-
-    private static final String OPEN_CATEGORICAL_CROSS_COUNT_EXAMPLE =
-        "{\"\\\\demographics\\\\SEX\\\\\":{\"Female\":{\"count\":698,\"display\":\"698 \u00b13\",\"variance\":3},"
-            + "\"Male\":{\"count\":0,\"display\":\"< 10\",\"variance\":9}}}";
-
-    private static final String OPEN_CONTINUOUS_CROSS_COUNT_EXAMPLE =
-        "{\"\\\\demographics\\\\AGE\\\\\":{\"40 - 49\":{\"count\":348,\"display\":\"348 \u00b13\",\"variance\":3}}}";
 
     private final QueryService service;
 
@@ -195,15 +171,11 @@ public class HpdsQueryController {
             required = true,
             content = @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = HpdsQueryRequest.class),
-                examples = {@ExampleObject(name = "PATIENTS", summary = "PATIENTS (auth only)", value = QueryRequestExamples.PATIENTS),
-                    @ExampleObject(name = "DATAFRAME", summary = "DATAFRAME (auth only)", value = QueryRequestExamples.DATAFRAME),
+                examples = {@ExampleObject(name = "PATIENTS", summary = "PATIENTS", value = QueryRequestExamples.PATIENTS),
+                    @ExampleObject(name = "DATAFRAME", summary = "DATAFRAME", value = QueryRequestExamples.DATAFRAME),
                     @ExampleObject(
-                        name = "DATAFRAME_TIMESERIES", summary = "DATAFRAME_TIMESERIES (auth only)",
-                        value = QueryRequestExamples.DATAFRAME_TIMESERIES
-                    ),
-                    @ExampleObject(
-                        name = "DATAFRAME_PFB", summary = "DATAFRAME_PFB (auth only)", value = QueryRequestExamples.DATAFRAME_PFB
-                    )}
+                        name = "DATAFRAME_TIMESERIES", summary = "DATAFRAME_TIMESERIES", value = QueryRequestExamples.DATAFRAME_TIMESERIES
+                    ), @ExampleObject(name = "DATAFRAME_PFB", summary = "DATAFRAME_PFB", value = QueryRequestExamples.DATAFRAME_PFB)}
             )
         ) @RequestBody HpdsQueryRequest req, @RequestParam(name = "isInstitute", required = false) Boolean isInstitute,
         @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
@@ -216,26 +188,18 @@ public class HpdsQueryController {
     @PostMapping("/query/sync")
     @Operation(
         summary = "Run a query and return its result inline",
-        description = "Runs the query and returns its result in the response.\n\n" + "| Result type | `auth` | `open` |\n|---|---|---|\n"
-            + "| COUNT | Yes | Yes, obfuscated |\n"
-            + "| CROSS_COUNT | Yes | Yes, obfuscated; `select` is replaced by the study consents |\n"
-            + "| CATEGORICAL_CROSS_COUNT | Yes | Yes, obfuscated |\n" + "| CONTINUOUS_CROSS_COUNT | Yes | Yes, obfuscated |\n"
-            + "| OBSERVATION_CROSS_COUNT | Yes | Yes |\n" + "| INFO_COLUMN_LISTING | Yes | No |\n"
-            + "| VARIANT_COUNT_FOR_QUERY | Yes | No |\n" + "| VARIANT_LIST_FOR_QUERY | Yes | No |\n" + "| VCF_EXCERPT | Yes | No |\n"
-            + "| AGGREGATE_VCF_EXCERPT | Yes | No |\n\n"
-            + "**Genomic data is not supported on `open`.** Send the genomic result types, and any query with `genomicFilters`, to "
-            + "`auth` only.\n\n"
-            + "PATIENTS and the DATAFRAME types are not served here on either backend; submit them with `POST /hpds/auth/query`."
-            + CURL_TEMPLATE + "    curl -X POST \"https://<host>/picsure/hpds/auth/query/sync\" \\\n"
-            + "      -H \"Authorization: Bearer $TOKEN\" -H \"Content-Type: application/json\" \\\n      -d '<example>'\n\n"
-            + "On `open`, change `auth` to `open` in the URL."
+        description = "Runs the query and returns its result in the response.\n\n**Result types**: COUNT, CROSS_COUNT, "
+            + "CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT and OBSERVATION_CROSS_COUNT, and the genomic types INFO_COLUMN_LISTING, "
+            + "VARIANT_COUNT_FOR_QUERY, VARIANT_LIST_FOR_QUERY, VCF_EXCERPT and AGGREGATE_VCF_EXCERPT. PATIENTS and the DATAFRAME "
+            + "types are not served here; submit them with `POST /hpds/auth/query`." + CURL_TEMPLATE
+            + "    curl -X POST \"https://<host>/picsure/hpds/auth/query/sync\" \\\n"
+            + "      -H \"Authorization: Bearer $TOKEN\" -H \"Content-Type: application/json\" \\\n      -d '<example>'\n"
     )
     @ApiResponses(
         {@ApiResponse(
             responseCode = "200",
-            description = "The result. Its shape follows the query's expectedResultType and the backend, and the body is labelled "
-                + "application/json for every result type, the plain-text ones included. On `open`, a CONTINUOUS_CROSS_COUNT whose study "
-                + "consent count is below the obfuscation threshold answers 200 with an empty body.",
+            description = "The result. Its shape follows the query's expectedResultType, and the body is labelled application/json for "
+                + "every result type, the plain-text ones included.",
             content = @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE,
                 schema = @Schema(
@@ -245,11 +209,7 @@ public class HpdsQueryController {
                         + "object of value to integer count. INFO_COLUMN_LISTING: a JSON array of variant annotation columns. "
                         + "VARIANT_COUNT_FOR_QUERY: a JSON object with count and message, where count is an integer when the query has "
                         + "genomic filters and the string \"0\" when it has none. VARIANT_LIST_FOR_QUERY: a bracketed, comma-separated "
-                        + "list of variants as text. VCF_EXCERPT and AGGREGATE_VCF_EXCERPT: tab-separated text with a header row. On open, "
-                        + "COUNT is an obfuscated count as text, either a count with its variance or a below-threshold marker; CROSS_COUNT "
-                        + "is a JSON object of study consent path to obfuscated count string; CATEGORICAL_CROSS_COUNT and "
-                        + "CONTINUOUS_CROSS_COUNT are a JSON object of concept path to an object of value or bin to an object with count, "
-                        + "display and variance."
+                        + "list of variants as text. VCF_EXCERPT and AGGREGATE_VCF_EXCERPT: tab-separated text with a header row."
                 ),
                 examples = {@ExampleObject(name = "COUNT", value = COUNT_EXAMPLE),
                     @ExampleObject(name = "CROSS_COUNT", value = CROSS_COUNT_EXAMPLE),
@@ -263,14 +223,9 @@ public class HpdsQueryController {
                     @ExampleObject(
                         name = "VARIANT_COUNT_FOR_QUERY without genomic filters", value = SyncExamples.VARIANT_COUNT_WITHOUT_GENOMIC_FILTERS
                     ), @ExampleObject(name = "VARIANT_LIST_FOR_QUERY", value = VARIANT_LIST_EXAMPLE),
-                    @ExampleObject(name = "VCF_EXCERPT", value = VCF_EXCERPT_EXAMPLE),
-                    @ExampleObject(name = "COUNT on open, at or above the threshold", value = OPEN_COUNT_ABOVE_THRESHOLD_EXAMPLE),
-                    @ExampleObject(name = "COUNT on open, below the threshold", value = OPEN_COUNT_BELOW_THRESHOLD_EXAMPLE),
-                    @ExampleObject(name = "CROSS_COUNT on open", value = OPEN_CROSS_COUNT_EXAMPLE),
-                    @ExampleObject(name = "CATEGORICAL_CROSS_COUNT on open", value = OPEN_CATEGORICAL_CROSS_COUNT_EXAMPLE),
-                    @ExampleObject(name = "CONTINUOUS_CROSS_COUNT on open", value = OPEN_CONTINUOUS_CROSS_COUNT_EXAMPLE)}
+                    @ExampleObject(name = "VCF_EXCERPT", value = VCF_EXCERPT_EXAMPLE)}
             )
-        ), @ApiResponse(responseCode = "400", description = "Unknown backend, missing query data, a result type this backend does not serve inline," + UNREADABLE_BODY), @ApiResponse(responseCode = "403", description = "Consent does not permit this query."), @ApiResponse(responseCode = "502", description = "Consent lookup, HPDS call, or query save failed."), @ApiResponse(responseCode = "503", description = "Backend not configured."), @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
+        ), @ApiResponse(responseCode = "400", description = "Unknown backend, missing query data, a result type not served inline," + UNREADABLE_BODY), @ApiResponse(responseCode = "403", description = "Consent does not permit this query."), @ApiResponse(responseCode = "502", description = "Consent lookup, HPDS call, or query save failed."), @ApiResponse(responseCode = "503", description = "Backend not configured."), @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
     )
     public ResponseEntity<byte[]> querySync(
         @Parameter(description = BACKEND, example = "auth", schema = @Schema(allowableValues = {"auth", "open"})) @PathVariable(
@@ -280,34 +235,33 @@ public class HpdsQueryController {
             required = true,
             content = @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = HpdsQueryRequest.class),
-                examples = {@ExampleObject(name = "COUNT", summary = "COUNT (auth and open)", value = QueryRequestExamples.COUNT),
-                    @ExampleObject(name = "CROSS_COUNT", summary = "CROSS_COUNT (auth and open)", value = QueryRequestExamples.CROSS_COUNT),
+                examples = {@ExampleObject(name = "COUNT", summary = "COUNT", value = QueryRequestExamples.COUNT),
+                    @ExampleObject(name = "CROSS_COUNT", summary = "CROSS_COUNT", value = QueryRequestExamples.CROSS_COUNT),
                     @ExampleObject(
-                        name = "CATEGORICAL_CROSS_COUNT", summary = "CATEGORICAL_CROSS_COUNT (auth and open)",
+                        name = "CATEGORICAL_CROSS_COUNT", summary = "CATEGORICAL_CROSS_COUNT",
                         value = QueryRequestExamples.CATEGORICAL_CROSS_COUNT
                     ),
                     @ExampleObject(
-                        name = "CONTINUOUS_CROSS_COUNT", summary = "CONTINUOUS_CROSS_COUNT (auth and open)",
+                        name = "CONTINUOUS_CROSS_COUNT", summary = "CONTINUOUS_CROSS_COUNT",
                         value = QueryRequestExamples.CONTINUOUS_CROSS_COUNT
                     ),
                     @ExampleObject(
-                        name = "OBSERVATION_CROSS_COUNT", summary = "OBSERVATION_CROSS_COUNT (auth and open)",
+                        name = "OBSERVATION_CROSS_COUNT", summary = "OBSERVATION_CROSS_COUNT",
                         value = QueryRequestExamples.OBSERVATION_CROSS_COUNT
                     ),
                     @ExampleObject(
-                        name = "INFO_COLUMN_LISTING", summary = "INFO_COLUMN_LISTING (auth only)",
-                        value = QueryRequestExamples.INFO_COLUMN_LISTING
+                        name = "INFO_COLUMN_LISTING", summary = "INFO_COLUMN_LISTING", value = QueryRequestExamples.INFO_COLUMN_LISTING
                     ),
                     @ExampleObject(
-                        name = "VARIANT_COUNT_FOR_QUERY", summary = "VARIANT_COUNT_FOR_QUERY (auth only)",
+                        name = "VARIANT_COUNT_FOR_QUERY", summary = "VARIANT_COUNT_FOR_QUERY",
                         value = QueryRequestExamples.VARIANT_COUNT_FOR_QUERY
                     ),
                     @ExampleObject(
-                        name = "VARIANT_LIST_FOR_QUERY", summary = "VARIANT_LIST_FOR_QUERY (auth only)",
+                        name = "VARIANT_LIST_FOR_QUERY", summary = "VARIANT_LIST_FOR_QUERY",
                         value = QueryRequestExamples.VARIANT_LIST_FOR_QUERY
-                    ), @ExampleObject(name = "VCF_EXCERPT", summary = "VCF_EXCERPT (auth only)", value = QueryRequestExamples.VCF_EXCERPT),
+                    ), @ExampleObject(name = "VCF_EXCERPT", summary = "VCF_EXCERPT", value = QueryRequestExamples.VCF_EXCERPT),
                     @ExampleObject(
-                        name = "AGGREGATE_VCF_EXCERPT", summary = "AGGREGATE_VCF_EXCERPT (auth only)",
+                        name = "AGGREGATE_VCF_EXCERPT", summary = "AGGREGATE_VCF_EXCERPT",
                         value = QueryRequestExamples.AGGREGATE_VCF_EXCERPT
                     )}
             )
