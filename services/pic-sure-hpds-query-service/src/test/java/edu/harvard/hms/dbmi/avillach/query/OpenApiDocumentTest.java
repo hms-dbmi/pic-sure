@@ -146,6 +146,27 @@ class OpenApiDocumentTest {
     }
 
     @Test
+    void searchOperationsExplainTheirUseAndKeepGenomicDataOffOpen() throws Exception {
+        JsonNode document = document();
+
+        assertThat(operation(document, "post", SEARCH).path("description").asText())
+            .contains("POST /picsure/dictionary/concepts", "results.info", "| `open` | Concepts only.", "curl -X POST");
+        JsonNode values = operation(document, "get", VALUES);
+        assertThat(values.path("description").asText())
+            .contains("one-based", "searchGenomicValues", "| `open` | No. Genomic data is not supported on `open`. |", "curl ");
+        for (String name : List.of("backend", "genomicConceptPath", "query", "page", "size")) {
+            JsonNode parameter = null;
+            for (JsonNode candidate : values.path("parameters")) {
+                if (candidate.path("name").asText().equals(name)) {
+                    parameter = candidate;
+                }
+            }
+            assertThat(parameter).as(name).isNotNull();
+            assertThat(parameter.path("description").asText()).as(name).isNotBlank();
+        }
+    }
+
+    @Test
     void everyRequestExampleIsACompleteBodyForItsResultType() throws Exception {
         JsonNode document = document();
 
