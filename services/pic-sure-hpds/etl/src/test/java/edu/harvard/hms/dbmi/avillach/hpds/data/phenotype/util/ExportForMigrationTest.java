@@ -494,6 +494,18 @@ class ExportForMigrationTest {
     }
 
     @Test
+    void aSymbolicParentFollowedByDotDotResolvesOutsideTheRootAsTheSystemDoes(@TempDir Path dir) throws Exception {
+        Path root = Files.createDirectory(dir.resolve("root"));
+        Path elsewhere = Files.createDirectories(dir.resolve("elsewhere").resolve("deep"));
+        Path link = Files.createSymbolicLink(root.resolve("link"), elsewhere);
+
+        Path resolved = ExportForMigration.realPathAllowingMissing(link.resolve("..").resolve("out"));
+
+        assertEquals(elsewhere.toRealPath().getParent().resolve("out"), resolved);
+        assertFalse(resolved.startsWith(root.toRealPath()));
+    }
+
+    @Test
     void aDotDotAfterAMissingNameIsRefusedAndOneAfterAnExistingNameIsResolvedByTheSystem(@TempDir Path dir) throws Exception {
         Path inner = Files.createDirectory(dir.resolve("inner"));
         assertThrows(
