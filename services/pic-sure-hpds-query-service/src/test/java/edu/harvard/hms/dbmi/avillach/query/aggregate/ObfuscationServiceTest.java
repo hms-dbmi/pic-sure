@@ -18,7 +18,14 @@ class ObfuscationServiceTest {
     private static final String DS = "\\_studies_consents\\phs000001\\DS\\";
 
     private final ObjectMapper mapper = new ObjectMapper();
-    private final ObfuscationService svc = new ObfuscationService(new AggregateProperties(), new VisualizationFormatter());
+    // Most tests verify the per-study and per-consent obfuscation, so they keep the full breakdown in the output.
+    private final ObfuscationService svc = new ObfuscationService(fullBreakdownProps(), new VisualizationFormatter());
+
+    private static AggregateProperties fullBreakdownProps() {
+        AggregateProperties props = new AggregateProperties();
+        props.getObfuscation().setCrossCountTotalOnly(false);
+        return props;
+    }
 
     private Map<String, String> crossCounts(String... keysAndValues) {
         Map<String, String> counts = new LinkedHashMap<>();
@@ -144,6 +151,26 @@ class ObfuscationServiceTest {
     }
 
     @Test
+    void crossCountTotalOnlyByDefaultReturnsOnlyTheTotal() {
+        // The breakdown is still computed, but only the total reaches the client.
+        ObfuscationService totalOnly = new ObfuscationService(new AggregateProperties(), new VisualizationFormatter());
+        Map<String, String> in = new LinkedHashMap<>();
+        in.put(TOTAL, "101");
+        in.put(STUDY, "30");
+        in.put(HMB, "12");
+        in.put(GRU, "18");
+        Map<String, String> out = totalOnly.obfuscateCrossCounts(in);
+        assertThat(out).containsOnlyKeys(TOTAL);
+        assertThat(out.get(TOTAL)).isEqualTo("105 ±10");
+    }
+
+    @Test
+    void crossCountTotalOnlyOffReturnsEveryEntry() {
+        Map<String, String> out = crossCounts(TOTAL, "101", STUDY, "30", HMB, "12", GRU, "18");
+        assertThat(out).containsKeys(TOTAL, STUDY, HMB, GRU);
+    }
+
+    @Test
     void chartSuppressedBelowFiftyAndShownAtFifty() {
         assertThat(svc.shouldSuppressChart(Map.of(TOTAL, "49"))).isTrue();
         assertThat(svc.shouldSuppressChart(Map.of(TOTAL, "50"))).isFalse();
@@ -198,6 +225,7 @@ class ObfuscationServiceTest {
     void chartThresholdIsConfiguredSeparately() {
         AggregateProperties props = new AggregateProperties();
         props.getObfuscation().setChartThreshold(20);
+        props.getObfuscation().setCrossCountTotalOnly(false);
         ObfuscationService custom = new ObfuscationService(props, new VisualizationFormatter());
 
         // Charts: hidden below 20, rounded up to 10 with ±10; the minimum cohort does not change
@@ -236,6 +264,7 @@ class ObfuscationServiceTest {
     void consentThresholdsBelowTenBehaveAsTen(int configured) {
         AggregateProperties props = new AggregateProperties();
         props.getObfuscation().setConsentThreshold(configured);
+        props.getObfuscation().setCrossCountTotalOnly(false);
         ObfuscationService clamped = new ObfuscationService(props, new VisualizationFormatter());
 
         Map<String, String> study = new LinkedHashMap<>();
@@ -252,6 +281,7 @@ class ObfuscationServiceTest {
     void consentThresholdsAboveTenAreKept() {
         AggregateProperties props = new AggregateProperties();
         props.getObfuscation().setConsentThreshold(20);
+        props.getObfuscation().setCrossCountTotalOnly(false);
         ObfuscationService raised = new ObfuscationService(props, new VisualizationFormatter());
 
         // 20-wide buckets shown at the midpoint ±10; a suppressed group adds 10 ±10; the total rounds up to 10 with ±20

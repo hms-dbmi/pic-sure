@@ -44,8 +44,7 @@ public class AggregateController {
 
     private static final String COUNT_BELOW_THRESHOLD_EXAMPLE = "< 10";
 
-    private static final String CROSS_COUNT_EXAMPLE =
-        "{\"\\\\_studies_consents\\\\\":\"1232 \u00b13\",\"\\\\_studies_consents\\\\phs000007\\\\\":\"< 10\"}";
+    private static final String CROSS_COUNT_EXAMPLE = "{\"\\\\_studies_consents\\\\\":\"1232 \u00b13\"}";
 
     private static final String CATEGORICAL_CROSS_COUNT_EXAMPLE =
         "{\"\\\\demographics\\\\SEX\\\\\":{\"Female\":{\"count\":698,\"display\":\"698 \u00b13\",\"variance\":3},"
@@ -74,7 +73,8 @@ public class AggregateController {
                 schema = @Schema(
                     type = "string",
                     description = "COUNT: an obfuscated count as text, either a count with its variance or a below-threshold marker. "
-                        + "CROSS_COUNT: a JSON object of study consent path to obfuscated count string. CATEGORICAL_CROSS_COUNT and "
+                        + "CROSS_COUNT: a JSON object of study consent path to obfuscated count string; by default only the "
+                        + "\\_studies_consents\\ total is returned. CATEGORICAL_CROSS_COUNT and "
                         + "CONTINUOUS_CROSS_COUNT: a JSON object of concept path to an object of value or bin to an object with count, "
                         + "display and variance. INFO_COLUMN_LISTING, VCF_EXCERPT and AGGREGATE_VCF_EXCERPT: the HPDS body unchanged, as on "
                         + "the auth backend. OBSERVATION_CROSS_COUNT and VARIANT_COUNT_FOR_QUERY are not served."

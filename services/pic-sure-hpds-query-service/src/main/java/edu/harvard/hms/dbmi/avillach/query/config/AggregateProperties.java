@@ -32,6 +32,12 @@ public class AggregateProperties {
         private int chartThreshold = 10;
         /** No chart is returned for a cohort smaller than this. */
         private int chartMinimumCohort = 50;
+        /**
+         * When true, a studies-consents CROSS_COUNT returns only the obfuscated total to the client; the per-study and per-consent-group
+         * counts are still computed (so study sums and mismatch warnings run) but dropped from the response. Defends open access against
+         * reconstructing a consent group from its study and sibling counts.
+         */
+        private boolean crossCountTotalOnly = true;
 
         public int getConsentThreshold() {
             return consentThreshold;
@@ -55,6 +61,14 @@ public class AggregateProperties {
 
         public void setChartMinimumCohort(int chartMinimumCohort) {
             this.chartMinimumCohort = chartMinimumCohort;
+        }
+
+        public boolean isCrossCountTotalOnly() {
+            return crossCountTotalOnly;
+        }
+
+        public void setCrossCountTotalOnly(boolean crossCountTotalOnly) {
+            this.crossCountTotalOnly = crossCountTotalOnly;
         }
     }
 

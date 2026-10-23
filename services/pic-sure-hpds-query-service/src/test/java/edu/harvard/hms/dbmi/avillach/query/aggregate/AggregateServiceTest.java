@@ -105,7 +105,7 @@ class AggregateServiceTest {
     }
 
     @Test
-    void crossCountObfuscatesEachEntry() throws Exception {
+    void crossCountReturnsOnlyTheTotalByDefault() throws Exception {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         // changeQueryToOpenCrossCount first searches consents, then the backend returns the cross counts
         when(backend.search(any())).thenReturn(consentsSearch());
@@ -115,8 +115,8 @@ class AggregateServiceTest {
 
         ResponseEntity<String> out = svc.querySync(sync("CROSS_COUNT"));
         Map<String, String> body = mapper.readValue(out.getBody(), Map.class);
+        assertThat(body).containsOnlyKeys("\\_studies_consents\\");
         assertThat(body.get("\\_studies_consents\\")).isEqualTo("105 ±10");
-        assertThat(body.get("\\_studies_consents\\phs1\\HMB\\")).isEqualTo("< 10");
     }
 
     @Test

@@ -42,6 +42,7 @@ public class ObfuscationService {
     private final int chartThreshold;
     private final int chartHalf;
     private final int chartMinimumCohort;
+    private final boolean crossCountTotalOnly;
 
     public ObfuscationService(AggregateProperties props, VisualizationFormatter visualizationFormatter) {
         this.visualizationFormatter = visualizationFormatter;
@@ -57,6 +58,7 @@ public class ObfuscationService {
         this.chartThreshold = props.getObfuscation().getChartThreshold();
         this.chartHalf = chartThreshold / 2;
         this.chartMinimumCohort = props.getObfuscation().getChartMinimumCohort();
+        this.crossCountTotalOnly = props.getObfuscation().isCrossCountTotalOnly();
     }
 
     public Map<String, String> processCrossCounts(String entityString) throws JsonProcessingException {
@@ -85,6 +87,19 @@ public class ObfuscationService {
                 result.put(key, obfuscateConsentGroup(raw));
             }
         });
+
+        // Everything above is still computed (study sums, mismatch warnings); when configured, only the total reaches the client so a
+        // consent group cannot be reconstructed from its study and sibling counts.
+        if (crossCountTotalOnly) {
+            Map<String, String> totalOnly = new LinkedHashMap<>();
+            result.forEach((key, value) -> {
+                List<String> segments = studyConsentSegments(key);
+                if (segments != null && segments.isEmpty()) {
+                    totalOnly.put(key, value);
+                }
+            });
+            return totalOnly;
+        }
         return result;
     }
 
