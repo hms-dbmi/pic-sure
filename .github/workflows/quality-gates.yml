@@ -36,6 +36,8 @@ jobs:
         run: npm ci --prefix .github/scripts/risk --ignore-scripts --no-audit --no-fund
       # Fails only on clones origin/${BASE_REF} doesn't have (--baseline-from-ref needs fetch-depth: 0).
       # --fail-on-empty catches filters that match no files.
+      # --ignore-pattern skips import lines. Many files import the same classes, so any new import can break one
+      # long matching run of imports into shorter pieces, and each piece is then reported as a new clone.
       - name: Check for new duplicated code
         env:
           BASE_REF: ${{ github.base_ref }}
@@ -43,6 +45,7 @@ jobs:
           .github/scripts/risk/node_modules/.bin/jscpd
           --pattern '**/src/main/**/*.java'
           --ignore '**/generated/**,**/target/**'
+          --ignore-pattern '(?m)^\s*import\s+[^;]+;'
           --min-lines 6 --min-tokens 60
           --baseline-from-ref "origin/${BASE_REF}"
           --fail-on-new-clones 0
