@@ -35,6 +35,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -63,14 +64,14 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
 
 /**
- * Pins the open aggregate path against the bodies it produced while it rewrote the query as untyped JSON. For each result type the open
- * path serves, the frontend's exact request body goes in, and the test checks the response body byte for byte, the order of the downstream
- * calls, and each downstream body. The expected strings were captured from the code before it read a typed {@link Query}, with the same
- * stubs and the same obfuscation salt.
+ * Pins the open aggregate path's responses and downstream calls. For each result type the open path serves, the frontend's exact request
+ * body goes in, and the test checks the response body byte for byte, the order of the downstream calls, and each downstream body. The
+ * pass-through rows were captured from the code before it read a typed {@link Query}; the obfuscated rows follow the ALS-11285 rules,
+ * including the concept-metadata searches that set chart ranges and categorical values.
  *
- * <p>The search term and the binning request are compared byte for byte. A query sent to HPDS is compared as a value: both bodies are read
- * with a mapper that fails on unknown members, as HPDS reads them, and written back in record order. Byte equality cannot hold there for a
- * browser body, because the untyped path forwarded the browser's member order and omissions and the typed path writes every record
+ * <p>Search terms are compared byte for byte, and the binning request as JSON. A query sent to HPDS is compared as a value: both bodies are
+ * read with a mapper that fails on unknown members, as HPDS reads them, and written back in record order. Byte equality cannot hold there
+ * for a browser body, because the untyped path forwarded the browser's member order and omissions and the typed path writes every record
  * component. It does hold for a body already in record order, which is what the visualization service sends, and the last test pins that.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
@@ -98,8 +99,8 @@ class OpenAggregateContractTest {
         "{\"\\\\_studies_consents\\\\\":1234,\"\\\\_studies_consents\\\\phs000007\\\\\":900,\"\\\\_studies_consents\\\\phs000179\\\\\":5}";
     private static final String SEARCH_TERM_SENT =
         "{\"@type\":\"GeneralQueryRequest\",\"query\":\"\\\\_studies_consents\\\\\",\"resourceUUID\":null}";
-    private static final String BINNING_SENT =
-        "{\"@type\":\"GeneralQueryRequest\",\"query\":{\"\\\\demographics\\\\AGE\\\\\":{\"42\":100,\"43\":250,\"51\":8}},\"resourceUUID\":null}";
+    private static final String BINNING_SENT = "{\"query\":{\"\\\\demographics\\\\AGE\\\\\":{\"42\":100,\"43\":250,\"51\":8}},"
+        + "\"ranges\":{\"\\\\demographics\\\\AGE\\\\\":{\"min\":0.0,\"max\":120.0}},\"maxBins\":50}";
     private static final String VCF = "CHROM\tPOSITION\tREF\tALT\tPatients with this variant in subset\n19\t44908684\tT\tC\t12/1234\n";
 
     static WireMockServer downstream;
@@ -122,6 +123,7 @@ class OpenAggregateContractTest {
         registry.add("aggregate.hpds-open-url", () -> downstream.baseUrl() + "/OPEN");
         registry.add("aggregate.visualization-url", () -> downstream.baseUrl() + "/VIZ");
         registry.add("aggregate.obfuscation.salt", () -> "pinned-salt");
+        registry.add("spring.cache.type", () -> "none"); // assert per-request /search calls
         registry.add("consent.based.authorization.enabled", () -> false);
     }
 
@@ -135,6 +137,16 @@ class OpenAggregateContractTest {
     void stubs() throws Exception {
         downstream.resetAll();
         downstream.stubFor(WireMock.post(urlEqualTo(SEARCH_URL)).willReturn(okJson(CONSENTS_SEARCH_RESULT)));
+        // Concept-metadata searches: the overall range of AGE and every value of SEX, across the whole dataset.
+        downstream.stubFor(
+            WireMock.post(urlEqualTo(SEARCH_URL)).withRequestBody(matchingJsonPath("$.query", equalTo("\\demographics\\AGE\\")))
+                .willReturn(okJson("{\"results\":{\"phenotypes\":{\"\\\\demographics\\\\AGE\\\\\":{\"min\":0,\"max\":120}}}}"))
+        );
+        downstream.stubFor(
+            WireMock.post(urlEqualTo(SEARCH_URL)).withRequestBody(matchingJsonPath("$.query", equalTo("\\demographics\\SEX\\"))).willReturn(
+                okJson("{\"results\":{\"phenotypes\":{\"\\\\demographics\\\\SEX\\\\\":{\"categoryValues\":[\"Female\",\"Male\"]}}}}")
+            )
+        );
         downstream.stubFor(
             WireMock.post(urlEqualTo(SYNC_URL)).withRequestBody(matchingJsonPath("$.query.expectedResultType", equalTo("CROSS_COUNT")))
                 .willReturn(okJson(CROSS_COUNTS).withHeader("queryMetadata", "cross-count-query-id"))
@@ -151,32 +163,32 @@ class OpenAggregateContractTest {
     /** One row per result type on the open allow-list: what HPDS answers, the body the base returned, and the calls the base made. */
     static Stream<Arguments> servedResultTypes() {
         return Stream.of(
-            Arguments.of("COUNT", "1234", "1237 ±3", List.of(SYNC_URL)),
+            // COUNT runs as the study-consents CROSS_COUNT and answers with its rounded total.
+            Arguments.of("COUNT", CROSS_COUNTS, "1235 ±10", List.of(SEARCH_URL, SYNC_URL)),
+            // Default is total-only: the breakdown is computed but only the obfuscated total reaches the client.
             Arguments.of(
-                "CROSS_COUNT", CROSS_COUNTS,
-                "{\"\\\\_studies_consents\\\\\":\"1232 ±3\",\"\\\\_studies_consents\\\\phs000007\\\\\":\"898 ±3\","
-                    + "\"\\\\_studies_consents\\\\phs000179\\\\\":\"< 10\"}",
+                "CROSS_COUNT", CROSS_COUNTS, "{\"\\\\_studies_consents\\\\\":\"1235 ±10\"}",
                 List.of(SEARCH_URL, SYNC_URL)
             ),
+            // Male (5) folds into the grouped bucket, which stays because Male is a possible value that is not named.
             Arguments.of(
                 "CATEGORICAL_CROSS_COUNT", "{\"\\\\demographics\\\\SEX\\\\\":{\"Male\":5,\"Female\":700}}",
-                "{\"\\\\demographics\\\\SEX\\\\\":{\"Female\":{\"count\":698,\"display\":\"698 ±3\",\"variance\":3},"
-                    + "\"Male\":{\"count\":0,\"display\":\"< 10\",\"variance\":9}}}",
-                List.of(SYNC_URL, SEARCH_URL, SYNC_URL)
+                "{\"\\\\demographics\\\\SEX\\\\\":{\"Female\":{\"count\":700,\"display\":\"700 ±5\",\"variance\":5},"
+                    + "\"Other (grouped)\":{\"count\":0,\"display\":\"< 10\",\"variance\":9}}}",
+                List.of(SYNC_URL, SEARCH_URL, SYNC_URL, SEARCH_URL)
             ),
+            // Bins span AGE's overall range (from the metadata search) and are capped at 50.
             Arguments.of(
                 "CONTINUOUS_CROSS_COUNT", "{\"\\\\demographics\\\\AGE\\\\\":{\"42\":100,\"43\":250,\"51\":8}}",
-                "{\"\\\\demographics\\\\AGE\\\\\":{\"40 - 49\":{\"count\":348,\"display\":\"348 ±3\",\"variance\":3},"
+                "{\"\\\\demographics\\\\AGE\\\\\":{\"40 - 49\":{\"count\":350,\"display\":\"350 ±5\",\"variance\":5},"
                     + "\"50 - 59\":{\"count\":0,\"display\":\"< 10\",\"variance\":9}}}",
-                List.of(SYNC_URL, SEARCH_URL, SYNC_URL, BIN_URL)
+                List.of(SYNC_URL, SEARCH_URL, SYNC_URL, SEARCH_URL, BIN_URL)
             ),
             passThrough(
                 "INFO_COLUMN_LISTING",
                 "[{\"key\":\"Gene_with_variant\",\"description\":\"The official symbol for a gene affected by a variant.\","
                     + "\"continuous\":false,\"min\":null,\"max\":null}]"
-            ), passThrough("OBSERVATION_CROSS_COUNT", "{\"\\\\demographics\\\\SEX\\\\\":4321}"),
-            passThrough("VARIANT_COUNT_FOR_QUERY", "{\"count\":17,\"message\":\"Query ran successfully\"}"),
-            passThrough("AGGREGATE_VCF_EXCERPT", VCF), passThrough("VCF_EXCERPT", VCF)
+            ), passThrough("AGGREGATE_VCF_EXCERPT", VCF), passThrough("VCF_EXCERPT", VCF)
         );
     }
 
@@ -195,17 +207,18 @@ class OpenAggregateContractTest {
 
         assertThat(result.getResponse().getContentAsString(StandardCharsets.UTF_8)).isEqualTo(expectedBody);
         assertThat(result.getResponse().getContentType()).isEqualTo(MediaType.APPLICATION_JSON_VALUE);
-        assertThat(result.getResponse().getHeader("queryMetadata"))
-            .isEqualTo("CROSS_COUNT".equals(resultType) ? "cross-count-query-id" : "hpds-query-id");
+        boolean crossCountShaped = "CROSS_COUNT".equals(resultType) || "COUNT".equals(resultType);
+        assertThat(result.getResponse().getHeader("queryMetadata")).isEqualTo(crossCountShaped ? "cross-count-query-id" : "hpds-query-id");
 
         List<LoggedRequest> sent = sent();
         assertThat(sent).extracting(LoggedRequest::getUrl).containsExactlyElementsOf(expectedCalls);
-        boolean primarySeen = "CROSS_COUNT".equals(resultType);
+        boolean primarySeen = crossCountShaped;
         for (LoggedRequest request : sent) {
             if (SEARCH_URL.equals(request.getUrl())) {
-                assertThat(request.getBodyAsString()).isEqualTo(SEARCH_TERM_SENT);
+                assertThat(request.getBodyAsString())
+                    .isIn(SEARCH_TERM_SENT, searchSent("\\demographics\\AGE\\"), searchSent("\\demographics\\SEX\\"));
             } else if (BIN_URL.equals(request.getUrl())) {
-                assertThat(request.getBodyAsString()).isEqualTo(BINNING_SENT);
+                assertThat(STRICT.readTree(request.getBodyAsString())).isEqualTo(STRICT.readTree(BINNING_SENT));
             } else if (primarySeen) {
                 assertThat(canonical(request.getBodyAsString())).isEqualTo(canonical(untypedCrossCountSent()));
             } else {
@@ -266,9 +279,9 @@ class OpenAggregateContractTest {
     void bodyAlreadyInRecordOrderGoesToHpdsByteForByte() throws Exception {
         String fromVisualization = STRICT.writeValueAsString(
             new GeneralQueryRequest()
-                .setQuery(STRICT.treeToValue(STRICT.readTree(frontendBody("OBSERVATION_CROSS_COUNT")).get("query"), Query.class))
+                .setQuery(STRICT.treeToValue(STRICT.readTree(frontendBody("INFO_COLUMN_LISTING")).get("query"), Query.class))
         );
-        stubPrimary("OBSERVATION_CROSS_COUNT", "{\"\\\\demographics\\\\SEX\\\\\":4321}");
+        stubPrimary("INFO_COLUMN_LISTING", "[]");
 
         mockMvc.perform(open("/hpds/open/query/sync").content(fromVisualization)).andExpect(status().isOk());
 
@@ -276,11 +289,13 @@ class OpenAggregateContractTest {
         assertThat(sent().get(0).getBodyAsString()).isEqualTo(fromVisualization);
     }
 
-    @Test
-    void resultTypeOffTheAllowListIs400AndReachesNothing() throws Exception {
-        mockMvc.perform(open("/hpds/open/query/sync").content(frontendBody("DATAFRAME"))).andExpect(status().isBadRequest())
+    // OBSERVATION_CROSS_COUNT and VARIANT_COUNT_FOR_QUERY return exact counts for the cohort, so they are not served.
+    @ParameterizedTest
+    @ValueSource(strings = {"DATAFRAME", "OBSERVATION_CROSS_COUNT", "VARIANT_COUNT_FOR_QUERY"})
+    void resultTypeOffTheAllowListIs400AndReachesNothing(String resultType) throws Exception {
+        mockMvc.perform(open("/hpds/open/query/sync").content(frontendBody(resultType))).andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.errorType").value("bad_request"))
-            .andExpect(jsonPath("$.message").value("Incorrect result type: DATAFRAME"));
+            .andExpect(jsonPath("$.message").value("Incorrect result type: " + resultType));
 
         downstream.verify(0, anyRequestedFor(anyUrl()));
     }
@@ -299,8 +314,12 @@ class OpenAggregateContractTest {
         verifyNoInteractions(operationsClient);
     }
 
+    private static String searchSent(String concept) throws Exception {
+        return "{\"@type\":\"GeneralQueryRequest\",\"query\":" + STRICT.writeValueAsString(concept) + ",\"resourceUUID\":null}";
+    }
+
     private void stubPrimary(String resultType, String hpdsBody) {
-        if ("CROSS_COUNT".equals(resultType)) {
+        if ("CROSS_COUNT".equals(resultType) || "COUNT".equals(resultType)) {
             return;
         }
         downstream.stubFor(

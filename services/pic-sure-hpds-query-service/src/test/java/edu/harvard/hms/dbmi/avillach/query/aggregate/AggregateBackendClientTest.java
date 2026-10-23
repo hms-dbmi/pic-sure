@@ -9,6 +9,8 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.Map;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -74,8 +76,20 @@ class AggregateBackendClientTest {
     @Test
     void binContinuousUsesTheUnversionedPath() {
         hpds.stubFor(post(urlEqualTo("/bin/continuous")).willReturn(okJson("{}")));
-        client().binContinuous(req("{}"));
+        client().binContinuous(new ContinuousBinningRequest(Map.of(), Map.of(), null));
         hpds.verify(postRequestedFor(urlEqualTo("/bin/continuous")));
+    }
+
+    @Test
+    void binContinuousSendsRangesAndMaxBinsInTheBody() {
+        hpds.stubFor(post(urlEqualTo("/bin/continuous")).willReturn(okJson("{\"bins\":{}}")));
+        client().binContinuous(new ContinuousBinningRequest(Map.of("age", Map.of("30", 4)), Map.of("age", new ChartRange(0, 120)), 20));
+        hpds.verify(
+            postRequestedFor(urlEqualTo("/bin/continuous")).withRequestBody(matchingJsonPath("$.query.age.30", WireMock.equalTo("4")))
+                .withRequestBody(matchingJsonPath("$.ranges.age.min", WireMock.equalTo("0.0")))
+                .withRequestBody(matchingJsonPath("$.ranges.age.max", WireMock.equalTo("120.0")))
+                .withRequestBody(matchingJsonPath("$.maxBins", WireMock.equalTo("20")))
+        );
     }
 
     @Test
