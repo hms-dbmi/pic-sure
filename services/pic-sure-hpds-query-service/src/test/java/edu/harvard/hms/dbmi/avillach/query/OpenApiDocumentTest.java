@@ -164,7 +164,8 @@ class OpenApiDocumentTest {
 
         JsonNode openSync = operation(document, "post", OPEN_SYNC).path("responses").path("200").path("content").path("application/json");
         assertThat(openSync.path("schema").path("description").asText())
-            .contains("COUNT", "CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT", "VARIANT_COUNT_FOR_QUERY");
+            .contains("COUNT", "CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT", "not served");
+        assertThat(openSync.path("examples").has("VARIANT_COUNT_FOR_QUERY with genomic filters")).isFalse();
         assertThat(openSync.path("examples").path("COUNT below the threshold").path("value").asText()).isEqualTo("< 10");
     }
 

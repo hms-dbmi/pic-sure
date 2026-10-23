@@ -23,32 +23,52 @@ public class AggregateProperties {
     private final Obfuscation obfuscation = new Obfuscation();
 
     public static class Obfuscation {
-        private int threshold = 10; // ApplicationProperties.DEFAULT_OBFUSCATION_THRESHOLD
-        private int variance = 3; // ApplicationProperties.DEFAULT_OBFUSCATION_VARIANCE
-        private String salt; // null/blank => random UUID at startup (ObfuscationService)
+        /**
+         * Consent threshold for consent groups, studies and the total; values below 10 are raised to 10. Consent buckets are this wide
+         * and the total rounds up to half of it.
+         */
+        private int consentThreshold = 10;
+        /** Chart buckets below this show "< chartThreshold"; others round up to half of it, with that as their band. */
+        private int chartThreshold = 10;
+        /** No chart is returned for a cohort smaller than this. */
+        private int chartMinimumCohort = 50;
+        /**
+         * When true, a studies-consents CROSS_COUNT returns only the obfuscated total to the client; the per-study and per-consent-group
+         * counts are still computed (so study sums and mismatch warnings run) but dropped from the response. Defends open access against
+         * reconstructing a consent group from its study and sibling counts.
+         */
+        private boolean crossCountTotalOnly = true;
 
-        public int getThreshold() {
-            return threshold;
+        public int getConsentThreshold() {
+            return consentThreshold;
         }
 
-        public void setThreshold(int t) {
-            this.threshold = t;
+        public void setConsentThreshold(int consentThreshold) {
+            this.consentThreshold = consentThreshold;
         }
 
-        public int getVariance() {
-            return variance;
+        public int getChartThreshold() {
+            return chartThreshold;
         }
 
-        public void setVariance(int v) {
-            this.variance = v;
+        public void setChartThreshold(int chartThreshold) {
+            this.chartThreshold = chartThreshold;
         }
 
-        public String getSalt() {
-            return salt;
+        public int getChartMinimumCohort() {
+            return chartMinimumCohort;
         }
 
-        public void setSalt(String s) {
-            this.salt = s;
+        public void setChartMinimumCohort(int chartMinimumCohort) {
+            this.chartMinimumCohort = chartMinimumCohort;
+        }
+
+        public boolean isCrossCountTotalOnly() {
+            return crossCountTotalOnly;
+        }
+
+        public void setCrossCountTotalOnly(boolean crossCountTotalOnly) {
+            this.crossCountTotalOnly = crossCountTotalOnly;
         }
     }
 
