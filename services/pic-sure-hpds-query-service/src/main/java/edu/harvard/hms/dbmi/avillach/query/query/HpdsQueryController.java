@@ -12,7 +12,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -36,7 +35,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
  *
  * <p>Submit and sync bind their body to {@link HpdsQueryRequest}, a v3 {@code Query} under the query key, and pass {@link QueryService} the
  * outbound envelope built by {@link HpdsQueryRequest#toOutbound()}, which is what HPDS receives and what the operations service stores.
- * Status, result and signed-url are GET requests with no body: they read the stored query by id, and a POST to them answers 405.
+ * Status, result, signed-url and metadata are GET requests with no body: they read the stored query by id, and a POST to them answers 405.
  */
 @RestController
 @RequestMapping("/hpds/{backend}")
@@ -218,13 +217,14 @@ public class HpdsQueryController {
     }
 
     @AuditEvent(type = "QUERY", action = "query.metadata")
-    @RequestMapping(path = "/query/{id}/metadata", method = {RequestMethod.GET, RequestMethod.POST})
+    @GetMapping("/query/{id}/metadata")
     @Operation(summary = "Metadata of a submitted query")
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The metadata of the submitted query."),
             @ApiResponse(responseCode = "400", description = "Missing query id."),
             @ApiResponse(responseCode = "403", description = "Consent no longer covers this result."),
             @ApiResponse(responseCode = "404", description = "Unknown query id."),
+            @ApiResponse(responseCode = "405", description = METHOD_NOT_ALLOWED),
             @ApiResponse(responseCode = "502", description = "Consent or query lookup failed."),
             @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
     )
