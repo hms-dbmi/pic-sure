@@ -14,8 +14,10 @@ import java.io.ObjectOutputStream;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
@@ -201,7 +203,7 @@ class ExportForMigrationTest {
         byte[] id = new byte[ExportForMigration.EXPORT_ID_BYTES];
         try (
             var out = new ExportForMigration.EncryptingOutputStream(
-                new java.io.FileOutputStream(file.toFile()), id, ExportForMigration.CONCEPTS_KIND
+                FileChannel.open(file, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE), id, ExportForMigration.CONCEPTS_KIND
             )
         ) {
             out.write(content, 0, content.length);
@@ -504,7 +506,11 @@ class ExportForMigrationTest {
     }
 
     @Test
-    void aDotDotAfterAMissingNameIsRefused(@TempDir Path dir) {
-        assertThrows(IOException.class, () -> ExportForMigration.realPathAllowingMissing(dir.resolve("missing").resolve("..").resolve("x")));
+    void aDotDotAfterAMissingNameIsRefusedAndOneAfterAnExistingNameIsResolvedByTheSystem(@TempDir Path dir) throws Exception {
+        Path inner = Files.createDirectory(dir.resolve("inner"));
+        assertThrows(
+            IOException.class, () -> ExportForMigration.realPathAllowingMissing(dir.resolve("missing").resolve("..").resolve("x"))
+        );
+        assertEquals(dir.toRealPath().resolve("x"), ExportForMigration.realPathAllowingMissing(inner.resolve("..").resolve("x")));
     }
 }

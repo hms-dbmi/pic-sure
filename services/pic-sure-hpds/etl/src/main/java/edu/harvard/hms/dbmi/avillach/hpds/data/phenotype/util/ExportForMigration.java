@@ -4,18 +4,20 @@ import java.io.BufferedOutputStream;
 import java.io.ByteArrayInputStream;
 import java.io.DataOutputStream;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
+import java.nio.channels.Channels;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.FileAttribute;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -204,7 +206,11 @@ public class ExportForMigration {
             allIds = readObject(in);
         }
 
-        createPrivateDirectory(export);
+        try {
+            createPrivateDirectory(export);
+        } catch (IOException e) {
+            throw new IOException("cannot create the export directory " + export + "; mount a writable directory there or name another", e);
+        }
         for (String name : List.of(CONCEPTS_FILE, PATIENTS_FILE)) {
             Files.deleteIfExists(export.resolve(name));
             Files.deleteIfExists(export.resolve(name + TEMPORARY_SUFFIX));
@@ -306,18 +312,18 @@ public class ExportForMigration {
     }
 
     /**
-     * Creates {@code file}, which must not exist, mode {@code 0600} on a POSIX file system, and opens it for writing.
+     * Creates {@code file}, which must not exist, mode {@code 0600} on a POSIX file system, and opens it for writing in the same operation,
+     * so no other path is ever opened.
      *
      * @param file the file to create
-     * @return a stream writing the new file
+     * @return a channel writing the new file
      * @throws IOException when the file exists or cannot be created
      */
-    public static FileOutputStream createPrivateFile(Path file) throws IOException {
+    public static FileChannel createPrivateFile(Path file) throws IOException {
         FileAttribute<?>[] attributes =
             posix() ? new FileAttribute<?>[] {PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------"))}
                 : new FileAttribute<?>[0];
-        Files.createFile(file, attributes);
-        return new FileOutputStream(file.toFile());
+        return FileChannel.open(file, Set.of(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE), attributes);
     }
 
     @SuppressWarnings("unchecked")
@@ -470,7 +476,9 @@ public class ExportForMigration {
      */
     public static final class EncryptingOutputStream extends OutputStream {
 
-        private final FileOutputStream file;
+        private final FileChannel channel;
+
+        private final OutputStream file;
 
         private final byte[] exportId;
 
@@ -485,13 +493,14 @@ public class ExportForMigration {
         private boolean closed;
 
         /**
-         * @param file the destination, owned and closed by this stream
+         * @param channel the destination, owned and closed by this stream
          * @param exportId the export's random id
          * @param kind the kind byte of the file's frames, {@link #CONCEPTS_KIND} or {@link #PATIENTS_KIND} for a phenotype export
          * @throws IOException when the header cannot be written
          */
-        public EncryptingOutputStream(FileOutputStream file, byte[] exportId, byte kind) throws IOException {
-            this.file = file;
+        public EncryptingOutputStream(FileChannel channel, byte[] exportId, byte kind) throws IOException {
+            this.channel = channel;
+            this.file = Channels.newOutputStream(channel);
             this.exportId = exportId.clone();
             this.kind = kind;
             DataOutputStream header = new DataOutputStream(file);
@@ -536,10 +545,10 @@ public class ExportForMigration {
                 return;
             }
             closed = true;
-            try (FileOutputStream out = file) {
+            try (FileChannel out = channel) {
                 writeFrame(true);
-                out.flush();
-                out.getFD().sync();
+                file.flush();
+                out.force(true);
             }
         }
     }
