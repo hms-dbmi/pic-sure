@@ -68,6 +68,72 @@
       "name": "metadata.no_show_list",
       "type": "java.util.Set<java.lang.String>",
       "description": "Comma-separated list of concept_node_meta keys excluded from concept metadata responses."
+    },
+    {
+      "name": "picsure.openapi.examples.dataset",
+      "type": "java.lang.String",
+      "description": "Shown in the OpenAPI examples. Dataset the dictionary examples use, the first segment of every example concept path.",
+      "defaultValue": "Synthea"
+    },
+    {
+      "name": "picsure.openapi.examples.second-dataset",
+      "type": "java.lang.String",
+      "description": "Shown in the OpenAPI examples. A second dataset, used where an example combines two datasets.",
+      "defaultValue": "Nhanes"
+    },
+    {
+      "name": "picsure.openapi.examples.dataset-facet-category",
+      "type": "java.lang.String",
+      "description": "Shown in the OpenAPI examples. Name of the facet category that groups concepts by dataset, such as study_ids_dataset_ids on BioData Catalyst.",
+      "defaultValue": "dataset_id"
+    },
+    {
+      "name": "picsure.openapi.examples.type-facet-category",
+      "type": "java.lang.String",
+      "description": "Shown in the OpenAPI examples. Name of the facet category that groups concepts by variable type.",
+      "defaultValue": "data_type"
+    },
+    {
+      "name": "picsure.openapi.examples.continuous-type-facet",
+      "type": "java.lang.String",
+      "description": "Shown in the OpenAPI examples. Name of the continuous facet within the variable type category.",
+      "defaultValue": "continuous"
+    },
+    {
+      "name": "picsure.openapi.examples.categorical-concept-path",
+      "type": "java.lang.String",
+      "description": "Shown in the OpenAPI examples. A categorical concept path in the example dataset. Concept paths are backslash delimited; in a .properties file write each backslash twice, while an environment variable takes the path as it is.",
+      "defaultValue": "\\Synthea\\ACT Demographics\\Sex\\"
+    },
+    {
+      "name": "picsure.openapi.examples.continuous-concept-path",
+      "type": "java.lang.String",
+      "description": "Shown in the OpenAPI examples. A continuous concept path in the example dataset. Concept paths are backslash delimited; in a .properties file write each backslash twice, while an environment variable takes the path as it is.",
+      "defaultValue": "\\Synthea\\ACT Demographics\\Age\\"
+    },
+    {
+      "name": "picsure.openapi.examples.parent-concept-path",
+      "type": "java.lang.String",
+      "description": "Shown in the OpenAPI examples. A concept path with children, used by the tree example. Concept paths are backslash delimited; in a .properties file write each backslash twice, while an environment variable takes the path as it is.",
+      "defaultValue": "\\Synthea\\ACT Demographics\\"
+    },
+    {
+      "name": "picsure.openapi.examples.search-term",
+      "type": "java.lang.String",
+      "description": "Shown in the OpenAPI examples. Search term the examples search for.",
+      "defaultValue": "age"
+    },
+    {
+      "name": "picsure.openapi.examples.consent",
+      "type": "java.lang.String",
+      "description": "Shown in the OpenAPI examples. A consent, a study accession with its consent group, used by the consents example.",
+      "defaultValue": "phs000007.c1"
+    },
+    {
+      "name": "picsure.openapi.examples.second-consent",
+      "type": "java.lang.String",
+      "description": "Shown in the OpenAPI examples. A second consent, used by the consents example.",
+      "defaultValue": "phs000007.c2"
     }
   ]
 }
