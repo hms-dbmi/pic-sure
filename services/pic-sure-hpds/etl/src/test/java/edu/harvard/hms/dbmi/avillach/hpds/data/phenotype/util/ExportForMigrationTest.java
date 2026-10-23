@@ -445,7 +445,14 @@ class ExportForMigrationTest {
         return new String(in.readNBytes(length), StandardCharsets.UTF_8);
     }
 
-    private static void writeStore(Path store) throws IOException {
+    /**
+     * Writes a small encrypted store to {@code store}: its {@code encryption_key}, loaded as the default key, an
+     * {@code allObservationsStore.javabin} holding a numeric, a text and an empty concept, and the {@code columnMeta.javabin} describing them.
+     *
+     * @param store the directory to write the store into
+     * @throws IOException when a file cannot be written
+     */
+    static void writeStore(Path store) throws IOException {
         Files.writeString(store.resolve("encryption_key"), KEY + "\n");
         Crypto.loadKey(Crypto.DEFAULT_KEY_NAME, store.resolve("encryption_key").toString());
 

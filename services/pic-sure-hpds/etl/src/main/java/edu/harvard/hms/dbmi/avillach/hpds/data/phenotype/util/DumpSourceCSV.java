@@ -2,7 +2,10 @@ package edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.util;
 
 import java.io.*;
 import java.nio.channels.Channels;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Set;
@@ -27,10 +30,12 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.etl.LoadingStore;
 
 /**
- * Writes every observation of the store in {@code /opt/local/hpds} as plaintext CSV to {@code allConcepts.csv} in the same directory.
+ * Writes every observation of a store as plaintext CSV to {@code allConcepts.csv} in the store's directory, {@code /opt/local/hpds}
+ * when run as a program.
  *
  * <p>The output holds every observation in the clear, so it is created owner-only (mode {@code 0600}), an existing file is never
- * overwritten, and nothing is created when the encryption key cannot be loaded. It is handled like the store itself.
+ * overwritten, nothing is created when the encryption key cannot be loaded, and a dump that fails part way is deleted so a later run
+ * is not refused. It is handled like the store itself.
  */
 public class DumpSourceCSV {
 	protected static LoadingCache<String, PhenoCube<?>> store;
@@ -49,17 +54,52 @@ public class DumpSourceCSV {
 	
 	private static final int TIMESTAMP = 4;
 
+	/** The name of the dump file written into the store directory. */
+	static final String OUTPUT_FILE = "allConcepts.csv";
+
 	public static void main(String[] args) throws ClassNotFoundException, FileNotFoundException, IOException {
-		Crypto.loadDefaultKey();
+		dump(Path.of("/opt/local/hpds"));
+	}
+
+	/**
+	 * Dumps the store in {@code directory} to {@link #OUTPUT_FILE} in the same directory.
+	 *
+	 * @param directory the store directory, holding {@code encryption_key}, {@code columnMeta.javabin} and
+	 *        {@code allObservationsStore.javabin}
+	 * @throws IOException when the store cannot be read or the output cannot be written
+	 * @throws IllegalStateException when no encryption key could be loaded, before anything is created
+	 */
+	static void dump(Path directory) throws ClassNotFoundException, FileNotFoundException, IOException {
+		Path keyFile = directory.resolve("encryption_key");
+		if (!Files.isReadable(keyFile)) {
+			throw new IllegalStateException("no encryption key at " + keyFile + "; nothing was written");
+		}
+		Crypto.loadKey(Crypto.DEFAULT_KEY_NAME, keyFile.toString());
 		if (!Crypto.hasKey(Crypto.DEFAULT_KEY_NAME)) {
 			throw new IllegalStateException("no encryption key could be loaded; nothing was written");
 		}
-		Object[] metadata = loadMetadata();
+		Object[] metadata = loadMetadata(directory);
 		metaStoreSource = (TreeMap<String, ColumnMeta>) metadata[0];
 		allIds = (TreeSet<Integer>) metadata[1];
-		store = initializeCache(); 
-		Writer fWriter = new OutputStreamWriter(Channels.newOutputStream(ExportForMigration.createPrivateFile(Path.of("/opt/local/hpds/allConcepts.csv"))), StandardCharsets.UTF_8);
-		CSVPrinter writer = CSVFormat.DEFAULT.print(fWriter);
+		store = initializeCache(directory); 
+		Path output = directory.resolve(OUTPUT_FILE);
+		FileChannel channel;
+		try {
+			channel = ExportForMigration.createPrivateFile(output);
+		} catch (FileAlreadyExistsException e) {
+			FileAlreadyExistsException refused = new FileAlreadyExistsException(output.toString(), null, "an earlier dump is there; move or delete it to dump again");
+			refused.initCause(e);
+			throw refused;
+		}
+		try (FileChannel file = channel; CSVPrinter writer = CSVFormat.DEFAULT.print(new OutputStreamWriter(Channels.newOutputStream(file), StandardCharsets.UTF_8))) {
+			writeRows(writer);
+		} catch (Throwable failure) {
+			deleteAfter(output, failure);
+			throw failure;
+		}
+	}
+
+	private static void writeRows(CSVPrinter writer) throws IOException {
 		writer.printRecord(ImmutableList.of(new String[] {"PATIENT_NUM","CONCEPT_PATH","NUMERIC_VALUE","TEXT_VALUE","TIMESTAMP"}));
 		metaStoreSource.keySet().forEach((String key)->{
 			try {
@@ -82,13 +122,20 @@ public class DumpSourceCSV {
 			}
 		});
 		writer.flush();
-		writer.close();
+	}
+
+	private static void deleteAfter(Path output, Throwable failure) {
+		try {
+			Files.deleteIfExists(output);
+		} catch (IOException deleteFailure) {
+			failure.addSuppressed(deleteFailure);
+		}
 	}
 	
 	static LoadingStore loadingStoreSource = new LoadingStore();
 	
-	protected static Object[] loadMetadata() {
-		try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream("/opt/local/hpds/columnMeta.javabin")));){
+	protected static Object[] loadMetadata(Path directory) {
+		try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(directory.resolve("columnMeta.javabin").toFile())));){
 			TreeMap<String, ColumnMeta> metastore = (TreeMap<String, ColumnMeta>) objectInputStream.readObject();
 			TreeMap<String, ColumnMeta> metastoreScrubbed = new TreeMap<String, ColumnMeta>();
 			for(Entry<String,ColumnMeta> entry : metastore.entrySet()) {
@@ -101,13 +148,13 @@ public class DumpSourceCSV {
 		} 
 	}
 	
-	protected static LoadingCache<String, PhenoCube<?>> initializeCache() throws ClassNotFoundException, FileNotFoundException, IOException {
+	protected static LoadingCache<String, PhenoCube<?>> initializeCache(Path directory) throws ClassNotFoundException, FileNotFoundException, IOException {
 		return CacheBuilder.newBuilder()
 				.maximumSize(100)
 				.build(
 						new CacheLoader<String, PhenoCube<?>>() {
 							public PhenoCube<?> load(String key) throws Exception {
-								try(RandomAccessFile allObservationsStore = new RandomAccessFile("/opt/local/hpds/allObservationsStore.javabin", "r");){
+								try(RandomAccessFile allObservationsStore = new RandomAccessFile(directory.resolve("allObservationsStore.javabin").toFile(), "r");){
 									ColumnMeta columnMeta = metaStoreSource.get(key);
 									if(columnMeta != null) {
 										allObservationsStore.seek(columnMeta.getAllObservationsOffset());
