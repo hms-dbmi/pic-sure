@@ -16,8 +16,10 @@ mod main_contract;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Condition {
-    /// One side timed out, or its JSON object holds a strict subset of the other side's keys
-    /// and every key both sides hold has an equal value.
+    /// One side timed out, or its JSON object holds a subset of the other side's keys and
+    /// every key both sides hold has an equal value or, on the subset side, `-1`, the count
+    /// Java's catch block writes when the concurrent `TreeMap.put` throws; the subset is strict
+    /// unless some value is `-1`.
     StrictSubsetOrTimeout,
     /// Every side that answered 200 sent an empty body, and at least one side answered 200.
     SuccessBodyEmpty,
@@ -196,7 +198,8 @@ pub enum Condition {
     /// fields.
     ConsentExtraFieldRefused,
     /// An async DATAFRAME_TIMESERIES or DATAFRAME_PFB entry: the Java side (which must be
-    /// known) ended the query in SUCCESS and the Rust side accepted the submit and ended it in
+    /// known) ended the query in SUCCESS, or answered the submit 200 with no job because it
+    /// failed to start the export, and the Rust side accepted the submit and ended it in
     /// ERROR with `resultMetadata.error` exactly `<type> exports are not supported by this
     /// phenotype-only HPDS`, as Rust does for these two export types it does not produce.
     ExportTypeOutOfScope,
@@ -488,9 +491,30 @@ fn subset_or_timeout(a: &Outcome, b: &Outcome) -> bool {
         return false;
     };
     match (json_object(x), json_object(y)) {
-        (Some(left), Some(right)) => strict_subset(&left, &right) || strict_subset(&right, &left),
+        (Some(left), Some(right)) => {
+            strict_subset(&left, &right)
+                || strict_subset(&right, &left)
+                || subset_with_failed_puts(&left, &right)
+                || subset_with_failed_puts(&right, &left)
+        }
         _ => false,
     }
+}
+
+/// Whether `small`'s keys are all in `large` with an equal value or `-1`, at least one being
+/// `-1`: Java's OBSERVATION_CROSS_COUNT writes `-1` for a key whose concurrent `TreeMap.put`
+/// threw, and may drop other keys.
+fn subset_with_failed_puts(
+    small: &serde_json::Map<String, Value>,
+    large: &serde_json::Map<String, Value>,
+) -> bool {
+    let failed_put = |value: &Value| value.as_i64() == Some(-1);
+    small.values().any(failed_put)
+        && small.iter().all(|(key, value)| {
+            large.get(key).is_some_and(|other| {
+                failed_put(value) || json_diff_with(value, other, true).is_empty()
+            })
+        })
 }
 
 fn is_java_min_value(value: &Value) -> bool {
@@ -1752,7 +1776,8 @@ fn export_type_out_of_scope(
             entry.result_type.as_str(),
             "DATAFRAME_TIMESERIES" | "DATAFRAME_PFB"
         )
-        && matches!(java_outcome, Outcome::Async(x) if ended_in_success(x))
+        && (matches!(java_outcome, Outcome::Async(x) if ended_in_success(x))
+            || submit_failed(java_outcome))
         && matches!(rust_outcome, Outcome::Async(x) if ended_in_error(x)
             && x.error.as_deref() == Some(format!(
                 "{} exports are not supported by this phenotype-only HPDS",
@@ -3645,6 +3670,34 @@ mod tests {
     }
 
     #[test]
+    fn an_observation_cross_count_with_javas_failed_puts_is_the_known_defect() {
+        let set = checked_in().for_java(Side::A, JavaBranch::Main);
+        let e = query_entry(
+            "c09-anyrecord-observation_cross_count",
+            Kind::Sync,
+            json!({"expectedResultType": "OBSERVATION_CROSS_COUNT", "select": ["\\a\\", "\\b\\"]}),
+        );
+        let rust = sync(200, r#"{"\\a\\":3,"\\b\\":0,"\\c\\":2}"#);
+        for java in [
+            r#"{"\\a\\":3,"\\b\\":-1,"\\c\\":2}"#,
+            r#"{"\\a\\":-1,"\\b\\":0}"#,
+            r#"{"\\a\\":3,"\\b\\":0}"#,
+        ] {
+            assert_eq!(
+                rule_name(&set, &e, &sync(200, java), &rust).as_deref(),
+                Some("observation-cross-count-defect"),
+                "{java}"
+            );
+        }
+        for java in [
+            r#"{"\\a\\":4,"\\b\\":0,"\\c\\":2}"#,
+            r#"{"\\a\\":3,"\\b\\":-2,"\\c\\":2}"#,
+        ] {
+            assert_eq!(rule_name(&set, &e, &sync(200, java), &rust), None, "{java}");
+        }
+    }
+
+    #[test]
     fn an_out_of_scope_export_is_accepted_only_as_javas_success_against_rusts_error() {
         let set = checked_in().for_java(Side::A, JavaBranch::Main);
         let mut e = query_entry(
@@ -3675,6 +3728,16 @@ mod tests {
             Some("export-type-out-of-scope")
         );
         assert_eq!(rule_name(&set, &e, &error, &success), None);
+        let failed_submit = async_outcome(200, None, None);
+        assert_eq!(
+            rule_name(&set, &e, &failed_submit, &error).as_deref(),
+            Some("export-type-out-of-scope"),
+            "Java failing to start the export it would produce"
+        );
+        assert_eq!(
+            rule_name(&set, &e, &async_outcome(400, None, None), &error),
+            None
+        );
         e.result_type = "DATAFRAME".into();
         assert_eq!(rule_name(&set, &e, &success, &error), None);
         e.result_type = "DATAFRAME_TIMESERIES".into();

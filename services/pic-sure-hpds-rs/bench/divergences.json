@@ -62,7 +62,7 @@
       "name": "observation-cross-count-defect",
       "resultType": "OBSERVATION_CROSS_COUNT",
       "when": "strict-subset-or-timeout",
-      "reason": "Java OBSERVATION_CROSS_COUNT defect: with two or more selects it can drop keys or hang. Accepted when one side's key set is a strict subset of the other's and every shared key matches, or when a side times out."
+      "reason": "Java OBSERVATION_CROSS_COUNT defect: with two or more selects it can drop keys, write -1 for a key whose concurrent TreeMap.put threw, or hang. Accepted when one side's key set is a strict subset of the other's and every shared key matches, when one side's keys are all in the other's with every value equal or -1 and at least one -1, or when a side times out."
     },
     {
       "name": "search-max-double-min-value",
@@ -264,7 +264,7 @@
     {
       "name": "export-type-out-of-scope",
       "when": "export-type-out-of-scope",
-      "reason": "Spec, scope: DATAFRAME_TIMESERIES and DATAFRAME_PFB are export types v4 does not produce; POST /query accepts them and ends the query in ERROR with resultMetadata.error \"<type> exports are not supported by this phenotype-only HPDS\", where Java produces the export. Accepted only for async entries of those two result types, with the Java side named, Java's query in SUCCESS and Rust's in ERROR with exactly that reason."
+      "reason": "Spec, scope: DATAFRAME_TIMESERIES and DATAFRAME_PFB are export types v4 does not produce; POST /query accepts them and ends the query in ERROR with resultMetadata.error \"<type> exports are not supported by this phenotype-only HPDS\", where Java produces the export. Accepted only for async entries of those two result types, with the Java side named, Java's query in SUCCESS (or its submit answered 200 with no job, Java failing to start the export) and Rust's in ERROR with exactly that reason."
     },
     {
       "name": "null-authorization-filter-main",
