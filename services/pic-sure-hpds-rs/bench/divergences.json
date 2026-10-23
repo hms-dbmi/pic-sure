@@ -62,7 +62,7 @@
       "name": "observation-cross-count-defect",
       "resultType": "OBSERVATION_CROSS_COUNT",
       "when": "strict-subset-or-timeout",
-      "reason": "Java OBSERVATION_CROSS_COUNT defect: with two or more selects it can drop keys, write -1 for a key whose concurrent TreeMap.put threw, or hang. Accepted when one side's key set is a strict subset of the other's and every shared key matches, when one side's keys are all in the other's with every value equal or -1 and at least one -1, or when a side times out."
+      "reason": "Java OBSERVATION_CROSS_COUNT defect: with two or more selects it can drop keys, write -1 for a key whose concurrent TreeMap.put threw, or hang. Accepted when one side's key set is a strict subset of the other's and every shared key matches, when, with the Java side known, Java's keys are all in Rust's with every value equal or -1 and at least one -1 (only Java writes -1), or when a side times out."
     },
     {
       "name": "search-max-double-min-value",

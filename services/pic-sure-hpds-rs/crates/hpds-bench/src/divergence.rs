@@ -16,10 +16,10 @@ mod main_contract;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Condition {
-    /// One side timed out, or its JSON object holds a subset of the other side's keys and
-    /// every key both sides hold has an equal value or, on the subset side, `-1`, the count
-    /// Java's catch block writes when the concurrent `TreeMap.put` throws; the subset is strict
-    /// unless some value is `-1`.
+    /// One side timed out; or one side's JSON object holds a strict subset of the other side's
+    /// keys, every key both hold having an equal value; or, with the Java side known, Java's
+    /// object holds only keys of Rust's, each with Rust's value or `-1` and at least one `-1`,
+    /// the count Java's catch block writes when the concurrent `TreeMap.put` throws.
     StrictSubsetOrTimeout,
     /// Every side that answered 200 sent an empty body, and at least one side answered 200.
     SuccessBodyEmpty,
@@ -483,27 +483,28 @@ fn empty_success_body(a: &Outcome, b: &Outcome) -> bool {
     !bodies.is_empty() && bodies.into_iter().all(|empty| empty)
 }
 
-fn subset_or_timeout(a: &Outcome, b: &Outcome) -> bool {
+fn subset_or_timeout(a: &Outcome, b: &Outcome, java: Option<JavaService>) -> bool {
     if a.is_timeout() || b.is_timeout() {
         return true;
     }
     let (Outcome::Sync(x), Outcome::Sync(y)) = (a, b) else {
         return false;
     };
-    match (json_object(x), json_object(y)) {
-        (Some(left), Some(right)) => {
-            strict_subset(&left, &right)
-                || strict_subset(&right, &left)
-                || subset_with_failed_puts(&left, &right)
-                || subset_with_failed_puts(&right, &left)
-        }
-        _ => false,
-    }
+    let (Some(left), Some(right)) = (json_object(x), json_object(y)) else {
+        return false;
+    };
+    strict_subset(&left, &right)
+        || strict_subset(&right, &left)
+        || java.is_some_and(|java| match java.side {
+            Side::A => subset_with_failed_puts(&left, &right),
+            Side::B => subset_with_failed_puts(&right, &left),
+        })
 }
 
-/// Whether `small`'s keys are all in `large` with an equal value or `-1`, at least one being
-/// `-1`: Java's OBSERVATION_CROSS_COUNT writes `-1` for a key whose concurrent `TreeMap.put`
-/// threw, and may drop other keys.
+/// Whether `small`, Java's answer, holds only keys of `large` with an equal value or `-1`, at
+/// least one being `-1`: Java's OBSERVATION_CROSS_COUNT writes `-1` for a key whose concurrent
+/// `TreeMap.put` threw, and may drop other keys. Rust never writes `-1`, so this applies only
+/// with `small` on the Java side.
 fn subset_with_failed_puts(
     small: &serde_json::Map<String, Value>,
     large: &serde_json::Map<String, Value>,
@@ -1841,7 +1842,7 @@ impl Condition {
         java: Option<JavaService>,
     ) -> bool {
         match self {
-            Condition::StrictSubsetOrTimeout => subset_or_timeout(a, b),
+            Condition::StrictSubsetOrTimeout => subset_or_timeout(a, b, java),
             Condition::SuccessBodyEmpty => empty_success_body(a, b),
             Condition::NumericMaxDoubleMinValue
             | Condition::CategoryValuesOrder
@@ -3695,6 +3696,35 @@ mod tests {
         ] {
             assert_eq!(rule_name(&set, &e, &sync(200, java), &rust), None, "{java}");
         }
+        let java = sync(200, r#"{"\\a\\":3,"\\b\\":0,"\\c\\":2}"#);
+        let rust_failed_put = sync(200, r#"{"\\a\\":3,"\\b\\":-1,"\\c\\":2}"#);
+        assert_eq!(
+            rule_name(&set, &e, &java, &rust_failed_put),
+            None,
+            "only Java's catch block writes -1"
+        );
+        let java_on_b = checked_in().for_java(Side::B, JavaBranch::Main);
+        assert_eq!(
+            rule_name(
+                &java_on_b,
+                &e,
+                &rust,
+                &sync(200, r#"{"\\a\\":3,"\\b\\":-1,"\\c\\":2}"#)
+            )
+            .as_deref(),
+            Some("observation-cross-count-defect")
+        );
+        assert_eq!(rule_name(&java_on_b, &e, &rust_failed_put, &java), None);
+        assert_eq!(
+            rule_name(
+                &checked_in(),
+                &e,
+                &sync(200, r#"{"\\a\\":3,"\\b\\":-1,"\\c\\":2}"#),
+                &rust
+            ),
+            None,
+            "with the Java side unknown, no -1 is accepted"
+        );
     }
 
     #[test]
