@@ -68,9 +68,7 @@ public class CountTool {
     @AuditEvent(type = "QUERY", action = "query.sync")
     public CountResult handle(McpTransportContext context, Map<String, Object> arguments) {
         Input input = QueryBinder.bind(arguments, Input.class);
-        if (input == null || input.query() == null) {
-            throw new ToolFailure("Argument 'query' is required.");
-        }
+        ToolArguments.require("query", input == null ? null : input.query());
         Query query = input.query().toQuery(ResultType.COUNT);
         String body = QueryCalls.run(OpenQueryClient.QUERY_SYNC_PATH, () -> client.querySync(query, CallerHeaders.from(context)));
         if (body == null || body.isBlank()) {

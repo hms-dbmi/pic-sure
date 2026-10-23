@@ -208,9 +208,9 @@ class PythonGeneratorTest {
 
     @Test
     void literalsAreAsciiPythonStrings() {
-        assertThat(PythonGenerator.literal("\\a\\\"b\"")).isEqualTo("\"\\\\a\\\\\\\"b\\\"\"");
-        assertThat(PythonGenerator.literal("caf\u00e9\t\u0001")).isEqualTo("\"caf\\u00e9\\t\\x01\"");
-        assertThat(PythonGenerator.literal(new String(Character.toChars(0x1F600)))).isEqualTo("\"\\U0001f600\"");
+        assertThat(new PythonGenerator().string("\\a\\\"b\"")).isEqualTo("\"\\\\a\\\\\\\"b\\\"\"");
+        assertThat(new PythonGenerator().string("caf\u00e9\t\u0001")).isEqualTo("\"caf\\u00e9\\t\\x01\"");
+        assertThat(new PythonGenerator().string(new String(Character.toChars(0x1F600)))).isEqualTo("\"\\U0001f600\"");
         assertThat(PythonGenerator.number(40.0)).isEqualTo("40");
         assertThat(PythonGenerator.number(-0.25)).isEqualTo("-0.25");
         assertThat(PythonGenerator.number(1.0e20)).isEqualTo("1.0E20");

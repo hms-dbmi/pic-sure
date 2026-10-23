@@ -30,8 +30,6 @@ public record CallerHeaders(String authorization, String apiKey, String requestI
     /**
      * Strips CR and LF from the request ID and the forwarded-for chain.
      *
-     * @param authorization the inbound {@code Authorization} header, or null
-     * @param apiKey the inbound {@code X-PICSURE-API-Key} header, or null
      * @param requestId the inbound {@code X-Request-Id} header, or null
      * @param forwardedFor the inbound {@code X-Forwarded-For} chain, or null
      * @param userId the inbound {@code X-User-Id} header, or null
