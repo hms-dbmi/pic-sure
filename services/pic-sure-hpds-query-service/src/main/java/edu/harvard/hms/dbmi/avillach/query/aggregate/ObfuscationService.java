@@ -67,9 +67,12 @@ public class ObfuscationService {
     }
 
     Map<String, String> obfuscateCrossCounts(Map<String, String> crossCounts) {
+        // Parse each key's path once and reuse it below; the key set is walked three times otherwise.
+        Map<String, List<String>> segmentsByKey = new LinkedHashMap<>();
+        crossCounts.keySet().forEach(key -> segmentsByKey.put(key, studyConsentSegments(key)));
+
         Map<String, List<String>> consentKeysByStudy = new HashMap<>();
-        crossCounts.keySet().forEach(key -> {
-            List<String> segments = studyConsentSegments(key);
+        segmentsByKey.forEach((key, segments) -> {
             if (segments != null && segments.size() == 2) {
                 consentKeysByStudy.computeIfAbsent(segments.get(0), study -> new ArrayList<>()).add(key);
             }
@@ -77,7 +80,7 @@ public class ObfuscationService {
 
         Map<String, String> result = new LinkedHashMap<>();
         crossCounts.forEach((key, raw) -> {
-            List<String> segments = studyConsentSegments(key);
+            List<String> segments = segmentsByKey.get(key);
             if (segments != null && segments.isEmpty()) {
                 result.put(key, obfuscateTotal(raw));
             } else if (segments != null && segments.size() == 1 && consentKeysByStudy.containsKey(segments.get(0))) {
@@ -93,7 +96,7 @@ public class ObfuscationService {
         if (crossCountTotalOnly) {
             Map<String, String> totalOnly = new LinkedHashMap<>();
             result.forEach((key, value) -> {
-                List<String> segments = studyConsentSegments(key);
+                List<String> segments = segmentsByKey.get(key);
                 if (segments != null && segments.isEmpty()) {
                     totalOnly.put(key, value);
                 }
@@ -193,13 +196,11 @@ public class ObfuscationService {
         return total == null || total < chartMinimumCohort;
     }
 
-    /** CATEGORICAL case: null when either input is missing or the cohort is too small, otherwise bucketed and obfuscated. */
-    public String processCategoricalCrossCounts(String categoricalEntityString, String crossCountEntityString)
-        throws JsonProcessingException {
-        return processCategoricalCrossCounts(categoricalEntityString, crossCountEntityString, Map.of());
-    }
-
-    /** @param categoryValues every value each concept has in the dataset; a concept missing from it keeps its grouped bucket */
+    /**
+     * CATEGORICAL case: null when either input is missing or the cohort is too small, otherwise bucketed and obfuscated.
+     *
+     * @param categoryValues every value each concept has in the dataset; a concept missing from it keeps its grouped bucket
+     */
     public String processCategoricalCrossCounts(
         String categoricalEntityString, String crossCountEntityString, Map<String, Set<String>> categoryValues
     ) throws JsonProcessingException {

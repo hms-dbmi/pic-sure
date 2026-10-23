@@ -17,7 +17,7 @@ class AggregatePropertiesTest {
                 "aggregate.hpds-open-url", "http://hpds-open:8080", "aggregate.hpds-open-token", "open-token",
                 "aggregate.visualization-url", "http://viz:8080", "aggregate.obfuscation.consent-threshold", "20",
                 "aggregate.obfuscation.chart-threshold", "12", "aggregate.obfuscation.chart-minimum-cohort", "60",
-                "aggregate.obfuscation.cross-count-total-only", "false"
+                "aggregate.obfuscation.cross-count-total-only", "false", "aggregate.study-consents-cache-ttl-sec", "42"
             )
         );
         AggregateProperties props = new Binder(source).bind("aggregate", AggregateProperties.class).get();
@@ -29,6 +29,7 @@ class AggregatePropertiesTest {
         assertThat(props.getObfuscation().getChartThreshold()).isEqualTo(12);
         assertThat(props.getObfuscation().getChartMinimumCohort()).isEqualTo(60);
         assertThat(props.getObfuscation().isCrossCountTotalOnly()).isFalse();
+        assertThat(props.getStudyConsentsCacheTtlSec()).isEqualTo(42);
     }
 
     @Test
@@ -38,6 +39,7 @@ class AggregatePropertiesTest {
         assertThat(props.getObfuscation().getChartThreshold()).isEqualTo(10);
         assertThat(props.getObfuscation().getChartMinimumCohort()).isEqualTo(50);
         assertThat(props.getObfuscation().isCrossCountTotalOnly()).isTrue();
+        assertThat(props.getStudyConsentsCacheTtlSec()).isEqualTo(300);
         assertThat(props.getConnectTimeoutSec()).isEqualTo(10);
         assertThat(props.getReadTimeoutSec()).isEqualTo(60);
     }

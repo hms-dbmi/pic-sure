@@ -19,6 +19,12 @@ public class AggregateProperties {
     private String visualizationUrl;
     private int connectTimeoutSec = 10;
     private int readTimeoutSec = 60;
+    /**
+     * How often {@code StudyConsentPathProvider} evicts its cached study-consents path list, so a dataset reload is picked up within this
+     * many seconds. The list is dataset-static, so caching removes one HPDS {@code /search} per open count. Disable the cache entirely with
+     * {@code spring.cache.type=none}.
+     */
+    private int studyConsentsCacheTtlSec = 300;
 
     private final Obfuscation obfuscation = new Obfuscation();
 
@@ -110,6 +116,14 @@ public class AggregateProperties {
 
     public void setReadTimeoutSec(int s) {
         this.readTimeoutSec = s;
+    }
+
+    public int getStudyConsentsCacheTtlSec() {
+        return studyConsentsCacheTtlSec;
+    }
+
+    public void setStudyConsentsCacheTtlSec(int s) {
+        this.studyConsentsCacheTtlSec = s;
     }
 
     public Obfuscation getObfuscation() {

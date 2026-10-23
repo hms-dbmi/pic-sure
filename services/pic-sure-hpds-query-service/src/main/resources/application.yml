@@ -55,6 +55,8 @@ aggregate:
   visualization-url: ${VISUALIZATION_URL:}
   connect-timeout-sec: 10
   read-timeout-sec: 60
+  # How often the cached (dataset-static) study-consents path list is evicted, bounding staleness after a reload. Disable: spring.cache.type=none.
+  study-consents-cache-ttl-sec: ${AGGREGATE_STUDY_CONSENTS_CACHE_TTL_SEC:300}
   obfuscation:
     # Consent groups, studies and the total: hidden below this (minimum 10); consent buckets are this wide.
     consent-threshold: ${AGGREGATE_OBFUSCATION_CONSENT_THRESHOLD:10}

@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -22,7 +21,6 @@ import edu.harvard.dbmi.avillach.domain.ContinuousBinningResponse;
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
-import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
@@ -50,8 +48,6 @@ import edu.harvard.hms.dbmi.avillach.query.query.QueryService;
 @Service
 public class AggregateService {
 
-    private static final String STUDIES_CONSENTS_PATH = "\\_studies_consents\\";
-
     /**
      * Result types accepted by {@code querySync}. A body naming a result type that {@link ResultType} does not define fails to bind and
      * answers 400 before reaching this service.
@@ -69,16 +65,18 @@ public class AggregateService {
     private final AggregateProperties props;
     private final QueryService queryService;
     private final ConceptMetadataLookup conceptMetadata;
+    private final StudyConsentPathProvider studyConsentPaths;
 
     public AggregateService(
         AggregateBackendClient backend, ObfuscationService obfuscation, AggregateProperties props, QueryService queryService,
-        ConceptMetadataLookup conceptMetadata
+        ConceptMetadataLookup conceptMetadata, StudyConsentPathProvider studyConsentPaths
     ) {
         this.backend = backend;
         this.obfuscation = obfuscation;
         this.props = props;
         this.queryService = queryService;
         this.conceptMetadata = conceptMetadata;
+        this.studyConsentPaths = studyConsentPaths;
     }
 
     /**
@@ -215,17 +213,9 @@ public class AggregateService {
      */
     private Query openCrossCount(Query query) {
         return new Query(
-            studyConsentPaths(), query.authorizationFilters(), query.phenotypicClause(), query.genomicFilters(), ResultType.CROSS_COUNT,
-            query.picsureId(), query.id()
+            studyConsentPaths.studyConsentPaths(), query.authorizationFilters(), query.phenotypicClause(), query.genomicFilters(),
+            ResultType.CROSS_COUNT, query.picsureId(), query.id()
         );
-    }
-
-    /** Lists the study-consents concept paths on the open backend, in the order HPDS returns them. */
-    private List<String> studyConsentPaths() {
-        SearchResults consentResults = backend.search(envelope(STUDIES_CONSENTS_PATH));
-        LinkedHashMap<String, Object> resultsMap = objectMapper.convertValue(consentResults.getResults(), new TypeReference<>() {});
-        LinkedHashMap<String, Object> phenotypes = objectMapper.convertValue(resultsMap.get("phenotypes"), new TypeReference<>() {});
-        return List.copyOf(phenotypes.keySet());
     }
 
     /** Wraps a typed payload in the envelope every downstream endpoint reads its {@code query} member from. */

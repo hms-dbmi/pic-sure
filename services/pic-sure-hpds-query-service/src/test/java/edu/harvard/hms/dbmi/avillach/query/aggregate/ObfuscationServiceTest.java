@@ -208,8 +208,8 @@ class ObfuscationServiceTest {
     @Test
     void categoricalReturnsNullForSmallCohort() throws Exception {
         String categorical = "{\"\\\\gender\\\\\":{\"male\":20,\"female\":20}}";
-        assertThat(svc.processCategoricalCrossCounts(categorical, "{\"\\\\_studies_consents\\\\\":\"40\"}")).isNull();
-        assertThat(svc.processCategoricalCrossCounts(categorical, "{\"\\\\_studies_consents\\\\\":\"50\"}")).contains("20 ±5");
+        assertThat(svc.processCategoricalCrossCounts(categorical, "{\"\\\\_studies_consents\\\\\":\"40\"}", Map.of())).isNull();
+        assertThat(svc.processCategoricalCrossCounts(categorical, "{\"\\\\_studies_consents\\\\\":\"50\"}", Map.of())).contains("20 ±5");
     }
 
     @Test

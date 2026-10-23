@@ -42,7 +42,7 @@ class AggregateServiceTest {
 
     /** obfuscation-path tests don't exercise persistence; a throwaway QueryService mock keeps their construction terse. */
     private AggregateService service(AggregateBackendClient backend, AggregateProperties props) {
-        return new AggregateService(backend, obfuscation(), props, mock(QueryService.class), new ConceptMetadataLookup(backend));
+        return new AggregateService(backend, obfuscation(), props, mock(QueryService.class), new ConceptMetadataLookup(backend), new StudyConsentPathProvider(backend));
     }
 
     private Query sync(String expectedResultType) {
@@ -313,7 +313,8 @@ class AggregateServiceTest {
         when(backend.search(any())).thenReturn(consentsSearch());
         QueryService queryService = mock(QueryService.class);
         AggregateService svc =
-            new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService, new ConceptMetadataLookup(backend));
+            new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService, new ConceptMetadataLookup(backend),
+                new StudyConsentPathProvider(backend));
 
         svc.query(sync("CROSS_COUNT"));
 
@@ -330,7 +331,8 @@ class AggregateServiceTest {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         QueryService queryService = mock(QueryService.class);
         AggregateService svc =
-            new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService, new ConceptMetadataLookup(backend));
+            new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService, new ConceptMetadataLookup(backend),
+                new StudyConsentPathProvider(backend));
 
         Query submitted = sync("COUNT");
         svc.query(submitted);
@@ -347,7 +349,8 @@ class AggregateServiceTest {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         QueryService queryService = mock(QueryService.class);
         AggregateService svc =
-            new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService, new ConceptMetadataLookup(backend));
+            new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService, new ConceptMetadataLookup(backend),
+                new StudyConsentPathProvider(backend));
 
         assertThatThrownBy(() -> svc.query(withoutResultType())).isInstanceOf(PicsureException.class);
         verifyNoInteractions(queryService);

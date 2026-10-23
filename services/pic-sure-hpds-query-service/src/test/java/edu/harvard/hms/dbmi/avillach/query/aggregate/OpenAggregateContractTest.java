@@ -123,6 +123,7 @@ class OpenAggregateContractTest {
         registry.add("aggregate.hpds-open-url", () -> downstream.baseUrl() + "/OPEN");
         registry.add("aggregate.visualization-url", () -> downstream.baseUrl() + "/VIZ");
         registry.add("aggregate.obfuscation.salt", () -> "pinned-salt");
+        registry.add("spring.cache.type", () -> "none"); // assert per-request /search calls
         registry.add("consent.based.authorization.enabled", () -> false);
     }
 
