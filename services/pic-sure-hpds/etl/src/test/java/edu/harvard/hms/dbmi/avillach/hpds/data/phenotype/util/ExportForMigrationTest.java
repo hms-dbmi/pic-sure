@@ -15,6 +15,7 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.channels.FileChannel;
+import java.nio.channels.NonWritableChannelException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -210,6 +211,19 @@ class ExportForMigrationTest {
         }
         assertEquals(3, frameCount(file));
         assertArrayEquals(content, decrypt(file, ExportForMigration.CONCEPTS_KIND));
+    }
+
+    @Test
+    void closesTheChannelWhenTheHeaderCannotBeWritten(@TempDir Path dir) throws Exception {
+        FileChannel readOnly = FileChannel.open(Files.createFile(dir.resolve("header")), StandardOpenOption.READ);
+        byte[] id = new byte[ExportForMigration.EXPORT_ID_BYTES];
+
+        assertThrows(
+            NonWritableChannelException.class,
+            () -> new ExportForMigration.EncryptingOutputStream(readOnly, id, ExportForMigration.CONCEPTS_KIND)
+        );
+
+        assertFalse(readOnly.isOpen());
     }
 
     @Test
