@@ -493,7 +493,7 @@ public class ExportForMigration {
         private boolean closed;
 
         /**
-         * @param channel the destination, owned and closed by this stream
+         * @param channel the destination, owned and closed by this stream, and closed before this constructor throws
          * @param exportId the export's random id
          * @param kind the kind byte of the file's frames, {@link #CONCEPTS_KIND} or {@link #PATIENTS_KIND} for a phenotype export
          * @throws IOException when the header cannot be written
@@ -503,10 +503,23 @@ public class ExportForMigration {
             this.file = Channels.newOutputStream(channel);
             this.exportId = exportId.clone();
             this.kind = kind;
-            DataOutputStream header = new DataOutputStream(file);
-            header.write(MAGIC);
-            header.writeInt(VERSION);
-            header.write(this.exportId);
+            try {
+                DataOutputStream header = new DataOutputStream(file);
+                header.write(MAGIC);
+                header.writeInt(VERSION);
+                header.write(this.exportId);
+            } catch (Throwable failure) {
+                closeAfter(failure);
+                throw failure;
+            }
+        }
+
+        private void closeAfter(Throwable failure) {
+            try {
+                channel.close();
+            } catch (IOException closeFailure) {
+                failure.addSuppressed(closeFailure);
+            }
         }
 
         @Override
