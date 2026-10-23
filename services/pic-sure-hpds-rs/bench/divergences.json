@@ -27,7 +27,7 @@
       "when": "genomic-static-refusal-empty-cohort",
       "javaBranch": "main",
       "consentContract": "main",
-      "reason": "spec-v6-bdc-readiness.md section 4 and the plan-v6.md decision of 2026-10-22, main consent contract only: Rust keeps v5's refusals of a genomic filter that is invalid as sent (a null filter, key, zygosity or categorical value, a spec key whose position Java cannot read, a numeric filter with one bound or with min above max), decided from the request alone. Java main skips the genomic step when the phenotype cohort is empty, which in main mode includes every query whose authorization filters select nobody, and answers as over no patients. Accepted only when Rust's 400 is exactly one of the refusals the request's genomic filters draw, and Java's answer is the answer over no patients or no variants (a count of 0, cross counts of 0, an empty list, No Variants Found, an export with no rows)."
+      "reason": "Divergence by design, main consent contract only: Rust keeps v5's refusals of a genomic filter that is invalid as sent (a null filter, key, zygosity or categorical value, a spec key whose position Java cannot read, a numeric filter with one bound or with min above max), decided from the request alone. Java main skips the genomic step when the phenotype cohort is empty, which in main mode includes every query whose authorization filters select nobody, and answers as over no patients. Accepted only when Rust's 400 is exactly one of the refusals the request's genomic filters draw, and Java's answer is the answer over no patients or no variants (a count of 0, cross counts of 0, an empty list, No Variants Found, an export with no rows)."
     },
     {
       "name": "invalid-request-status",
