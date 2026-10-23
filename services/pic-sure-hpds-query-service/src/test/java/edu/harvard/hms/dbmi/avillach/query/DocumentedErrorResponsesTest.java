@@ -253,7 +253,8 @@ class DocumentedErrorResponsesTest {
         return Stream.of(
             endpoint("status", id -> authorized(post("/hpds/auth/query/{id}/status", id))),
             endpoint("result", id -> authorized(post("/hpds/auth/query/{id}/result", id))),
-            endpoint("signed-url", id -> authorized(post("/hpds/auth/query/{id}/signed-url", id)))
+            endpoint("signed-url", id -> authorized(post("/hpds/auth/query/{id}/signed-url", id))),
+            endpoint("metadata", id -> authorized(post("/hpds/auth/query/{id}/metadata", id)))
         );
     }
 
