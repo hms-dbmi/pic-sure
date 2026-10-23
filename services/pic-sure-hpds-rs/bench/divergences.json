@@ -384,7 +384,7 @@
     {
       "name": "search-values-bucket-order",
       "when": "search-values-bucket-set",
-      "reason": "Spec section 6: /search/values pages follow Java's HashSet order, which Rust reproduces; within one hash bucket the parents' parallel collection leaves the order unspecified. Equal when page and total match, the pages hold the same values, and every position where they differ holds two values of one bucket."
+      "reason": "Spec section 6: /search/values pages follow Java's HashSet order, which Rust reproduces; within one hash bucket the parents' parallel collection leaves the order unspecified. Equal when page and total match and both pages split into the same runs of hash buckets, in the same order and of the same sizes, where every run but the first and the last holds the same values and the first and last runs, which a page boundary may cut out of a larger bucket, may hold other values of that bucket."
     }
   ]
 }
