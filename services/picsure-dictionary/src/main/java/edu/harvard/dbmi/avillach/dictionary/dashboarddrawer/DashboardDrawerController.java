@@ -1,9 +1,7 @@
 package edu.harvard.dbmi.avillach.dictionary.dashboarddrawer;
 
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.Hidden;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -11,25 +9,23 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * Serves the per-study detail the PIC-SURE frontend shows in the dashboard drawer. Hidden from the OpenAPI document.
+ */
 @Controller
 @RequestMapping("/dashboard-drawer")
-@Tag(name = "Dashboard drawer", description = "Per-study detail shown in the dashboard drawer")
+@Hidden
 public class DashboardDrawerController {
 
     @Autowired
     private DashboardDrawerService dashboardDrawerService;
 
-    @Operation(summary = "Drawer detail for every study")
-    @ApiResponse(responseCode = "200", description = "Drawer detail for every study")
     @AuditEvent(type = "OTHER", action = "dashboard_drawer.list")
     @GetMapping
     public ResponseEntity<List<DashboardDrawer>> findAll() {
         return dashboardDrawerService.findAll().map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    @Operation(summary = "Drawer detail for one study")
-    @ApiResponse(responseCode = "200", description = "Drawer detail for the study")
-    @ApiResponse(responseCode = "404", description = "No drawer data for that dataset id")
     @AuditEvent(type = "OTHER", action = "dashboard_drawer.read")
     @GetMapping("/{id}")
     public ResponseEntity<DashboardDrawer> findByDatasetId(@PathVariable Integer id) {
