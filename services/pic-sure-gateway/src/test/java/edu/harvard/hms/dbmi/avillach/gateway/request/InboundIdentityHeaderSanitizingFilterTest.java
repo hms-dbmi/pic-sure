@@ -11,6 +11,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
+import edu.harvard.hms.dbmi.avillach.gateway.filter.McpCallerFilter;
 import jakarta.servlet.http.HttpServletRequest;
 
 /**
@@ -176,5 +177,113 @@ class InboundIdentityHeaderSanitizingFilterTest {
         filter.doFilter(request, response, (req, resp) -> captured.set((HttpServletRequest) req));
 
         assertThat(captured.get().getHeader("Authorization")).isEqualTo("Bearer abc");
+    }
+
+    private HttpServletRequest sanitize(MockHttpServletRequest request) throws Exception {
+        AtomicReference<HttpServletRequest> captured = new AtomicReference<>();
+        filter.doFilter(request, new MockHttpServletResponse(), (req, resp) -> captured.set((HttpServletRequest) req));
+        return captured.get();
+    }
+
+    @Test
+    void mcpTokenNeverReachesDownstreamOnAnyRoute() throws Exception {
+        for (String path : List.of(McpCallerFilter.MCP_PATH, "/hpds/auth/query/sync", "/auth/user/me")) {
+            MockHttpServletRequest request = new MockHttpServletRequest("POST", path);
+            request.addHeader("x-pic-sure-mcp-token", "mcp-secret");
+
+            HttpServletRequest downstream = sanitize(request);
+
+            assertThat(downstream.getHeader(McpCallerFilter.TOKEN_HEADER)).isNull();
+            assertThat(downstream.getHeaders(McpCallerFilter.TOKEN_HEADER).hasMoreElements()).isFalse();
+            assertThat(Collections.list(downstream.getHeaderNames())).doesNotContain("x-pic-sure-mcp-token", McpCallerFilter.TOKEN_HEADER);
+        }
+    }
+
+    @Test
+    void apiKeyReachesTheMcpRoute() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", McpCallerFilter.MCP_PATH);
+        request.addHeader("Authorization", "Bearer picsure_u_site-api-key");
+
+        HttpServletRequest downstream = sanitize(request);
+
+        assertThat(downstream.getHeader("Authorization")).isEqualTo("Bearer picsure_u_site-api-key");
+        assertThat(Collections.list(downstream.getHeaders("authorization"))).containsExactly("Bearer picsure_u_site-api-key");
+        assertThat(Collections.list(downstream.getHeaderNames())).contains("Authorization");
+    }
+
+    @Test
+    void apiKeyReachesAnEncodedSpellingOfTheMcpRoute() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/%6Dcp");
+        request.addHeader("Authorization", "Bearer picsure_u_site-api-key");
+
+        HttpServletRequest downstream = sanitize(request);
+
+        assertThat(downstream.getHeader("Authorization")).isEqualTo("Bearer picsure_u_site-api-key");
+        assertThat(Collections.list(downstream.getHeaderNames())).contains("Authorization");
+    }
+
+    @Test
+    void apiKeyIsStrippedFromEveryRouteOtherThanExactlyMcp() throws Exception {
+        for (
+            String path : List
+                .of("/mcp/", "/mcp/tools", "/mcpx", "/%6Dcp/x", "/%256Dcp", "/%6Dcpx", "/hpds/auth/query/sync", "/auth/user/me")
+        ) {
+            MockHttpServletRequest request = new MockHttpServletRequest("POST", path);
+            request.addHeader("Authorization", "Bearer picsure_u_site-api-key");
+
+            HttpServletRequest downstream = sanitize(request);
+
+            assertThat(downstream.getHeader("Authorization")).as(path).isNull();
+            assertThat(downstream.getHeaders("Authorization").hasMoreElements()).as(path).isFalse();
+            assertThat(Collections.list(downstream.getHeaderNames())).as(path).doesNotContain("Authorization");
+        }
+    }
+
+    @Test
+    void stripsClientSuppliedMcpClientTypeRegardlessOfCase() throws Exception {
+        for (String path : List.of(McpCallerFilter.MCP_PATH, "/hpds/auth/query/sync")) {
+            MockHttpServletRequest request = new MockHttpServletRequest("POST", path);
+            request.addHeader("x-client-type", "MCP");
+
+            HttpServletRequest downstream = sanitize(request);
+
+            assertThat(downstream.getHeader("X-Client-Type")).as(path).isNull();
+            assertThat(downstream.getHeaders("x-client-type").hasMoreElements()).as(path).isFalse();
+            assertThat(Collections.list(downstream.getHeaderNames())).as(path).doesNotContain("x-client-type");
+        }
+    }
+
+    @Test
+    void stripsClientTypeWhenAnyOfSeveralValuesIsMcp() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
+        request.addHeader("X-Client-Type", "PYTHON_ADAPTER");
+        request.addHeader("X-Client-Type", "mcp");
+
+        HttpServletRequest downstream = sanitize(request);
+
+        assertThat(downstream.getHeader("X-Client-Type")).isNull();
+        assertThat(downstream.getHeaders("X-Client-Type").hasMoreElements()).isFalse();
+        assertThat(Collections.list(downstream.getHeaderNames())).doesNotContain("X-Client-Type");
+
+        for (String joined : List.of("PYTHON_ADAPTER, mcp", "PYTHON_ADAPTER,service", " Service ,R_ADAPTER", "R_ADAPTER, MCP")) {
+            MockHttpServletRequest single = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
+            single.addHeader("X-Client-Type", joined);
+
+            HttpServletRequest sanitized = sanitize(single);
+
+            assertThat(sanitized.getHeader("X-Client-Type")).as(joined).isNull();
+            assertThat(sanitized.getHeaders("X-Client-Type").hasMoreElements()).as(joined).isFalse();
+            assertThat(Collections.list(sanitized.getHeaderNames())).as(joined).doesNotContain("X-Client-Type");
+        }
+    }
+
+    @Test
+    void keepsACommaJoinedClientTypeWithNoReservedEntry() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
+        request.addHeader("X-Client-Type", "PYTHON_ADAPTER, mcp-client, services");
+
+        HttpServletRequest downstream = sanitize(request);
+
+        assertThat(downstream.getHeader("X-Client-Type")).isEqualTo("PYTHON_ADAPTER, mcp-client, services");
     }
 }
