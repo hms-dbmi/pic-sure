@@ -95,15 +95,9 @@ public class AdapterCodeTool {
     @AuditEvent(type = "OTHER", action = "adapter.code")
     public AdapterCodeResult handle(McpTransportContext context, Map<String, Object> arguments) {
         Input input = QueryBinder.bind(arguments, Input.class);
-        if (input == null || input.query() == null) {
-            throw new ToolFailure("Argument 'query' is required.");
-        }
-        if (input.resultType() == null) {
-            throw new ToolFailure("Argument 'resultType' is required.");
-        }
-        if (input.language() == null) {
-            throw new ToolFailure("Argument 'language' is required.");
-        }
+        ToolArguments.require("query", input == null ? null : input.query());
+        ToolArguments.require("resultType", input.resultType());
+        ToolArguments.require("language", input.language());
         AdapterQuery query = generator.walk(input.query(), input.resultType());
         GeneratedCode code = generator.generate(query, input.language());
         List<String> warnings = new ArrayList<>(generator.warnings(query));
