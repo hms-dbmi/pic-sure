@@ -1,11 +1,9 @@
 package edu.harvard.hms.dbmi.avillach.mcp.codegen;
 
-import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 /**
@@ -16,7 +14,7 @@ import java.util.Set;
  * code holds no raw non-ASCII or control character.
  */
 @Component
-public final class PythonGenerator implements LanguageGenerator {
+public final class PythonGenerator extends ScriptGenerator {
 
     /** The adapter's package name on PyPI. */
     public static final String PACKAGE = "picsure";
@@ -39,14 +37,10 @@ public final class PythonGenerator implements LanguageGenerator {
         "counts", "concept_path", "cell", "df", "output_path"
     );
 
-    private static final Map<PhenotypicFilterType, String> FILTER_TYPES = Map.of(
-        PhenotypicFilterType.FILTER, "FILTER", PhenotypicFilterType.REQUIRED, "REQUIRE", PhenotypicFilterType.ANY_RECORD_OF, "ANYRECORD"
-    );
-
-    private static final Map<String, String> GENOMIC_KEYS = Map.of(
-        "Gene_with_variant", "GENE_WITH_VARIANT", "Variant_consequence_calculated", "VARIANT_CONSEQUENCE_CALCULATED",
-        "Variant_frequency_as_text", "VARIANT_FREQUENCY_AS_TEXT", "Variant_class", "VARIANT_CLASS", "Variant_severity", "VARIANT_SEVERITY"
-    );
+    /** Creates the generator. */
+    public PythonGenerator() {
+        super(RESERVED);
+    }
 
     @Override
     public Language language() {
@@ -54,34 +48,49 @@ public final class PythonGenerator implements LanguageGenerator {
     }
 
     @Override
-    public GeneratedCode generate(AdapterQuery query, AdapterSetup setup) {
-        VariableNames names = new VariableNames(RESERVED, "clause");
-        List<String> lines = new ArrayList<>();
-        lines.add("import os");
-        lines.add("import picsure");
-        lines.add("");
-        lines.add(connect(setup));
-        lines.add("");
-        String root = query.phenotypicClause() == null ? null : clause(query.phenotypicClause(), names, lines);
-        List<String> genomic = new ArrayList<>();
-        for (AdapterQuery.Genomic filter : query.genomicFilters()) {
-            String name = names.next(filter.key());
-            lines.add(name + " = picsure.buildGenomicFilter(" + genomicKey(filter.key()) + ", values=" + list(filter.values()) + ")");
-            genomic.add(name);
-        }
-        if (root != null || !genomic.isEmpty()) {
-            lines.add("");
-        }
-        lines.addAll(buildQuery(root, query.includeConcepts(), genomic));
-        lines.add("");
-        lines.addAll(run(query.resultKind()));
-        String code = String.join("\n", lines) + "\n";
+    List<String> preamble() {
+        return List.of("import os", "import picsure");
+    }
+
+    @Override
+    GeneratedCode packaged(AdapterSetup setup, String code) {
         String install = "python3 -m pip install '" + PACKAGE + ">=" + setup.pythonMinVersion() + "'";
         return new GeneratedCode(Language.python, PACKAGE, setup.pythonMinVersion(), RUNTIME, CHECK, install, code);
     }
 
-    private static String connect(AdapterSetup setup) {
-        StringBuilder line = new StringBuilder("session = picsure.connect(").append(literal(setup.baseUrl()))
+    @Override
+    String assign(String name, String expression) {
+        return name + " = " + expression;
+    }
+
+    @Override
+    String call(String function, String... arguments) {
+        return "picsure." + function + "(" + String.join(", ", arguments) + ")";
+    }
+
+    @Override
+    String keyword(String name, String value) {
+        return name + "=" + value;
+    }
+
+    @Override
+    String enumValue(String type, String member) {
+        return "picsure." + type + "." + member;
+    }
+
+    @Override
+    String strings(List<String> values) {
+        return variables(values.stream().map(this::string).toList());
+    }
+
+    @Override
+    String variables(List<String> names) {
+        return "[" + String.join(", ", names) + "]";
+    }
+
+    @Override
+    String connect(AdapterSetup setup) {
+        StringBuilder line = new StringBuilder("session = picsure.connect(").append(string(setup.baseUrl()))
             .append(", token=os.environ[\"PICSURE_TOKEN\"], include_consents=").append(setup.includeConsents() ? "True" : "False");
         if (setup.supportsGenomic()) {
             line.append(", supports_genomic=True");
@@ -89,37 +98,8 @@ public final class PythonGenerator implements LanguageGenerator {
         return line.append(")").toString();
     }
 
-    private static String clause(AdapterQuery.Clause clause, VariableNames names, List<String> lines) {
-        if (clause instanceof AdapterQuery.Filter filter) {
-            String name = names.forConceptPath(filter.conceptPath());
-            StringBuilder call = new StringBuilder(name).append(" = picsure.buildClause(").append(literal(filter.conceptPath()))
-                .append(", type=picsure.PhenotypicFilterType.").append(FILTER_TYPES.get(filter.type()));
-            if (!filter.categories().isEmpty()) {
-                call.append(", categories=").append(list(filter.categories()));
-            }
-            if (filter.min() != null) {
-                call.append(", min=").append(number(filter.min()));
-            }
-            if (filter.max() != null) {
-                call.append(", max=").append(number(filter.max()));
-            }
-            lines.add(call.append(")").toString());
-            return name;
-        }
-        AdapterQuery.Group group = (AdapterQuery.Group) clause;
-        List<String> children = new ArrayList<>();
-        for (AdapterQuery.Clause child : group.clauses()) {
-            children.add(clause(child, names, lines));
-        }
-        String name = names.next("group");
-        lines.add(
-            name + " = picsure.buildClauseGroup([" + String.join(", ", children) + "], operator=picsure.GroupOperator."
-                + group.operator().name() + ")"
-        );
-        return name;
-    }
-
-    private static List<String> buildQuery(String root, List<String> includeConcepts, List<String> genomic) {
+    @Override
+    List<String> buildQuery(String root, List<String> includeConcepts, List<String> genomic) {
         List<String> lines = new ArrayList<>();
         lines.add("query = picsure.buildQuery(");
         if (root != null) {
@@ -127,7 +107,7 @@ public final class PythonGenerator implements LanguageGenerator {
         }
         if (!includeConcepts.isEmpty()) {
             lines.add(INDENT + "includeConcepts=[");
-            includeConcepts.forEach(path -> lines.add(INDENT + INDENT + literal(path) + ","));
+            includeConcepts.forEach(path -> lines.add(INDENT + INDENT + string(path) + ","));
             lines.add(INDENT + "],");
         }
         if (!genomic.isEmpty()) {
@@ -137,7 +117,8 @@ public final class PythonGenerator implements LanguageGenerator {
         return lines;
     }
 
-    private static List<String> run(ResultKind kind) {
+    @Override
+    List<String> run(ResultKind kind) {
         return switch (kind) {
             case count -> List.of("count = session.runQuery(query, type=\"count\")", "print(count.raw)");
             case cross_count -> List.of(
@@ -145,68 +126,27 @@ public final class PythonGenerator implements LanguageGenerator {
                 INDENT + "print(concept_path, cell.raw)"
             );
             case participant, timestamp -> List.of(
-                "os.makedirs(" + literal(RESULTS_DIRECTORY) + ", exist_ok=True)",
-                "output_path = " + literal(RESULTS_DIRECTORY + "/" + kind.name() + ".csv"),
-                "df = session.runQuery(query, type=" + literal(kind.name()) + ")", "session.exportCSV(df, output_path)",
+                "os.makedirs(" + string(RESULTS_DIRECTORY) + ", exist_ok=True)",
+                "output_path = " + string(RESULTS_DIRECTORY + "/" + kind.name() + ".csv"),
+                "df = session.runQuery(query, type=" + string(kind.name()) + ")", "session.exportCSV(df, output_path)",
                 "print(f\"Saved {len(df)} rows and {len(df.columns)} columns to {output_path}\")"
             );
         };
     }
 
-    private static String genomicKey(String key) {
-        String member = GENOMIC_KEYS.get(key);
-        return member == null ? literal(key) : "picsure.GenomicFilterKey." + member;
-    }
-
-    private static String list(List<String> values) {
-        List<String> literals = values.stream().map(PythonGenerator::literal).toList();
-        return "[" + String.join(", ", literals) + "]";
-    }
-
     /**
-     * Writes a number as a Python literal: a whole number without a fraction, anything else in Java's shortest round-trip form, which
-     * Python reads back to the same value.
-     *
-     * @param value a finite number
-     * @return the literal
+     * Control characters become {@code \xNN}, and anything outside printable ASCII becomes {@code \\uNNNN} or {@code \\UNNNNNNNN}.
      */
-    static String number(double value) {
-        if (value == Math.rint(value) && Math.abs(value) < 1e15) {
-            return Long.toString((long) value);
+    @Override
+    String escape(int codePoint) {
+        if (codePoint < 0x20 || codePoint == 0x7f) {
+            return String.format("\\x%02x", codePoint);
         }
-        return Double.toString(value);
+        return super.escape(codePoint);
     }
 
-    /**
-     * Writes a string as a double-quoted, ASCII-only Python literal. Backslashes and quotes are escaped, control characters become
-     * {@code \xNN}, and anything outside printable ASCII becomes {@code \\uNNNN} or {@code \\UNNNNNNNN}.
-     *
-     * @param value the string
-     * @return the literal
-     */
-    static String literal(String value) {
-        StringBuilder out = new StringBuilder("\"");
-        value.codePoints().forEach(cp -> {
-            if (cp == '\\') {
-                out.append("\\\\");
-            } else if (cp == '"') {
-                out.append("\\\"");
-            } else if (cp == '\n') {
-                out.append("\\n");
-            } else if (cp == '\r') {
-                out.append("\\r");
-            } else if (cp == '\t') {
-                out.append("\\t");
-            } else if (cp < 0x20 || cp == 0x7f) {
-                out.append(String.format("\\x%02x", cp));
-            } else if (cp < 0x7f) {
-                out.appendCodePoint(cp);
-            } else if (cp <= 0xffff) {
-                out.append(String.format("\\u%04x", cp));
-            } else {
-                out.append(String.format("\\U%08x", cp));
-            }
-        });
-        return out.append('"').toString();
+    @Override
+    String astral(int codePoint) {
+        return String.format("\\U%08x", codePoint);
     }
 }
