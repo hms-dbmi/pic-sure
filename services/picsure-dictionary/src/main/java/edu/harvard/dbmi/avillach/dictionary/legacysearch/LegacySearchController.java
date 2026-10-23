@@ -17,7 +17,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 
 @Controller
-@Tag(name = "Legacy search", description = "The pre-dictionary search contract kept for older clients.")
+@Tag(
+    name = "Legacy search",
+    description = "The search contract from before the dictionary, kept for older clients. New code should use POST /concepts."
+)
 public class LegacySearchController {
 
     private final LegacySearchService legacySearchService;
@@ -39,7 +42,16 @@ public class LegacySearchController {
      * @return the matches in the legacy response shape, or an empty 400 when the body has no {@code query} object or its {@code limit} is
      *         missing or below 1
      */
-    @Operation(summary = "Search in the legacy request and response shape")
+    @Operation(
+        summary = "Search in the legacy request and response shape",
+        description = "Returns up to `limit` concepts matching `searchTerm`, in the response shape the search had before the dictionary "
+            + "existed. No current PIC-SURE client calls it. New code should call `POST /concepts`, which pages, narrows by facets and "
+            + "consents, and returns full concept detail.\n\n**Body**: `{\"query\": {\"searchTerm\": \"age\", \"limit\": 10}}`. "
+            + "`limit` must be 1 or more, or the call answers 400.\n\n"
+            + "    curl -X POST \"https://<host>/picsure/dictionary/search\" \\\n"
+            + "      -H \"Authorization: Bearer $TOKEN\" -H \"Content-Type: application/json\" \\\n"
+            + "      -d '{\"query\": {\"searchTerm\": \"age\", \"limit\": 10}}'"
+    )
     @ApiResponse(responseCode = "200", description = "Search results in the legacy response shape.")
     @ApiResponse(responseCode = "400", description = "The body is not a JSON object whose query holds a numeric limit of 1 or more.")
     @AuditEvent(type = "SEARCH", action = "search.legacy")
