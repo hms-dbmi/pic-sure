@@ -101,7 +101,7 @@ class OpenApiDocumentTest {
         assertThat(document.path("paths").has(OPEN_SYNC)).isFalse();
         for (String path : List.of(QUERY, SYNC, STATUS, RESULT, SIGNED_URL, METADATA)) {
             String method = path.equals(QUERY) || path.equals(SYNC) ? "post" : "get";
-            JsonNode backend = backendParameter(operation(document, method, path));
+            JsonNode backend = backendParameter(document, operation(document, method, path));
             assertThat(backend.path("schema").path("enum")).as("%s %s backend values", method, path).extracting(JsonNode::asText)
                 .containsExactly("auth", "open");
         }
@@ -238,10 +238,11 @@ class OpenApiDocumentTest {
             .readTree(mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
     }
 
-    private static JsonNode backendParameter(JsonNode operation) {
+    private static JsonNode backendParameter(JsonNode document, JsonNode operation) {
+        String reference = "#/components/parameters/Backend";
         for (JsonNode parameter : operation.path("parameters")) {
-            if (parameter.path("name").asText().equals("backend")) {
-                return parameter;
+            if (parameter.path("$ref").asText().equals(reference)) {
+                return document.path("components").path("parameters").path("Backend");
             }
         }
         return MissingNode.getInstance();
