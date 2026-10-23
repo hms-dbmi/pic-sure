@@ -1,11 +1,9 @@
 package edu.harvard.hms.dbmi.avillach.mcp.codegen;
 
-import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 /**
@@ -17,7 +15,7 @@ import java.util.Set;
  * the code holds no raw non-ASCII or control character.
  */
 @Component
-public final class RGenerator implements LanguageGenerator {
+public final class RGenerator extends ScriptGenerator {
 
     /** The adapter's package name. */
     public static final String PACKAGE = "picsure";
@@ -46,14 +44,10 @@ public final class RGenerator implements LanguageGenerator {
         "df", "output_path"
     );
 
-    private static final Map<PhenotypicFilterType, String> FILTER_TYPES = Map.of(
-        PhenotypicFilterType.FILTER, "FILTER", PhenotypicFilterType.REQUIRED, "REQUIRE", PhenotypicFilterType.ANY_RECORD_OF, "ANYRECORD"
-    );
-
-    private static final Map<String, String> GENOMIC_KEYS = Map.of(
-        "Gene_with_variant", "GENE_WITH_VARIANT", "Variant_consequence_calculated", "VARIANT_CONSEQUENCE_CALCULATED",
-        "Variant_frequency_as_text", "VARIANT_FREQUENCY_AS_TEXT", "Variant_class", "VARIANT_CLASS", "Variant_severity", "VARIANT_SEVERITY"
-    );
+    /** Creates the generator. */
+    public RGenerator() {
+        super(RESERVED);
+    }
 
     @Override
     public Language language() {
@@ -61,34 +55,50 @@ public final class RGenerator implements LanguageGenerator {
     }
 
     @Override
-    public GeneratedCode generate(AdapterQuery query, AdapterSetup setup) {
-        VariableNames names = new VariableNames(RESERVED, "clause");
-        List<String> lines = new ArrayList<>();
-        lines.add("library(picsure)");
-        lines.add("");
-        lines.add(connect(setup));
-        lines.add("");
-        String root = query.phenotypicClause() == null ? null : clause(query.phenotypicClause(), names, lines);
-        List<String> genomic = new ArrayList<>();
-        for (AdapterQuery.Genomic filter : query.genomicFilters()) {
-            String name = names.next(filter.key());
-            lines.add(name + " <- picsure::buildGenomicFilter(" + genomicKey(filter.key()) + ", values = " + vector(filter.values()) + ")");
-            genomic.add(name);
-        }
-        if (root != null || !genomic.isEmpty()) {
-            lines.add("");
-        }
-        lines.addAll(buildQuery(root, query.includeConcepts(), genomic));
-        lines.add("");
-        lines.addAll(run(query.resultKind()));
-        String code = String.join("\n", lines) + "\n";
+    List<String> preamble() {
+        return List.of("library(picsure)");
+    }
+
+    @Override
+    GeneratedCode packaged(AdapterSetup setup, String code) {
         String install = "Rscript -e 'if (!requireNamespace(\"remotes\", quietly = TRUE)) install.packages(\"remotes\", "
             + "repos = \"https://cloud.r-project.org\"); " + "remotes::install_github(\"" + REPOSITORY + "@" + setup.rTag() + "\")'";
         return new GeneratedCode(Language.r, PACKAGE, setup.rTag(), RUNTIME, CHECK, install, code);
     }
 
-    private static String connect(AdapterSetup setup) {
-        StringBuilder line = new StringBuilder("session <- picsure::connect(").append(literal(setup.baseUrl()))
+    @Override
+    String assign(String name, String expression) {
+        return name + " <- " + expression;
+    }
+
+    @Override
+    String call(String function, String... arguments) {
+        return "picsure::" + function + "(" + String.join(", ", arguments) + ")";
+    }
+
+    @Override
+    String keyword(String name, String value) {
+        return name + " = " + value;
+    }
+
+    @Override
+    String enumValue(String type, String member) {
+        return "picsure::" + type + "$" + member;
+    }
+
+    @Override
+    String strings(List<String> values) {
+        return "c(" + String.join(", ", values.stream().map(this::string).toList()) + ")";
+    }
+
+    @Override
+    String variables(List<String> names) {
+        return "list(" + String.join(", ", names) + ")";
+    }
+
+    @Override
+    String connect(AdapterSetup setup) {
+        StringBuilder line = new StringBuilder("session <- picsure::connect(").append(string(setup.baseUrl()))
             .append(", token = Sys.getenv(\"PICSURE_TOKEN\"), include_consents = ").append(setup.includeConsents() ? "TRUE" : "FALSE");
         if (setup.supportsGenomic()) {
             line.append(", supports_genomic = TRUE");
@@ -96,37 +106,8 @@ public final class RGenerator implements LanguageGenerator {
         return line.append(")").toString();
     }
 
-    private static String clause(AdapterQuery.Clause clause, VariableNames names, List<String> lines) {
-        if (clause instanceof AdapterQuery.Filter filter) {
-            String name = names.forConceptPath(filter.conceptPath());
-            StringBuilder call = new StringBuilder(name).append(" <- picsure::buildClause(").append(literal(filter.conceptPath()))
-                .append(", type = picsure::PhenotypicFilterType$").append(FILTER_TYPES.get(filter.type()));
-            if (!filter.categories().isEmpty()) {
-                call.append(", categories = ").append(vector(filter.categories()));
-            }
-            if (filter.min() != null) {
-                call.append(", min = ").append(PythonGenerator.number(filter.min()));
-            }
-            if (filter.max() != null) {
-                call.append(", max = ").append(PythonGenerator.number(filter.max()));
-            }
-            lines.add(call.append(")").toString());
-            return name;
-        }
-        AdapterQuery.Group group = (AdapterQuery.Group) clause;
-        List<String> children = new ArrayList<>();
-        for (AdapterQuery.Clause child : group.clauses()) {
-            children.add(clause(child, names, lines));
-        }
-        String name = names.next("group");
-        lines.add(
-            name + " <- picsure::buildClauseGroup(list(" + String.join(", ", children) + "), operator = picsure::GroupOperator$"
-                + group.operator().name() + ")"
-        );
-        return name;
-    }
-
-    private static List<String> buildQuery(String root, List<String> includeConcepts, List<String> genomic) {
+    @Override
+    List<String> buildQuery(String root, List<String> includeConcepts, List<String> genomic) {
         List<List<String>> arguments = new ArrayList<>();
         if (root != null) {
             arguments.add(List.of("phenotypicFilter = " + root));
@@ -135,7 +116,7 @@ public final class RGenerator implements LanguageGenerator {
             List<String> block = new ArrayList<>();
             block.add("includeConcepts = c(");
             for (int i = 0; i < includeConcepts.size(); i++) {
-                block.add(INDENT + literal(includeConcepts.get(i)) + (i < includeConcepts.size() - 1 ? "," : ""));
+                block.add(INDENT + string(includeConcepts.get(i)) + (i < includeConcepts.size() - 1 ? "," : ""));
             }
             block.add(")");
             arguments.add(block);
@@ -157,7 +138,8 @@ public final class RGenerator implements LanguageGenerator {
         return lines;
     }
 
-    private static List<String> run(ResultKind kind) {
+    @Override
+    List<String> run(ResultKind kind) {
         return switch (kind) {
             case count -> List.of("count <- picsure::runQuery(session, query, type = \"count\")", "cat(count$raw, \"\\n\", sep = \"\")");
             case cross_count -> List.of(
@@ -165,56 +147,23 @@ public final class RGenerator implements LanguageGenerator {
                 INDENT + "cat(concept_path, \" \", counts[[concept_path]]$raw, \"\\n\", sep = \"\")", "}"
             );
             case participant, timestamp -> List.of(
-                "dir.create(" + literal(RESULTS_DIRECTORY) + ", showWarnings = FALSE, recursive = TRUE)",
-                "output_path <- " + literal(RESULTS_DIRECTORY + "/" + kind.name() + ".csv"),
-                "df <- picsure::runQuery(session, query, type = " + literal(kind.name()) + ")",
+                "dir.create(" + string(RESULTS_DIRECTORY) + ", showWarnings = FALSE, recursive = TRUE)",
+                "output_path <- " + string(RESULTS_DIRECTORY + "/" + kind.name() + ".csv"),
+                "df <- picsure::runQuery(session, query, type = " + string(kind.name()) + ")",
                 "picsure::exportCSV(session, df, output_path)",
                 "cat(sprintf(\"Saved %d rows and %d columns to %s\\n\", nrow(df), ncol(df), output_path))"
             );
         };
     }
 
-    private static String genomicKey(String key) {
-        String member = GENOMIC_KEYS.get(key);
-        return member == null ? literal(key) : "picsure::GenomicFilterKey$" + member;
-    }
-
-    private static String vector(List<String> values) {
-        List<String> literals = values.stream().map(RGenerator::literal).toList();
-        return "c(" + String.join(", ", literals) + ")";
-    }
-
     /**
-     * Writes a string as a double-quoted, ASCII-only R literal. Backslashes and quotes are escaped, newline, carriage return, and tab use
-     * their short escapes, and every other control character and everything outside printable ASCII becomes {@code \\uNNNN} or
-     * {@code \\U{NNNNNNNN}}. R refuses a string that mixes {@code \\x} and {@code \\u} escapes, so {@code \\x} is never used. A NUL
-     * character or an unpaired surrogate cannot appear in an R string, and neither reaches this method: the tools refuse both in every
+     * Writes a code point beyond U+FFFF as {@code \\U{NNNNNNNN}}. Every other control character and everything outside printable ASCII
+     * becomes {@code \\uNNNN}. R refuses a string that mixes {@code \\x} and {@code \\u} escapes, so {@code \\x} is never used. A NUL
+     * character or an unpaired surrogate cannot appear in an R string, and neither reaches this class: the tools refuse both in every
      * string the query carries.
-     *
-     * @param value the string
-     * @return the literal
      */
-    static String literal(String value) {
-        StringBuilder out = new StringBuilder("\"");
-        value.codePoints().forEach(cp -> {
-            if (cp == '\\') {
-                out.append("\\\\");
-            } else if (cp == '"') {
-                out.append("\\\"");
-            } else if (cp == '\n') {
-                out.append("\\n");
-            } else if (cp == '\r') {
-                out.append("\\r");
-            } else if (cp == '\t') {
-                out.append("\\t");
-            } else if (cp >= 0x20 && cp < 0x7f) {
-                out.appendCodePoint(cp);
-            } else if (cp <= 0xffff) {
-                out.append(String.format("\\u%04x", cp));
-            } else {
-                out.append(String.format("\\U{%08x}", cp));
-            }
-        });
-        return out.append('"').toString();
+    @Override
+    String astral(int codePoint) {
+        return String.format("\\U{%08x}", codePoint);
     }
 }

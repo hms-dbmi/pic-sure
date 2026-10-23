@@ -81,12 +81,8 @@ public class CrossCountTool {
     @AuditEvent(type = "QUERY", action = "query.sync")
     public CrossCountResult handle(McpTransportContext context, Map<String, Object> arguments) {
         Input input = QueryBinder.bind(arguments, Input.class);
-        if (input == null || input.query() == null) {
-            throw new ToolFailure("Argument 'query' is required.");
-        }
-        if (input.resultType() == null) {
-            throw new ToolFailure("Argument 'resultType' is required.");
-        }
+        ToolArguments.require("query", input == null ? null : input.query());
+        ToolArguments.require("resultType", input.resultType());
         String resultType = input.resultType().name();
         Query query = input.query().toQuery(input.resultType().resultType());
         String body = QueryCalls.run(OpenQueryClient.QUERY_SYNC_PATH, () -> client.querySync(query, CallerHeaders.from(context)));

@@ -157,8 +157,8 @@ class RGeneratorTest {
 
     @Test
     void literalsAreAsciiRStringsWithoutHexEscapes() {
-        assertThat(RGenerator.literal("\\a\\\"b\"")).isEqualTo("\"\\\\a\\\\\\\"b\\\"\"");
-        assertThat(RGenerator.literal("caf\u00e9\t\u0001\u007f\r\n")).isEqualTo("\"caf\\u00e9\\t\\u0001\\u007f\\r\\n\"");
-        assertThat(RGenerator.literal(new String(Character.toChars(0x1F600)))).isEqualTo("\"\\U{0001f600}\"");
+        assertThat(new RGenerator().string("\\a\\\"b\"")).isEqualTo("\"\\\\a\\\\\\\"b\\\"\"");
+        assertThat(new RGenerator().string("caf\u00e9\t\u0001\u007f\r\n")).isEqualTo("\"caf\\u00e9\\t\\u0001\\u007f\\r\\n\"");
+        assertThat(new RGenerator().string(new String(Character.toChars(0x1F600)))).isEqualTo("\"\\U{0001f600}\"");
     }
 }

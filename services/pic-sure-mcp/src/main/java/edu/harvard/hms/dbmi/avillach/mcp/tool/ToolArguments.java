@@ -12,6 +12,21 @@ public final class ToolArguments {
     private ToolArguments() {}
 
     /**
+     * Requires an argument the model must send.
+     *
+     * @param name the argument name, used in the failure message
+     * @param value the value the model sent, possibly null
+     * @return the value unchanged
+     * @throws ToolFailure if the value is null
+     */
+    public static <T> T require(String name, T value) {
+        if (value == null) {
+            throw new ToolFailure("Argument '" + name + "' is required.");
+        }
+        return value;
+    }
+
+    /**
      * Requires a non-blank argument of bounded length with no control characters and no unpaired UTF-16 surrogates.
      *
      * @param name the argument name, used in the failure message
