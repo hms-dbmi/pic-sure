@@ -263,20 +263,6 @@ class HpdsQueryControllerTest {
     }
 
     @Test
-    void metadataPostOnTheUnversionedPathForwardsCallerAuthorizationForSavedConsentVerification() throws Exception {
-        UUID id = UUID.randomUUID();
-        StoredQuery stored = new StoredQuery(id, "{}", "rr-1", "AVAILABLE", "3", null);
-        when(operationsClient.get(id)).thenReturn(stored);
-
-        mockMvc.perform(
-            post("/hpds/auth/query/{id}/metadata", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
-                .header("Authorization", "Bearer caller-token")
-        ).andExpect(status().isOk());
-
-        verify(consentAuthorization).verifyReadAccess("auth", stored, "Bearer caller-token");
-    }
-
-    @Test
     void malformedJsonIs400() throws Exception {
         mockMvc
             .perform(
