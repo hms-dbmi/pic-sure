@@ -787,7 +787,9 @@ impl Engine {
     pub fn vcf_excerpt_once(&self, query: &Query) -> Result<OnePassAnswer<'_>> {
         Ok(match self.build_vcf_excerpt(query, false)? {
             ExcerptAnswer::Text(text) => OnePassAnswer::Text(text),
-            ExcerptAnswer::Rows(excerpt) => OnePassAnswer::Rows(UnmeasuredExcerpt::of(excerpt)),
+            ExcerptAnswer::Rows(excerpt) => {
+                OnePassAnswer::Rows(UnmeasuredExcerpt::from_unmeasured(excerpt))
+            }
         })
     }
 

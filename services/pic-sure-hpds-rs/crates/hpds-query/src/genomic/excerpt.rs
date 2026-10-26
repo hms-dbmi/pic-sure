@@ -225,7 +225,7 @@ pub struct UnmeasuredExcerpt<'e>(VcfExcerpt<'e>);
 
 impl<'e> UnmeasuredExcerpt<'e> {
     /// Wraps the unmeasured `excerpt`.
-    pub(crate) fn of(excerpt: VcfExcerpt<'e>) -> Self {
+    pub(crate) fn from_unmeasured(excerpt: VcfExcerpt<'e>) -> Self {
         UnmeasuredExcerpt(excerpt)
     }
 
