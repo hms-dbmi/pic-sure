@@ -211,10 +211,11 @@ class AggregateServiceTest {
         when(backend.search(any())).thenReturn(consentsSearch());
         when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"5\":1}}"))
             .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"< 10\"}"));
-        AggregateService svc = service(backend, new AggregateProperties());
+        AggregateService svc = service(backend, withVisualization());
 
         ResponseEntity<String> out = svc.querySync(sync("CONTINUOUS_CROSS_COUNT"));
         assertThat(out.getBody()).isNull();
+        verify(backend, never()).binContinuous(any());
     }
 
     @Test
@@ -225,22 +226,25 @@ class AggregateServiceTest {
         when(backend.search(any())).thenReturn(consentsSearch());
         when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"5\":1}}"))
             .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"5\"}"));
+        AggregateService svc = service(backend, withVisualization());
+
+        ResponseEntity<String> out = svc.querySync(sync("CONTINUOUS_CROSS_COUNT"));
+        assertThat(out.getBody()).isNull();
+        verify(backend, never()).binContinuous(any());
+    }
+
+    @Test
+    void continuousChartIsDisabledWhenNoVisualizationIsConfigured() {
+        // Unbinned counts would be keyed by every observed value, so nothing is returned instead.
+        AggregateBackendClient backend = mock(AggregateBackendClient.class);
+        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"19.3\":100,\"63.8\":1}}"));
         AggregateService svc = service(backend, new AggregateProperties());
 
         ResponseEntity<String> out = svc.querySync(sync("CONTINUOUS_CROSS_COUNT"));
         assertThat(out.getBody()).isNull();
-    }
-
-    @Test
-    void continuousCrossCountObfuscatesRawWhenNoVisualizationConfigured() {
-        AggregateBackendClient backend = mock(AggregateBackendClient.class);
-        when(backend.search(any())).thenReturn(consentsSearch());
-        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"5\":100}}"))
-            .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"500\"}"));
-        AggregateService svc = service(backend, new AggregateProperties());
-
-        ResponseEntity<String> out = svc.querySync(sync("CONTINUOUS_CROSS_COUNT"));
-        assertThat(out.getBody()).contains("\"5\"").contains("100 ±5");
+        verify(backend).querySync(any()); // the continuous query only: no cross-count lookup
+        verify(backend, never()).search(any());
+        verify(backend, never()).binContinuous(any());
     }
 
     @Test
