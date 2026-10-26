@@ -3,7 +3,7 @@ package edu.harvard.dbmi.avillach.visualization.processing;
 import static org.junit.jupiter.api.Assertions.*;
 
 import edu.harvard.dbmi.avillach.visualization.model.ContinuousDistributionData;
-import edu.harvard.dbmi.avillach.visualization.model.ObfuscatedCount;
+import edu.harvard.dbmi.avillach.domain.ObfuscatedCount;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;

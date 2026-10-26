@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.query.aggregate;
 
+import edu.harvard.dbmi.avillach.domain.ObfuscatedCount;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.query.config.AggregateProperties;
