@@ -440,3 +440,54 @@ export function reviewDecision({ pr, reviews, risk, policy }) {
   const where = latestOnly ? ' on the latest commit' : '';
   return cut('pending', `Needs ${min} human approval(s)${where} (${approvals.length} so far): risk:needs-review`);
 }
+
+// Line range of one side of a jscpd clone. jscpd reports { name, start, end, startLoc: { line }, endLoc: { line } };
+// start/end may be token offsets, so prefer the *Loc lines.
+export function cloneRange(f) {
+  return [f.startLoc?.line ?? f.start, f.endLoc?.line ?? f.end];
+}
+
+// jscpd can split one long copy into back-to-back clones (at a line that differs, or an ignored import).
+// Merge clones for the same file pair that touch or overlap in the first file and sit on the same diagonal (the same
+// offset between the two files), so each copy is listed once. Returns clones with firstFile/secondFile normalised to startLoc/endLoc lines.
+export function mergeClones(list) {
+  const sorted = list
+    .map((d) => ({ ...d, a: cloneRange(d.firstFile), b: cloneRange(d.secondFile) }))
+    .sort((x, y) => x.firstFile.name.localeCompare(y.firstFile.name) || x.secondFile.name.localeCompare(y.secondFile.name) || x.a[0] - y.a[0] || x.b[0] - y.b[0]);
+  const merged = [];
+  for (const d of sorted) {
+    // Look at every merged clone, not just the last: clones for other places in the same file pair can interleave.
+    const prev = merged.findLast(
+      (m) =>
+        m.firstFile.name === d.firstFile.name &&
+        m.secondFile.name === d.secondFile.name &&
+        d.a[0] <= m.a[1] + 1 &&
+        d.b[0] - m.b[1] === d.a[0] - m.a[1],
+    );
+    if (!prev) {
+      merged.push(d);
+      continue;
+    }
+    if (d.a[1] > prev.a[1]) {
+      if (prev.fragment != null && d.fragment != null) {
+        // Append only the lines of d's fragment that extend past prev; the pieces can share boundary lines.
+        const overlap = Math.max(0, prev.a[1] - d.a[0] + 1);
+        prev.fragment = `${prev.fragment}\n${d.fragment.split('\n').slice(overlap).join('\n')}`;
+      } else {
+        prev.fragment = null; // a partial snippet would not match the merged range
+      }
+    }
+    prev.a[1] = Math.max(prev.a[1], d.a[1]);
+    prev.b[1] = Math.max(prev.b[1], d.b[1]);
+  }
+  return merged.map(({ a, b, tokens, ...d }) => ({
+    ...d,
+    lines: a[1] - a[0] + 1,
+    firstFile: { name: d.firstFile.name, startLoc: { line: a[0] }, endLoc: { line: a[1] } },
+    secondFile: { name: d.secondFile.name, startLoc: { line: b[0] }, endLoc: { line: b[1] } },
+  }));
+}
+
+// Workflow-command escaping: data for the message, and the stricter set for property values like file=.
+export const escapeCommandData = (s) => s.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+export const escapeCommandProperty = (s) => escapeCommandData(s).replace(/:/g, '%3A').replace(/,/g, '%2C');

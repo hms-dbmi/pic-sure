@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  globToRegExp, parsePatch, bumpLevel, extractBumps, evaluate, parseJacoco, jacocoSourceRoot, parseLcov, diffCoverage, renderReport, checkRunPayload, reviewDecision,
+  mergeClones, escapeCommandProperty, globToRegExp, parsePatch, bumpLevel, extractBumps, evaluate, parseJacoco, jacocoSourceRoot, parseLcov, diffCoverage, renderReport, checkRunPayload, reviewDecision,
 } from './lib.mjs';
 
 const policy = JSON.parse(readFileSync(new URL('../../risk/policy.json', import.meta.url), 'utf8'));
@@ -293,4 +293,60 @@ test('jacoco coverage stays per module', () => {
   const r = diffCoverage(new Map([['services/b/src/main/java/com/acme/Foo.java', [{ line: 42 }]]]), cov);
   assert.deepEqual([r.covered, r.total], [0, 1]);
   assert.equal(jacocoSourceRoot('target/site/jacoco/jacoco.xml'), 'src/main/java');
+});
+
+const clone = (a, b, extra = {}) => ({
+  isNew: true,
+  lines: a[1] - a[0] + 1,
+  firstFile: { name: 'A.java', startLoc: { line: a[0] }, endLoc: { line: a[1] } },
+  secondFile: { name: 'B.java', startLoc: { line: b[0] }, endLoc: { line: b[1] } },
+  ...extra,
+});
+const range = (c) => [c.firstFile.startLoc.line, c.firstFile.endLoc.line, c.secondFile.startLoc.line, c.secondFile.endLoc.line];
+
+test('mergeClones joins back-to-back clones and stitches the fragment', () => {
+  const m = mergeClones([clone([1, 3], [1, 3], { fragment: 'l1\nl2\nl3' }), clone([3, 5], [3, 5], { fragment: 'l3\nl4\nl5' })]);
+  assert.equal(m.length, 1);
+  assert.deepEqual(range(m[0]), [1, 5, 1, 5]);
+  assert.equal(m[0].lines, 5);
+  assert.equal(m[0].fragment, 'l1\nl2\nl3\nl4\nl5');
+});
+
+test('mergeClones keeps clones apart when the second file jumps backwards', () => {
+  const m = mergeClones([clone([1, 10], [50, 59]), clone([11, 20], [5, 14])]);
+  assert.equal(m.length, 2);
+});
+
+test('mergeClones keeps clones apart when the files are misaligned', () => {
+  assert.equal(mergeClones([clone([1, 10], [1, 10]), clone([11, 20], [5, 14])]).length, 2);
+});
+
+test('mergeClones does not stretch the second file for a contained clone', () => {
+  const m = mergeClones([clone([1, 20], [1, 20]), clone([5, 10], [15, 25])]);
+  assert.equal(m.length, 2);
+  assert.deepEqual(range(m[0]), [1, 20, 1, 20]);
+});
+
+test('mergeClones drops the fragment when a merged piece has none', () => {
+  const [a] = mergeClones([clone([1, 3], [1, 3]), clone([4, 6], [4, 6], { fragment: 'l4\nl5\nl6' })]);
+  assert.equal(a.fragment, null);
+  const [b] = mergeClones([clone([1, 3], [1, 3], { fragment: 'l1\nl2\nl3' }), clone([4, 6], [4, 6])]);
+  assert.equal(b.fragment, null);
+});
+
+test('mergeClones keeps clones apart when there is a gap, or the files differ', () => {
+  assert.equal(mergeClones([clone([1, 10], [1, 10]), clone([12, 20], [12, 20])]).length, 2);
+  const other = clone([11, 20], [11, 20]);
+  other.secondFile.name = 'C.java';
+  assert.equal(mergeClones([clone([1, 10], [1, 10]), other]).length, 2);
+});
+
+test('mergeClones merges across an interleaved clone for the same file pair', () => {
+  const m = mergeClones([clone([1, 10], [1, 10]), clone([5, 12], [100, 107]), clone([11, 20], [11, 20])]);
+  assert.equal(m.length, 2);
+  assert.deepEqual(range(m[0]), [1, 20, 1, 20]);
+});
+
+test('annotation properties escape commas and colons', () => {
+  assert.equal(escapeCommandProperty('a,b:c\n'), 'a%2Cb%3Ac%0A');
 });
