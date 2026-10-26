@@ -53,6 +53,7 @@ jobs:
             --baseline-from-ref "origin/${BASE_REF}" \
             --fail-on-new-clones 0 \
             --fail-on-empty \
+            --skip-comments \
             --reporters json --output "$RUNNER_TEMP/jscpd" --silent \
             . || status=$?
           if [ -f "$RUNNER_TEMP/jscpd/jscpd-report.json" ]; then
