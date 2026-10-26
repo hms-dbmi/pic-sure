@@ -71,6 +71,15 @@ class ToolUseLoopServiceTest {
     }
 
     @Test
+    void aFinalTurnWithNoTextFallsBackToTheFallbackText() {
+        FakeModelClient model = FakeModelClient.returning(doneTurn(null));
+
+        ChatResponse response = new ToolUseLoopService(model, new FakeToolGateway(), 8).handle(REQUEST, CALLER);
+
+        assertEquals(ToolUseLoopService.FALLBACK_TEXT, response.response());
+    }
+
+    @Test
     void aToolFailureIsFedBackAsAnErrorResultAndNeverThrows() {
         FakeModelClient model = FakeModelClient.returning(toolCallTurn("search_concepts", "{}"), doneTurn("Handled the error"));
         FakeToolGateway tools = FakeToolGateway.thatFailsEveryCall();

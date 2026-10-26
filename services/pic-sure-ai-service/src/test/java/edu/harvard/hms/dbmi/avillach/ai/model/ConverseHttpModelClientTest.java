@@ -159,6 +159,33 @@ class ConverseHttpModelClientTest {
     }
 
     @Test
+    void marksFailedToolResultsWithErrorStatus() {
+        server.stubFor(
+            post(urlEqualTo("/model/test-model/converse"))
+                .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json").withBody("""
+                    {"output":{"message":{"role":"assistant","content":[{"text":"x"}]}}}"""))
+        );
+        List<ConversationEntry> history = List.of(
+            new UserEntry("go"), new AssistantToolCallEntry(null, List.of(new RequestedToolCall("c1", "a", "{}"))),
+            new ToolResultEntry("c1", "a", "boom", true)
+        );
+
+        client.send("sys", history, List.of());
+
+        server.verify(
+            postRequestedFor(urlEqualTo("/model/test-model/converse"))
+                .withRequestBody(matchingJsonPath("$.messages[2].content[0].toolResult.status", equalTo("error")))
+        );
+    }
+
+    @Test
+    void anEmptyResponseBodyBecomesAModelUnavailableException() {
+        server.stubFor(post(urlEqualTo("/model/test-model/converse")).willReturn(aResponse().withStatus(200)));
+
+        assertThrows(ModelUnavailableException.class, () -> client.send("sys", List.of(new UserEntry("hi")), List.of()));
+    }
+
+    @Test
     void aNonOkResponseBecomesAModelUnavailableException() {
         server.stubFor(post(urlEqualTo("/model/test-model/converse")).willReturn(aResponse().withStatus(500)));
 

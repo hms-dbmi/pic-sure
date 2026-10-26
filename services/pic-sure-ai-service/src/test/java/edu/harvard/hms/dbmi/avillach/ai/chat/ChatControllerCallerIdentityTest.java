@@ -46,8 +46,8 @@ class ChatControllerCallerIdentityTest {
         String firstUsersResponse = chat("Bearer jwt-for-user-a", "user-a");
         String secondUsersResponse = chat("Bearer jwt-for-user-b", "user-b");
 
-        assertThat(firstUsersResponse).contains("user-a");
-        assertThat(secondUsersResponse).contains("user-b");
+        assertThat(firstUsersResponse).contains("caller-").doesNotContain("user-a");
+        assertThat(secondUsersResponse).contains("caller-").doesNotContain("user-b");
         assertThat(firstUsersResponse).isNotEqualTo(secondUsersResponse);
     }
 

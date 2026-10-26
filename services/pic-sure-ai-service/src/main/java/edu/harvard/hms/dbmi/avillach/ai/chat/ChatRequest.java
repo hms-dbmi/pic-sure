@@ -5,6 +5,7 @@ import java.util.List;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 /**
  * {@code POST /ai/chat}'s request body, per {@code PLAN.md}'s Transport section: {@code { message, conversationId, requestId, query?,
@@ -30,8 +31,8 @@ import jakarta.validation.constraints.NotBlank;
 public record ChatRequest(
     @Schema(
         description = "The researcher's chat message.", example = "Which studies have blood pressure measurements?",
-        requiredMode = Schema.RequiredMode.REQUIRED
-    ) @NotBlank String message,
+        requiredMode = Schema.RequiredMode.REQUIRED, maxLength = ChatRequest.MAX_MESSAGE_LENGTH
+    ) @NotBlank @Size(max = ChatRequest.MAX_MESSAGE_LENGTH) String message,
     @Schema(
         description = "Client-generated id of the conversation this turn belongs to.", example = "c4b1f7e2-6a0d-4a7e-9d1b-2f3c8e5a9b10",
         requiredMode = Schema.RequiredMode.REQUIRED
@@ -44,4 +45,7 @@ public record ChatRequest(
     @Schema(description = "The researcher's current facet selection, if any.") List<FacetSelection> facets,
     @Schema(description = "The researcher's current dictionary-search state, if any. Passed through unvalidated.") JsonNode search
 ) {
+
+    /** Upper bound on {@code message}, so an oversized prompt is rejected by validation before it reaches the model. */
+    public static final int MAX_MESSAGE_LENGTH = 4000;
 }

@@ -158,12 +158,10 @@ public class MockMcpToolGateway implements McpToolGateway {
         }
     }
 
-    /** The caller's verified id when the gateway supplied one, else a short, non-reversible digest of the bearer token. */
+    /** An opaque, non-reversible marker for the caller, so the mock never puts a raw user id (possibly an email) in model-visible output. */
     private static String identityOf(CallerContext caller) {
-        if (caller.userId() != null && !caller.userId().isBlank()) {
-            return caller.userId();
-        }
-        return "anon-" + shortDigest(caller.authorization());
+        boolean hasUserId = caller.userId() != null && !caller.userId().isBlank();
+        return "caller-" + shortDigest(hasUserId ? caller.userId() : caller.authorization());
     }
 
     private static String shortDigest(String value) {
