@@ -83,12 +83,6 @@
       "description": "List of remote genomic processor host addresses that the remote genomic processor bean in GenomicProcessorConfig fans queries out to. Only read when hpds.genomicProcessor.impl is set to remote."
     },
     {
-      "name": "hpds.minimumClauseSize",
-      "type": "java.lang.Integer",
-      "description": "When positive, PhenotypicQueryExecutor treats any v3 phenotypic clause, at any level of the query, that matches fewer patients than this (within the patients the authorization filters allow) as matching nobody. Blocks queries that isolate one or two patients, such as P OR (target AND X). Intended for open-access HPDS. Genomic filters and v1/v2 queries are not affected. 0 (the default) disables the check.",
-      "defaultValue": 0
-    },
-    {
       "name": "hpds.requireAuthorizationFilter",
       "type": "java.lang.Boolean",
       "description": "Controls whether QueryValidator requires every v3 query to carry at least one authorization filter. True (the default) rejects a query with no authorization filter; set to false only when patient data access is controlled some other way.",

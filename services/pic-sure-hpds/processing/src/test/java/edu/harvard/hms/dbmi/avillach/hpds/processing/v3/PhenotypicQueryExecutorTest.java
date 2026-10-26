@@ -32,7 +32,7 @@ class PhenotypicQueryExecutorTest {
 
     @BeforeEach
     public void setup() {
-        phenotypicQueryExecutor = new PhenotypicQueryExecutor(phenotypeMetaStore, phenotypicObservationStore, 0);
+        phenotypicQueryExecutor = new PhenotypicQueryExecutor(phenotypeMetaStore, phenotypicObservationStore);
     }
 
     @Test
@@ -229,91 +229,4 @@ class PhenotypicQueryExecutorTest {
         assertEquals(Set.of(), patientSet);
     }
 
-    private static final String SEX = "\\demographics\\SEX\\";
-    private static final String AGE = "\\demographics\\AGE\\";
-    private static final String DIAGNOSIS = "\\diagnosis\\D\\";
-    private static final String CONSENTS = "\\_consents\\";
-
-    private PhenotypicQueryExecutor withMinimumClauseSize(int minimum) {
-        return new PhenotypicQueryExecutor(phenotypeMetaStore, phenotypicObservationStore, minimum);
-    }
-
-    private static PhenotypicFilter valueFilter(String conceptPath, String value) {
-        return new PhenotypicFilter(PhenotypicFilterType.FILTER, conceptPath, Set.of(value), null, null, null);
-    }
-
-    private static Query query(List<AuthorizationFilter> authorizationFilters, PhenotypicClause clause) {
-        return new Query(List.of(), authorizationFilters, clause, List.of(), ResultType.COUNT, null, null);
-    }
-
-    @Test
-    public void getPatientSet_minimumClauseSize_filterBelowMinimumMatchesNobody() {
-        when(phenotypicObservationStore.getKeysForValues(SEX, Set.of("female"))).thenReturn(Set.of(1, 2));
-
-        assertEquals(Set.of(), withMinimumClauseSize(3).getPatientSet(query(List.of(), valueFilter(SEX, "female"))));
-    }
-
-    @Test
-    public void getPatientSet_minimumClauseSize_filterAtMinimumIsKept() {
-        when(phenotypicObservationStore.getKeysForValues(SEX, Set.of("female"))).thenReturn(Set.of(1, 2, 3));
-
-        assertEquals(Set.of(1, 2, 3), withMinimumClauseSize(3).getPatientSet(query(List.of(), valueFilter(SEX, "female"))));
-    }
-
-    @Test
-    public void getPatientSet_minimumClauseSize_isolatingSubqueryIsDroppedFromAnOr() {
-        // P OR (target AND X): the AND isolates patient 5, so it matches nobody and the result is P alone
-        PhenotypicClause isolating =
-            new PhenotypicSubquery(null, List.of(valueFilter(AGE, "47"), valueFilter(DIAGNOSIS, "yes")), Operator.AND);
-        PhenotypicClause clause = new PhenotypicSubquery(null, List.of(valueFilter(SEX, "female"), isolating), Operator.OR);
-        when(phenotypicObservationStore.getKeysForValues(SEX, Set.of("female"))).thenReturn(Set.of(1, 2, 3, 4));
-        when(phenotypicObservationStore.getKeysForValues(AGE, Set.of("47"))).thenReturn(Set.of(5, 6, 7));
-        when(phenotypicObservationStore.getKeysForValues(DIAGNOSIS, Set.of("yes"))).thenReturn(Set.of(5, 20, 21));
-
-        assertEquals(Set.of(1, 2, 3, 4), withMinimumClauseSize(3).getPatientSet(query(List.of(), clause)));
-        assertEquals(Set.of(1, 2, 3, 4, 5), withMinimumClauseSize(0).getPatientSet(query(List.of(), clause)));
-    }
-
-    @Test
-    public void getPatientSet_minimumClauseSize_smallLeafIsDroppedEvenWhenItsParentIsLarge() {
-        PhenotypicClause clause = new PhenotypicSubquery(null, List.of(valueFilter(SEX, "female"), valueFilter(AGE, "47")), Operator.OR);
-        when(phenotypicObservationStore.getKeysForValues(SEX, Set.of("female"))).thenReturn(Set.of(1, 2));
-        when(phenotypicObservationStore.getKeysForValues(AGE, Set.of("47"))).thenReturn(Set.of(3, 4, 5));
-
-        assertEquals(Set.of(3, 4, 5), withMinimumClauseSize(3).getPatientSet(query(List.of(), clause)));
-    }
-
-    @Test
-    public void getPatientSet_minimumClauseSize_wholeQueryBelowMinimumMatchesNobody() {
-        PhenotypicClause clause = new PhenotypicSubquery(null, List.of(valueFilter(SEX, "female"), valueFilter(AGE, "47")), Operator.AND);
-        when(phenotypicObservationStore.getKeysForValues(SEX, Set.of("female"))).thenReturn(Set.of(1, 2, 3, 4));
-        when(phenotypicObservationStore.getKeysForValues(AGE, Set.of("47"))).thenReturn(Set.of(3, 4, 5));
-
-        assertEquals(Set.of(), withMinimumClauseSize(3).getPatientSet(query(List.of(), clause)));
-    }
-
-    @Test
-    public void getPatientSet_minimumClauseSize_clausesAreMeasuredWithinAuthorizedPatients() {
-        // The filter matches 5 patients overall but only 2 the caller is authorized for
-        when(phenotypicObservationStore.getKeysForValues(CONSENTS, Set.of("phs1"))).thenReturn(Set.of(1, 2, 9, 10));
-        when(phenotypicObservationStore.getKeysForValues(SEX, Set.of("female"))).thenReturn(Set.of(1, 2, 3, 4, 5));
-
-        Query query = query(List.of(new AuthorizationFilter(CONSENTS, Set.of("phs1"))), valueFilter(SEX, "female"));
-        assertEquals(Set.of(), withMinimumClauseSize(3).getPatientSet(query));
-        assertEquals(Set.of(1, 2), withMinimumClauseSize(0).getPatientSet(query));
-    }
-
-    @Test
-    public void getPatientSet_minimumClauseSize_authorizationFiltersAreNotSubjectToIt() {
-        when(phenotypicObservationStore.getKeysForValues(CONSENTS, Set.of("phs1"))).thenReturn(Set.of(1, 2));
-
-        assertEquals(Set.of(1, 2), withMinimumClauseSize(3).getPatientSet(query(List.of(new AuthorizationFilter(CONSENTS, Set.of("phs1"))), null)));
-    }
-
-    @Test
-    public void getPatientSet_minimumClauseSize_noFiltersReturnsAllPatients() {
-        when(phenotypeMetaStore.getPatientIds()).thenReturn(new TreeSet<>(Set.of(1, 2)));
-
-        assertEquals(Set.of(1, 2), withMinimumClauseSize(3).getPatientSet(query(List.of(), null)));
-    }
 }

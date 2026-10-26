@@ -8,7 +8,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.processing.util.SetUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -24,29 +23,13 @@ public class PhenotypicQueryExecutor {
 
     private final PhenotypicObservationStore phenotypicObservationStore;
 
-    private final int minimumClauseSize;
-
-    /**
-     * @param minimumClauseSize when positive, any phenotypic clause, at any level, that matches fewer authorized patients than this matches
-     *        nobody. Blocks queries that isolate one or two patients, e.g. P OR (target AND X). 0 (the default) disables it.
-     */
     @Autowired
-    public PhenotypicQueryExecutor(
-        PhenotypeMetaStore phenotypeMetaStore, PhenotypicObservationStore phenotypicObservationStore,
-        @Value("${hpds.minimumClauseSize:0}") int minimumClauseSize
-    ) {
+    public PhenotypicQueryExecutor(PhenotypeMetaStore phenotypeMetaStore, PhenotypicObservationStore phenotypicObservationStore) {
         this.phenotypeMetaStore = phenotypeMetaStore;
         this.phenotypicObservationStore = phenotypicObservationStore;
-        this.minimumClauseSize = minimumClauseSize;
-        if (minimumClauseSize > 0) {
-            log.info("Phenotypic clauses matching fewer than {} patients will match nobody", minimumClauseSize);
-        }
     }
 
     public Set<Integer> getPatientSet(Query query) {
-        if (minimumClauseSize > 0) {
-            return getPatientSetWithMinimumClauseSize(query);
-        }
         List<PhenotypicClause> mergedClauses = new ArrayList<>();
 
         List<PhenotypicClause> authorizationClauses = authorizationFiltersToPhenotypicClause(query.authorizationFilters());
@@ -63,30 +46,6 @@ public class PhenotypicQueryExecutor {
             // if there are no phenotypic queries, return all patients
             return phenotypeMetaStore.getPatientIds();
         }
-    }
-
-    /** Authorization filters are not subject to the minimum; every other clause is measured within the patients they allow. */
-    private Set<Integer> getPatientSetWithMinimumClauseSize(Query query) {
-        List<PhenotypicClause> authorizationClauses = authorizationFiltersToPhenotypicClause(query.authorizationFilters());
-        Set<Integer> authorized = authorizationClauses.isEmpty() ? null
-            : evaluatePhenotypicClause(new PhenotypicSubquery(null, authorizationClauses, Operator.AND));
-
-        if (query.phenotypicClause() == null) {
-            return authorized != null ? authorized : phenotypeMetaStore.getPatientIds();
-        }
-        return evaluateWithMinimum(query.phenotypicClause(), authorized);
-    }
-
-    private Set<Integer> evaluateWithMinimum(PhenotypicClause clause, Set<Integer> authorized) {
-        Set<Integer> matched = switch (clause) {
-            case PhenotypicSubquery subquery -> subquery.phenotypicClauses().parallelStream()
-                .map(child -> evaluateWithMinimum(child, authorized)).reduce(getReducer(subquery.operator())).get();
-            case PhenotypicFilter filter -> {
-                Set<Integer> keys = evaluatePhenotypicFilter(filter);
-                yield authorized == null ? keys : SetUtils.intersection(keys, authorized);
-            }
-        };
-        return matched.size() < minimumClauseSize ? new HashSet<>() : matched;
     }
 
     private List<PhenotypicClause> authorizationFiltersToPhenotypicClause(List<AuthorizationFilter> authorizationFilters) {
