@@ -16,6 +16,8 @@ aggregate:
     enabled: true
 
 picsure:
+  openapi:
+    title: PIC-SURE High Performance Data Store (HPDS) Query Service
   query:
     operations:
       base-url: http://localhost:1

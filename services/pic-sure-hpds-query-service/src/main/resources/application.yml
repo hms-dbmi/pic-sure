@@ -30,6 +30,8 @@ consent:
       enabled: ${CONSENT_BASED_AUTHORIZATION_ENABLED:true}
 
 picsure:
+  openapi:
+    title: PIC-SURE High Performance Data Store (HPDS) Query Service
   query:
     operations:
       # OPERATIONS_SERVICE_URL: base URL of pic-sure-operations-service (the sole pic-sure-DB owner). This service

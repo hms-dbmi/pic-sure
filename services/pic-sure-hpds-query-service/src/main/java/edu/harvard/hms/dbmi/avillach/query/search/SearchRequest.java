@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.query.search;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
+import edu.harvard.hms.dbmi.avillach.query.query.QueryRequestExamples;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
@@ -17,7 +18,7 @@ public record SearchRequest(
     @Schema(
         description = "Text matched, ignoring case, against concept paths, categorical values and variant annotation names. "
             + "A null or absent term lists every concept.",
-        example = "\\demographics\\AGE\\"
+        example = QueryRequestExamples.SEARCH_TERM
     ) String query
 ) {
 

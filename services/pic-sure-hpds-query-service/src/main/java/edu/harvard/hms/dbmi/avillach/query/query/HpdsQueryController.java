@@ -19,7 +19,9 @@ import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.domain.SignedUrlResponse;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.query.config.BackendParameterConfig;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -39,8 +41,92 @@ import io.swagger.v3.oas.annotations.tags.Tag;
  */
 @RestController
 @RequestMapping("/hpds/{backend}")
-@Tag(name = "Queries", description = "Run, poll, and fetch HPDS queries on the auth or open backend.")
+@Tag(name = "Queries", description = HpdsQueryController.TAG_DESCRIPTION)
 public class HpdsQueryController {
+
+    static final String TAG_DESCRIPTION = "Run, poll, and fetch HPDS queries. Replace `{backend}` with `auth` (authorized, scoped to the "
+        + "caller's consents) or `open` (open access: obfuscated counts and no genomic data, only where the environment enables it). "
+        + "Each operation lists the result types it accepts on each backend.";
+
+    private static final String CURL_TEMPLATE =
+        "\n\nPick a request body under **Examples** to fill the body, then **Execute**. Each example also "
+            + "runs from a shell; paste it in place of `<example>`:\n\n";
+
+    private static final String AUTH_ONLY_TABLE = "| Backend | Supported |\n|---|---|\n| `auth` | Yes |\n| `open` | No |";
+
+    private static final String SUBMIT_DESCRIPTION = """
+        Queues a participant-level query and returns right away. Collecting the result takes three requests that share one id:
+
+        1. **Submit** this request. The response's `picsureResultId` is the `{id}` for the next two steps.
+        2. **Poll** `GET /hpds/auth/query/{id}/status` until `status` is `AVAILABLE`. `QUEUED` and `PENDING` mean the query is \
+        still waiting or running. `ERROR` means it failed and will not produce a result.
+        3. **Download** `GET /hpds/auth/query/{id}/result`, or call `GET /hpds/auth/query/{id}/signed-url` for a download link.
+
+        In Swagger UI, run this request, then open **Status of a submitted query** and **Result bytes of a completed query** \
+        below and paste `picsureResultId` into `id` on each.
+
+        | Result type | `auth` | `open` |
+        |---|---|---|
+        | PATIENTS | Yes | No |
+        | DATAFRAME | Yes | No |
+        | DATAFRAME_TIMESERIES | Yes | No |
+        | DATAFRAME_PFB | Yes | No |
+
+        Counts, cross counts and the genomic result types run on `POST /hpds/{backend}/query/sync`.
+
+        Pick a request body under **Examples** to fill the body, then **Execute**. From a shell with `jq` installed, paste an \
+        example in place of `<example>`:
+
+            ID=$(curl -s -X POST "https://<host>/picsure/hpds/auth/query" \\
+              -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \\
+              -d '<example>' | jq -r .picsureResultId)
+            curl -s "https://<host>/picsure/hpds/auth/query/$ID/status" -H "Authorization: Bearer $TOKEN" | jq -r .status
+            curl -s "https://<host>/picsure/hpds/auth/query/$ID/result" -H "Authorization: Bearer $TOKEN" -o result.csv
+
+        Repeat the status call until it prints `AVAILABLE`, then run the last line. For DATAFRAME_PFB, save to `result.avro`.
+        """;
+
+    private static final String STATUS_DESCRIPTION = """
+        Step 2 of collecting an asynchronous query: poll this until the query finishes. `{id}` is the `picsureResultId` that \
+        `POST /hpds/auth/query` returned.
+
+        | `status` | Meaning | Next step |
+        |---|---|---|
+        | `QUEUED` | Accepted and waiting for a worker | Poll again |
+        | `PENDING` | Running | Poll again |
+        | `AVAILABLE` | Finished; `sizeInBytes` is the result's size | Fetch `GET /hpds/auth/query/{id}/result` |
+        | `ERROR` | Failed | Stop polling. This query will not produce a result; fix it and submit it again |
+
+        Poll every few seconds at first, backing off to about every 10 seconds for a long-running query.
+
+        """ + AUTH_ONLY_TABLE;
+
+    private static final String RESULT_DESCRIPTION = """
+        Step 3 of collecting an asynchronous query: download the result once `GET /hpds/auth/query/{id}/status` reports \
+        `AVAILABLE`. Before that, this answers 400. `{id}` is the `picsureResultId` that `POST /hpds/auth/query` returned.
+
+        | Result type | Body |
+        |---|---|
+        | PATIENTS | CSV as `text/plain`: a header row, then one patient id per line |
+        | DATAFRAME, DATAFRAME_TIMESERIES | CSV as `text/plain`: a header row, then the data rows |
+        | DATAFRAME_PFB | An Avro PFB file as `application/octet-stream` |
+
+        Swagger UI offers the body as a download. For a large result, `GET /hpds/auth/query/{id}/signed-url` returns a link to \
+        the same file instead.
+
+        """ + AUTH_ONLY_TABLE;
+
+    private static final String SIGNED_URL_DESCRIPTION = """
+        An alternative to step 3 of collecting an asynchronous query. Once `GET /hpds/auth/query/{id}/status` reports \
+        `AVAILABLE`, this copies the result to the deployment's storage bucket and returns a pre-signed download link in \
+        `signedUrl`. Before that, this answers 400.
+
+        Download the link with any HTTP client and without the PIC-SURE token: the link carries its own authorization, and \
+        storage rejects a request that sends both.
+
+        """ + AUTH_ONLY_TABLE;
+
+    private static final String AUTH_ONLY_READ = AUTH_ONLY_TABLE + "\n\nReads a query submitted with `POST /hpds/auth/query`.";
 
     private static final String UNREADABLE_BODY = " or a body that cannot be read as a query request.";
 
@@ -67,6 +153,20 @@ public class HpdsQueryController {
         "CHROM\tPOSITION\tREF\tALT\tPatients with this variant in subset\tPatients with this variant NOT in subset\n"
             + "19\t44908684\tT\tC\t12/1234\t3/4000\n";
 
+    private static final String OPEN_COUNT_ABOVE_THRESHOLD_EXAMPLE = "1237 \u00b13";
+
+    private static final String OPEN_COUNT_BELOW_THRESHOLD_EXAMPLE = "< 10";
+
+    private static final String OPEN_CROSS_COUNT_EXAMPLE =
+        "{\"\\\\_studies_consents\\\\\":\"1232 \u00b13\",\"\\\\_studies_consents\\\\phs000007\\\\\":\"< 10\"}";
+
+    private static final String OPEN_CATEGORICAL_CROSS_COUNT_EXAMPLE =
+        "{\"\\\\demographics\\\\SEX\\\\\":{\"Female\":{\"count\":698,\"display\":\"698 \u00b13\",\"variance\":3},"
+            + "\"Male\":{\"count\":0,\"display\":\"< 10\",\"variance\":9}}}";
+
+    private static final String OPEN_CONTINUOUS_CROSS_COUNT_EXAMPLE =
+        "{\"\\\\demographics\\\\AGE\\\\\":{\"40 - 49\":{\"count\":348,\"display\":\"348 \u00b13\",\"variance\":3}}}";
+
     private final QueryService service;
 
     public HpdsQueryController(QueryService service) {
@@ -75,7 +175,7 @@ public class HpdsQueryController {
 
     @AuditEvent(type = "QUERY", action = "query.submitted")
     @PostMapping("/query")
-    @Operation(summary = "Submit an asynchronous query")
+    @Operation(summary = "Submit an asynchronous query", description = SUBMIT_DESCRIPTION)
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The status of the submitted query."),
             @ApiResponse(responseCode = "400", description = "Unknown backend, missing query data," + UNREADABLE_BODY),
@@ -86,8 +186,22 @@ public class HpdsQueryController {
             @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
     )
     public QueryStatus query(
-        @PathVariable("backend") String backend, @RequestBody HpdsQueryRequest req,
-        @RequestParam(name = "isInstitute", required = false) Boolean isInstitute,
+        @Parameter(ref = BackendParameterConfig.BACKEND_REFERENCE) @PathVariable("backend") String backend,
+        @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            required = true,
+            content = @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                examples = {@ExampleObject(name = "PATIENTS", summary = "PATIENTS (auth only)", value = QueryRequestExamples.PATIENTS),
+                    @ExampleObject(name = "DATAFRAME", summary = "DATAFRAME (auth only)", value = QueryRequestExamples.DATAFRAME),
+                    @ExampleObject(
+                        name = "DATAFRAME_TIMESERIES", summary = "DATAFRAME_TIMESERIES (auth only)",
+                        value = QueryRequestExamples.DATAFRAME_TIMESERIES
+                    ),
+                    @ExampleObject(
+                        name = "DATAFRAME_PFB", summary = "DATAFRAME_PFB (auth only)", value = QueryRequestExamples.DATAFRAME_PFB
+                    )}
+            )
+        ) @RequestBody HpdsQueryRequest req, @RequestParam(name = "isInstitute", required = false) Boolean isInstitute,
         @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
     ) {
         rejectInstitutionalQuery(isInstitute);
@@ -96,13 +210,28 @@ public class HpdsQueryController {
 
     @AuditEvent(type = "QUERY", action = "query.sync")
     @PostMapping("/query/sync")
-    @Operation(summary = "Run a query and return its result inline")
+    @Operation(
+        summary = "Run a query and return its result inline",
+        description = "Runs the query and returns its result in the response.\n\n" + "| Result type | `auth` | `open` |\n|---|---|---|\n"
+            + "| COUNT | Yes | Yes, obfuscated |\n"
+            + "| CROSS_COUNT | Yes | Yes, obfuscated; `select` is replaced by the study consents |\n"
+            + "| CATEGORICAL_CROSS_COUNT | Yes | Yes, obfuscated |\n" + "| CONTINUOUS_CROSS_COUNT | Yes | Yes, obfuscated |\n"
+            + "| OBSERVATION_CROSS_COUNT | Yes | Yes |\n" + "| INFO_COLUMN_LISTING | Yes | No |\n"
+            + "| VARIANT_COUNT_FOR_QUERY | Yes | No |\n" + "| VARIANT_LIST_FOR_QUERY | Yes | No |\n" + "| VCF_EXCERPT | Yes | No |\n"
+            + "| AGGREGATE_VCF_EXCERPT | Yes | No |\n\n"
+            + "**Genomic data is not supported on `open`.** Send the genomic result types, and any query with `genomicFilters`, to "
+            + "`auth` only.\n\n"
+            + "PATIENTS and the DATAFRAME types are not served here on either backend; submit them with `POST /hpds/auth/query`."
+            + CURL_TEMPLATE + "    curl -X POST \"https://<host>/picsure/hpds/auth/query/sync\" \\\n"
+            + "      -H \"Authorization: Bearer $TOKEN\" -H \"Content-Type: application/json\" \\\n      -d '<example>'\n\n"
+            + "On `open`, change `auth` to `open` in the URL."
+    )
     @ApiResponses(
         {@ApiResponse(
             responseCode = "200",
-            description = "The result. Its shape follows the query's expectedResultType, and the body is labelled application/json for "
-                + "every result type, the plain-text ones included. DATAFRAME, DATAFRAME_TIMESERIES, DATAFRAME_PFB and PATIENTS are not "
-                + "served here and answer 400: submit them with POST /query and collect them from /query/{id}/result.",
+            description = "The result. Its shape follows the query's expectedResultType and the backend, and the body is labelled "
+                + "application/json for every result type, the plain-text ones included. On `open`, a CONTINUOUS_CROSS_COUNT whose study "
+                + "consent count is below the obfuscation threshold answers 200 with an empty body.",
             content = @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE,
                 schema = @Schema(
@@ -112,7 +241,11 @@ public class HpdsQueryController {
                         + "object of value to integer count. INFO_COLUMN_LISTING: a JSON array of variant annotation columns. "
                         + "VARIANT_COUNT_FOR_QUERY: a JSON object with count and message, where count is an integer when the query has "
                         + "genomic filters and the string \"0\" when it has none. VARIANT_LIST_FOR_QUERY: a bracketed, comma-separated "
-                        + "list of variants as text. VCF_EXCERPT and AGGREGATE_VCF_EXCERPT: tab-separated text with a header row."
+                        + "list of variants as text. VCF_EXCERPT and AGGREGATE_VCF_EXCERPT: tab-separated text with a header row. On open, "
+                        + "COUNT is an obfuscated count as text, either a count with its variance or a below-threshold marker; CROSS_COUNT "
+                        + "is a JSON object of study consent path to obfuscated count string; CATEGORICAL_CROSS_COUNT and "
+                        + "CONTINUOUS_CROSS_COUNT are a JSON object of concept path to an object of value or bin to an object with count, "
+                        + "display and variance."
                 ),
                 examples = {@ExampleObject(name = "COUNT", value = COUNT_EXAMPLE),
                     @ExampleObject(name = "CROSS_COUNT", value = CROSS_COUNT_EXAMPLE),
@@ -126,13 +259,53 @@ public class HpdsQueryController {
                     @ExampleObject(
                         name = "VARIANT_COUNT_FOR_QUERY without genomic filters", value = SyncExamples.VARIANT_COUNT_WITHOUT_GENOMIC_FILTERS
                     ), @ExampleObject(name = "VARIANT_LIST_FOR_QUERY", value = VARIANT_LIST_EXAMPLE),
-                    @ExampleObject(name = "VCF_EXCERPT", value = VCF_EXCERPT_EXAMPLE)}
+                    @ExampleObject(name = "VCF_EXCERPT", value = VCF_EXCERPT_EXAMPLE),
+                    @ExampleObject(name = "COUNT on open, at or above the threshold", value = OPEN_COUNT_ABOVE_THRESHOLD_EXAMPLE),
+                    @ExampleObject(name = "COUNT on open, below the threshold", value = OPEN_COUNT_BELOW_THRESHOLD_EXAMPLE),
+                    @ExampleObject(name = "CROSS_COUNT on open", value = OPEN_CROSS_COUNT_EXAMPLE),
+                    @ExampleObject(name = "CATEGORICAL_CROSS_COUNT on open", value = OPEN_CATEGORICAL_CROSS_COUNT_EXAMPLE),
+                    @ExampleObject(name = "CONTINUOUS_CROSS_COUNT on open", value = OPEN_CONTINUOUS_CROSS_COUNT_EXAMPLE)}
             )
-        ), @ApiResponse(responseCode = "400", description = "Unknown backend, missing query data, a result type served asynchronously," + UNREADABLE_BODY), @ApiResponse(responseCode = "403", description = "Consent does not permit this query."), @ApiResponse(responseCode = "502", description = "Consent lookup, HPDS call, or query save failed."), @ApiResponse(responseCode = "503", description = "Backend not configured."), @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
+        ), @ApiResponse(responseCode = "400", description = "Unknown backend, missing query data, a result type this backend does not serve inline," + UNREADABLE_BODY), @ApiResponse(responseCode = "403", description = "Consent does not permit this query."), @ApiResponse(responseCode = "502", description = "Consent lookup, HPDS call, or query save failed."), @ApiResponse(responseCode = "503", description = "Backend not configured."), @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
     )
     public ResponseEntity<byte[]> querySync(
-        @PathVariable("backend") String backend, @RequestBody HpdsQueryRequest req,
-        @RequestHeader(name = "request-source", required = false) String requestSource,
+        @Parameter(ref = BackendParameterConfig.BACKEND_REFERENCE) @PathVariable("backend") String backend,
+        @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            required = true,
+            content = @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                examples = {@ExampleObject(name = "COUNT", summary = "COUNT (auth and open)", value = QueryRequestExamples.COUNT),
+                    @ExampleObject(name = "CROSS_COUNT", summary = "CROSS_COUNT (auth and open)", value = QueryRequestExamples.CROSS_COUNT),
+                    @ExampleObject(
+                        name = "CATEGORICAL_CROSS_COUNT", summary = "CATEGORICAL_CROSS_COUNT (auth and open)",
+                        value = QueryRequestExamples.CATEGORICAL_CROSS_COUNT
+                    ),
+                    @ExampleObject(
+                        name = "CONTINUOUS_CROSS_COUNT", summary = "CONTINUOUS_CROSS_COUNT (auth and open)",
+                        value = QueryRequestExamples.CONTINUOUS_CROSS_COUNT
+                    ),
+                    @ExampleObject(
+                        name = "OBSERVATION_CROSS_COUNT", summary = "OBSERVATION_CROSS_COUNT (auth and open)",
+                        value = QueryRequestExamples.OBSERVATION_CROSS_COUNT
+                    ),
+                    @ExampleObject(
+                        name = "INFO_COLUMN_LISTING", summary = "INFO_COLUMN_LISTING (auth only)",
+                        value = QueryRequestExamples.INFO_COLUMN_LISTING
+                    ),
+                    @ExampleObject(
+                        name = "VARIANT_COUNT_FOR_QUERY", summary = "VARIANT_COUNT_FOR_QUERY (auth only)",
+                        value = QueryRequestExamples.VARIANT_COUNT_FOR_QUERY
+                    ),
+                    @ExampleObject(
+                        name = "VARIANT_LIST_FOR_QUERY", summary = "VARIANT_LIST_FOR_QUERY (auth only)",
+                        value = QueryRequestExamples.VARIANT_LIST_FOR_QUERY
+                    ), @ExampleObject(name = "VCF_EXCERPT", summary = "VCF_EXCERPT (auth only)", value = QueryRequestExamples.VCF_EXCERPT),
+                    @ExampleObject(
+                        name = "AGGREGATE_VCF_EXCERPT", summary = "AGGREGATE_VCF_EXCERPT (auth only)",
+                        value = QueryRequestExamples.AGGREGATE_VCF_EXCERPT
+                    )}
+            )
+        ) @RequestBody HpdsQueryRequest req, @RequestHeader(name = "request-source", required = false) String requestSource,
         @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
     ) {
         return syncResponse(service.querySync(backend, req.toOutbound(), requestSource, authorizationHeader));
@@ -140,7 +313,7 @@ public class HpdsQueryController {
 
     @AuditEvent(type = "QUERY", action = "query.status")
     @GetMapping("/query/{id}/status")
-    @Operation(summary = "Status of a submitted query")
+    @Operation(summary = "Status of a submitted query", description = STATUS_DESCRIPTION)
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The status of the query."),
             @ApiResponse(responseCode = "400", description = "Unknown backend."),
@@ -153,7 +326,7 @@ public class HpdsQueryController {
             @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
     )
     public QueryStatus status(
-        @PathVariable("backend") String backend, @PathVariable("id") UUID id,
+        @Parameter(ref = BackendParameterConfig.BACKEND_REFERENCE) @PathVariable("backend") String backend, @PathVariable("id") UUID id,
         @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
     ) {
         return service.queryStatus(backend, id, authorizationHeader);
@@ -161,7 +334,7 @@ public class HpdsQueryController {
 
     @AuditEvent(type = "DATA_ACCESS", action = "query.result")
     @GetMapping(value = "/query/{id}/result", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
-    @Operation(summary = "Result bytes of a completed query")
+    @Operation(summary = "Result bytes of a completed query", description = RESULT_DESCRIPTION)
     @ApiResponses(
         {@ApiResponse(
             responseCode = "200",
@@ -189,7 +362,7 @@ public class HpdsQueryController {
             @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
     )
     public ResponseEntity<byte[]> result(
-        @PathVariable("backend") String backend, @PathVariable("id") UUID id,
+        @Parameter(ref = BackendParameterConfig.BACKEND_REFERENCE) @PathVariable("backend") String backend, @PathVariable("id") UUID id,
         @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
     ) {
         return service.queryResult(backend, id, authorizationHeader);
@@ -197,7 +370,7 @@ public class HpdsQueryController {
 
     @AuditEvent(type = "DATA_ACCESS", action = "query.signed_url")
     @GetMapping(value = "/query/{id}/signed-url", produces = MediaType.APPLICATION_JSON_VALUE)
-    @Operation(summary = "A signed URL for a completed query's result")
+    @Operation(summary = "A signed URL for a completed query's result", description = SIGNED_URL_DESCRIPTION)
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The signed URL for the completed query's result."),
             @ApiResponse(responseCode = "400", description = "Unknown backend or a result that is not ready yet."),
@@ -210,7 +383,7 @@ public class HpdsQueryController {
             @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
     )
     public SignedUrlResponse signedUrl(
-        @PathVariable("backend") String backend, @PathVariable("id") UUID id,
+        @Parameter(ref = BackendParameterConfig.BACKEND_REFERENCE) @PathVariable("backend") String backend, @PathVariable("id") UUID id,
         @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
     ) {
         return service.queryResultSignedUrl(backend, id, authorizationHeader);
@@ -218,7 +391,7 @@ public class HpdsQueryController {
 
     @AuditEvent(type = "QUERY", action = "query.metadata")
     @GetMapping("/query/{id}/metadata")
-    @Operation(summary = "Metadata of a submitted query")
+    @Operation(summary = "Metadata of a submitted query", description = AUTH_ONLY_READ)
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The metadata of the submitted query."),
             @ApiResponse(responseCode = "400", description = "Missing query id."),
@@ -229,7 +402,7 @@ public class HpdsQueryController {
             @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
     )
     public QueryStatus metadata(
-        @PathVariable("backend") String backend, @PathVariable("id") UUID id,
+        @Parameter(ref = BackendParameterConfig.BACKEND_REFERENCE) @PathVariable("backend") String backend, @PathVariable("id") UUID id,
         @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
     ) {
         return service.queryMetadata(backend, id, authorizationHeader);

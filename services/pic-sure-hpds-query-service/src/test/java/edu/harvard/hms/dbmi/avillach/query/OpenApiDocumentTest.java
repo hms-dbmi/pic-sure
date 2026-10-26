@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,9 +19,11 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.MissingNode;
 
 import edu.harvard.hms.dbmi.avillach.openapi.OpenApiConfiguration;
 import edu.harvard.hms.dbmi.avillach.openapi.OpenApiDocumentAssertions;
+import edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryRequest;
 
 /**
  * The live document is served unauthenticated, names this service, carries the bearer scheme, and covers every visible handler with a
@@ -58,7 +61,7 @@ class OpenApiDocumentTest {
             .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON)).andReturn().getResponse().getContentAsString();
         JsonNode document = objectMapper.readTree(body);
 
-        assertThat(document.path("info").path("title").asText()).isEqualTo("pic-sure-hpds-query-service");
+        assertThat(document.path("info").path("title").asText()).isEqualTo("PIC-SURE High Performance Data Store (HPDS) Query Service");
         assertThat(document.path("info").path("version").asText()).isNotBlank();
         assertThat(document.path("components").path("securitySchemes").has(OpenApiConfiguration.BEARER_SCHEME)).isTrue();
         assertThat(document.path("security").get(0).has(OpenApiConfiguration.BEARER_SCHEME)).isTrue();
@@ -91,12 +94,101 @@ class OpenApiDocumentTest {
     }
 
     @Test
-    void openAggregateEndpointsBindTheDocumentedQueryRequest() throws Exception {
+    void openBackendIsDocumentedOnlyThroughTheBackendPathVariable() throws Exception {
         JsonNode document = document();
 
-        OpenApiDocumentAssertions.assertRequestSchema(document, "post", OPEN_QUERY, "HpdsQueryRequest");
-        OpenApiDocumentAssertions.assertRequestSchema(document, "post", OPEN_SYNC, "HpdsQueryRequest");
-        OpenApiDocumentAssertions.assertResponseSchema(document, "post", OPEN_QUERY, "200", "QueryStatus");
+        assertThat(document.path("paths").has(OPEN_QUERY)).isFalse();
+        assertThat(document.path("paths").has(OPEN_SYNC)).isFalse();
+        for (String path : List.of(QUERY, SYNC, STATUS, RESULT, SIGNED_URL, METADATA)) {
+            String method = path.equals(QUERY) || path.equals(SYNC) ? "post" : "get";
+            JsonNode backend = backendParameter(document, operation(document, method, path));
+            assertThat(backend.path("schema").path("enum")).as("%s %s backend values", method, path).extracting(JsonNode::asText)
+                .containsExactly("auth", "open");
+        }
+    }
+
+    @Test
+    void eachQueryOperationTablesItsResultTypesPerBackend() throws Exception {
+        JsonNode document = document();
+
+        assertThat(operation(document, "post", QUERY).path("description").asText())
+            .contains("| Result type | `auth` | `open` |", "| DATAFRAME | Yes | No |", "| PATIENTS | Yes | No |", "-X POST");
+        assertThat(operation(document, "post", SYNC).path("description").asText()).contains(
+            "| Result type | `auth` | `open` |", "| COUNT | Yes | Yes, obfuscated |", "| VARIANT_LIST_FOR_QUERY | Yes | No |",
+            "| INFO_COLUMN_LISTING | Yes | No |", "| VARIANT_COUNT_FOR_QUERY | Yes | No |", "| VCF_EXCERPT | Yes | No |",
+            "| AGGREGATE_VCF_EXCERPT | Yes | No |", "Genomic data is not supported on `open`", "curl -X POST"
+        );
+        for (String path : List.of(STATUS, RESULT, SIGNED_URL, METADATA)) {
+            assertThat(operation(document, "get", path).path("description").asText()).as("GET %s", path).contains("| `open` | No |");
+        }
+        JsonNode tag = null;
+        for (JsonNode candidate : document.path("tags")) {
+            if (candidate.path("name").asText().equals("Queries")) {
+                tag = candidate;
+            }
+        }
+        assertThat(tag).isNotNull();
+        assertThat(tag.path("description").asText()).contains("Replace `{backend}`", "no genomic data").doesNotContain("|");
+    }
+
+    @Test
+    void asyncOperationsWalkTheCallerFromSubmitToResult() throws Exception {
+        JsonNode document = document();
+
+        assertThat(operation(document, "post", QUERY).path("description").asText()).contains(
+            "`picsureResultId`", "**Submit**", "**Poll**", "**Download**", "GET /hpds/auth/query/{id}/status",
+            "GET /hpds/auth/query/{id}/result", "jq -r .picsureResultId"
+        );
+        assertThat(operation(document, "get", STATUS).path("description").asText())
+            .contains("| `QUEUED` |", "| `PENDING` |", "| `AVAILABLE` |", "| `ERROR` |", "Step 2");
+        assertThat(operation(document, "get", RESULT).path("description").asText()).contains("Step 3", "answers 400", "DATAFRAME_PFB");
+        assertThat(operation(document, "get", SIGNED_URL).path("description").asText()).contains("`signedUrl`", "answers 400");
+    }
+
+    @Test
+    void searchOperationsExplainTheirUseAndKeepGenomicDataOffOpen() throws Exception {
+        JsonNode document = document();
+
+        assertThat(operation(document, "post", SEARCH).path("description").asText())
+            .contains("POST /picsure/dictionary/concepts", "results.info", "| `open` | Concepts only.", "curl -X POST");
+        JsonNode values = operation(document, "get", VALUES);
+        assertThat(values.path("description").asText())
+            .contains("one-based", "searchGenomicValues", "| `open` | No. Genomic data is not supported on `open`. |", "curl ")
+            .contains("answers 502").doesNotContain("empty body");
+        for (String name : List.of("backend", "genomicConceptPath", "query", "page", "size")) {
+            JsonNode parameter = null;
+            for (JsonNode candidate : values.path("parameters")) {
+                if (candidate.path("name").asText().equals(name)) {
+                    parameter = candidate;
+                }
+            }
+            assertThat(parameter).as(name).isNotNull();
+            assertThat(parameter.path("description").asText()).as(name).isNotBlank();
+        }
+    }
+
+    @Test
+    void everyRequestExampleIsACompleteBodyForItsResultType() throws Exception {
+        JsonNode document = document();
+
+        Map<String, List<String>> expected = Map.of(
+            QUERY, List.of("PATIENTS", "DATAFRAME", "DATAFRAME_TIMESERIES", "DATAFRAME_PFB"), SYNC,
+            List.of(
+                "COUNT", "CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT", "OBSERVATION_CROSS_COUNT",
+                "INFO_COLUMN_LISTING", "VARIANT_COUNT_FOR_QUERY", "VARIANT_LIST_FOR_QUERY", "VCF_EXCERPT", "AGGREGATE_VCF_EXCERPT"
+            )
+        );
+        for (Map.Entry<String, List<String>> entry : expected.entrySet()) {
+            JsonNode examples =
+                operation(document, "post", entry.getKey()).path("requestBody").path("content").path("application/json").path("examples");
+            assertThat(examples.size()).as("%s example count", entry.getKey()).isEqualTo(entry.getValue().size());
+            for (String resultType : entry.getValue()) {
+                JsonNode body = examples.path(resultType).path("value");
+                assertThat(body.path("query").path("expectedResultType").asText()).as("%s %s", entry.getKey(), resultType)
+                    .isEqualTo(resultType);
+                objectMapper.treeToValue(body, HpdsQueryRequest.class);
+            }
+        }
     }
 
     @Test
@@ -146,7 +238,6 @@ class OpenApiDocumentTest {
         JsonNode document = document();
 
         OpenApiDocumentAssertions.assertMediaType(document, "post", SYNC, "200", "application/json", "string");
-        OpenApiDocumentAssertions.assertMediaType(document, "post", OPEN_SYNC, "200", "application/json", "string");
         OpenApiDocumentAssertions.assertMediaType(document, "get", RESULT, "200", "application/octet-stream", "string");
         OpenApiDocumentAssertions.assertMediaType(document, "get", RESULT, "200", "text/plain", "string");
 
@@ -160,16 +251,23 @@ class OpenApiDocumentTest {
         assertThat(examples.path("VARIANT_COUNT_FOR_QUERY without genomic filters").path("value").path("count").isTextual()).isTrue();
         assertThat(examples.path("VARIANT_COUNT_FOR_QUERY without genomic filters").path("value").path("count").asText()).isEqualTo("0");
 
-        JsonNode openSync = operation(document, "post", OPEN_SYNC).path("responses").path("200").path("content").path("application/json");
-        assertThat(openSync.path("schema").path("description").asText())
-            .contains("COUNT", "CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT", "not served");
-        assertThat(openSync.path("examples").has("VARIANT_COUNT_FOR_QUERY with genomic filters")).isFalse();
-        assertThat(openSync.path("examples").path("COUNT below the threshold").path("value").asText()).isEqualTo("< 10");
+        assertThat(sync.path("schema").path("description").asText()).contains("On open", "obfuscated");
+        assertThat(examples.path("COUNT on open, below the threshold").path("value").asText()).isEqualTo("< 10");
     }
 
     private JsonNode document() throws Exception {
         return objectMapper
             .readTree(mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+    }
+
+    private static JsonNode backendParameter(JsonNode document, JsonNode operation) {
+        String reference = "#/components/parameters/Backend";
+        for (JsonNode parameter : operation.path("parameters")) {
+            if (parameter.path("$ref").asText().equals(reference)) {
+                return document.path("components").path("parameters").path("Backend");
+            }
+        }
+        return MissingNode.getInstance();
     }
 
     private static JsonNode operation(JsonNode document, String method, String path) {
