@@ -24,11 +24,12 @@ class CategoricalDistributionProcessorTest {
         Map<String, Map<String, ObfuscatedCount>> data = new LinkedHashMap<>();
         data.put(
             "\\demographics\\race\\",
-            new LinkedHashMap<>(Map.of(
-                "White", new ObfuscatedCount(45000, "45000"),
-                "Black", new ObfuscatedCount(12000, "12000"),
-                "Asian", new ObfuscatedCount(8000, "8000")
-            ))
+            new LinkedHashMap<>(
+                Map.of(
+                    "White", new ObfuscatedCount(45000, "45000"), "Black", new ObfuscatedCount(12000, "12000"), "Asian",
+                    new ObfuscatedCount(8000, "8000")
+                )
+            )
         );
 
         List<CategoricalDistributionData> result = processor.process(data, false);
@@ -51,10 +52,7 @@ class CategoricalDistributionProcessorTest {
         Map<String, Map<String, ObfuscatedCount>> data = new LinkedHashMap<>();
         data.put(
             "\\demographics\\race\\",
-            new LinkedHashMap<>(Map.of(
-                "White", new ObfuscatedCount(45000, "45000 ±3", 3),
-                "Black", new ObfuscatedCount(0, "< 10", 9)
-            ))
+            new LinkedHashMap<>(Map.of("White", new ObfuscatedCount(45000, "45000 ±3", 3), "Black", new ObfuscatedCount(0, "< 10", 9)))
         );
 
         List<CategoricalDistributionData> result = processor.process(data, true);
@@ -112,8 +110,7 @@ class CategoricalDistributionProcessorTest {
     @Test
     void metadata_multiWordVariableName_keepsFullNameForXAxis() {
         assertEquals(
-            "family history of heart attack",
-            DistributionMetadata.xAxisLabelFor("\\demographics\\family history of heart attack\\")
+            "family history of heart attack", DistributionMetadata.xAxisLabelFor("\\demographics\\family history of heart attack\\")
         );
     }
 }

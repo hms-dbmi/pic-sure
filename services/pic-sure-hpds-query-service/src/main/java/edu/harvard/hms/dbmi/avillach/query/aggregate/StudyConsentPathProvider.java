@@ -13,9 +13,9 @@ import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 
 /**
- * Supplies the open backend's study-consents concept paths. The list is dataset-static, so it is cached (Spring {@code @Cacheable}, backed by
- * the default {@code ConcurrentMapCacheManager}) to spare one HPDS {@code /search} per open count. The cache lives for the process lifetime
- * and is cleared on restart; set {@code spring.cache.type=none} to disable it.
+ * Supplies the open backend's study-consents concept paths. The list is dataset-static, so it is cached (Spring {@code @Cacheable}, backed
+ * by the default {@code ConcurrentMapCacheManager}) to spare one HPDS {@code /search} per open count. The cache lives for the process
+ * lifetime and is cleared on restart; set {@code spring.cache.type=none} to disable it.
  */
 @Component
 public class StudyConsentPathProvider {

@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -61,7 +62,8 @@ class OpenApiDocumentTest {
             .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON)).andReturn().getResponse().getContentAsString();
         JsonNode document = objectMapper.readTree(body);
 
-        assertThat(document.path("info").path("title").asText()).isEqualTo("PIC-SURE High Performance Data Store (HPDS) Query Service");
+        assertThat(document.path("info").path("title").asText())
+            .isEqualTo("PIC-SURE High Performance Data Store (HPDS) - Authorized Access");
         assertThat(document.path("info").path("version").asText()).isNotBlank();
         assertThat(document.path("components").path("securitySchemes").has(OpenApiConfiguration.BEARER_SCHEME)).isTrue();
         assertThat(document.path("security").get(0).has(OpenApiConfiguration.BEARER_SCHEME)).isTrue();
@@ -94,33 +96,65 @@ class OpenApiDocumentTest {
     }
 
     @Test
-    void openBackendIsDocumentedOnlyThroughTheBackendPathVariable() throws Exception {
-        JsonNode document = document();
+    void theAuthGroupDocumentsExactAuthPathsAndNothingOpen() throws Exception {
+        JsonNode document = groupDocument("auth");
 
-        assertThat(document.path("paths").has(OPEN_QUERY)).isFalse();
-        assertThat(document.path("paths").has(OPEN_SYNC)).isFalse();
-        for (String path : List.of(QUERY, SYNC, STATUS, RESULT, SIGNED_URL, METADATA)) {
-            String method = path.equals(QUERY) || path.equals(SYNC) ? "post" : "get";
-            JsonNode backend = backendParameter(document, operation(document, method, path));
-            assertThat(backend.path("schema").path("enum")).as("%s %s backend values", method, path).extracting(JsonNode::asText)
-                .containsExactly("auth", "open");
-        }
+        assertThat(document.path("info").path("title").asText())
+            .isEqualTo("PIC-SURE High Performance Data Store (HPDS) - Authorized Access");
+        List<String> paths = new ArrayList<>();
+        document.path("paths").fieldNames().forEachRemaining(paths::add);
+        assertThat(paths).containsExactlyInAnyOrder(
+            "/hpds/auth/query", "/hpds/auth/query/sync", "/hpds/auth/query/{id}/status", "/hpds/auth/query/{id}/result",
+            "/hpds/auth/query/{id}/signed-url", "/hpds/auth/query/{id}/metadata", "/hpds/auth/search", "/hpds/auth/search/values"
+        );
+        document.path("paths").forEach(item -> item.forEach(operation -> {
+            assertThat(backendParameter(document, operation).isMissingNode()).isTrue();
+            assertThat(operation.path("description").asText()).doesNotContain("`open`", "{backend}");
+        }));
+        assertNoBackendParameter(document);
     }
 
     @Test
-    void eachQueryOperationTablesItsResultTypesPerBackend() throws Exception {
-        JsonNode document = document();
+    void theOpenGroupDocumentsOnlyTheOpenSyncAndWhatOpenAccessDoesNotAccept() throws Exception {
+        JsonNode document = groupDocument("open");
 
-        assertThat(operation(document, "post", QUERY).path("description").asText())
-            .contains("| Result type | `auth` | `open` |", "| DATAFRAME | Yes | No |", "| PATIENTS | Yes | No |", "-X POST");
-        assertThat(operation(document, "post", SYNC).path("description").asText()).contains(
-            "| Result type | `auth` | `open` |", "| COUNT | Yes | Yes, obfuscated |", "| VARIANT_LIST_FOR_QUERY | Yes | No |",
-            "| INFO_COLUMN_LISTING | Yes | No |", "| VARIANT_COUNT_FOR_QUERY | Yes | No |", "| VCF_EXCERPT | Yes | No |",
-            "| AGGREGATE_VCF_EXCERPT | Yes | No |", "Genomic data is not supported on `open`", "curl -X POST"
+        assertThat(document.path("info").path("title").asText()).isEqualTo("PIC-SURE High Performance Data Store (HPDS) - Open Access");
+        List<String> paths = new ArrayList<>();
+        document.path("paths").fieldNames().forEachRemaining(paths::add);
+        assertThat(paths).containsExactly(OPEN_SYNC);
+        JsonNode sync = operation(document, "post", OPEN_SYNC);
+        assertThat(sync.path("description").asText()).contains(
+            "Not supported on open access", "A query with `genomicFilters` is answered with 400", "no asynchronous submit",
+            "PATIENTS and the DATAFRAME types", "/hpds/open/query/sync"
         );
-        for (String path : List.of(STATUS, RESULT, SIGNED_URL, METADATA)) {
-            assertThat(operation(document, "get", path).path("description").asText()).as("GET %s", path).contains("| `open` | No |");
-        }
+        JsonNode examples = sync.path("requestBody").path("content").path("application/json").path("examples");
+        assertThat(examples.size()).isEqualTo(4);
+        examples.forEach(example -> {
+            assertThat(example.path("description").asText()).contains("no genomic filters").containsIgnoringCase("counts");
+            assertThat(example.path("value").path("query").has("genomicFilters")).isFalse();
+        });
+        assertThat(examples.path("CROSS_COUNT").path("value").path("query").path("select")).isEmpty();
+        assertThat(sync.path("requestBody").path("content").path("application/json").path("schema").path("$ref").asText())
+            .endsWith("/OpenQueryRequest");
+        JsonNode openQuery = document.path("components").path("schemas").path("OpenQuery");
+        List<String> fields = new ArrayList<>();
+        openQuery.path("properties").fieldNames().forEachRemaining(fields::add);
+        assertThat(fields).containsExactlyInAnyOrder("phenotypicClause", "expectedResultType");
+        assertThat(openQuery.path("properties").path("expectedResultType").path("enum")).extracting(JsonNode::asText)
+            .containsExactly("COUNT", "CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT");
+        JsonNode response = sync.path("responses").path("200").path("content").path("application/json");
+        assertThat(response.path("examples").path("COUNT below the threshold").path("value").asText()).isEqualTo("< 10");
+        assertNoBackendParameter(document);
+    }
+
+    @Test
+    void eachAuthQueryOperationListsItsResultTypes() throws Exception {
+        JsonNode document = groupDocument("auth");
+
+        assertThat(operation(document, "post", "/hpds/auth/query").path("description").asText())
+            .contains("**Result types**: PATIENTS, DATAFRAME", "POST /hpds/auth/query/sync", "-X POST");
+        assertThat(operation(document, "post", "/hpds/auth/query/sync").path("description").asText())
+            .contains("**Result types**: COUNT", "VARIANT_LIST_FOR_QUERY", "AGGREGATE_VCF_EXCERPT", "curl -X POST");
         JsonNode tag = null;
         for (JsonNode candidate : document.path("tags")) {
             if (candidate.path("name").asText().equals("Queries")) {
@@ -128,7 +162,7 @@ class OpenApiDocumentTest {
             }
         }
         assertThat(tag).isNotNull();
-        assertThat(tag.path("description").asText()).contains("Replace `{backend}`", "no genomic data").doesNotContain("|");
+        assertThat(tag.path("description").asText()).contains("authorized HPDS backend", "Open access").doesNotContain("|");
     }
 
     @Test
@@ -146,15 +180,14 @@ class OpenApiDocumentTest {
     }
 
     @Test
-    void searchOperationsExplainTheirUseAndKeepGenomicDataOffOpen() throws Exception {
+    void searchOperationsExplainTheirUse() throws Exception {
         JsonNode document = document();
 
         assertThat(operation(document, "post", SEARCH).path("description").asText())
-            .contains("POST /picsure/dictionary/concepts", "results.info", "| `open` | Concepts only.", "curl -X POST");
+            .contains("POST /picsure/dictionary/concepts", "results.info", "curl -X POST");
         JsonNode values = operation(document, "get", VALUES);
-        assertThat(values.path("description").asText())
-            .contains("one-based", "searchGenomicValues", "| `open` | No. Genomic data is not supported on `open`. |", "curl ")
-            .contains("answers 502").doesNotContain("empty body");
+        assertThat(values.path("description").asText()).contains("one-based", "searchGenomicValues", "curl ").contains("answers 502")
+            .doesNotContain("empty body");
         for (String name : List.of("backend", "genomicConceptPath", "query", "page", "size")) {
             JsonNode parameter = null;
             for (JsonNode candidate : values.path("parameters")) {
@@ -174,8 +207,8 @@ class OpenApiDocumentTest {
         Map<String, List<String>> expected = Map.of(
             QUERY, List.of("PATIENTS", "DATAFRAME", "DATAFRAME_TIMESERIES", "DATAFRAME_PFB"), SYNC,
             List.of(
-                "COUNT", "CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT", "OBSERVATION_CROSS_COUNT",
-                "INFO_COLUMN_LISTING", "VARIANT_COUNT_FOR_QUERY", "VARIANT_LIST_FOR_QUERY", "VCF_EXCERPT", "AGGREGATE_VCF_EXCERPT"
+                "COUNT", "CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT", "INFO_COLUMN_LISTING",
+                "VARIANT_COUNT_FOR_QUERY", "VARIANT_LIST_FOR_QUERY", "VCF_EXCERPT", "AGGREGATE_VCF_EXCERPT"
             )
         );
         for (Map.Entry<String, List<String>> entry : expected.entrySet()) {
@@ -187,6 +220,8 @@ class OpenApiDocumentTest {
                 assertThat(body.path("query").path("expectedResultType").asText()).as("%s %s", entry.getKey(), resultType)
                     .isEqualTo(resultType);
                 objectMapper.treeToValue(body, HpdsQueryRequest.class);
+                assertThat(examples.path(resultType).path("description").asText()).as("%s %s description", entry.getKey(), resultType)
+                    .isNotBlank();
             }
         }
     }
@@ -243,21 +278,30 @@ class OpenApiDocumentTest {
 
         JsonNode sync = operation(document, "post", SYNC).path("responses").path("200").path("content").path("application/json");
         assertThat(sync.path("schema").path("description").asText()).contains(
-            "COUNT", "CROSS_COUNT", "OBSERVATION_CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT", "INFO_COLUMN_LISTING",
-            "VARIANT_COUNT_FOR_QUERY", "VARIANT_LIST_FOR_QUERY", "VCF_EXCERPT", "AGGREGATE_VCF_EXCERPT"
+            "COUNT", "CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT", "INFO_COLUMN_LISTING", "VARIANT_COUNT_FOR_QUERY",
+            "VARIANT_LIST_FOR_QUERY", "VCF_EXCERPT", "AGGREGATE_VCF_EXCERPT"
         );
         JsonNode examples = sync.path("examples");
         assertThat(examples.path("VARIANT_COUNT_FOR_QUERY with genomic filters").path("value").path("count").isInt()).isTrue();
         assertThat(examples.path("VARIANT_COUNT_FOR_QUERY without genomic filters").path("value").path("count").isTextual()).isTrue();
         assertThat(examples.path("VARIANT_COUNT_FOR_QUERY without genomic filters").path("value").path("count").asText()).isEqualTo("0");
+        assertThat(sync.path("schema").path("description").asText()).doesNotContain("obfuscated");
+    }
 
-        assertThat(sync.path("schema").path("description").asText()).contains("On open", "obfuscated");
-        assertThat(examples.path("COUNT on open, below the threshold").path("value").asText()).isEqualTo("< 10");
+    private JsonNode groupDocument(String group) throws Exception {
+        return objectMapper.readTree(
+            mockMvc.perform(get("/v3/api-docs/" + group)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()
+        );
     }
 
     private JsonNode document() throws Exception {
         return objectMapper
             .readTree(mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+    }
+
+    private static void assertNoBackendParameter(JsonNode document) {
+        assertThat(document.toString()).doesNotContain("#/components/parameters/Backend");
+        assertThat(document.path("components").path("parameters").has("Backend")).isFalse();
     }
 
     private static JsonNode backendParameter(JsonNode document, JsonNode operation) {

@@ -40,7 +40,9 @@ public class ObfuscatedCountTest {
 
     @Test
     public void serializesCountDisplayVariance() throws JsonProcessingException {
-        assertEquals("{\"count\":222,\"display\":\"222 ±3\",\"variance\":3}", mapper.writeValueAsString(new ObfuscatedCount(222, "222 ±3", 3)));
+        assertEquals(
+            "{\"count\":222,\"display\":\"222 ±3\",\"variance\":3}", mapper.writeValueAsString(new ObfuscatedCount(222, "222 ±3", 3))
+        );
     }
 
     @Test

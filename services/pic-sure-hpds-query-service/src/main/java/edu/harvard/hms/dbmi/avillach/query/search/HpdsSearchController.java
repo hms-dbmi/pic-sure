@@ -27,8 +27,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 @RestController
 @Tag(
     name = "Search",
-    description = "Search one HPDS backend's own concepts and genomic annotations, and page through an annotation's values. "
-        + "Replace `{backend}` with `auth` or `open`; genomic data is not supported on `open`."
+    description = "Search the authorized HPDS backend's own concepts and genomic annotations, and page through an annotation's values."
 )
 public class HpdsSearchController {
 
@@ -36,7 +35,7 @@ public class HpdsSearchController {
         "`auth` or `open`. `open` answers only where the environment enables open HPDS, and serves no genomic data.";
 
     private static final String SEARCH_DESCRIPTION = """
-        Searches one HPDS backend's own concepts and genomic annotations. No PIC-SURE client calls it: the PIC-SURE search \
+        Searches the authorized HPDS backend's own concepts and genomic annotations. No PIC-SURE client calls it: the PIC-SURE search \
         page and the Python and R adapters search the dictionary instead (`POST /picsure/dictionary/concepts`), which pages, \
         narrows by facets and consents, and returns more detail. Use this endpoint to see what one HPDS instance holds.
 
@@ -48,11 +47,6 @@ public class HpdsSearchController {
         `min` and `max`). `results.info` maps each matching genomic annotation key to its `description`, its `values` and \
         whether it is `continuous`; page through a long value list with `GET /hpds/auth/search/values`. `searchQuery` \
         echoes the term.
-
-        | Backend | Supported |
-        |---|---|
-        | `auth` | Yes |
-        | `open` | Concepts only. Genomic data is not supported on `open`, so do not use `results.info` there. |
 
         """ + "    curl -X POST \"https://<host>/picsure/hpds/auth/search\" \\\n"
         + "      -H \"Authorization: Bearer $TOKEN\" -H \"Content-Type: application/json\" \\\n      -d '{\"query\": \""
@@ -76,11 +70,6 @@ public class HpdsSearchController {
         A missing parameter answers 400, and a `page` or `size` below 1 is rejected. A key that is not a genomic annotation \
         answers 502, because the HPDS lookup fails, so take the key from `results.info` of `POST /hpds/auth/search`.
 
-        | Backend | Supported |
-        |---|---|
-        | `auth` | Yes |
-        | `open` | No. Genomic data is not supported on `open`. |
-
         """ + "    curl \"https://<host>/picsure/hpds/auth/search/values?genomicConceptPath=Gene_with_variant&query="
         + QueryRequestExamples.GENE + "&page=1&size=20\" \\\n      -H \"Authorization: Bearer $TOKEN\"\n";
 
@@ -92,7 +81,7 @@ public class HpdsSearchController {
 
     @AuditEvent(type = "SEARCH", action = "search.execute")
     @PostMapping("/hpds/{backend}/search")
-    @Operation(summary = "Search concepts on a backend", description = SEARCH_DESCRIPTION)
+    @Operation(summary = "Search concepts and genomic annotations", description = SEARCH_DESCRIPTION)
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The concepts and variant annotations that match the search term."),
             @ApiResponse(responseCode = "400", description = "Unknown backend, or a body that is not a search request."),

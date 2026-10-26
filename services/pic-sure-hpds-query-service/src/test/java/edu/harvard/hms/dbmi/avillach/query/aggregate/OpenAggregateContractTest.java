@@ -89,6 +89,7 @@ class OpenAggregateContractTest {
         + "{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"\\\\phs000007\\\\pht000009\\\\phv00000543\\\\FL200\\\\\",\"not\":false}],"
         + "\"not\":false}";
     private static final String GENOMIC = "[{\"key\":\"Gene_with_variant\",\"values\":[\"APOE\"]}]";
+    private static final String NO_GENOMIC = "[]";
     private static final String CONSENT_SELECT =
         "[\"\\\\_studies_consents\\\\\",\"\\\\_studies_consents\\\\phs000007\\\\\",\"\\\\_studies_consents\\\\phs000179\\\\\"]";
 
@@ -166,10 +167,7 @@ class OpenAggregateContractTest {
             // COUNT runs as the study-consents CROSS_COUNT and answers with its rounded total.
             Arguments.of("COUNT", CROSS_COUNTS, "1235 ±10", List.of(SEARCH_URL, SYNC_URL)),
             // Default is total-only: the breakdown is computed but only the obfuscated total reaches the client.
-            Arguments.of(
-                "CROSS_COUNT", CROSS_COUNTS, "{\"\\\\_studies_consents\\\\\":\"1235 ±10\"}",
-                List.of(SEARCH_URL, SYNC_URL)
-            ),
+            Arguments.of("CROSS_COUNT", CROSS_COUNTS, "{\"\\\\_studies_consents\\\\\":\"1235 ±10\"}", List.of(SEARCH_URL, SYNC_URL)),
             // Male (5) folds into the grouped bucket, which stays because Male is a possible value that is not named.
             Arguments.of(
                 "CATEGORICAL_CROSS_COUNT", "{\"\\\\demographics\\\\SEX\\\\\":{\"Male\":5,\"Female\":700}}",
@@ -203,7 +201,7 @@ class OpenAggregateContractTest {
         stubPrimary(resultType, hpdsBody);
 
         MvcResult result =
-            mockMvc.perform(open("/hpds/open/query/sync").content(frontendBody(resultType))).andExpect(status().isOk()).andReturn();
+            mockMvc.perform(open("/hpds/open/query/sync").content(frontendSyncBody(resultType))).andExpect(status().isOk()).andReturn();
 
         assertThat(result.getResponse().getContentAsString(StandardCharsets.UTF_8)).isEqualTo(expectedBody);
         assertThat(result.getResponse().getContentType()).isEqualTo(MediaType.APPLICATION_JSON_VALUE);
@@ -220,9 +218,9 @@ class OpenAggregateContractTest {
             } else if (BIN_URL.equals(request.getUrl())) {
                 assertThat(STRICT.readTree(request.getBodyAsString())).isEqualTo(STRICT.readTree(BINNING_SENT));
             } else if (primarySeen) {
-                assertThat(canonical(request.getBodyAsString())).isEqualTo(canonical(untypedCrossCountSent()));
+                assertThat(canonical(request.getBodyAsString())).isEqualTo(canonical(untypedCrossCountSent(NO_GENOMIC)));
             } else {
-                assertThat(canonical(request.getBodyAsString())).isEqualTo(canonical(frontendBody(resultType)));
+                assertThat(canonical(request.getBodyAsString())).isEqualTo(canonical(frontendSyncBody(resultType)));
                 primarySeen = true;
             }
         }
@@ -241,7 +239,7 @@ class OpenAggregateContractTest {
         List<LoggedRequest> sent = sent();
         assertThat(sent).extracting(LoggedRequest::getUrl).containsExactly(SEARCH_URL, "/PIC-SURE/v3/query");
         assertThat(sent.get(0).getBodyAsString()).isEqualTo(SEARCH_TERM_SENT);
-        assertThat(canonical(sent.get(1).getBodyAsString())).isEqualTo(canonical(untypedCrossCountSent()));
+        assertThat(canonical(sent.get(1).getBodyAsString())).isEqualTo(canonical(untypedCrossCountSent(GENOMIC)));
     }
 
     @Test
@@ -279,7 +277,7 @@ class OpenAggregateContractTest {
     void bodyAlreadyInRecordOrderGoesToHpdsByteForByte() throws Exception {
         String fromVisualization = STRICT.writeValueAsString(
             new GeneralQueryRequest()
-                .setQuery(STRICT.treeToValue(STRICT.readTree(frontendBody("INFO_COLUMN_LISTING")).get("query"), Query.class))
+                .setQuery(STRICT.treeToValue(STRICT.readTree(frontendSyncBody("INFO_COLUMN_LISTING")).get("query"), Query.class))
         );
         stubPrimary("INFO_COLUMN_LISTING", "[]");
 
@@ -293,7 +291,7 @@ class OpenAggregateContractTest {
     @ParameterizedTest
     @ValueSource(strings = {"DATAFRAME", "OBSERVATION_CROSS_COUNT", "VARIANT_COUNT_FOR_QUERY"})
     void resultTypeOffTheAllowListIs400AndReachesNothing(String resultType) throws Exception {
-        mockMvc.perform(open("/hpds/open/query/sync").content(frontendBody(resultType))).andExpect(status().isBadRequest())
+        mockMvc.perform(open("/hpds/open/query/sync").content(frontendSyncBody(resultType))).andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.errorType").value("bad_request"))
             .andExpect(jsonPath("$.message").value("Incorrect result type: " + resultType));
 
@@ -334,14 +332,23 @@ class OpenAggregateContractTest {
 
     /** The frontend's body: every query member present, clauses without a type key, and not on every clause. */
     private static String frontendBody(String resultType) {
+        return frontendBody(resultType, GENOMIC);
+    }
+
+    /** The frontend's open access body: the same shape with genomic filters empty, since Discover does not allow them. */
+    private static String frontendSyncBody(String resultType) {
+        return frontendBody(resultType, NO_GENOMIC);
+    }
+
+    private static String frontendBody(String resultType, String genomicFilters) {
         return "{\"query\":{\"select\":[\"\\\\demographics\\\\SEX\\\\\"],\"authorizationFilters\":[],\"phenotypicClause\":" + CLAUSE
-            + ",\"genomicFilters\":" + GENOMIC + ",\"expectedResultType\":\"" + resultType + "\",\"picsureId\":null,\"id\":null}}";
+            + ",\"genomicFilters\":" + genomicFilters + ",\"expectedResultType\":\"" + resultType + "\",\"picsureId\":null,\"id\":null}}";
     }
 
     /** What the untyped path sent for the cross count: the client's query with select replaced and the result type forced. */
-    private static String untypedCrossCountSent() {
+    private static String untypedCrossCountSent(String genomicFilters) {
         return "{\"@type\":\"GeneralQueryRequest\",\"query\":{\"select\":" + CONSENT_SELECT + ",\"authorizationFilters\":[],"
-            + "\"phenotypicClause\":" + CLAUSE + ",\"genomicFilters\":" + GENOMIC
+            + "\"phenotypicClause\":" + CLAUSE + ",\"genomicFilters\":" + genomicFilters
             + ",\"expectedResultType\":\"CROSS_COUNT\",\"picsureId\":null,\"id\":null},\"resourceUUID\":null}";
     }
 

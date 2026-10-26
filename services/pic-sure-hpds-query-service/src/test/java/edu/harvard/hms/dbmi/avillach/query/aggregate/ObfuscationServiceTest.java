@@ -274,8 +274,8 @@ class ObfuscationServiceTest {
             case "chart-minimum-cohort" -> props.getObfuscation().setChartMinimumCohort(value);
             default -> throw new IllegalArgumentException(name);
         }
-        assertThatThrownBy(() -> new ObfuscationService(props, new VisualizationFormatter()))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining(name).hasMessageContaining("minimum");
+        assertThatThrownBy(() -> new ObfuscationService(props, new VisualizationFormatter())).isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining(name).hasMessageContaining("minimum");
     }
 
     @Test

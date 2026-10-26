@@ -46,9 +46,9 @@ import edu.harvard.hms.dbmi.avillach.query.query.QueryService;
  * the open path is a full passthrough: raw results, no allow-list, no suppression. When enabled, {@link #ALLOWED_RESULT_TYPES} is the
  * complete allow-list; a type not on it is rejected with a 400 rather than silently forwarded. A COUNT runs as the study-consents
  * CROSS_COUNT and returns its obfuscated total. The per-type dispatch in {@link #getExpectedResponse} determines which types are obfuscated
- * (COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT) versus a raw pass-through (INFO_COLUMN_LISTING, AGGREGATE_VCF_EXCERPT,
- * and VCF_EXCERPT). OBSERVATION_CROSS_COUNT and VARIANT_COUNT_FOR_QUERY are not served: both return exact counts for the query's cohort. Any
- * divergence here is a privacy regression.
+ * (COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT) versus a raw pass-through (INFO_COLUMN_LISTING,
+ * AGGREGATE_VCF_EXCERPT, and VCF_EXCERPT). OBSERVATION_CROSS_COUNT and VARIANT_COUNT_FOR_QUERY are not served: both return exact counts for
+ * the query's cohort. Any divergence here is a privacy regression.
  */
 @Service
 public class AggregateService {

@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import org.junit.jupiter.api.AfterAll;
@@ -93,6 +94,43 @@ class AggregateControllerTest {
         verify(aggregateService).querySync(any(Query.class));
         verifyNoInteractions(operationsClient);
         hpds.verify(0, WireMock.postRequestedFor(urlEqualTo("/PIC-SURE/v3/query/sync")));
+    }
+
+    @Test
+    void openQuerySyncAcceptsTheEmptyGenomicFiltersAndNullIdsClientsSend() throws Exception {
+        when(aggregateService.querySync(any(Query.class)))
+            .thenReturn(ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body("{}"));
+
+        mockMvc.perform(
+            post("/hpds/open/query/sync").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON).content(
+                "{\"query\":{\"select\":[],\"authorizationFilters\":[],\"genomicFilters\":[],\"expectedResultType\":\"COUNT\","
+                    + "\"picsureId\":null,\"id\":null}}"
+            )
+        ).andExpect(status().isOk());
+
+        verify(aggregateService).querySync(any(Query.class));
+    }
+
+    @Test
+    void openQuerySyncRefusesGenomicFiltersBeforeAnythingRuns() throws Exception {
+        mockMvc.perform(
+            post("/hpds/open/query/sync").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON).content(
+                "{\"query\":{\"genomicFilters\":[{\"key\":\"Gene_with_variant\",\"values\":[\"APOE\"]}],"
+                    + "\"expectedResultType\":\"COUNT\"}}"
+            )
+        ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value(OpenQuery.GENOMIC_FILTERS_REFUSED));
+
+        verifyNoInteractions(aggregateService);
+    }
+
+    @Test
+    void openQuerySyncRefusesAMemberOutsideTheOpenQuery() throws Exception {
+        mockMvc.perform(
+            post("/hpds/open/query/sync").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\":{\"numericFilters\":{},\"expectedResultType\":\"COUNT\"}}")
+        ).andExpect(status().isBadRequest());
+
+        verifyNoInteractions(aggregateService);
     }
 
     /**

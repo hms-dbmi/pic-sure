@@ -15,9 +15,9 @@ class AggregatePropertiesTest {
         var source = new MapConfigurationPropertySource(
             Map.of(
                 "aggregate.hpds-open-url", "http://hpds-open:8080", "aggregate.hpds-open-token", "open-token",
-                "aggregate.visualization-url", "http://viz:8080", "aggregate.obfuscation.enabled", "true", "aggregate.obfuscation.consent-threshold", "20",
-                "aggregate.obfuscation.chart-threshold", "12", "aggregate.obfuscation.chart-minimum-cohort", "60",
-                "aggregate.obfuscation.cross-count-total-only", "false"
+                "aggregate.visualization-url", "http://viz:8080", "aggregate.obfuscation.enabled", "true",
+                "aggregate.obfuscation.consent-threshold", "20", "aggregate.obfuscation.chart-threshold", "12",
+                "aggregate.obfuscation.chart-minimum-cohort", "60", "aggregate.obfuscation.cross-count-total-only", "false"
             )
         );
         AggregateProperties props = new Binder(source).bind("aggregate", AggregateProperties.class).get();

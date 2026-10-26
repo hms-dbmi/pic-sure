@@ -11,6 +11,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * {@code uiEnabled} ({@code GATEWAY_DOCS_UI_ENABLED}) removes only the built-in Swagger UI, for environments whose own interface renders
  * the documents; {@code publicBase} is the ingress prefix the per-service public prefixes are built from
  * ({@code GATEWAY_DOCS_PUBLIC_BASE}); each entry of {@code services} is one proxied document. Duplicate names fail binding, and so startup.
+ * An entry whose {@code enabled} is false is dropped after that check, so the console neither lists nor serves it.
  */
 @ConfigurationProperties(prefix = "picsure.gateway.docs")
 public record DocsProperties(Boolean enabled, Boolean uiEnabled, String publicBase, List<DocumentedService> services) {
@@ -32,5 +33,6 @@ public record DocsProperties(Boolean enabled, Boolean uiEnabled, String publicBa
                 throw new IllegalArgumentException("duplicate docs service name '" + service.name() + "'");
             }
         }
+        services = services.stream().filter(DocumentedService::enabled).toList();
     }
 }
