@@ -49,5 +49,11 @@ public final class QueryRequestExamples {
     public static final String DATAFRAME_PFB =
         "{\"query\":{\"select\":[\"\\\\Synthea\\\\ACT Demographics\\\\Sex\\\\\",\"\\\\Synthea\\\\ACT Demographics\\\\Age\\\\\"],\"phenotypicClause\":{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\Synthea\\\\ACT Demographics\\\\Sex\\\\\",\"values\":[\"Female\"]},\"genomicFilters\":[],\"expectedResultType\":\"DATAFRAME_PFB\"}}";
 
+    /** A gene symbol the genomic examples filter on. */
+    public static final String GENE = "APOE";
+
+    /** A term the search examples look for. */
+    public static final String SEARCH_TERM = "age";
+
     private QueryRequestExamples() {}
 }
