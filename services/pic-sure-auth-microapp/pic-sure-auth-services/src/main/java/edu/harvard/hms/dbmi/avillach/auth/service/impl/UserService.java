@@ -10,6 +10,7 @@ import edu.harvard.hms.dbmi.avillach.auth.model.response.UserProfileResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.ConnectionRef;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.EntityIdRef;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.PlainTextValidator;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.UserCreateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.UserUpdateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
@@ -309,6 +310,9 @@ public class UserService {
             if (user.getEmail() == null) {
                 user.setEmail(emailFromMetadata(user.getGeneralMetadata()));
             }
+            if (!PlainTextValidator.isPlain(user.getEmail())) {
+                throw new IllegalArgumentException("The email in the user metadata must not contain '<' or '>'.");
+            }
             users.add(user);
         }
 
@@ -321,8 +325,8 @@ public class UserService {
      *
      * @param requests the users to update, each named by UUID
      * @return the persisted users, or {@code null} when the security context holds no user
-     * @throws IllegalArgumentException if a request names a user, role or connection that does not exist, or changes whether the user
-     *         holds {@code SUPER_ADMIN} without the caller holding it
+     * @throws IllegalArgumentException if a request names a user, role or connection that does not exist, or changes whether the user holds
+     *         {@code SUPER_ADMIN} without the caller holding it
      */
     @Transactional
     public List<User> updateFrom(List<UserUpdateRequest> requests) {

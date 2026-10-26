@@ -136,7 +136,8 @@ class UserServiceOverPostingTest {
 
         assertThrows(
             IllegalArgumentException.class,
-            () -> userService.updateFrom(List.of(new UserUpdateRequest(stored.getUuid(), null, null, null, new ConnectionRef("fenc"), null)))
+            () -> userService
+                .updateFrom(List.of(new UserUpdateRequest(stored.getUuid(), null, null, null, new ConnectionRef("fenc"), null)))
         );
 
         assertSame(storedConnection, stored.getConnection());
@@ -168,6 +169,21 @@ class UserServiceOverPostingTest {
         User saved = savedUser();
         assertEquals("meta@example.com", saved.getEmail());
         assertTrue(saved.isActive());
+    }
+
+    @Test
+    void createRejectsAnEmailThatMetadataEscapesHide() {
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> userService.createFrom(
+                List.of(
+                    new UserCreateRequest(
+                        null, null, "{\"email\":\"\\u003cimg src=x\\u003e@example.com\"}", null, Set.of(idRef(superAdminRole))
+                    )
+                )
+            )
+        );
+        verify(userRepository, never()).saveAll(anyList());
     }
 
     @Test
@@ -212,7 +228,9 @@ class UserServiceOverPostingTest {
     void createAndUpdateReturnNullWhenTheSecurityContextHoldsNoUser() {
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(new CustomUserDetails(null), null));
 
-        assertNull(userService.createFrom(List.of(new UserCreateRequest("x@example.com", true, "{}", null, Set.of(idRef(superAdminRole))))));
+        assertNull(
+            userService.createFrom(List.of(new UserCreateRequest("x@example.com", true, "{}", null, Set.of(idRef(superAdminRole)))))
+        );
         assertNull(userService.updateFrom(List.of(new UserUpdateRequest(UUID.randomUUID(), null, null, null, null, null))));
         verify(userRepository, never()).saveAll(anyList());
     }
