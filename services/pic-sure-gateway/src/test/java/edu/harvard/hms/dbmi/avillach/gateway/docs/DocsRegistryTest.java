@@ -94,7 +94,16 @@ class DocsRegistryTest {
 
     @Test
     void hpdsQueryServiceIsRegistered() throws Exception {
-        assertRegistered("hpds-query-service", "HPDS query service", "/v3/api-docs", "/picsure");
+        assertRegistered("hpds-query-service", "Authorized Queries", "/v3/api-docs/auth", "/picsure");
+    }
+
+    @Test
+    void hpdsOpenAccessIsNotListedWhileOpenAccessIsOff() throws Exception {
+        JsonNode index = json.readTree(rest.getForEntity(url("/openapi"), String.class).getBody());
+        for (JsonNode entry : index) {
+            assertThat(entry.get("name").asText()).isNotEqualTo("hpds-open-access");
+        }
+        assertThat(rest.getForEntity(url("/openapi/hpds-open-access"), String.class).getStatusCode().value()).isEqualTo(404);
     }
 
     @Test

@@ -30,7 +30,7 @@ class OpenApiDocumentFetcherTest {
         upstream = new WireMockServer(options().bindAddress("127.0.0.1").dynamicPort().http2PlainDisabled(true));
         upstream.start();
         fetcher = OpenApiDocumentFetcher.withTimeouts(500, 500, new ObjectMapper());
-        service = new DocumentedService("demo", "Demo", upstream.baseUrl(), "/demo/v3/api-docs", "/picsure/demo");
+        service = new DocumentedService("demo", "Demo", upstream.baseUrl(), "/demo/v3/api-docs", "/picsure/demo", null);
     }
 
     @AfterAll
@@ -66,7 +66,7 @@ class OpenApiDocumentFetcherTest {
 
     @Test
     void connectionFailureIsUpstreamUnavailable() {
-        DocumentedService dead = new DocumentedService("dead", "Dead", "http://127.0.0.1:1", null, "/picsure/dead");
+        DocumentedService dead = new DocumentedService("dead", "Dead", "http://127.0.0.1:1", null, "/picsure/dead", null);
         assertThatThrownBy(() -> fetcher.fetch(dead)).isInstanceOf(UpstreamUnavailable.class);
     }
 
@@ -80,7 +80,7 @@ class OpenApiDocumentFetcherTest {
 
     @Test
     void uriTemplateCharactersInTheDocsPathDoNotThrowIllegalArgumentException() {
-        DocumentedService templated = new DocumentedService("demo", "Demo", upstream.baseUrl(), "/v3/api-docs/{x}", "/picsure/demo");
+        DocumentedService templated = new DocumentedService("demo", "Demo", upstream.baseUrl(), "/v3/api-docs/{x}", "/picsure/demo", null);
         assertThatThrownBy(() -> fetcher.fetch(templated)).isInstanceOf(UpstreamUnavailable.class);
     }
 }

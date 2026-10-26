@@ -16,7 +16,9 @@ public record Query(
     @Schema(description = "An object specifying phenotypic filters.") PhenotypicClause phenotypicClause,
     @Schema(description = "A list of genomic filters.") List<GenomicFilter> genomicFilters,
     @Schema(
-        description = "An object specifying the result type.", requiredMode = Schema.RequiredMode.REQUIRED
+        description = "The result to compute. Which result types a path accepts depends on the path and the backend; the Queries "
+            + "section lists them for each.",
+        requiredMode = Schema.RequiredMode.REQUIRED
     ) ResultType expectedResultType,
     @Schema(
         description = "An externally passed UUID to assign to this query.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6"

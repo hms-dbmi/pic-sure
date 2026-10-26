@@ -2,15 +2,15 @@ package edu.harvard.dbmi.avillach.visualization.controller;
 
 import edu.harvard.dbmi.avillach.domain.ContinuousBinningResponse;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
+import edu.harvard.dbmi.avillach.visualization.error.BadVisualizationRequestException;
 import edu.harvard.dbmi.avillach.visualization.logging.AuditLoggingContext;
-import edu.harvard.dbmi.avillach.visualization.model.ContinuousBinningRequest;
+import edu.harvard.dbmi.avillach.domain.ContinuousBinningRequest;
 import edu.harvard.dbmi.avillach.visualization.service.VisualizationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -42,10 +42,14 @@ public class BinningController {
     @AuditEvent(type = "QUERY", action = "visualization.bin_continuous")
     @PostMapping("/bin/continuous")
     public ResponseEntity<ContinuousBinningResponse> binContinuous(
-        @Valid @RequestBody ContinuousBinningRequest request, HttpServletRequest servletRequest
+        @RequestBody ContinuousBinningRequest request, HttpServletRequest servletRequest
     ) {
+        if (request.query() == null) {
+            throw new BadVisualizationRequestException("Request must contain a 'query' field");
+        }
         AuditLoggingContext.addBinningRequestMetadata(servletRequest, request.query());
-        ContinuousBinningResponse response = new ContinuousBinningResponse(visualizationService.binContinuousData(request.query()));
+        ContinuousBinningResponse response =
+            new ContinuousBinningResponse(visualizationService.binContinuousData(request.query(), request.ranges(), request.maxBins()));
         AuditLoggingContext.addBinningResponseMetadata(servletRequest, response.bins());
         return ResponseEntity.ok(response);
     }

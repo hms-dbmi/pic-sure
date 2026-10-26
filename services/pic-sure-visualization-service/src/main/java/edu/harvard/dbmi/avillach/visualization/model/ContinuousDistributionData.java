@@ -1,5 +1,7 @@
 package edu.harvard.dbmi.avillach.visualization.model;
 
+import edu.harvard.dbmi.avillach.domain.ObfuscatedCount;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.Map;
 
