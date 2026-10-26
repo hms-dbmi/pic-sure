@@ -105,8 +105,8 @@ class ControllerAuditEventTest {
         assertAuditEvent(c, "addAccessRule", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "access_rule.modify");
         // updateAccessRule(List<AccessRuleUpdateRequest> accessRules, HttpServletRequest request)
         assertAuditEvent(c, "updateAccessRule", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "access_rule.modify");
-        // removeById(String accessRuleId, HttpServletRequest request)
-        assertAuditEvent(c, "removeById", new Class[] {String.class, HttpServletRequest.class}, "ADMIN", "access_rule.delete");
+        // removeById(UUID accessRuleId, HttpServletRequest request)
+        assertAuditEvent(c, "removeById", new Class[] {UUID.class, HttpServletRequest.class}, "ADMIN", "access_rule.delete");
         // getAllTypes()
         assertAuditEvent(c, "getAllTypes", new Class[] {}, "OTHER", "access_rule.types");
     }

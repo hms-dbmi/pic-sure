@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.GlobalExceptionHandler;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.ApplicationService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import org.junit.jupiter.api.Test;
@@ -26,9 +27,10 @@ class PathIdentifierWebTest {
 
     private final ApplicationService applicationService = mock(ApplicationService.class);
     private final RoleService roleService = mock(RoleService.class);
-    private final MockMvc mockMvc =
-        MockMvcBuilders.standaloneSetup(new ApplicationController(applicationService), new RoleController(roleService))
-            .setControllerAdvice(new GlobalExceptionHandler()).build();
+    private final AccessRuleService accessRuleService = mock(AccessRuleService.class);
+    private final MockMvc mockMvc = MockMvcBuilders.standaloneSetup(
+        new ApplicationController(applicationService), new RoleController(roleService), new AccessRuleController(accessRuleService)
+    ).setControllerAdvice(new GlobalExceptionHandler()).build();
 
     @Test
     void applicationReadRejectsAMalformedIdentifier() throws Exception {
@@ -63,5 +65,12 @@ class PathIdentifierWebTest {
         mockMvc.perform(delete("/role/{id}", NOT_A_UUID)).andExpect(status().isBadRequest())
             .andExpect(content().string(not(containsString("script"))));
         verifyNoInteractions(roleService);
+    }
+
+    @Test
+    void accessRuleDeleteRejectsAMalformedIdentifier() throws Exception {
+        mockMvc.perform(delete("/accessRule/{id}", NOT_A_UUID)).andExpect(status().isBadRequest())
+            .andExpect(content().string(not(containsString("script"))));
+        verifyNoInteractions(accessRuleService);
     }
 }
