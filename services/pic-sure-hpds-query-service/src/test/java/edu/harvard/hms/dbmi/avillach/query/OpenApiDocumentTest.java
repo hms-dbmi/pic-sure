@@ -44,6 +44,7 @@ class OpenApiDocumentTest {
     private static final String OPEN_QUERY = "/hpds/open/query";
     private static final String OPEN_SYNC = "/hpds/open/query/sync";
     private static final String SEARCH = "/hpds/{backend}/search";
+    private static final String INTERNAL_SEARCH = "/internal/search/{backend}";
     private static final String VALUES = "/hpds/{backend}/search/values";
 
     @Autowired
@@ -79,13 +80,12 @@ class OpenApiDocumentTest {
     }
 
     @Test
-    void searchBindsTheDocumentedSearchRequestAndValuesTakesNoBody() throws Exception {
+    void valuesTakesNoBodyAndSearchIsAbsentFromTheDocument() throws Exception {
         JsonNode document = document();
 
-        OpenApiDocumentAssertions.assertRequestSchema(document, "post", SEARCH, "SearchRequest");
-        OpenApiDocumentAssertions.assertSchemaDocumented(document, "SearchRequest");
-        OpenApiDocumentAssertions.assertResponseSchema(document, "post", SEARCH, "200", "SearchResults");
-        OpenApiDocumentAssertions.assertSchemaHasFields(document, "SearchResults", "results", "searchQuery");
+        assertThat(document.path("paths").has(SEARCH)).isFalse();
+        assertThat(document.path("paths").has(INTERNAL_SEARCH)).isFalse();
+        assertThat(document.path("paths").properties().stream().noneMatch(path -> path.getKey().startsWith("/internal"))).isTrue();
         assertThat(operation(document, "get", VALUES).has("requestBody")).isFalse();
         OpenApiDocumentAssertions.assertResponseSchema(document, "get", VALUES, "200", "PaginatedSearchResultString");
         OpenApiDocumentAssertions.assertSchemaHasFields(document, "PaginatedSearchResultString", "results", "page", "total");
@@ -105,7 +105,7 @@ class OpenApiDocumentTest {
         document.path("paths").fieldNames().forEachRemaining(paths::add);
         assertThat(paths).containsExactlyInAnyOrder(
             "/hpds/auth/query", "/hpds/auth/query/sync", "/hpds/auth/query/{id}/status", "/hpds/auth/query/{id}/result",
-            "/hpds/auth/query/{id}/signed-url", "/hpds/auth/query/{id}/metadata", "/hpds/auth/search", "/hpds/auth/search/values"
+            "/hpds/auth/query/{id}/signed-url", "/hpds/auth/query/{id}/metadata", "/hpds/auth/search/values"
         );
         document.path("paths").forEach(item -> item.forEach(operation -> {
             assertThat(backendParameter(document, operation).isMissingNode()).isTrue();
@@ -183,8 +183,6 @@ class OpenApiDocumentTest {
     void searchOperationsExplainTheirUse() throws Exception {
         JsonNode document = document();
 
-        assertThat(operation(document, "post", SEARCH).path("description").asText())
-            .contains("POST /picsure/dictionary/concepts", "results.info", "curl -X POST");
         JsonNode values = operation(document, "get", VALUES);
         assertThat(values.path("description").asText()).contains("one-based", "searchGenomicValues", "curl ").contains("answers 502")
             .doesNotContain("empty body");

@@ -13,8 +13,8 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import jakarta.servlet.FilterChain;
 
 /**
- * {@link InternalEndpointGuardFilter} runs before routing/auth: {@code /operations/internal/**} is service-to-service only and must never
- * be reachable through the public gateway, even with a stolen internal token.
+ * {@link InternalEndpointGuardFilter} runs before routing/auth: {@code /operations/internal/**} and {@code /internal/**} are
+ * service-to-service only and must never be reachable through the public gateway, even with a stolen internal token.
  */
 class InternalEndpointGuardFilterTest {
 
@@ -39,6 +39,29 @@ class InternalEndpointGuardFilterTest {
             MockHttpServletResponse response = new MockHttpServletResponse();
             filter.doFilter(new MockHttpServletRequest("POST", path), response, mock(FilterChain.class));
             assertThat(response.getStatus()).as(path).isEqualTo(404);
+        }
+    }
+
+    @Test
+    void rejectsTopLevelInternalPathsAtAnyDepth() throws Exception {
+        for (String path : new String[] {"/internal", "/internal/", "/internal/search/auth", "/internal/a/b/c"}) {
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            FilterChain chain = mock(FilterChain.class);
+            filter.doFilter(new MockHttpServletRequest("POST", path), response, chain);
+            assertThat(response.getStatus()).as(path).isEqualTo(404);
+            assertThat(response.getContentAsString()).as(path).contains("\"errorType\":\"not_found\"");
+            verify(chain, never()).doFilter(any(), any());
+        }
+    }
+
+    @Test
+    void passesLookalikeAndPublicPathsThrough() throws Exception {
+        for (String path : new String[] {"/hpds/auth/search/values", "/internalfoo", "/hpds/internal/x", "/operations/internalfoo"}) {
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            FilterChain chain = mock(FilterChain.class);
+            filter.doFilter(new MockHttpServletRequest("GET", path), response, chain);
+            verify(chain).doFilter(any(), any());
+            assertThat(response.getStatus()).as(path).isEqualTo(200);
         }
     }
 

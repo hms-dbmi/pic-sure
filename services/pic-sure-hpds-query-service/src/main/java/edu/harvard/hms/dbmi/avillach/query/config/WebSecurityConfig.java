@@ -8,6 +8,8 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
 
+import edu.harvard.hms.dbmi.avillach.commons.security.InternalTokenFilter;
+
 /**
  * Security posture for the single HPDS ingress. This service performs NO JWT validation of its own -- the gateway is the sole PSAMA client
  * and has already authorized the request; {@link GatewayPrivilegesFilter} rebuilds a {@code SecurityContext} from the gateway's
@@ -19,8 +21,9 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter;
  * identity).</li> <li>{@code /hpds/**} -- requires an authenticated caller, i.e. the gateway supplied {@code X-User-Id}. Spring Security's
  * {@code authenticated()} already excludes the default anonymous principal (see {@code AuthenticatedAuthorizationManager}), so a request
  * with no identity is correctly rejected rather than silently treated as authenticated.</li> <li>Everything else is permitted at this
- * layer; the controllers built in later tasks enforce any remaining per-endpoint rules themselves. There is deliberately NO
- * {@code /internal/**} endpoint on this service -- dispatch/persistence lives on pic-sure-operations-service, reached via
+ * layer; the controllers built in later tasks enforce any remaining per-endpoint rules themselves. {@code /internal/**} is permitted here
+ * because {@link InternalTokenFilter} is its gate: callers present the shared {@code X-PIC-SURE-INTERNAL-TOKEN} secret instead of a gateway
+ * identity. Dispatch and persistence live on pic-sure-operations-service, reached via
  * {@link edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient}.</li> </ol>
  *
  * <p>CSRF is disabled and sessions are stateless: every request carries its own trust via headers, there is no browser session to protect
@@ -38,7 +41,8 @@ public class WebSecurityConfig {
             .addFilterBefore(new GatewayPrivilegesFilter(), AuthorizationFilter.class)
             .authorizeHttpRequests(
                 auth -> auth.requestMatchers("/actuator/health", "/actuator/info", "/openapi/**", "/swagger-ui/**", "/v3/api-docs/**")
-                    .permitAll().requestMatchers("/hpds/**").authenticated().anyRequest().permitAll()
+                    .permitAll().requestMatchers("/internal/**").permitAll().requestMatchers("/hpds/**").authenticated().anyRequest()
+                    .permitAll()
             ).build();
     }
 }

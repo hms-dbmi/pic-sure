@@ -10,6 +10,12 @@
       "name": "picsure.openapi.title",
       "type": "java.lang.String",
       "description": "Title of this service's authorized OpenAPI document, the one served at /v3/api-docs/auth. Falls back to the group name when blank."
+    },
+    {
+      "name": "picsure.internal.token",
+      "type": "java.lang.String",
+      "description": "Shared secret that InternalTokenFilter requires on the X-PIC-SURE-INTERNAL-TOKEN header for every /internal/** request, such as POST /internal/search/{backend}. Maps from the PICSURE_INTERNAL_TOKEN environment variable. Separate from picsure.query.operations.internal-token, which this service sends outbound to the operations service. Fail-closed: when blank, every /internal/** request is rejected with 403, even one carrying a header value.",
+      "defaultValue": ""
     }
   ]
 }

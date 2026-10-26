@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 
-import edu.harvard.hms.dbmi.avillach.operations.query.InternalTokenFilter;
+import edu.harvard.hms.dbmi.avillach.commons.security.InternalTokenFilter;
 
 /**
  * Verifies that the {@link InternalTokenFilterConfig} bean scopes registration to the container-level {@code /internal/*} URL pattern

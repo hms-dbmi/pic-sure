@@ -24,6 +24,7 @@ import edu.harvard.dbmi.avillach.domain.DispatchResponse;
 import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
+import edu.harvard.hms.dbmi.avillach.commons.security.InternalTokenFilter;
 
 /**
  * Holds the two internal query producers to the exact bytes they emit and to the shared records they declare. The three wire tests assert
