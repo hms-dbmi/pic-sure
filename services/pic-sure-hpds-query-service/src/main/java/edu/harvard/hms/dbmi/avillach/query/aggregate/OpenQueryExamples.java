@@ -23,9 +23,5 @@ public final class OpenQueryExamples {
     public static final String CONTINUOUS_CROSS_COUNT =
         "{\"query\":{\"select\":[],\"phenotypicClause\":{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\Synthea\\\\ACT Demographics\\\\Age\\\\\",\"min\":40,\"max\":60},\"expectedResultType\":\"CONTINUOUS_CROSS_COUNT\"}}";
 
-    /** An open access OBSERVATION_CROSS_COUNT: phenotypic filters only, no genomic filters. */
-    public static final String OBSERVATION_CROSS_COUNT =
-        "{\"query\":{\"select\":[\"\\\\Synthea\\\\ACT Demographics\\\\Sex\\\\\"],\"phenotypicClause\":{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\Synthea\\\\ACT Demographics\\\\Sex\\\\\",\"values\":[\"Female\"]},\"expectedResultType\":\"OBSERVATION_CROSS_COUNT\"}}";
-
     private OpenQueryExamples() {}
 }

@@ -20,9 +20,6 @@ public final class QueryRequestExamples {
     public static final String CONTINUOUS_CROSS_COUNT =
         "{\"query\":{\"select\":[],\"phenotypicClause\":{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\Synthea\\\\ACT Demographics\\\\Age\\\\\",\"min\":40,\"max\":60},\"genomicFilters\":[],\"expectedResultType\":\"CONTINUOUS_CROSS_COUNT\"}}";
 
-    public static final String OBSERVATION_CROSS_COUNT =
-        "{\"query\":{\"select\":[\"\\\\Synthea\\\\ACT Demographics\\\\Sex\\\\\"],\"phenotypicClause\":{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\Synthea\\\\ACT Demographics\\\\Sex\\\\\",\"values\":[\"Female\"]},\"genomicFilters\":[],\"expectedResultType\":\"OBSERVATION_CROSS_COUNT\"}}";
-
     public static final String INFO_COLUMN_LISTING =
         "{\"query\":{\"select\":[],\"phenotypicClause\":null,\"genomicFilters\":[],\"expectedResultType\":\"INFO_COLUMN_LISTING\"}}";
 
@@ -70,10 +67,6 @@ public final class QueryRequestExamples {
     /** What a CONTINUOUS_CROSS_COUNT example returns, shown as its description. */
     public static final String CONTINUOUS_CROSS_COUNT_DESCRIPTION =
         "For each continuous concept the filters name, counts the matching patients at each of its values.";
-
-    /** What a OBSERVATION_CROSS_COUNT example returns, shown as its description. */
-    public static final String OBSERVATION_CROSS_COUNT_DESCRIPTION =
-        "Counts the observations, not the patients, that the matching patients have for each concept path in `select`.";
 
     /** What a INFO_COLUMN_LISTING example returns, shown as its description. */
     public static final String INFO_COLUMN_LISTING_DESCRIPTION =

@@ -64,7 +64,6 @@ public class AggregateController {
         | CROSS_COUNT | Obfuscated patient count per study consent |
         | CATEGORICAL_CROSS_COUNT | Obfuscated counts per value of each categorical concept the filters name |
         | CONTINUOUS_CROSS_COUNT | Obfuscated counts per bin of each continuous concept the filters name |
-        | OBSERVATION_CROSS_COUNT | Observation counts per concept in `select` |
 
         These are the only result types open access supports, and every one is answered inline in this response: open access \
         has no asynchronous submit, status, result or download.
@@ -74,10 +73,9 @@ public class AggregateController {
         (INFO_COLUMN_LISTING, VARIANT_COUNT_FOR_QUERY, VARIANT_LIST_FOR_QUERY, VCF_EXCERPT, AGGREGATE_VCF_EXCERPT) are not \
         available. Genomic queries need the authorized backend, `POST /hpds/auth/query/sync`, and a token.
         - **Participant-level results.** PATIENTS and the DATAFRAME types are not available.
-        - **`select` on a CROSS_COUNT.** It is ignored and replaced by every study consent.
 
-        **Body**: phenotypic filters and a result type. Filter with `phenotypicClause`, name the concepts of an \
-        OBSERVATION_CROSS_COUNT in `select`, and set `expectedResultType`. Find concept paths with the dictionary's \
+        **Body**: phenotypic filters and a result type. Filter with `phenotypicClause` and set \
+        `expectedResultType`. Find concept paths with the dictionary's \
         `POST /picsure/dictionary/concepts`.
 
         Pick a request body under **Examples** to fill the body, then **Execute**. Each example also runs from a shell; \
@@ -124,7 +122,7 @@ public class AggregateController {
                     description = "COUNT: an obfuscated count as text, either a count with its variance or a below-threshold marker. "
                         + "CROSS_COUNT: a JSON object of study consent path to obfuscated count string. CATEGORICAL_CROSS_COUNT and "
                         + "CONTINUOUS_CROSS_COUNT: a JSON object of concept path to an object of value or bin to an object with count, "
-                        + "display and variance. OBSERVATION_CROSS_COUNT: a JSON object of concept path to integer count."
+                        + "display and variance."
                 ),
                 examples = {@ExampleObject(name = "COUNT at or above the threshold", value = COUNT_ABOVE_THRESHOLD_EXAMPLE),
                     @ExampleObject(name = "COUNT below the threshold", value = COUNT_BELOW_THRESHOLD_EXAMPLE),
@@ -162,11 +160,6 @@ public class AggregateController {
                         description = "For each continuous concept the filters name, counts the matching patients in each bin of its "
                             + "values, each count obfuscated.\n\n" + OPEN_EXAMPLE_NOTE,
                         value = OpenQueryExamples.CONTINUOUS_CROSS_COUNT
-                    ),
-                    @ExampleObject(
-                        name = "OBSERVATION_CROSS_COUNT",
-                        description = QueryRequestExamples.OBSERVATION_CROSS_COUNT_DESCRIPTION + "\n\n" + OPEN_EXAMPLE_NOTE,
-                        value = OpenQueryExamples.OBSERVATION_CROSS_COUNT
                     )}
             )
         ) @RequestBody OpenQueryRequest req

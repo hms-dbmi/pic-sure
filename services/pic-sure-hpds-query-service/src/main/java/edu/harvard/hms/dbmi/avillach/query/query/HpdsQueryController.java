@@ -129,8 +129,6 @@ public class HpdsQueryController {
 
     private static final String CONTINUOUS_CROSS_COUNT_EXAMPLE = "{\"\\\\demographics\\\\AGE\\\\\":{\"42.0\":17,\"43.0\":12}}";
 
-    private static final String OBSERVATION_CROSS_COUNT_EXAMPLE = "{\"\\\\demographics\\\\SEX\\\\\":4321}";
-
     private static final String INFO_COLUMN_LISTING_EXAMPLE =
         "[{\"key\":\"Gene_with_variant\",\"description\":\"The official symbol for a gene affected by a variant.\","
             + "\"continuous\":false,\"min\":null,\"max\":null}]";
@@ -195,7 +193,7 @@ public class HpdsQueryController {
     @Operation(
         summary = "Run a query and return its result inline",
         description = "Runs the query and returns its result in the response.\n\n**Result types**: COUNT, CROSS_COUNT, "
-            + "CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT and OBSERVATION_CROSS_COUNT, and the genomic types INFO_COLUMN_LISTING, "
+            + "CATEGORICAL_CROSS_COUNT and CONTINUOUS_CROSS_COUNT, and the genomic types INFO_COLUMN_LISTING, "
             + "VARIANT_COUNT_FOR_QUERY, VARIANT_LIST_FOR_QUERY, VCF_EXCERPT and AGGREGATE_VCF_EXCERPT. PATIENTS and the DATAFRAME "
             + "types are not served here; submit them with `POST /hpds/auth/query`." + CURL_TEMPLATE
             + "    curl -X POST \"https://<host>/picsure/hpds/auth/query/sync\" \\\n"
@@ -210,7 +208,7 @@ public class HpdsQueryController {
                 mediaType = MediaType.APPLICATION_JSON_VALUE,
                 schema = @Schema(
                     type = "string",
-                    description = "COUNT: a bare patient count as text. CROSS_COUNT and OBSERVATION_CROSS_COUNT: a JSON object of concept "
+                    description = "COUNT: a bare patient count as text. CROSS_COUNT: a JSON object of concept "
                         + "path to integer count. CATEGORICAL_CROSS_COUNT and CONTINUOUS_CROSS_COUNT: a JSON object of concept path to an "
                         + "object of value to integer count. INFO_COLUMN_LISTING: a JSON array of variant annotation columns. "
                         + "VARIANT_COUNT_FOR_QUERY: a JSON object with count and message, where count is an integer when the query has "
@@ -221,7 +219,6 @@ public class HpdsQueryController {
                     @ExampleObject(name = "CROSS_COUNT", value = CROSS_COUNT_EXAMPLE),
                     @ExampleObject(name = "CATEGORICAL_CROSS_COUNT", value = CATEGORICAL_CROSS_COUNT_EXAMPLE),
                     @ExampleObject(name = "CONTINUOUS_CROSS_COUNT", value = CONTINUOUS_CROSS_COUNT_EXAMPLE),
-                    @ExampleObject(name = "OBSERVATION_CROSS_COUNT", value = OBSERVATION_CROSS_COUNT_EXAMPLE),
                     @ExampleObject(name = "INFO_COLUMN_LISTING", value = INFO_COLUMN_LISTING_EXAMPLE),
                     @ExampleObject(
                         name = "VARIANT_COUNT_FOR_QUERY with genomic filters", value = SyncExamples.VARIANT_COUNT_WITH_GENOMIC_FILTERS
@@ -254,10 +251,6 @@ public class HpdsQueryController {
                     @ExampleObject(
                         name = "CONTINUOUS_CROSS_COUNT", description = QueryRequestExamples.CONTINUOUS_CROSS_COUNT_DESCRIPTION,
                         value = QueryRequestExamples.CONTINUOUS_CROSS_COUNT
-                    ),
-                    @ExampleObject(
-                        name = "OBSERVATION_CROSS_COUNT", description = QueryRequestExamples.OBSERVATION_CROSS_COUNT_DESCRIPTION,
-                        value = QueryRequestExamples.OBSERVATION_CROSS_COUNT
                     ),
                     @ExampleObject(
                         name = "INFO_COLUMN_LISTING", description = QueryRequestExamples.INFO_COLUMN_LISTING_DESCRIPTION,

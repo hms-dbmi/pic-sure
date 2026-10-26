@@ -128,7 +128,7 @@ class OpenApiDocumentTest {
             "PATIENTS and the DATAFRAME types", "/hpds/open/query/sync"
         );
         JsonNode examples = sync.path("requestBody").path("content").path("application/json").path("examples");
-        assertThat(examples.size()).isEqualTo(5);
+        assertThat(examples.size()).isEqualTo(4);
         examples.forEach(example -> {
             assertThat(example.path("description").asText()).contains("no genomic filters").containsIgnoringCase("counts");
             assertThat(example.path("value").path("query").has("genomicFilters")).isFalse();
@@ -139,9 +139,9 @@ class OpenApiDocumentTest {
         JsonNode openQuery = document.path("components").path("schemas").path("OpenQuery");
         List<String> fields = new ArrayList<>();
         openQuery.path("properties").fieldNames().forEachRemaining(fields::add);
-        assertThat(fields).containsExactlyInAnyOrder("select", "phenotypicClause", "expectedResultType");
+        assertThat(fields).containsExactlyInAnyOrder("phenotypicClause", "expectedResultType");
         assertThat(openQuery.path("properties").path("expectedResultType").path("enum")).extracting(JsonNode::asText)
-            .containsExactly("COUNT", "CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT", "OBSERVATION_CROSS_COUNT");
+            .containsExactly("COUNT", "CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT");
         JsonNode response = sync.path("responses").path("200").path("content").path("application/json");
         assertThat(response.path("examples").path("COUNT below the threshold").path("value").asText()).isEqualTo("< 10");
         assertNoBackendParameter(document);
@@ -207,8 +207,8 @@ class OpenApiDocumentTest {
         Map<String, List<String>> expected = Map.of(
             QUERY, List.of("PATIENTS", "DATAFRAME", "DATAFRAME_TIMESERIES", "DATAFRAME_PFB"), SYNC,
             List.of(
-                "COUNT", "CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT", "OBSERVATION_CROSS_COUNT",
-                "INFO_COLUMN_LISTING", "VARIANT_COUNT_FOR_QUERY", "VARIANT_LIST_FOR_QUERY", "VCF_EXCERPT", "AGGREGATE_VCF_EXCERPT"
+                "COUNT", "CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT", "INFO_COLUMN_LISTING",
+                "VARIANT_COUNT_FOR_QUERY", "VARIANT_LIST_FOR_QUERY", "VCF_EXCERPT", "AGGREGATE_VCF_EXCERPT"
             )
         );
         for (Map.Entry<String, List<String>> entry : expected.entrySet()) {
@@ -278,8 +278,8 @@ class OpenApiDocumentTest {
 
         JsonNode sync = operation(document, "post", SYNC).path("responses").path("200").path("content").path("application/json");
         assertThat(sync.path("schema").path("description").asText()).contains(
-            "COUNT", "CROSS_COUNT", "OBSERVATION_CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT", "INFO_COLUMN_LISTING",
-            "VARIANT_COUNT_FOR_QUERY", "VARIANT_LIST_FOR_QUERY", "VCF_EXCERPT", "AGGREGATE_VCF_EXCERPT"
+            "COUNT", "CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT", "INFO_COLUMN_LISTING", "VARIANT_COUNT_FOR_QUERY",
+            "VARIANT_LIST_FOR_QUERY", "VCF_EXCERPT", "AGGREGATE_VCF_EXCERPT"
         );
         JsonNode examples = sync.path("examples");
         assertThat(examples.path("VARIANT_COUNT_FOR_QUERY with genomic filters").path("value").path("count").isInt()).isTrue();
