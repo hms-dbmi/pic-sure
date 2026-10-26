@@ -85,6 +85,29 @@ public class ApiKeyControllerTest {
     }
 
     @Test
+    public void testCreateUserKey_markupRejected() {
+        PicSureResponseException rejected = assertThrows(
+            PicSureResponseException.class,
+            () -> controller
+                .createUserKey(new UserApiKeyRequest("captcha-token", "<img src=x onerror=alert(1)>", "user@example.com"), request)
+        );
+
+        assertEquals(HttpStatus.BAD_REQUEST, rejected.getStatus());
+        verify(apiKeyService, never()).generateUserKey(any(), any());
+    }
+
+    @Test
+    public void testCreatePlatformKey_markupRejected() {
+        PicSureResponseException rejected = assertThrows(
+            PicSureResponseException.class,
+            () -> controller.createPlatformKey(new PlatformApiKeyRequest("Partner", "<b>x</b>@example.com", null, false), request)
+        );
+
+        assertEquals(HttpStatus.BAD_REQUEST, rejected.getStatus());
+        verify(apiKeyService, never()).generatePlatformKey(any(), any(), any(), anyBoolean());
+    }
+
+    @Test
     public void testCreateUserKey_captchaFailure() {
         when(captchaVerifier.verify(any(), any())).thenReturn(false);
 
