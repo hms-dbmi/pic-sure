@@ -35,7 +35,9 @@ pub struct Spool {
 
 impl Spool {
     /// An empty spool that holds up to `memory_bound` bytes in memory and spills the rest
-    /// into a file in `dir`.
+    /// into a file in `dir`. Its memory grows by doubling but never past `memory_bound`.
+    /// `dir` must belong to this process alone: another process's startup clean-up removes
+    /// spill files it finds there.
     pub fn new(memory_bound: u64, dir: &Path) -> Spool {
         Spool {
             memory: Vec::new(),
@@ -118,6 +120,12 @@ impl Write for Spool {
         let fits = self.spill.is_none()
             && self.memory.len() as u64 + buf.len() as u64 <= self.memory_bound;
         if fits {
+            let needed = self.memory.len() + buf.len();
+            if needed > self.memory.capacity() {
+                let bound = usize::try_from(self.memory_bound).unwrap_or(usize::MAX);
+                let target = (self.memory.capacity() * 2).max(needed).min(bound);
+                self.memory.reserve_exact(target - self.memory.len());
+            }
             self.memory.extend_from_slice(buf);
         } else {
             self.spill_file()?.write_all(buf)?;
@@ -192,6 +200,25 @@ mod tests {
         assert!(entries(dir.path()).is_empty());
         assert_eq!(sent(spool, 3), (b"0123456789".to_vec(), vec![3, 1, 3, 3]));
         assert!(entries(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn the_memory_held_never_grows_past_the_bound() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut spool = Spool::new(1000, dir.path());
+        for _ in 0..33 {
+            spool.write_all(&[7u8; 30]).unwrap();
+            assert!(
+                spool.memory.capacity() <= 1000,
+                "{}",
+                spool.memory.capacity()
+            );
+        }
+        assert!(!spool.is_spilled());
+        spool.write_all(&[7u8; 30]).unwrap();
+        assert!(spool.is_spilled());
+        assert!(spool.memory.capacity() <= 1000);
+        assert_eq!(spool.len(), 34 * 30);
     }
 
     #[test]

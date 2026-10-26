@@ -86,7 +86,7 @@ const BLOCKING_THREAD_HEADROOM: usize = 16;
 /// | `HPDS_CONSENT_CONTRACT` | required, no default | `main` (Java HPDS main's `authorizationFilters`, applied as clauses to every result type; the contract BDC runs) or `harmonization` (the consent-partitioned branch's `userConsents`, which select partitions); the service refuses to start without it |
 /// | `HPDS_REQUIRE_AUTHORIZATION_FILTER` or `hpds.requireAuthorizationFilter` | true | Harmonization: refuse every sync and async query without a `userConsents` value, and refuse to open an unpartitioned data directory. Main: refuse a sync query whose `authorizationFilters` is empty with 400 (INFO_COLUMN_LISTING excepted), and end such a `POST /query` job in ERROR, as Java's validator does |
 /// | `HPDS_COMBINED_STORE`, `HPDS_PER_PARTITION_COUNTS` | ignored | Settings of the previous store layout; logged and ignored |
-/// | `HPDS_RESULTS_DIRECTORY` | `/tmp/hpds-rs-results` | Where export results are written |
+/// | `HPDS_RESULTS_DIRECTORY` | `/tmp/hpds-rs-results` | Where export results and excerpt spill files are written; it must belong to one process, since each start removes the export and spill files it finds there |
 /// | `HPDS_RESULT_LIMIT` | 1000 | Most async results held at once |
 /// | `HPDS_RESULT_MAX_AGE_SECONDS` | unlimited | How long a finished result is kept; 0 or unset keeps it until evicted |
 /// | `HPDS_RESULT_MAX_BYTES` | 10 GiB | Byte cap on finished export results, in files and in memory; the oldest finished result goes first |
@@ -1088,5 +1088,25 @@ mod tests {
             (c.query_limits.max_select_paths, c.result_max_file_bytes),
             (7, 9)
         );
+    }
+
+    #[test]
+    fn the_excerpt_spool_memory_bound_defaults_to_64_mib_and_takes_0() {
+        assert_eq!(
+            config(&[]).unwrap().excerpt_spool_memory_bytes,
+            DEFAULT_EXCERPT_SPOOL_MEMORY_BYTES
+        );
+        assert_eq!(DEFAULT_EXCERPT_SPOOL_MEMORY_BYTES, 64 << 20);
+        let set = config(&[("HPDS_EXCERPT_SPOOL_MEMORY_BYTES", "1048576")]).unwrap();
+        assert_eq!(set.excerpt_spool_memory_bytes, 1 << 20);
+        let zero = config(&[("HPDS_EXCERPT_SPOOL_MEMORY_BYTES", "0")]).unwrap();
+        assert_eq!(zero.excerpt_spool_memory_bytes, 0);
+        for bad in ["-1", "64MiB", ""] {
+            let error = config(&[("HPDS_EXCERPT_SPOOL_MEMORY_BYTES", bad)]).unwrap_err();
+            assert!(
+                error.contains("HPDS_EXCERPT_SPOOL_MEMORY_BYTES"),
+                "{bad}: {error}"
+            );
+        }
     }
 }

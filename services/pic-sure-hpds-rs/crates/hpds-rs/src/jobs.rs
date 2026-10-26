@@ -1627,4 +1627,24 @@ mod tests {
             assert_eq!((state.name(), state.picsure_status()), (name, picsure));
         }
     }
+
+    #[test]
+    fn startup_removes_excerpt_spill_files_a_crash_left_and_keeps_other_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let results = dir.path().join("results");
+        std::fs::create_dir(&results).unwrap();
+        let owner_only =
+            <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o700);
+        std::fs::set_permissions(&results, owner_only).unwrap();
+        let spill = results.join(format!("{}left-behind", crate::spool::SPILL_PREFIX));
+        std::fs::write(&spill, b"genotypes").unwrap();
+        let export = results.join("result-old.csv");
+        std::fs::write(&export, b"rows").unwrap();
+        let other = results.join("notes.txt");
+        std::fs::write(&other, b"kept").unwrap();
+        prepare_results_dir(&results, &dir.path().join("data")).unwrap();
+        assert!(!spill.exists());
+        assert!(!export.exists());
+        assert!(other.exists());
+    }
 }
