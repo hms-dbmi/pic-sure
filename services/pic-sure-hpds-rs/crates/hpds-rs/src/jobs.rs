@@ -268,7 +268,8 @@ impl ResultRegistry {
     /// A results directory that does not exist is created with mode 0700. An existing one is
     /// used only when it is a real directory (not a symbolic link) owned by the current user
     /// with no group or other write bit, and its permissions are left as they are. The
-    /// directory must not be the data directory or lie inside it. Export files a previous
+    /// directory must not be the data directory or lie inside it. Export files and excerpt
+    /// spill files ([`crate::spool::SPILL_PREFIX`]) a previous
     /// process left in it are removed. Small exports are held in memory under a budget of
     /// `result_memory_bytes`, none when it is 0.
     ///
@@ -921,7 +922,9 @@ fn prepare_results_dir(dir: &Path, data_dir: &Path) -> io::Result<()> {
         let entry = entry?;
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        if name.starts_with("result-") && name.ends_with(".csv") && entry.file_type()?.is_file() {
+        let export = name.starts_with("result-") && name.ends_with(".csv");
+        let spill = name.starts_with(crate::spool::SPILL_PREFIX);
+        if (export || spill) && entry.file_type()?.is_file() {
             std::fs::remove_file(entry.path())?;
         }
     }

@@ -61,6 +61,9 @@ pub const DEFAULT_EXCERPT_STALL_SECONDS: u64 = 30;
 /// Default seconds a streamed excerpt's body may take to be sent in full.
 pub const DEFAULT_EXCERPT_STREAM_SECONDS: u64 = 600;
 
+/// Default `HPDS_EXCERPT_SPOOL_MEMORY_BYTES`: 64 MiB.
+pub const DEFAULT_EXCERPT_SPOOL_MEMORY_BYTES: u64 = 64 << 20;
+
 /// Default seconds an excerpt or variant list waits for an excerpt slot before it is a 503.
 pub const DEFAULT_EXCERPT_QUEUE_SECONDS: u64 = 5;
 
@@ -115,6 +118,7 @@ const BLOCKING_THREAD_HEADROOM: usize = 16;
 /// | `HPDS_EXCERPT_CONCURRENCY` | half the engine concurrency, at least 1 | Excerpts and variant lists computed or sent at once; must be below `HPDS_ENGINE_CONCURRENCY` when that is above 1, and 1 when it is 1 |
 /// | `HPDS_EXCERPT_STALL_SECONDS` | 30 | How long a streamed excerpt waits for its client to take the next chunk before it ends the stream |
 /// | `HPDS_EXCERPT_STREAM_SECONDS` | 600 | How long a streamed excerpt's body may take in full before the stream is ended |
+/// | `HPDS_EXCERPT_SPOOL_MEMORY_BYTES` | 64 MiB | Bytes of an excerpt held in memory while it is generated, before its head is sent; the rest spills to an owner-only file in the results directory, unlinked while open; 0 spills every excerpt |
 /// | `HPDS_EXCERPT_QUEUE_SECONDS` | 5 | How long an excerpt or variant list waits for an excerpt slot before it is a 503 with `Retry-After`; 0 refuses at once |
 /// | `HPDS_WRITE_STALL_SECONDS` | 60 | How long any write to a connection may stay pending, the client making no room in its socket buffer, before the connection is closed |
 /// | `HPDS_GENOMIC_DATA_DIRECTORY` | `/opt/local/hpds/all/` | Directory of the Rust genomic store |
@@ -184,6 +188,8 @@ pub struct Config {
     pub excerpt_stall: Duration,
     /// How long a streamed excerpt's body may take in full.
     pub excerpt_stream: Duration,
+    /// Bytes of an excerpt held in memory while it is generated; the rest spills to a file.
+    pub excerpt_spool_memory_bytes: u64,
     /// How long an excerpt or variant list waits for an excerpt slot before it is a 503.
     pub excerpt_queue: Duration,
     /// How long a write to a connection may stay pending before the connection is closed.
@@ -427,6 +433,11 @@ impl Config {
                 "HPDS_EXCERPT_STREAM_SECONDS",
                 DEFAULT_EXCERPT_STREAM_SECONDS,
             )?),
+            excerpt_spool_memory_bytes: parse_or(
+                &lookup,
+                "HPDS_EXCERPT_SPOOL_MEMORY_BYTES",
+                DEFAULT_EXCERPT_SPOOL_MEMORY_BYTES,
+            )?,
             excerpt_queue: Duration::from_secs(parse_or(
                 &lookup,
                 "HPDS_EXCERPT_QUEUE_SECONDS",

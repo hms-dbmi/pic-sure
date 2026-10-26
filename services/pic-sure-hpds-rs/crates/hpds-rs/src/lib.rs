@@ -67,6 +67,7 @@ pub mod jobs;
 pub mod logging;
 pub mod metrics;
 pub mod search;
+pub mod spool;
 pub mod state;
 pub mod sync;
 pub mod write_stall;

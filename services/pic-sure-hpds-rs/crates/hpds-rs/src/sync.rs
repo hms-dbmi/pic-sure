@@ -1,6 +1,6 @@
 //! `POST /query/sync`.
 
-use std::io::{self, BufWriter, Write};
+use std::io::{self, Write};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -18,6 +18,7 @@ use crate::envelope::{random_uuid, read_query_for};
 use crate::error::ApiError;
 use crate::genomic::GenomicStatus;
 use crate::metrics::label_result_type;
+use crate::spool::Spool;
 use crate::state::{AppState, ExcerptEnd};
 
 /// Response header that carries an id for the answered query.
@@ -50,9 +51,10 @@ const EXCERPT_CHUNKS_IN_FLIGHT: usize = 4;
 ///   AGGREGATE_VCF_EXCERPT Java's tab-separated excerpt, both `text/plain`; a type whose
 ///   setting is off answers Java's `... query type not allowed` text with 200, after the
 ///   limits and consents and before anything genomic is looked at, as Java checks the gate
-///   first. An excerpt is measured first and refused with 400 above
+///   first. An excerpt is generated once into a bounded spool and refused with 400 above
 ///   `HPDS_MAX_EXCERPT_BYTES`; otherwise its headers go out with its exact `Content-Length`
-///   and the rows stream as they are written, so the body is never held whole. A failure
+///   and the rows stream from the spool, which holds at most
+///   `HPDS_EXCERPT_SPOOL_MEMORY_BYTES` in memory and spills the rest to a file. A failure
 ///   after the headers left closes the connection before the announced length, which a
 ///   client sees as a truncated body. Excerpts and variant lists run under the
 ///   `HPDS_EXCERPT_CONCURRENCY` cap and the stall and stream bounds (see `stream_excerpt`).
@@ -360,9 +362,10 @@ enum ExcerptHead {
 /// chunk waits at most `stall` for room, and no chunk is sent after `deadline`. It refuses
 /// to send more than the measured length, so a body never runs past its `Content-Length`,
 /// and checks before every chunk, the last included, that the genomic store is still the
-/// one the excerpt was measured on ([`hpds_query::GenomicStore::check_unchanged`]), so a
-/// store changed between the measure pass and the write pass ends the stream with an error
-/// instead of completing a body of other rows. The first failure is kept in `end`.
+/// one the excerpt was generated from ([`hpds_query::GenomicStore::check_unchanged`]), so a
+/// store changed since the generation ends the stream with an error instead of completing
+/// the body, as a store changed between v6's measure pass and write pass did. The first
+/// failure is kept in `end`.
 struct ChannelWriter<'s> {
     tx: mpsc::Sender<io::Result<Bytes>>,
     runtime: tokio::runtime::Handle,
@@ -430,22 +433,19 @@ impl Write for ChannelWriter<'_> {
     }
 }
 
-/// Writes `excerpt` through a [`ChannelWriter`] in chunks of [`EXCERPT_CHUNK_BYTES`]. Returns
-/// how the stream ended early, if it did; then it has already put an error on the channel
-/// when there was room, and otherwise the response ends short of its `Content-Length`,
-/// which a client sees as a failed transfer either way.
-fn write_excerpt(
-    excerpt: &hpds_query::VcfExcerpt<'_>,
-    writer: ChannelWriter<'_>,
+/// Sends the body `spool` holds through a [`ChannelWriter`] in chunks of
+/// [`EXCERPT_CHUNK_BYTES`], then drops the spool, closing its spill file. Returns how the
+/// stream ended early, if it did; then it has already put an error on the channel when there
+/// was room, and otherwise the response ends short of its `Content-Length`, which a client
+/// sees as a failed transfer either way.
+fn send_spool(
+    spool: Spool,
+    mut writer: ChannelWriter<'_>,
     ended: &EndedEarly,
 ) -> Option<ExcerptEnd> {
     let tx = writer.tx.clone();
-    let mut out = BufWriter::with_capacity(EXCERPT_CHUNK_BYTES, writer);
-    let written = excerpt
-        .write_to(&mut out)
-        .and_then(|()| out.flush().map_err(|e| QueryError::Output(Arc::new(e))));
-    let (writer, _unsent) = out.into_parts();
-    let end = match (written, writer.end) {
+    let sent = spool.send_to(EXCERPT_CHUNK_BYTES, &mut writer);
+    let end = match (sent, writer.end) {
         (Ok(()), _) if writer.remaining == 0 => return None,
         (Ok(()), _) => {
             tracing::error!(
@@ -471,22 +471,30 @@ fn write_excerpt(
 /// `HPDS_EXCERPT_QUEUE_SECONDS` is a 503 with `Retry-After`. Excerpts therefore never take
 /// every engine slot, and a COUNT still finds one while excerpts stream.
 ///
-/// The wait for the engine slot, the measure pass and the head are bounded by
-/// `HPDS_SYNC_TIMEOUT_SECONDS`, past which the request is a 503. A measure pass still
-/// running then is not interrupted: it finishes, finds the request gone, writes nothing
-/// and releases its slots. The rows then stream through a bounded channel: each chunk waits
-/// at most `HPDS_EXCERPT_STALL_SECONDS` for the client to make room, and the whole body ends
-/// by `HPDS_EXCERPT_STREAM_SECONDS`; either bound, a client that left, a read failure, a
-/// genomic store changed on disk since the measure pass, or a body that would differ from
-/// its measured length ends the stream early and releases the slots. Those ends are
-/// counted for `/metrics`, and the response body then fails at its next poll, so hyper
-/// closes the connection rather than send the chunks still in flight. A client that reads
-/// nothing at all leaves hyper's write pending instead; the server closes that connection
-/// after `HPDS_WRITE_STALL_SECONDS` ([`crate::write_stall::WriteStall`]).
+/// The excerpt is generated once, into a [`Spool`] that holds up to
+/// `min(HPDS_EXCERPT_SPOOL_MEMORY_BYTES, HPDS_MAX_EXCERPT_BYTES)` bytes in memory and spills
+/// the rest to an owner-only, unlinked file in the results directory, never more than
+/// `HPDS_MAX_EXCERPT_BYTES` in all. Generating it decides every refusal the old measure pass
+/// decided, the byte bound included, so each is answered before the head with the same status
+/// and body, and the head carries the exact `Content-Length` of the body spooled.
 ///
-/// The measure pass and the write pass read the same open genomic store: the engine, and
-/// with it the store's shared lock on `geno.index` and its open `geno.blocks`, lives until
-/// the write pass ends.
+/// The wait for the engine slot, the generation into the spool and the head are bounded by
+/// `HPDS_SYNC_TIMEOUT_SECONDS`, past which the request is a 503. A generation still running
+/// then is not interrupted: it finishes, finds the request gone, sends nothing and releases
+/// its slots and its spool. The rows then stream from the spool through a bounded channel:
+/// each chunk waits at most `HPDS_EXCERPT_STALL_SECONDS` for the client to make room, and the
+/// whole body ends by `HPDS_EXCERPT_STREAM_SECONDS`; either bound, a client that left, a read
+/// failure, a genomic store changed on disk since the generation (checked before every chunk,
+/// as the write pass did), or a body that would differ from its spooled length ends the stream
+/// early and releases the slots. Those ends are counted for `/metrics`, and the response body
+/// then fails at its next poll, so hyper closes the connection rather than send the chunks
+/// still in flight. A client that reads nothing at all leaves hyper's write pending instead;
+/// the server closes that connection after `HPDS_WRITE_STALL_SECONDS`
+/// ([`crate::write_stall::WriteStall`]). The excerpt slot is released only after the spool,
+/// and with it any spill file, is dropped.
+///
+/// The generation reads the open genomic store: the engine, and with it the store's shared
+/// lock on `geno.index` and its open `geno.blocks`, lives until the stream ends.
 async fn stream_excerpt(
     state: &AppState,
     engine: Arc<Engine>,
@@ -499,38 +507,57 @@ async fn stream_excerpt(
     let (body_tx, body_rx) = mpsc::channel::<io::Result<Bytes>>(EXCERPT_CHUNKS_IN_FLIGHT);
     let timeout = state.sync_timeout();
     let (stall, stream) = state.excerpt_bounds();
+    let (spool_memory, spool_dir) = state.excerpt_spool();
+    let spool_memory = spool_memory.min(engine.variant_settings().max_excerpt_bytes);
+    let spool_dir = spool_dir.to_path_buf();
     let runtime = tokio::runtime::Handle::current();
     let task_state = state.clone();
     let computation = async {
         let engine_slot = state.engine_slot().await;
         tokio::task::spawn_blocking(move || {
             let _slots = (excerpt_slot, engine_slot);
-            match engine.vcf_excerpt(&query) {
+            fault::before_generation();
+            let mut excerpt = match engine.vcf_excerpt_once(&query) {
                 Err(error) => {
                     let _ = head_tx.send(Err(error));
+                    return;
                 }
                 Ok(ExcerptAnswer::Text(text)) => {
                     let _ = head_tx.send(Ok(ExcerptHead::Text(text)));
+                    return;
                 }
-                Ok(ExcerptAnswer::Rows(excerpt)) => {
-                    let length = excerpt.len();
-                    if head_tx.send(Ok(ExcerptHead::Rows(length))).is_err() {
-                        return;
-                    }
-                    let writer = ChannelWriter {
-                        tx: body_tx,
-                        runtime,
-                        stall,
-                        deadline: Instant::now() + stream,
-                        remaining: length,
-                        store: engine.genomic(),
-                        end: None,
-                    };
-                    if let Some(end) = write_excerpt(&excerpt, writer, &task_ended) {
-                        tracing::warn!(?end, "an excerpt stream ended before its last row");
-                        task_state.excerpt_counters().record(end);
-                    }
+                Ok(ExcerptAnswer::Rows(excerpt)) => excerpt,
+            };
+            let mut spool = Spool::new(spool_memory, &spool_dir);
+            let spooled = excerpt
+                .write_measuring(&mut spool)
+                .and_then(|length| {
+                    spool.flush().map_err(|e| QueryError::Output(Arc::new(e)))?;
+                    Ok(length)
+                })
+                .and_then(fault::after_generation);
+            let length = match spooled {
+                Ok(length) => length,
+                Err(error) => {
+                    let _ = head_tx.send(Err(error));
+                    return;
                 }
+            };
+            if head_tx.send(Ok(ExcerptHead::Rows(length))).is_err() {
+                return;
+            }
+            let writer = ChannelWriter {
+                tx: body_tx,
+                runtime,
+                stall,
+                deadline: Instant::now() + stream,
+                remaining: length,
+                store: engine.genomic(),
+                end: None,
+            };
+            if let Some(end) = send_spool(spool, writer, &task_ended) {
+                tracing::warn!(?end, "an excerpt stream ended before its last row");
+                task_state.excerpt_counters().record(end);
             }
         });
         head_rx.await
@@ -557,4 +584,476 @@ fn respond(answer: &SyncAnswer) -> Response {
         answer.body().clone(),
     )
         .into_response()
+}
+
+/// Test-only faults on the one-pass excerpt path: fixed delays in the generation before the
+/// head and in the first spool write, and a refusal raised once the body is spooled, so the
+/// timeout band and every refusal answered before the head are tested without timing a real
+/// excerpt. They hold for every excerpt of the process while set; tests that set them run
+/// one at a time under [`fault::serial`].
+#[cfg(test)]
+pub(crate) mod fault {
+    use std::sync::{Mutex, MutexGuard};
+    use std::time::Duration;
+
+    use hpds_query::QueryError;
+
+    /// The faults set for the excerpts of the process.
+    #[derive(Default)]
+    pub(crate) struct Faults {
+        /// Slept before the excerpt is built, as a slow generation would take.
+        pub(crate) generation: Duration,
+        /// Slept on the first write into each spool, as a slow spool would take.
+        pub(crate) spool_write: Duration,
+        /// Built and returned in place of the spooled length, as a refusal decided at the end
+        /// of the generation would be.
+        pub(crate) refusal: Option<fn() -> QueryError>,
+    }
+
+    static FAULTS: Mutex<Option<Faults>> = Mutex::new(None);
+    static SERIAL: Mutex<()> = Mutex::new(());
+    thread_local! {
+        static SPOOL_WRITES: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    }
+
+    fn faults() -> MutexGuard<'static, Option<Faults>> {
+        FAULTS.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    /// Holds the faults of the process for one test: sets `faults` until the guard drops.
+    pub(crate) struct Set {
+        _serial: MutexGuard<'static, ()>,
+    }
+
+    impl Drop for Set {
+        fn drop(&mut self) {
+            *faults() = None;
+        }
+    }
+
+    /// Sets `faults` for every excerpt until the returned guard drops, waiting for any other
+    /// test holding them.
+    pub(crate) fn serial(set: Faults) -> Set {
+        let guard = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        *faults() = Some(set);
+        Set { _serial: guard }
+    }
+
+    /// Sleeps the generation delay set, if any.
+    pub(crate) fn before_generation() {
+        SPOOL_WRITES.with(|w| w.set(0));
+        let delay = faults().as_ref().map(|f| f.generation);
+        if let Some(delay) = delay {
+            std::thread::sleep(delay);
+        }
+    }
+
+    /// Sleeps the spool delay set on the first write into a spool on this thread.
+    pub(crate) fn on_spool_write() {
+        let first = SPOOL_WRITES.with(|w| {
+            let n = w.get();
+            w.set(n + 1);
+            n == 0
+        });
+        let delay = faults().as_ref().map(|f| f.spool_write);
+        if let (true, Some(delay)) = (first, delay) {
+            std::thread::sleep(delay);
+        }
+    }
+
+    /// The refusal set, in place of `length`.
+    pub(crate) fn after_generation(length: u64) -> hpds_query::Result<u64> {
+        match faults().as_ref().and_then(|f| f.refusal) {
+            Some(refusal) => Err(refusal()),
+            None => Ok(length),
+        }
+    }
+}
+
+/// The no-op faults of a build that is not a test.
+#[cfg(not(test))]
+pub(crate) mod fault {
+    pub(crate) fn before_generation() {}
+
+    pub(crate) fn on_spool_write() {}
+
+    pub(crate) fn after_generation(length: u64) -> hpds_query::Result<u64> {
+        Ok(length)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+    use std::time::Duration;
+
+    use axum::Router;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use hpds_etl::genomic::vcf_load::{GenomicLoadOptions, genomic_load};
+    use hpds_etl::load::{KeySource, PartitionedLoadOptions, load_partitioned};
+    use hpds_format::{FormatError, GenoMode};
+    use http_body_util::BodyExt;
+    use serde_json::json;
+    use tower::ServiceExt;
+
+    use super::fault::{self, Faults};
+    use super::*;
+    use crate::config::Config;
+    use crate::genomic::attach_genomic;
+    use crate::spool::SPILL_PREFIX;
+
+    const SYNC: &str = "/PIC-SURE/v3/query/sync";
+    const KEY: &str = "0123456789ABCDEF0123456789ABCDEF";
+    const VCF: &str = "##fileformat=VCFv4.3\n\
+        ##INFO=<ID=Gene_with_variant,Number=.,Type=String,Description=\"The gene.\">\n\
+        ##INFO=<ID=AF,Number=1,Type=Float,Description=\"Frequency.\">\n\
+        #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS197506\tS197507\tS200000\n\
+        chr1\t100\t.\tA\tG\t.\tPASS\tGene_with_variant=G1;AF=0.1\tGT\t0|1\t1|1\t0|0\n\
+        chr1\t1500\t.\tA\tT\t.\tPASS\tGene_with_variant=G1;AF=0.2\tGT\t0|0\t0|0\t0|1\n";
+
+    struct Fixture {
+        dir: tempfile::TempDir,
+        state: AppState,
+        app: Router,
+    }
+
+    impl Fixture {
+        fn spill_files(&self) -> Vec<String> {
+            std::fs::read_dir(self.dir.path().join("results"))
+                .unwrap()
+                .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+                .filter(|name| name.starts_with(SPILL_PREFIX))
+                .collect()
+        }
+
+        async fn slots_released(&self) {
+            for _ in 0..500 {
+                if self.state.excerpt_slots_in_use().0 == 0 {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            panic!("the excerpt slot was not released");
+        }
+    }
+
+    /// The Java phenotype fixture's four partitions with a one-node `localDistributed`
+    /// genomic store of two `G1` variants beside them, served with both excerpt gates on and
+    /// the settings of `adjust`.
+    fn fixture(adjust: impl FnOnce(&mut Config)) -> Fixture {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let phenotypic = root.join("pic-sure-hpds/service/src/test/resources/phenotypic");
+        let input = dir.path().join("input");
+        std::fs::create_dir_all(&input).unwrap();
+        for n in 1..=4 {
+            let file = format!("partition{n}-allConcepts.csv");
+            std::fs::copy(phenotypic.join(&file), input.join(&file)).unwrap();
+        }
+        let key_file = dir.path().join("key");
+        std::fs::write(&key_file, KEY).unwrap();
+        let store = dir.path().join("store");
+        let mut options = PartitionedLoadOptions::new(input, store.clone());
+        options.key = KeySource::File(key_file);
+        options.no_config = true;
+        options.threads = Some(2);
+        load_partitioned(&options).unwrap();
+        let work = dir.path().join("vcf");
+        std::fs::create_dir_all(&work).unwrap();
+        let vcf = work.join("n0.vcf");
+        std::fs::write(&vcf, VCF).unwrap();
+        let index = work.join("index.tsv");
+        std::fs::write(
+            &index,
+            format!(
+                "vcf_path\tchromosome\tisAnnotated\tisGzipped\tsample_ids\tpatient_ids\n\
+                 {}\tchr1\t1\t0\t\"S197506,S197507,S200000\"\t\"197506,197507,200000\"\n",
+                vcf.display()
+            ),
+        )
+        .unwrap();
+        let genomic = dir.path().join("genomic");
+        genomic_load(&GenomicLoadOptions {
+            mode: GenoMode::LocalDistributed,
+            groups: vec![(String::new(), index)],
+            out: genomic.clone(),
+            key_file: store.join("encryption_key"),
+            skip_missing_samples: false,
+            threads: Some(2),
+        })
+        .unwrap();
+        let mut config = Config::from_lookup(|name| {
+            (name == "HPDS_CONSENT_CONTRACT").then(|| "harmonization".into())
+        })
+        .unwrap();
+        config.results_dir = dir.path().join("results");
+        config.partitions.require_consents = false;
+        config.data_dir = store.clone();
+        config.genomic.data_dir = genomic;
+        config.genomic.processor = Some(GenoMode::LocalDistributed);
+        config.genomic.variant.vcf_excerpt_enabled = true;
+        config.engine_concurrency = 4;
+        config.excerpt_concurrency = 2;
+        adjust(&mut config);
+        let engine = Engine::open(&store, &config.partitions)
+            .unwrap()
+            .with_limits(config.query_limits);
+        let (engine, status) = attach_genomic(engine, &config);
+        let state = AppState::with_genomic(Some(Arc::new(engine)), &config, status).unwrap();
+        let app = crate::router(state.clone());
+        Fixture { dir, state, app }
+    }
+
+    fn excerpt_request(result_type: &str) -> String {
+        json!({"query": {
+            "expectedResultType": result_type,
+            "genomicFilters": [{"key": "Gene_with_variant", "values": ["G1"]}],
+        }, "resourceUUID": null})
+        .to_string()
+    }
+
+    struct Reply {
+        status: StatusCode,
+        headers: axum::http::HeaderMap,
+        body: String,
+    }
+
+    async fn post(app: &Router, body: String) -> Reply {
+        let request = Request::post(SYNC)
+            .header("content-type", "application/json")
+            .body(Body::from(body))
+            .unwrap();
+        let response = app.clone().oneshot(request).await.unwrap();
+        let status = response.status();
+        let headers = response.headers().clone();
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        Reply {
+            status,
+            headers,
+            body: String::from_utf8(bytes.to_vec()).unwrap(),
+        }
+    }
+
+    /// The status and body v6 answered for `error` raised by its measure pass: the same
+    /// mapping, applied before the head.
+    async fn v6_answer(error: QueryError) -> (StatusCode, String) {
+        let response = ApiError::from(error).into_response();
+        let status = response.status();
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        (status, String::from_utf8(bytes.to_vec()).unwrap())
+    }
+
+    /// The excerpt as v6's two passes write it: measured, then written.
+    fn two_pass(state: &AppState, result_type: &str) -> String {
+        let query: Query = serde_json::from_value(json!({
+            "expectedResultType": result_type,
+            "genomicFilters": [{"key": "Gene_with_variant", "values": ["G1"]}],
+        }))
+        .unwrap();
+        let engine = state.engine().unwrap();
+        let Ok(ExcerptAnswer::Rows(excerpt)) = engine.vcf_excerpt(&query) else {
+            panic!("an excerpt");
+        };
+        let mut body = Vec::new();
+        excerpt.write_to(&mut body).unwrap();
+        String::from_utf8(body).unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_spooled_excerpt_is_the_two_pass_body_in_memory_and_spilled() {
+        let _faults = fault::serial(Faults::default());
+        for memory in [crate::config::DEFAULT_EXCERPT_SPOOL_MEMORY_BYTES, 0, 40] {
+            let f = fixture(|c| c.excerpt_spool_memory_bytes = memory);
+            for result_type in ["VCF_EXCERPT", "AGGREGATE_VCF_EXCERPT"] {
+                let reply = post(&f.app, excerpt_request(result_type)).await;
+                assert_eq!(reply.status, StatusCode::OK, "{}", reply.body);
+                let whole = two_pass(&f.state, result_type);
+                assert_eq!(reply.body, whole, "{result_type} at {memory}");
+                assert_eq!(
+                    reply.headers["content-length"].to_str().unwrap(),
+                    whole.len().to_string()
+                );
+                assert_eq!(reply.body.lines().count(), 3, "{}", reply.body);
+            }
+            f.slots_released().await;
+            assert!(f.spill_files().is_empty());
+        }
+    }
+
+    /// The answer to an excerpt under a 2-second sync timeout with `generation` slept before
+    /// it is built and `spool_write` slept on its first spool write.
+    async fn band_case(generation: u64, spool_write: u64) -> (StatusCode, String) {
+        let f = fixture(|c| {
+            c.sync_timeout = Duration::from_secs(2);
+            c.excerpt_spool_memory_bytes = 0;
+        });
+        let _faults = fault::serial(Faults {
+            generation: Duration::from_millis(generation),
+            spool_write: Duration::from_millis(spool_write),
+            refusal: None,
+        });
+        let reply = post(&f.app, excerpt_request("AGGREGATE_VCF_EXCERPT")).await;
+        f.slots_released().await;
+        assert!(f.spill_files().is_empty());
+        (reply.status, reply.body)
+    }
+
+    const TIMED_OUT: &str = "the query did not finish within 2 seconds";
+
+    #[tokio::test]
+    async fn generation_and_spooling_within_the_sync_timeout_answer_200() {
+        let (status, body) = band_case(200, 200).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert!(body.starts_with("CHROM\t"), "{body}");
+    }
+
+    #[tokio::test]
+    async fn generation_within_and_spooling_past_the_sync_timeout_answer_503() {
+        assert_eq!(
+            band_case(600, 1800).await,
+            (StatusCode::SERVICE_UNAVAILABLE, TIMED_OUT.to_owned())
+        );
+    }
+
+    #[tokio::test]
+    async fn generation_past_the_sync_timeout_answers_503() {
+        assert_eq!(
+            band_case(2500, 0).await,
+            (StatusCode::SERVICE_UNAVAILABLE, TIMED_OUT.to_owned())
+        );
+    }
+
+    #[tokio::test]
+    async fn an_excerpt_over_the_byte_bound_is_refused_before_the_head_as_v6_refused_it() {
+        let _faults = fault::serial(Faults::default());
+        for memory in [0, 1 << 20] {
+            let f = fixture(|c| {
+                c.genomic.variant.max_excerpt_bytes = 64;
+                c.excerpt_spool_memory_bytes = memory;
+            });
+            for result_type in ["VCF_EXCERPT", "AGGREGATE_VCF_EXCERPT"] {
+                let query: Query = serde_json::from_value(json!({
+                    "expectedResultType": result_type,
+                    "genomicFilters": [{"key": "Gene_with_variant", "values": ["G1"]}],
+                }))
+                .unwrap();
+                let measured = f.state.engine().unwrap().vcf_excerpt(&query).unwrap_err();
+                assert!(matches!(measured, QueryError::LimitExceeded(_)));
+                let expected = v6_answer(measured).await;
+                let reply = post(&f.app, excerpt_request(result_type)).await;
+                assert_eq!((reply.status, reply.body), expected, "{result_type}");
+                assert_eq!(expected.0, StatusCode::BAD_REQUEST);
+                assert!(!reply.headers.contains_key(QUERY_METADATA_HEADER));
+            }
+            f.slots_released().await;
+            assert!(f.spill_files().is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn an_excerpt_finding_no_slot_is_refused_with_retry_after() {
+        let f = fixture(|c| {
+            c.excerpt_concurrency = 1;
+            c.excerpt_queue = Duration::ZERO;
+            c.excerpt_spool_memory_bytes = 0;
+        });
+        let _faults = fault::serial(Faults {
+            generation: Duration::from_millis(1500),
+            ..Faults::default()
+        });
+        let held = tokio::spawn({
+            let app = f.app.clone();
+            async move { post(&app, excerpt_request("AGGREGATE_VCF_EXCERPT")).await }
+        });
+        for _ in 0..500 {
+            if f.state.excerpt_slots_in_use().0 == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        let refused = post(&f.app, excerpt_request("VCF_EXCERPT")).await;
+        assert_eq!(refused.status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(refused.headers["retry-after"].to_str().unwrap(), "1");
+        assert_eq!(
+            refused.body,
+            "all 1 excerpt slots (HPDS_EXCERPT_CONCURRENCY) are in use; retry later"
+        );
+        assert_eq!(held.await.unwrap().status, StatusCode::OK);
+        assert_eq!(f.state.excerpt_counters().counts().refused, 1);
+    }
+
+    fn unreadable_block() -> QueryError {
+        QueryError::GenomicBlock {
+            node: "/chr1".into(),
+            what: "metadata chunk 0".into(),
+            source: Arc::new(FormatError::Authentication),
+        }
+    }
+
+    fn short_spec() -> QueryError {
+        QueryError::GenomicFilter(
+            "a listed variant has a spec with fewer than six fields, so Java cannot sort the \
+             excerpt's rows"
+                .into(),
+        )
+    }
+
+    fn duplicated_string() -> QueryError {
+        QueryError::GenomicFilter(
+            "a listed variant holds a metadata string twice on one node, which Java cannot read"
+                .into(),
+        )
+    }
+
+    fn no_masks() -> QueryError {
+        QueryError::GenomicFilter(
+            "no node holds the masks of a listed variant, which Java cannot read".into(),
+        )
+    }
+
+    #[tokio::test]
+    async fn refusals_decided_while_generating_are_answered_before_the_head_with_v6s_answer() {
+        let cases: [(fn() -> QueryError, StatusCode); 4] = [
+            (unreadable_block, StatusCode::INTERNAL_SERVER_ERROR),
+            (short_spec, StatusCode::BAD_REQUEST),
+            (duplicated_string, StatusCode::BAD_REQUEST),
+            (no_masks, StatusCode::BAD_REQUEST),
+        ];
+        let f = fixture(|c| c.excerpt_spool_memory_bytes = 0);
+        for (refusal, status) in cases {
+            let expected = v6_answer(refusal()).await;
+            assert_eq!(expected.0, status);
+            let _faults = fault::serial(Faults {
+                refusal: Some(refusal),
+                ..Faults::default()
+            });
+            for result_type in ["VCF_EXCERPT", "AGGREGATE_VCF_EXCERPT"] {
+                let reply = post(&f.app, excerpt_request(result_type)).await;
+                assert_eq!((reply.status, reply.body), expected, "{result_type}");
+                assert!(!reply.headers.contains_key(QUERY_METADATA_HEADER));
+            }
+            f.slots_released().await;
+            assert!(f.spill_files().is_empty());
+        }
+        let _faults = fault::serial(Faults::default());
+        let reply = post(&f.app, excerpt_request("VCF_EXCERPT")).await;
+        assert_eq!(reply.status, StatusCode::OK, "the faults are cleared");
+    }
+
+    #[tokio::test]
+    async fn a_client_that_leaves_releases_the_slot_and_leaves_no_spill_file() {
+        let _faults = fault::serial(Faults::default());
+        let f = fixture(|c| c.excerpt_spool_memory_bytes = 0);
+        let request = Request::post(SYNC)
+            .header("content-type", "application/json")
+            .body(Body::from(excerpt_request("VCF_EXCERPT")))
+            .unwrap();
+        let response = f.app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(f.spill_files().is_empty());
+        drop(response);
+        f.slots_released().await;
+        assert!(f.spill_files().is_empty());
+    }
 }

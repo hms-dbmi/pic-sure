@@ -1,5 +1,6 @@
 //! State shared by every request handler.
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -52,6 +53,8 @@ struct Shared {
     excerpt_queue: Duration,
     excerpt_stall: Duration,
     excerpt_stream: Duration,
+    excerpt_spool_memory: u64,
+    spool_dir: PathBuf,
     excerpts: ExcerptCounters,
 }
 
@@ -183,6 +186,8 @@ impl AppState {
                 excerpt_queue: config.excerpt_queue,
                 excerpt_stall: config.excerpt_stall,
                 excerpt_stream: config.excerpt_stream,
+                excerpt_spool_memory: config.excerpt_spool_memory_bytes,
+                spool_dir: config.results_dir.clone(),
                 excerpts: ExcerptCounters::default(),
             }),
         })
@@ -341,6 +346,12 @@ impl AppState {
     /// whole body may take.
     pub fn excerpt_bounds(&self) -> (Duration, Duration) {
         (self.inner.excerpt_stall, self.inner.excerpt_stream)
+    }
+
+    /// The spool of a one-pass excerpt: the bytes it holds in memory
+    /// (`HPDS_EXCERPT_SPOOL_MEMORY_BYTES`) and the results directory it spills into.
+    pub fn excerpt_spool(&self) -> (u64, &Path) {
+        (self.inner.excerpt_spool_memory, &self.inner.spool_dir)
     }
 
     /// How streamed excerpts ended early.
