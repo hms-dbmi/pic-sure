@@ -26,6 +26,7 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.UUID;
 
 
 /**
@@ -51,9 +52,7 @@ public class ApplicationController {
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(value = "/{applicationId}")
     public ResponseEntity<ApplicationResponse> getApplicationById(
-        @Parameter(required = true, description = "The UUID of the application to fetch.") @PathVariable(
-            "applicationId"
-        ) String applicationId
+        @Parameter(required = true, description = "The UUID of the application to fetch.") @PathVariable("applicationId") UUID applicationId
     ) {
         Application application = applicationService.getApplicationByID(applicationId).orElseThrow(
             () -> new PicSureResponseException(
@@ -121,9 +120,9 @@ public class ApplicationController {
     public ResponseEntity<ApplicationTokenResponse> refreshApplicationToken(
         @Parameter(required = true, description = "The uuid of the application whose token is refreshed.") @PathVariable(
             "applicationId"
-        ) String applicationId, HttpServletRequest request
+        ) UUID applicationId, HttpServletRequest request
     ) {
-        AuditAttributes.putMetadata(request, "app_id", applicationId);
+        AuditAttributes.putMetadata(request, "app_id", applicationId.toString());
         return PICSUREResponse.success(new ApplicationTokenResponse(applicationService.refreshApplicationToken(applicationId)));
     }
 
@@ -142,9 +141,9 @@ public class ApplicationController {
     public ResponseEntity<List<ApplicationResponse>> removeById(
         @Parameter(required = true, description = "The uuid of the application to delete.") @PathVariable(
             "applicationId"
-        ) final String applicationId, HttpServletRequest request
+        ) final UUID applicationId, HttpServletRequest request
     ) {
-        AuditAttributes.putMetadata(request, "app_id", applicationId);
+        AuditAttributes.putMetadata(request, "app_id", applicationId.toString());
         return PICSUREResponse
             .success(applicationService.deleteApplicationById(applicationId).stream().map(ApplicationResponse::withPrivileges).toList());
     }

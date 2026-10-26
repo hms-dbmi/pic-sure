@@ -114,20 +114,20 @@ class ControllerAuditEventTest {
     @Test
     void applicationController() throws Exception {
         Class<?> c = ApplicationController.class;
-        // getApplicationById(String applicationId)
-        assertAuditEvent(c, "getApplicationById", new Class[] {String.class}, "OTHER", "application.read");
+        // getApplicationById(UUID applicationId)
+        assertAuditEvent(c, "getApplicationById", new Class[] {UUID.class}, "OTHER", "application.read");
         // getApplicationAll()
         assertAuditEvent(c, "getApplicationAll", new Class[] {}, "OTHER", "application.list");
         // addApplication(List<ApplicationCreateRequest> applications, HttpServletRequest request)
         assertAuditEvent(c, "addApplication", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "application.modify");
         // updateApplication(List<ApplicationUpdateRequest> applications, HttpServletRequest request)
         assertAuditEvent(c, "updateApplication", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "application.modify");
-        // refreshApplicationToken(String applicationId, HttpServletRequest request)
+        // refreshApplicationToken(UUID applicationId, HttpServletRequest request)
         assertAuditEvent(
-            c, "refreshApplicationToken", new Class[] {String.class, HttpServletRequest.class}, "ADMIN", "application.token_refresh"
+            c, "refreshApplicationToken", new Class[] {UUID.class, HttpServletRequest.class}, "ADMIN", "application.token_refresh"
         );
-        // removeById(String applicationId, HttpServletRequest request)
-        assertAuditEvent(c, "removeById", new Class[] {String.class, HttpServletRequest.class}, "ADMIN", "application.delete");
+        // removeById(UUID applicationId, HttpServletRequest request)
+        assertAuditEvent(c, "removeById", new Class[] {UUID.class, HttpServletRequest.class}, "ADMIN", "application.delete");
     }
 
     @Test
