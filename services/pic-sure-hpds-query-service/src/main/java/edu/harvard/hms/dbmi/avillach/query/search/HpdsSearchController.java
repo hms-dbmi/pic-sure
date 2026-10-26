@@ -68,7 +68,7 @@ public class HpdsSearchController {
         across every page. Request the next `page` until a page returns fewer than `size` values.
 
         A missing parameter answers 400, and a `page` or `size` below 1 is rejected. A key that is not a genomic annotation \
-        returns an empty body instead of a page.
+        answers 502, because the HPDS lookup fails, so take the key from `results.info` of `POST /hpds/auth/search`.
 
         """ + "    curl \"https://<host>/picsure/hpds/auth/search/values?genomicConceptPath=Gene_with_variant&query="
         + QueryRequestExamples.GENE + "&page=1&size=20\" \\\n      -H \"Authorization: Bearer $TOKEN\"\n";
@@ -111,8 +111,10 @@ public class HpdsSearchController {
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "One page of the values of the concept."),
             @ApiResponse(responseCode = "400", description = "Unknown backend."),
-            @ApiResponse(responseCode = "502", description = "HPDS backend call failed."),
-            @ApiResponse(responseCode = "503", description = "Backend not configured.")}
+            @ApiResponse(
+                responseCode = "502",
+                description = "HPDS backend call failed, including a genomicConceptPath that is not a genomic annotation."
+            ), @ApiResponse(responseCode = "503", description = "Backend not configured.")}
     )
     public PaginatedSearchResult<String> values(
         @Parameter(description = BACKEND, example = "auth", schema = @Schema(allowableValues = {"auth", "open"})) @PathVariable(

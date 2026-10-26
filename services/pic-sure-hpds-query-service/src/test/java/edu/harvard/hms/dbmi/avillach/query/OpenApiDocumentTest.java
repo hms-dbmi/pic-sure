@@ -186,7 +186,8 @@ class OpenApiDocumentTest {
         assertThat(operation(document, "post", SEARCH).path("description").asText())
             .contains("POST /picsure/dictionary/concepts", "results.info", "curl -X POST");
         JsonNode values = operation(document, "get", VALUES);
-        assertThat(values.path("description").asText()).contains("one-based", "searchGenomicValues", "curl ");
+        assertThat(values.path("description").asText()).contains("one-based", "searchGenomicValues", "curl ").contains("answers 502")
+            .doesNotContain("empty body");
         for (String name : List.of("backend", "genomicConceptPath", "query", "page", "size")) {
             JsonNode parameter = null;
             for (JsonNode candidate : values.path("parameters")) {
