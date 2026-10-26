@@ -1,9 +1,10 @@
 //! The one-pass excerpt against the two-pass one: on every excerpt the hand-built stores below
 //! answer and, when `HPDS_GENOMIC_BENCH` names the bench data directory, on every excerpt
 //! request of the Java genomic integration tests on `gfx` in both layouts,
-//! [`VcfExcerpt::write_measuring`] writes the bytes [`VcfExcerpt::write_to`] writes after the
-//! measure pass, or refuses with the same error, at byte bounds below, at and above the
-//! excerpt's length.
+//! [`hpds_query::UnmeasuredExcerpt::write_measuring`] writes the bytes
+//! [`hpds_query::VcfExcerpt::write_to`] writes after the measure pass, or refuses with the
+//! same error, at byte bounds below, at and above the excerpt's length; and a one-pass excerpt
+//! stops once asked to.
 
 mod common;
 
@@ -13,8 +14,8 @@ use common::genomic::{RawNode, RawSpec, write_raw};
 use common::{Row, lenient, partitioned_rows};
 use hpds_format::GenoMode;
 use hpds_query::{
-    Engine, ExcerptAnswer, GenomicFilter, GenomicOptions, GenomicStore, Query, ResultType,
-    VariantResultSettings, VcfExcerpt, parse_request_body,
+    Engine, ExcerptAnswer, GenomicFilter, GenomicOptions, GenomicStore, OnePassAnswer, Query,
+    QueryError, ResultType, VariantResultSettings, parse_request_body,
 };
 use serde_json::Value;
 
@@ -48,17 +49,16 @@ fn two_pass(e: &Engine, q: &Query) -> Outcome {
 fn one_pass(e: &Engine, q: &Query) -> Outcome {
     match e.vcf_excerpt_once(q) {
         Err(error) => Outcome::Refused(error.to_string()),
-        Ok(ExcerptAnswer::Text(text)) => Outcome::Text(text),
-        Ok(ExcerptAnswer::Rows(mut excerpt)) => {
+        Ok(OnePassAnswer::Text(text)) => Outcome::Text(text),
+        Ok(OnePassAnswer::Rows(excerpt)) => {
             let mut body = Vec::new();
-            match excerpt.write_measuring(&mut body) {
+            match excerpt.write_measuring(&mut body, &|| false) {
                 Err(error) => {
                     assert!(body.len() as u64 <= e.variant_settings().max_excerpt_bytes);
                     Outcome::Refused(error.to_string())
                 }
                 Ok(length) => {
                     assert_eq!(length, body.len() as u64);
-                    assert_eq!(length, VcfExcerpt::len(&excerpt));
                     Outcome::Body(body)
                 }
             }
@@ -276,4 +276,42 @@ fn one_pass_writes_the_two_pass_excerpt_of_every_gfx_integration_request() {
         eprintln!("gfx {layout}: {excerpts} excerpts written alike in one pass and two");
         assert!(excerpts > 0);
     }
+}
+
+#[test]
+fn a_one_pass_excerpt_stops_generating_once_asked_to() {
+    let dir = tempfile::tempdir().unwrap();
+    let groups: Groups = vec![("", (1..=10).collect())];
+    let nodes = [variants(0, "chrX", 0)];
+    let (_pheno, e) = engine(
+        dir.path(),
+        &(1..=10).collect::<Vec<u32>>(),
+        GenoMode::LocalDistributed,
+        &groups,
+        &nodes,
+    );
+    let q = gene_query(ResultType::AggregateVcfExcerpt, &["A"]);
+    let Outcome::Body(whole) = two_pass(&e, &q) else {
+        panic!("an excerpt");
+    };
+    let header = whole.iter().position(|&b| b == b'\n').unwrap() + 1;
+    let asked = std::cell::Cell::new(0u32);
+    let stop = || {
+        asked.set(asked.get() + 1);
+        asked.get() > 1
+    };
+    let Ok(OnePassAnswer::Rows(excerpt)) = e.vcf_excerpt_once(&q) else {
+        panic!("an excerpt");
+    };
+    let mut body = Vec::new();
+    let stopped = excerpt.write_measuring(&mut body, &stop);
+    assert!(matches!(stopped, Err(QueryError::Output(_))), "{stopped:?}");
+    assert_eq!(
+        asked.get(),
+        2,
+        "asked before each row, and no row after it answered true"
+    );
+    let first_row = whole[header..].iter().position(|&b| b == b'\n').unwrap() + 1;
+    assert_eq!(body, whole[..header + first_row]);
+    assert!(body.len() < whole.len());
 }

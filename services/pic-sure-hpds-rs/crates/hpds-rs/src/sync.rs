@@ -10,7 +10,8 @@ use axum::extract::State;
 use axum::http::header::{CONTENT_LENGTH, CONTENT_TYPE};
 use axum::response::{IntoResponse, Response};
 use hpds_query::{
-    ConsentContract, Engine, ExcerptAnswer, GenomicStore, Query, QueryError, ResultType, SyncAnswer,
+    ConsentContract, Engine, ExcerptAnswer, GenomicStore, OnePassAnswer, Query, QueryError,
+    ResultType, SyncAnswer,
 };
 use tokio::sync::{OwnedSemaphorePermit, mpsc, oneshot};
 
@@ -478,10 +479,11 @@ fn send_spool(
 /// decided, the byte bound included, so each is answered before the head with the same status
 /// and body, and the head carries the exact `Content-Length` of the body spooled.
 ///
-/// The wait for the engine slot, the generation into the spool and the head are bounded by
+/// The excerpt slot wait is bounded by `HPDS_EXCERPT_QUEUE_SECONDS`. The wait for the engine
+/// slot, the generation into the spool and the head are bounded by
 /// `HPDS_SYNC_TIMEOUT_SECONDS`, past which the request is a 503. A generation still running
-/// then is not interrupted: it finishes, finds the request gone, sends nothing and releases
-/// its slots and its spool. The rows then stream from the spool through a bounded channel:
+/// then stops before its next row, finding the request gone, sends nothing and releases its
+/// slots and its spool. The rows then stream from the spool through a bounded channel:
 /// each chunk waits at most `HPDS_EXCERPT_STALL_SECONDS` for the client to make room, and the
 /// whole body ends by `HPDS_EXCERPT_STREAM_SECONDS`; either bound, a client that left, a read
 /// failure, a genomic store changed on disk since the generation (checked before every chunk,
@@ -517,20 +519,21 @@ async fn stream_excerpt(
         tokio::task::spawn_blocking(move || {
             let _slots = (excerpt_slot, engine_slot);
             fault::before_generation();
-            let mut excerpt = match engine.vcf_excerpt_once(&query) {
+            let excerpt = match engine.vcf_excerpt_once(&query) {
                 Err(error) => {
                     let _ = head_tx.send(Err(error));
                     return;
                 }
-                Ok(ExcerptAnswer::Text(text)) => {
+                Ok(OnePassAnswer::Text(text)) => {
                     let _ = head_tx.send(Ok(ExcerptHead::Text(text)));
                     return;
                 }
-                Ok(ExcerptAnswer::Rows(excerpt)) => excerpt,
+                Ok(OnePassAnswer::Rows(excerpt)) => excerpt,
             };
             let mut spool = Spool::new(spool_memory, &spool_dir);
+            let abandoned = || head_tx.is_closed();
             let spooled = excerpt
-                .write_measuring(&mut spool)
+                .write_measuring(&mut spool, &abandoned)
                 .and_then(|length| {
                     spool.flush().map_err(|e| QueryError::Output(Arc::new(e)))?;
                     Ok(length)
@@ -611,6 +614,7 @@ pub(crate) mod fault {
     }
 
     static FAULTS: Mutex<Option<Faults>> = Mutex::new(None);
+    static SPOOL_WRITES_SEEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     static SERIAL: Mutex<()> = Mutex::new(());
     thread_local! {
         static SPOOL_WRITES: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
@@ -648,8 +652,15 @@ pub(crate) mod fault {
         }
     }
 
-    /// Sleeps the spool delay set on the first write into a spool on this thread.
+    /// Writes into any spool of the process so far.
+    pub(crate) fn spool_writes() -> u64 {
+        SPOOL_WRITES_SEEN.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Counts the write, and sleeps the spool delay set on the first write into a spool on
+    /// this thread.
     pub(crate) fn on_spool_write() {
+        SPOOL_WRITES_SEEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let first = SPOOL_WRITES.with(|w| {
             let n = w.get();
             w.set(n + 1);
@@ -742,6 +753,11 @@ mod tests {
     /// genomic store of two `G1` variants beside them, served with both excerpt gates on and
     /// the settings of `adjust`.
     fn fixture(adjust: impl FnOnce(&mut Config)) -> Fixture {
+        fixture_of(0, adjust)
+    }
+
+    /// [`fixture`] with `more` further `G1` variants, each carried by patient 197506.
+    fn fixture_of(more: u32, adjust: impl FnOnce(&mut Config)) -> Fixture {
         let dir = tempfile::tempdir().unwrap();
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
         let phenotypic = root.join("pic-sure-hpds/service/src/test/resources/phenotypic");
@@ -762,7 +778,14 @@ mod tests {
         let work = dir.path().join("vcf");
         std::fs::create_dir_all(&work).unwrap();
         let vcf = work.join("n0.vcf");
-        std::fs::write(&vcf, VCF).unwrap();
+        let mut text = String::from(VCF);
+        for i in 0..more {
+            text.push_str(&format!(
+                "chr1\t{}\t.\tA\tC\t.\tPASS\tGene_with_variant=G1;AF=0.3\tGT\t0|1\t0|0\t0|0\n",
+                2000 + i * 10
+            ));
+        }
+        std::fs::write(&vcf, text).unwrap();
         let index = work.join("index.tsv");
         std::fs::write(
             &index,
@@ -1042,18 +1065,60 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_client_that_leaves_releases_the_slot_and_leaves_no_spill_file() {
+    async fn a_client_that_leaves_mid_stream_releases_the_slot_and_leaves_no_spill_file() {
         let _faults = fault::serial(Faults::default());
-        let f = fixture(|c| c.excerpt_spool_memory_bytes = 0);
+        let f = fixture_of(20_000, |c| {
+            c.excerpt_spool_memory_bytes = 0;
+            c.excerpt_concurrency = 1;
+        });
         let request = Request::post(SYNC)
             .header("content-type", "application/json")
             .body(Body::from(excerpt_request("VCF_EXCERPT")))
             .unwrap();
-        let response = f.app.clone().oneshot(request).await.unwrap();
+        let mut response = f.app.clone().oneshot(request).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+        let length: u64 = response.headers()["content-length"]
+            .to_str()
+            .unwrap()
+            .parse()
+            .unwrap();
+        let chunks = (EXCERPT_CHUNKS_IN_FLIGHT + 2) as u64 * EXCERPT_CHUNK_BYTES as u64;
+        assert!(length > 2 * chunks, "{length}");
+        let first = response.body_mut().frame().await.unwrap().unwrap();
+        assert!(first.is_data());
+        assert_eq!(f.state.excerpt_slots_in_use().0, 1, "still streaming");
         assert!(f.spill_files().is_empty());
         drop(response);
         f.slots_released().await;
+        assert_eq!(f.state.excerpt_counters().counts().aborted, 1);
+        assert!(f.spill_files().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_generation_whose_request_timed_out_stops_before_its_next_row() {
+        let f = fixture_of(20_000, |c| {
+            c.sync_timeout = Duration::from_secs(1);
+            c.excerpt_spool_memory_bytes = 0;
+        });
+        let _faults = fault::serial(Faults {
+            spool_write: Duration::from_millis(1500),
+            ..Faults::default()
+        });
+        let before = fault::spool_writes();
+        let reply = post(&f.app, excerpt_request("AGGREGATE_VCF_EXCERPT")).await;
+        assert_eq!(
+            (reply.status, reply.body.as_str()),
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "the query did not finish within 1 seconds"
+            )
+        );
+        f.slots_released().await;
+        let written = fault::spool_writes() - before;
+        assert!(
+            written <= 2,
+            "the header and at most one row are spooled, not 20,002 rows: {written}"
+        );
         assert!(f.spill_files().is_empty());
     }
 }

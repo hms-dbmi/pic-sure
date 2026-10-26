@@ -30,7 +30,7 @@
 //! counted, not written) so an excerpt over `HPDS_MAX_EXCERPT_BYTES` and every refusal above
 //! are decided before the first byte is written, then to write it ([`VcfExcerpt::write_to`]);
 //! or it is generated once into a writer that holds it, measured as it is written
-//! ([`VcfExcerpt::write_measuring`]), with the same refusals decided before it returns. Each
+//! ([`UnmeasuredExcerpt::write_measuring`]), with the same refusals decided before it returns. Each
 //! pass holds the mask and metadata chunks of at most one chunk per node of the contig it
 //! walks, plus one cursor chunk per node (see [`super::variants`]), and one row.
 
@@ -203,9 +203,42 @@ impl std::fmt::Debug for VcfExcerpt<'_> {
 pub enum ExcerptAnswer<'e> {
     /// A `text/plain` body written whole.
     Text(String),
-    /// The excerpt, `text/plain`, written row by row with [`VcfExcerpt::write_to`], or once
-    /// with [`VcfExcerpt::write_measuring`] when it came unmeasured.
+    /// The excerpt, `text/plain`, measured, written row by row with [`VcfExcerpt::write_to`].
     Rows(VcfExcerpt<'e>),
+}
+
+/// What a one-pass excerpt request answers: Java's text, as for [`ExcerptAnswer`], or the
+/// excerpt not yet measured, which can only be written with its byte bound applied.
+#[derive(Debug)]
+pub enum OnePassAnswer<'e> {
+    /// A `text/plain` body written whole.
+    Text(String),
+    /// The excerpt, generated once by [`UnmeasuredExcerpt::write_measuring`].
+    Rows(UnmeasuredExcerpt<'e>),
+}
+
+/// An excerpt that has not been measured. Its only use is
+/// [`UnmeasuredExcerpt::write_measuring`], which applies `HPDS_MAX_EXCERPT_BYTES` while it
+/// writes, so an unmeasured excerpt is never written past its bound.
+#[derive(Debug)]
+pub struct UnmeasuredExcerpt<'e>(VcfExcerpt<'e>);
+
+impl<'e> UnmeasuredExcerpt<'e> {
+    /// Wraps the unmeasured `excerpt`.
+    pub(crate) fn of(excerpt: VcfExcerpt<'e>) -> Self {
+        UnmeasuredExcerpt(excerpt)
+    }
+
+    /// Generates the excerpt once into `out` and returns its length, as
+    /// [`VcfExcerpt::write_measuring`] describes. `stop` is asked before each row; once it
+    /// answers true the generation ends with [`QueryError::Output`], so a request nobody waits
+    /// for stops generating and spooling.
+    ///
+    /// # Errors
+    /// As for [`VcfExcerpt::new`], [`QueryError::Output`] when `out` fails or `stop` ends it.
+    pub fn write_measuring(mut self, out: &mut dyn Write, stop: &dyn Fn() -> bool) -> Result<u64> {
+        self.0.write_measuring(out, stop)
+    }
 }
 
 /// The ids of the patients the excerpt's columns hold, in column order: groups in index
@@ -253,13 +286,14 @@ impl<'e> VcfExcerpt<'e> {
             labels,
             max_bytes,
         );
-        excerpt.len = excerpt.generate(false, &mut |_| Ok(false))?;
+        excerpt.len = excerpt.generate(false, &|| false, &mut |_| Ok(false))?;
         excerpt.refuse_over_limit()?;
         Ok(excerpt)
     }
 
     /// The excerpt [`VcfExcerpt::new`] builds, not yet measured: its length is 0 until
-    /// [`VcfExcerpt::write_measuring`] writes it, and nothing has been refused yet.
+    /// [`VcfExcerpt::write_measuring`] writes it, and nothing has been refused yet. It leaves
+    /// this crate only inside an [`UnmeasuredExcerpt`].
     pub(crate) fn unmeasured(
         store: &'e GenomicStore,
         lists: VariantLists,
@@ -310,7 +344,7 @@ impl<'e> VcfExcerpt<'e> {
     /// [`QueryError::Output`] when `out` fails, and [`QueryError::GenomicBlock`] when a block
     /// cannot be loaded.
     pub fn write_to(&self, out: &mut dyn Write) -> Result<()> {
-        let written = self.generate(true, &mut |bytes| {
+        let written = self.generate(true, &|| false, &mut |bytes| {
             out.write_all(bytes)
                 .map_err(|e| QueryError::Output(Arc::new(e)))?;
             Ok(true)
@@ -323,7 +357,8 @@ impl<'e> VcfExcerpt<'e> {
     }
 
     /// Generates the excerpt once, writing the header and every row to `out` while the body
-    /// stays within its byte bound, and records its length. Past the bound nothing more is
+    /// stays within its byte bound, and records its length. `stop` is asked before each row,
+    /// and ends the generation with [`QueryError::Output`] once it answers true. Past the bound nothing more is
     /// written and the rest is only measured, so the refusal names the whole length, as the
     /// measure pass of [`VcfExcerpt::new`] does. Every refusal of the measure pass is decided
     /// before this returns, and none of them leaves a partial body that could be mistaken for
@@ -331,10 +366,14 @@ impl<'e> VcfExcerpt<'e> {
     ///
     /// # Errors
     /// As for [`VcfExcerpt::new`], and [`QueryError::Output`] when `out` fails.
-    pub fn write_measuring(&mut self, out: &mut dyn Write) -> Result<u64> {
+    pub(crate) fn write_measuring(
+        &mut self,
+        out: &mut dyn Write,
+        stop: &dyn Fn() -> bool,
+    ) -> Result<u64> {
         let bound = self.max_bytes;
         let mut written: u64 = 0;
-        self.len = self.generate(true, &mut |bytes| {
+        self.len = self.generate(true, stop, &mut |bytes| {
             let next = written + bytes.len() as u64;
             if next > bound {
                 return Ok(false);
@@ -350,10 +389,12 @@ impl<'e> VcfExcerpt<'e> {
 
     /// Generates the header and every row, handing each to `emit`, and returns the body's
     /// length. Without `genotypes` the genotype cells are counted but not generated, and
-    /// nothing is handed on. Once `emit` answers false the rest is generated that way.
+    /// nothing is handed on. Once `emit` answers false the rest is generated that way. Once
+    /// `stop` answers true, asked before each row, it ends with [`QueryError::Output`].
     fn generate(
         &self,
         genotypes: bool,
+        stop: &dyn Fn() -> bool,
         emit: &mut dyn FnMut(&[u8]) -> Result<bool>,
     ) -> Result<u64> {
         let genotype_bytes = if self.include_patients {
@@ -399,6 +440,12 @@ impl<'e> VcfExcerpt<'e> {
         let mut flush = |group: &mut Vec<ListedSpec>, total: &mut u64| -> Result<()> {
             if group.is_empty() {
                 return Ok(());
+            }
+            if stop() {
+                return Err(QueryError::Output(Arc::new(std::io::Error::new(
+                    std::io::ErrorKind::Interrupted,
+                    "the excerpt was abandoned while it was generated",
+                ))));
             }
             row.clear();
             rows.genotypes = writing;

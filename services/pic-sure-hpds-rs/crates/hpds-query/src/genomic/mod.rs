@@ -32,7 +32,8 @@ mod variants;
 
 pub(crate) use cohort::{CheckedFilters, genomic_cohort};
 pub use excerpt::{
-    DEFAULT_MAX_EXCERPT_BYTES, ExcerptAnswer, NO_VARIANTS_FOUND, VariantResultSettings, VcfExcerpt,
+    DEFAULT_MAX_EXCERPT_BYTES, ExcerptAnswer, NO_VARIANTS_FOUND, OnePassAnswer, UnmeasuredExcerpt,
+    VariantResultSettings, VcfExcerpt,
 };
 pub(crate) use excerpt::{excerpt_columns, java_binary_search, not_allowed, subset_column_ids};
 pub use listing::InfoColumnMeta;

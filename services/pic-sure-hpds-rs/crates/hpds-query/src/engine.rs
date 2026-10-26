@@ -17,9 +17,9 @@ use crate::error::{QueryError, Result};
 use crate::fan_out;
 use crate::genomic::{
     CheckedFilters, ExcerptAnswer, GenomicStore, InfoColumnMeta, InfoSearchEntry,
-    NO_VARIANTS_FOUND, VariantLists, VariantResultSettings, VcfExcerpt, excerpt_columns,
-    for_each_listed_spec, genomic_cohort, info_column_listing, java_binary_search, not_allowed,
-    search_info, search_values, subset_column_ids, variant_lists,
+    NO_VARIANTS_FOUND, OnePassAnswer, UnmeasuredExcerpt, VariantLists, VariantResultSettings,
+    VcfExcerpt, excerpt_columns, for_each_listed_spec, genomic_cohort, info_column_listing,
+    java_binary_search, not_allowed, search_info, search_values, subset_column_ids, variant_lists,
 };
 use crate::limits::{CheckedQuery, QueryLimits, SelectUse};
 use crate::model::{PhenotypicFilter, PhenotypicFilterType, Query, ResultType};
@@ -610,10 +610,10 @@ impl Engine {
                 Ok(SyncResult::VariantList(self.variant_list(query)?))
             }
             _ => match self.vcf_excerpt_once(query)? {
-                ExcerptAnswer::Text(text) => Ok(SyncResult::Excerpt(text)),
-                ExcerptAnswer::Rows(mut excerpt) => {
+                OnePassAnswer::Text(text) => Ok(SyncResult::Excerpt(text)),
+                OnePassAnswer::Rows(excerpt) => {
                     let mut body = Vec::new();
-                    excerpt.write_measuring(&mut body)?;
+                    excerpt.write_measuring(&mut body, &|| false)?;
                     Ok(SyncResult::Excerpt(String::from_utf8(body).unwrap_or_else(
                         |e| String::from_utf8_lossy(e.as_bytes()).into_owned(),
                     )))
@@ -777,15 +777,18 @@ impl Engine {
 
     /// [`Engine::vcf_excerpt`] without the measure pass: the same text answers and the same
     /// refusals up to the excerpt itself, which comes unmeasured, to be generated once with
-    /// [`VcfExcerpt::write_measuring`]. That call decides the refusals of the measure pass
+    /// [`UnmeasuredExcerpt::write_measuring`]. That call decides the refusals of the measure pass
     /// (the byte bound and the excerpt's own [`QueryError::GenomicFilter`] and
     /// [`QueryError::GenomicBlock`] cases) before it returns.
     ///
     /// # Errors
-    /// As for [`Engine::vcf_excerpt`], less the refusals [`VcfExcerpt::write_measuring`]
-    /// decides.
-    pub fn vcf_excerpt_once(&self, query: &Query) -> Result<ExcerptAnswer<'_>> {
-        self.build_vcf_excerpt(query, false)
+    /// As for [`Engine::vcf_excerpt`], less the refusals
+    /// [`UnmeasuredExcerpt::write_measuring`] decides.
+    pub fn vcf_excerpt_once(&self, query: &Query) -> Result<OnePassAnswer<'_>> {
+        Ok(match self.build_vcf_excerpt(query, false)? {
+            ExcerptAnswer::Text(text) => OnePassAnswer::Text(text),
+            ExcerptAnswer::Rows(excerpt) => OnePassAnswer::Rows(UnmeasuredExcerpt::of(excerpt)),
+        })
     }
 
     /// The excerpt of `query`, measured when `measure` is set.

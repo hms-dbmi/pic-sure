@@ -61,7 +61,8 @@ pub use error::{AUTHORIZATION_FILTER_REQUIRED_MESSAGE, QueryError, Result};
 pub use genomic::{
     DEFAULT_GENOMIC_CACHE_BYTES, DEFAULT_GENOMIC_READ_BUDGET_BYTES, DEFAULT_MAX_EXCERPT_BYTES,
     ExcerptAnswer, GenomicCacheStats, GenomicOptions, GenomicShape, GenomicStore, InfoColumnMeta,
-    InfoSearchEntry, NO_VARIANTS_FOUND, VariantResultSettings, VcfExcerpt,
+    InfoSearchEntry, NO_VARIANTS_FOUND, OnePassAnswer, UnmeasuredExcerpt, VariantResultSettings,
+    VcfExcerpt,
 };
 pub use limits::{
     DEFAULT_MAX_CLAUSE_DEPTH, DEFAULT_MAX_CLAUSE_NODES, DEFAULT_MAX_CROSS_COUNT_ENTRIES,
