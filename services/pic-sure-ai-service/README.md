@@ -45,12 +45,13 @@ speaks exactly that bearer-token form of the *same* JSON shape `ConverseSdkModel
 `base-url` you configure — so "support a different model" never means touching this service's code.
 Two ways to use it:
 
-1. **Run [LiteLLM](https://docs.litellm.ai/docs/bedrock_converse) as the proxy.** Its proxy server
-   exposes a genuine Converse-shaped, bearer-token-authenticated endpoint at
-   `POST /bedrock/model/{model}/converse`, and translates to whatever backend you configure it for —
-   Anthropic, OpenAI, a local Ollama model, etc. Point `picsure.ai.model.http.base-url` at your LiteLLM
-   instance (including whatever path prefix it serves that route under) and `model-id` at the model name
-   you configured there.
+1. **Run [LiteLLM](https://docs.litellm.ai/docs/bedrock_converse) as the proxy, for Bedrock models.** Its
+   proxy server exposes a Converse-shaped, bearer-token-authenticated passthrough at
+   `POST /bedrock/model/{model}/converse`. That route is for Bedrock models only; it does not translate
+   Converse requests for OpenAI, Anthropic's own API, or Ollama. Point `picsure.ai.model.http.base-url`
+   at your LiteLLM instance (including whatever path prefix it serves that route under) and `model-id`
+   at the Bedrock model ID. For a non-Bedrock vendor, use option 2 or a proxy route with an explicit
+   Converse translation contract.
 2. **Build your own small translating proxy.** Accept the same Converse JSON on one side, call
    whatever API your model actually speaks on the other, and translate the response back. This is more
    work than (1) but gives you full control, e.g. if you need request/response shaping LiteLLM doesn't do.

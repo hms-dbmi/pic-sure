@@ -34,8 +34,13 @@ class MockMcpToolGatewayTest {
     }
 
     @Test
-    void searchConceptsEmbedsTheVerifiedUserIdWhenPresent() {
-        assertThat(gateway.callTool("search_concepts", "{}", caller).content()).contains("user-a");
+    void searchConceptsEmbedsAnOpaqueMarkerNeverTheRawUserId() {
+        CallerContext emailUser = new CallerContext("Bearer a", null, "jane@example.org");
+
+        String content = gateway.callTool("search_concepts", "{}", emailUser).content();
+
+        assertThat(content).contains("caller-").doesNotContain("jane@example.org");
+        assertThat(content).isNotEqualTo(gateway.callTool("search_concepts", "{}", new CallerContext("Bearer a", null, "other")).content());
     }
 
     @Test
@@ -44,8 +49,8 @@ class MockMcpToolGatewayTest {
         String second = gateway.callTool("search_concepts", "{}", new CallerContext("Bearer b", null, " ")).content();
         String none = gateway.callTool("search_concepts", "{}", new CallerContext(null, null, null)).content();
 
-        assertThat(first).contains("anon-").isNotEqualTo(second);
-        assertThat(none).contains("anon-");
+        assertThat(first).contains("caller-").isNotEqualTo(second);
+        assertThat(none).contains("caller-");
         assertThat(first).doesNotContain("Bearer a");
     }
 

@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.ai.model;
 
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -10,6 +12,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -36,6 +39,9 @@ import edu.harvard.hms.dbmi.avillach.ai.model.ConversationEntry.UserEntry;
 @ConditionalOnProperty(prefix = "picsure.ai.model", name = "provider", havingValue = "http")
 class ConverseHttpModelClient implements ConverseModelClient {
 
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
+    private static final Duration READ_TIMEOUT = Duration.ofSeconds(120);
+
     private final RestClient restClient;
     private final String apiToken;
     private final String modelId;
@@ -48,7 +54,10 @@ class ConverseHttpModelClient implements ConverseModelClient {
         requireNonBlank(baseUrl, "picsure.ai.model.http.base-url");
         requireNonBlank(apiToken, "picsure.ai.model.http.api-token");
         requireNonBlank(modelId, "picsure.ai.model.http.model-id");
-        this.restClient = RestClient.builder().baseUrl(baseUrl).build();
+        JdkClientHttpRequestFactory requestFactory =
+            new JdkClientHttpRequestFactory(HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).connectTimeout(CONNECT_TIMEOUT).build());
+        requestFactory.setReadTimeout(READ_TIMEOUT);
+        this.restClient = RestClient.builder().baseUrl(baseUrl).requestFactory(requestFactory).build();
         this.apiToken = apiToken;
         this.modelId = modelId;
         this.objectMapper = objectMapper;
@@ -77,6 +86,9 @@ class ConverseHttpModelClient implements ConverseModelClient {
             throw new ModelUnavailableException("Converse-over-HTTP call failed: " + e.getMessage(), e);
         }
 
+        if (response == null) {
+            throw new ModelUnavailableException("Converse-over-HTTP call returned an empty body", null);
+        }
         return toModelTurnResult(response);
     }
 
@@ -142,6 +154,9 @@ class ConverseHttpModelClient implements ConverseModelClient {
         ObjectNode toolResultBody = objectMapper.createObjectNode();
         toolResultBody.put("toolUseId", toolResult.toolCallId());
         toolResultBody.set("content", oneTextBlockArray(toolResult.content()));
+        if (toolResult.error()) {
+            toolResultBody.put("status", "error");
+        }
         toolResultBlock.set("toolResult", toolResultBody);
 
         int lastIndex = messages.size() - 1;

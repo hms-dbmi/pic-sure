@@ -30,6 +30,10 @@ public sealed interface ConversationEntry {
      * @param toolName the tool name the result is for
      * @param content the result content -- see {@code ToolResult}
      */
-    record ToolResultEntry(String toolCallId, String toolName, String content) implements ConversationEntry {
+    record ToolResultEntry(String toolCallId, String toolName, String content, boolean error) implements ConversationEntry {
+
+        public ToolResultEntry(String toolCallId, String toolName, String content) {
+            this(toolCallId, toolName, content, false);
+        }
     }
 }
