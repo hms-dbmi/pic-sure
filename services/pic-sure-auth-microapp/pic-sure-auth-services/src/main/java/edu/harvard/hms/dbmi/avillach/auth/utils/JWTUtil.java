@@ -124,7 +124,7 @@ public class JWTUtil {
         }
 
         if (jws == null) {
-            logger.error("parseToken() get null for jws body by parsing Token - {}", token);
+            logger.error("parseToken() got a null jws body");
             throw new NotAuthorizedException("Please contact admin to see the log");
         }
 
