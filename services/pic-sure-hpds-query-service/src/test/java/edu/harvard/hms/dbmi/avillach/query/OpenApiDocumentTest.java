@@ -153,7 +153,8 @@ class OpenApiDocumentTest {
             .contains("POST /picsure/dictionary/concepts", "results.info", "| `open` | Concepts only.", "curl -X POST");
         JsonNode values = operation(document, "get", VALUES);
         assertThat(values.path("description").asText())
-            .contains("one-based", "searchGenomicValues", "| `open` | No. Genomic data is not supported on `open`. |", "curl ");
+            .contains("one-based", "searchGenomicValues", "| `open` | No. Genomic data is not supported on `open`. |", "curl ")
+            .contains("answers 502").doesNotContain("empty body");
         for (String name : List.of("backend", "genomicConceptPath", "query", "page", "size")) {
             JsonNode parameter = null;
             for (JsonNode candidate : values.path("parameters")) {
