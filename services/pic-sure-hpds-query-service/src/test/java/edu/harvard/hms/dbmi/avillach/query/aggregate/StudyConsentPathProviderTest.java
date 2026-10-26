@@ -23,9 +23,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 
 /**
- * Pins the {@code @Cacheable} behavior of {@link StudyConsentPathProvider}: the dataset-static path list is fetched once and reused, and
- * {@link StudyConsentPathProvider#evictStudyConsentPaths()} forces the next lookup to re-fetch. The scheduled trigger on that method is not
- * exercised here; only its eviction is.
+ * Pins the {@code @Cacheable} behavior of {@link StudyConsentPathProvider}: the dataset-static path list is fetched once and reused.
  */
 @SpringBootTest(classes = StudyConsentPathProviderTest.CacheTestConfig.class)
 class StudyConsentPathProviderTest {
@@ -50,9 +48,12 @@ class StudyConsentPathProviderTest {
     @Autowired
     private StudyConsentPathProvider provider;
 
+    @Autowired
+    private CacheManager cacheManager;
+
     @BeforeEach
     void clearCache() {
-        provider.evictStudyConsentPaths(); // the cache is shared across test methods in one context
+        cacheManager.getCache(StudyConsentPathProvider.CACHE).clear(); // the cache is shared across test methods in one context
     }
 
     private SearchResults consentsSearch() {
@@ -70,16 +71,5 @@ class StudyConsentPathProviderTest {
         assertThat(provider.studyConsentPaths()).containsExactly("\\study\\a\\consent\\", "\\study\\b\\consent\\");
 
         verify(backend, times(1)).search(any());
-    }
-
-    @Test
-    void evictionForcesARefetch() {
-        when(backend.search(any())).thenReturn(consentsSearch());
-
-        provider.studyConsentPaths();
-        provider.evictStudyConsentPaths();
-        provider.studyConsentPaths();
-
-        verify(backend, times(2)).search(any());
     }
 }

@@ -2,11 +2,8 @@ package edu.harvard.hms.dbmi.avillach.query.aggregate;
 
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
-import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -16,9 +13,9 @@ import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 
 /**
- * Supplies the open backend's study-consents concept paths. The list is dataset-static, so it is cached (Spring {@code @Cacheable}, backed
- * by the default {@code ConcurrentMapCacheManager}) to spare one HPDS {@code /search} per open count, and evicted on a schedule so a dataset
- * reload is picked up within {@code aggregate.study-consents-cache-ttl-sec}. Set {@code spring.cache.type=none} to disable the cache.
+ * Supplies the open backend's study-consents concept paths. The list is dataset-static, so it is cached (Spring {@code @Cacheable}, backed by
+ * the default {@code ConcurrentMapCacheManager}) to spare one HPDS {@code /search} per open count. The cache lives for the process lifetime
+ * and is cleared on restart; set {@code spring.cache.type=none} to disable it.
  */
 @Component
 public class StudyConsentPathProvider {
@@ -40,11 +37,5 @@ public class StudyConsentPathProvider {
         LinkedHashMap<String, Object> resultsMap = objectMapper.convertValue(consentResults.getResults(), new TypeReference<>() {});
         LinkedHashMap<String, Object> phenotypes = objectMapper.convertValue(resultsMap.get("phenotypes"), new TypeReference<>() {});
         return List.copyOf(phenotypes.keySet());
-    }
-
-    /** Drops the cached list so the next lookup re-fetches it, bounding staleness after a dataset reload. */
-    @Scheduled(fixedRateString = "${aggregate.study-consents-cache-ttl-sec:300}", timeUnit = TimeUnit.SECONDS)
-    @CacheEvict(value = CACHE, allEntries = true)
-    public void evictStudyConsentPaths() {
     }
 }
