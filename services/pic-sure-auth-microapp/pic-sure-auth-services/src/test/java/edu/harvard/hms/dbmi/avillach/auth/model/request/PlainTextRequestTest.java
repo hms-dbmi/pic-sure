@@ -73,4 +73,18 @@ class PlainTextRequestTest {
 
         assertThat(rejectedMembers(validator.validate(request))).containsExactlyInAnyOrder("name", "description", "url");
     }
+
+    @Test
+    void connectionCreateRejectsMarkupButNotTheRequiredFieldsDocument() {
+        ConnectionCreateRequest request = new ConnectionCreateRequest(MARKUP, MARKUP, MARKUP, "[{\"label\":\"a<b\",\"id\":\"email\"}]");
+
+        assertThat(rejectedMembers(validator.validate(request))).containsExactlyInAnyOrder("id", "label", "subPrefix");
+    }
+
+    @Test
+    void connectionUpdateRejectsMarkupInIdLabelAndSubPrefix() {
+        ConnectionUpdateRequest request = new ConnectionUpdateRequest(UUID.randomUUID(), MARKUP, MARKUP, MARKUP, null);
+
+        assertThat(rejectedMembers(validator.validate(request))).containsExactlyInAnyOrder("id", "label", "subPrefix");
+    }
 }
