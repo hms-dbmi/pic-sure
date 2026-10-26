@@ -205,7 +205,8 @@ class HpdsQueryRequestBindingTest {
     @MethodSource("endpointsThatBindAQuery")
     void v1BodyIsRefusedWith400BeforeAnythingRuns(String name, String path) throws Exception {
         mockMvc.perform(identified(post(path)).content(V1_BODY)).andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.errorType").value("bad_request")).andExpect(jsonPath("$.message").value(PicsureExceptionAdvice.BODY_UNREADABLE));
+            .andExpect(jsonPath("$.errorType").value("bad_request"))
+            .andExpect(jsonPath("$.message").value(PicsureExceptionAdvice.BODY_UNREADABLE));
 
         verifyNoInteractions(operationsClient);
         hpds.verify(0, anyRequestedFor(anyUrl()));
@@ -224,8 +225,12 @@ class HpdsQueryRequestBindingTest {
         hpds.verify(postRequestedFor(urlEqualTo("/PIC-SURE/v3/query/rr-1/" + endpoint)));
     }
 
+    static Stream<Arguments> getOnlyStoredQueryReads() {
+        return Stream.of(Arguments.of("status"), Arguments.of("result"), Arguments.of("signed-url"), Arguments.of("metadata"));
+    }
+
     @ParameterizedTest(name = "{0}")
-    @MethodSource("storedQueryReads")
+    @MethodSource("getOnlyStoredQueryReads")
     void postIsRefusedWith405BeforeAnythingRuns(String endpoint) throws Exception {
         mockMvc.perform(identified(post("/hpds/auth/query/{id}/" + endpoint, storedId)).content("{}"))
             .andExpect(status().isMethodNotAllowed()).andExpect(header().string(HttpHeaders.ALLOW, "GET"))

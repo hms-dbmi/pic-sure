@@ -113,14 +113,13 @@ class OpenApiDocumentTest {
         );
         assertThat(document.path("components").path("schemas").path("HpdsQueryRequest").path("properties").size()).isEqualTo(1);
         assertThat(operation(document, "get", METADATA).has("requestBody")).isFalse();
-        assertThat(operation(document, "post", METADATA).has("requestBody")).isFalse();
     }
 
     @Test
     void storedQueryReadsAreGetWithNoBodyAndDocument405() throws Exception {
         JsonNode document = document();
 
-        for (String path : List.of(STATUS, RESULT, SIGNED_URL)) {
+        for (String path : List.of(STATUS, RESULT, SIGNED_URL, METADATA)) {
             assertThat(operation(document, "get", path).isMissingNode()).as("GET %s", path).isFalse();
             assertThat(operation(document, "get", path).has("requestBody")).as("GET %s request body", path).isFalse();
             assertThat(operation(document, "post", path).isMissingNode()).as("POST %s", path).isTrue();
@@ -137,7 +136,6 @@ class OpenApiDocumentTest {
         OpenApiDocumentAssertions.assertResponseSchema(document, "post", QUERY, "200", "QueryStatus");
         OpenApiDocumentAssertions.assertResponseSchema(document, "get", STATUS, "200", "QueryStatus");
         OpenApiDocumentAssertions.assertResponseSchema(document, "get", METADATA, "200", "QueryStatus");
-        OpenApiDocumentAssertions.assertResponseSchema(document, "post", METADATA, "200", "QueryStatus");
         OpenApiDocumentAssertions.assertSchemaHasFields(
             document, "QueryStatus", "picsureResultId", "resourceResultId", "status", "resourceStatus", "resultMetadata"
         );

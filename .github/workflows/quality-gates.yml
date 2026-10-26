@@ -36,16 +36,35 @@ jobs:
         run: npm ci --prefix .github/scripts/risk --ignore-scripts --no-audit --no-fund
       # Fails only on clones origin/${BASE_REF} doesn't have (--baseline-from-ref needs fetch-depth: 0).
       # --fail-on-empty catches filters that match no files.
+      # --ignore-pattern skips import lines. Many files import the same classes, so any new import can break one
+      # long matching run of imports into shorter pieces, and each piece is then reported as a new clone.
+      # jscpd writes only a JSON report (no console dump). duplication-report.mjs turns the new clones into a
+      # job summary plus inline annotations, then the step fails with jscpd's own exit code.
       - name: Check for new duplicated code
         env:
           BASE_REF: ${{ github.base_ref }}
-        run: >-
-          .github/scripts/risk/node_modules/.bin/jscpd
-          --pattern '**/src/main/**/*.java'
-          --ignore '**/generated/**,**/target/**'
-          --min-lines 6 --min-tokens 60
-          --baseline-from-ref "origin/${BASE_REF}"
-          --fail-on-new-clones 0
-          --fail-on-empty
-          --reporters console
-          .
+        run: |
+          status=0
+          .github/scripts/risk/node_modules/.bin/jscpd \
+            --pattern '**/src/main/**/*.java' \
+            --ignore '**/generated/**,**/target/**' \
+            --ignore-pattern '(?m)^\s*import\s+[^;]+;' \
+            --min-lines 6 --min-tokens 60 \
+            --baseline-from-ref "origin/${BASE_REF}" \
+            --fail-on-new-clones 0 \
+            --fail-on-empty \
+            --reporters json --output "$RUNNER_TEMP/jscpd" --silent \
+            . || status=$?
+          if [ -f "$RUNNER_TEMP/jscpd/jscpd-report.json" ]; then
+            node .github/scripts/risk/duplication-report.mjs "$RUNNER_TEMP/jscpd/jscpd-report.json" "$status"
+          fi
+          exit "$status"
+      # The summary lists only the first few clones; the artifact has all of them.
+      - name: Upload duplication report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: jscpd-report
+          path: ${{ runner.temp }}/jscpd/jscpd-report.json
+          if-no-files-found: ignore
+          retention-days: 7
