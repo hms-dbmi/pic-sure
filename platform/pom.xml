@@ -32,9 +32,9 @@
         <!-- Structured logging encoder (not governed by the Spring BOMs) -->
         <logstash-logback-encoder.version>8.1</logstash-logback-encoder.version>
         <!-- Ahead of the 2.21.4 that spring-boot-dependencies ${spring-boot.version}
-             manages. 2.21.5 carries the jackson-databind fix; drop this override once
+             manages. 2.21.8 is the newest 2.21 patch; drop this override once
              the Spring BOM catches up. -->
-        <jackson-bom.version>2.21.5</jackson-bom.version>
+        <jackson-bom.version>2.21.8</jackson-bom.version>
         <!-- Also ahead of the Spring BOM, for the same reason. Apache never published
              tomcat 10.1.58, so the advisories that name it are fixed by 10.1.59. -->
         <tomcat.version>10.1.59</tomcat.version>
@@ -44,7 +44,7 @@
         <netty.version>4.1.138.Final</netty.version>
         <log4j2.version>2.25.5</log4j2.version>
         <postgresql.version>42.7.12</postgresql.version>
-        <bouncycastle.version>1.84</bouncycastle.version>
+        <bouncycastle.version>1.86</bouncycastle.version>
         <!-- Not Spring-managed at all; it arrives transitively at 1.24.0 in test scope.
              The advisories name 1.26.0, but that release calls the commons-codec class
              Charsets, which commons-codec 1.18.0 (the Boot-managed version) removed, so
