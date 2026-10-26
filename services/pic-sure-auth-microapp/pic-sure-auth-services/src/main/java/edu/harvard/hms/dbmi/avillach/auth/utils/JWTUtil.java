@@ -119,7 +119,7 @@ public class JWTUtil {
         try {
             jws = Jwts.parser().verifyWith(signingKey).build().parseSignedClaims(token);
         } catch (JwtException | IllegalArgumentException e) {
-            logger.error("parseToken() throws: {}, {}", e.getClass().getSimpleName(), e.getMessage());
+            logger.error("parseToken() throws: {}", e.getClass().getSimpleName());
             throw new NotAuthorizedException(e.getClass().getSimpleName() + ": " + e.getMessage());
         }
 
@@ -147,7 +147,7 @@ public class JWTUtil {
             // Thrown after the signature is verified, so these claims are as trustworthy as any other.
             return Optional.ofNullable(e.getClaims());
         } catch (JwtException | IllegalArgumentException e) {
-            logger.error("parseTokenAllowingExpiration() throws: {}, {}", e.getClass().getSimpleName(), e.getMessage());
+            logger.error("parseTokenAllowingExpiration() throws: {}", e.getClass().getSimpleName());
             return Optional.empty();
         }
     }
