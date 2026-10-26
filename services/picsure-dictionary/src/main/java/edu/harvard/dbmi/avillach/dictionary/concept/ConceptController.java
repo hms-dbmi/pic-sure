@@ -61,6 +61,9 @@ public class ConceptController {
 
     private static final String PAGE_SIZE = "Concepts per page, 1 or more. Defaults to 10. A size below 1 answers 500.";
 
+    private static final String DUMP_PAGE_SIZE =
+        "Concepts per page, 1 or more. Defaults to 10. Every concept comes with its full detail, so keep pages modest. A size below 1 answers 500.";
+
     private static final String DEPTH =
         "How many levels of children to include. Defaults to 2. Above the deployment's maximum (`concept.tree.max_depth`, 5 unless "
             + "configured) answers 400.";
@@ -228,7 +231,7 @@ public class ConceptController {
     @GetMapping(path = "/concepts/dump")
     public ResponseEntity<ConceptPage> dumpConcepts(
         @Parameter(description = PAGE_NUMBER) @RequestParam(name = "page_number", defaultValue = "0", required = false) int page,
-        @Parameter(description = PAGE_SIZE) @RequestParam(name = "page_size", defaultValue = "10", required = false) int size
+        @Parameter(description = DUMP_PAGE_SIZE) @RequestParam(name = "page_size", defaultValue = "10", required = false) int size
     ) {
         PageRequest pagination = PageRequest.of(page, size);
         PageImpl<Concept> pageResp = new PageImpl<>(
