@@ -19,6 +19,7 @@ import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.domain.SignedUrlResponse;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.query.config.BackendParameterConfig;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -46,9 +47,6 @@ public class HpdsQueryController {
     static final String TAG_DESCRIPTION = "Run, poll, and fetch HPDS queries. Replace `{backend}` with `auth` (authorized, scoped to the "
         + "caller's consents) or `open` (open access: obfuscated counts and no genomic data, only where the environment enables it). "
         + "Each operation lists the result types it accepts on each backend.";
-
-    private static final String BACKEND =
-        "`auth` or `open`. `open` answers only where the environment enables open HPDS, and serves no genomic data.";
 
     private static final String CURL_TEMPLATE =
         "\n\nPick a request body under **Examples** to fill the body, then **Execute**. Each example also "
@@ -188,13 +186,11 @@ public class HpdsQueryController {
             @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
     )
     public QueryStatus query(
-        @Parameter(description = BACKEND, example = "auth", schema = @Schema(allowableValues = {"auth", "open"})) @PathVariable(
-            "backend"
-        ) String backend,
+        @Parameter(ref = BackendParameterConfig.BACKEND_REFERENCE) @PathVariable("backend") String backend,
         @io.swagger.v3.oas.annotations.parameters.RequestBody(
             required = true,
             content = @Content(
-                mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = HpdsQueryRequest.class),
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
                 examples = {@ExampleObject(name = "PATIENTS", summary = "PATIENTS (auth only)", value = QueryRequestExamples.PATIENTS),
                     @ExampleObject(name = "DATAFRAME", summary = "DATAFRAME (auth only)", value = QueryRequestExamples.DATAFRAME),
                     @ExampleObject(
@@ -273,13 +269,11 @@ public class HpdsQueryController {
         ), @ApiResponse(responseCode = "400", description = "Unknown backend, missing query data, a result type this backend does not serve inline," + UNREADABLE_BODY), @ApiResponse(responseCode = "403", description = "Consent does not permit this query."), @ApiResponse(responseCode = "502", description = "Consent lookup, HPDS call, or query save failed."), @ApiResponse(responseCode = "503", description = "Backend not configured."), @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
     )
     public ResponseEntity<byte[]> querySync(
-        @Parameter(description = BACKEND, example = "auth", schema = @Schema(allowableValues = {"auth", "open"})) @PathVariable(
-            "backend"
-        ) String backend,
+        @Parameter(ref = BackendParameterConfig.BACKEND_REFERENCE) @PathVariable("backend") String backend,
         @io.swagger.v3.oas.annotations.parameters.RequestBody(
             required = true,
             content = @Content(
-                mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = HpdsQueryRequest.class),
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
                 examples = {@ExampleObject(name = "COUNT", summary = "COUNT (auth and open)", value = QueryRequestExamples.COUNT),
                     @ExampleObject(name = "CROSS_COUNT", summary = "CROSS_COUNT (auth and open)", value = QueryRequestExamples.CROSS_COUNT),
                     @ExampleObject(
@@ -332,9 +326,7 @@ public class HpdsQueryController {
             @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
     )
     public QueryStatus status(
-        @Parameter(description = BACKEND, example = "auth", schema = @Schema(allowableValues = {"auth", "open"})) @PathVariable(
-            "backend"
-        ) String backend, @PathVariable("id") UUID id,
+        @Parameter(ref = BackendParameterConfig.BACKEND_REFERENCE) @PathVariable("backend") String backend, @PathVariable("id") UUID id,
         @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
     ) {
         return service.queryStatus(backend, id, authorizationHeader);
@@ -370,9 +362,7 @@ public class HpdsQueryController {
             @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
     )
     public ResponseEntity<byte[]> result(
-        @Parameter(description = BACKEND, example = "auth", schema = @Schema(allowableValues = {"auth", "open"})) @PathVariable(
-            "backend"
-        ) String backend, @PathVariable("id") UUID id,
+        @Parameter(ref = BackendParameterConfig.BACKEND_REFERENCE) @PathVariable("backend") String backend, @PathVariable("id") UUID id,
         @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
     ) {
         return service.queryResult(backend, id, authorizationHeader);
@@ -393,9 +383,7 @@ public class HpdsQueryController {
             @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
     )
     public SignedUrlResponse signedUrl(
-        @Parameter(description = BACKEND, example = "auth", schema = @Schema(allowableValues = {"auth", "open"})) @PathVariable(
-            "backend"
-        ) String backend, @PathVariable("id") UUID id,
+        @Parameter(ref = BackendParameterConfig.BACKEND_REFERENCE) @PathVariable("backend") String backend, @PathVariable("id") UUID id,
         @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
     ) {
         return service.queryResultSignedUrl(backend, id, authorizationHeader);
@@ -414,9 +402,7 @@ public class HpdsQueryController {
             @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
     )
     public QueryStatus metadata(
-        @Parameter(description = BACKEND, example = "auth", schema = @Schema(allowableValues = {"auth", "open"})) @PathVariable(
-            "backend"
-        ) String backend, @PathVariable("id") UUID id,
+        @Parameter(ref = BackendParameterConfig.BACKEND_REFERENCE) @PathVariable("backend") String backend, @PathVariable("id") UUID id,
         @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
     ) {
         return service.queryMetadata(backend, id, authorizationHeader);
