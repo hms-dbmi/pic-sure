@@ -42,11 +42,13 @@ import edu.harvard.hms.dbmi.avillach.query.query.QueryService;
  * cross count derived from it by {@link #openCrossCount}, the study-consents search term, and the continuous counts sent for binning, each
  * wrapped in a {@link GeneralQueryRequest} envelope.
  *
- * <p><b>PRIVACY-CRITICAL:</b> {@link #ALLOWED_RESULT_TYPES} is the complete allow-list; a type not on it is rejected with a 400 rather than
- * silently forwarded. A COUNT runs as the study-consents CROSS_COUNT and returns its obfuscated total. The per-type dispatch in
- * {@link #getExpectedResponse} determines which types are obfuscated (COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT)
- * versus a raw pass-through (INFO_COLUMN_LISTING, AGGREGATE_VCF_EXCERPT, and VCF_EXCERPT). OBSERVATION_CROSS_COUNT and
- * VARIANT_COUNT_FOR_QUERY are not served: both return exact counts for the query's cohort. Any divergence here is a privacy regression.
+ * <p><b>PRIVACY-CRITICAL:</b> all of this applies only when {@code aggregate.obfuscation.enabled} is true. When it is false (the default)
+ * the open path is a full passthrough: raw results, no allow-list, no suppression. When enabled, {@link #ALLOWED_RESULT_TYPES} is the
+ * complete allow-list; a type not on it is rejected with a 400 rather than silently forwarded. A COUNT runs as the study-consents
+ * CROSS_COUNT and returns its obfuscated total. The per-type dispatch in {@link #getExpectedResponse} determines which types are obfuscated
+ * (COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT) versus a raw pass-through (INFO_COLUMN_LISTING, AGGREGATE_VCF_EXCERPT,
+ * and VCF_EXCERPT). OBSERVATION_CROSS_COUNT and VARIANT_COUNT_FOR_QUERY are not served: both return exact counts for the query's cohort. Any
+ * divergence here is a privacy regression.
  */
 @Service
 public class AggregateService {
@@ -97,7 +99,8 @@ public class AggregateService {
      */
     public QueryStatus query(Query query) {
         ResultType expectedResultType = requireExpectedResultType(query);
-        Query dispatched = expectedResultType == ResultType.CROSS_COUNT ? openCrossCount(query) : query;
+        boolean rewrite = props.getObfuscation().isEnabled() && expectedResultType == ResultType.CROSS_COUNT;
+        Query dispatched = rewrite ? openCrossCount(query) : query;
         return queryService.query(HpdsBackendSelector.OPEN, envelope(dispatched));
     }
 
@@ -110,15 +113,16 @@ public class AggregateService {
      */
     public ResponseEntity<String> querySync(Query query) {
         ResultType expectedResultType = requireExpectedResultType(query);
-        if (!ALLOWED_RESULT_TYPES.contains(expectedResultType)) {
+        boolean obfuscate = props.getObfuscation().isEnabled();
+        if (obfuscate && !ALLOWED_RESULT_TYPES.contains(expectedResultType)) {
             logger.warn("Incorrect Result Type: {}", expectedResultType);
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Incorrect result type: " + expectedResultType);
         }
 
-        boolean crossCountShaped = expectedResultType == ResultType.CROSS_COUNT || expectedResultType == ResultType.COUNT;
+        boolean crossCountShaped = obfuscate && (expectedResultType == ResultType.CROSS_COUNT || expectedResultType == ResultType.COUNT);
         Query dispatched = crossCountShaped ? openCrossCount(query) : query;
         ResponseEntity<String> backendResp = backend.querySync(envelope(dispatched));
-        String responseString = getExpectedResponse(expectedResultType, backendResp.getBody(), query);
+        String responseString = obfuscate ? getExpectedResponse(expectedResultType, backendResp.getBody(), query) : backendResp.getBody();
 
         ResponseEntity.BodyBuilder out = ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON);
         String metadata = backendResp.getHeaders().getFirst(AggregateBackendClient.QUERY_METADATA_FIELD);

@@ -31,8 +31,10 @@ public class ObfuscationService {
 
     private static final String STUDIES_CONSENTS_KEY = "\\_studies_consents\\";
     private static final int MAX_CHART_BINS = 50;
-    /** The consent threshold can only be raised; lower values would weaken open access below the agreed floor. */
+    /** Privacy floors enforced at startup when obfuscation is enabled; a configured value below these weakens open access. */
     static final int MIN_CONSENT_THRESHOLD = 10;
+    static final int MIN_CHART_THRESHOLD = 10;
+    static final int MIN_CHART_MINIMUM_COHORT = 50;
 
     private final Logger logger = LoggerFactory.getLogger(getClass());
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -48,19 +50,28 @@ public class ObfuscationService {
 
     public ObfuscationService(AggregateProperties props, VisualizationFormatter visualizationFormatter) {
         this.visualizationFormatter = visualizationFormatter;
-        int configured = props.getObfuscation().getConsentThreshold();
-        if (configured < MIN_CONSENT_THRESHOLD) {
-            logger.warn(
-                "aggregate.obfuscation.consent-threshold={} is below the minimum of {}; using {}", configured, MIN_CONSENT_THRESHOLD,
-                MIN_CONSENT_THRESHOLD
+        var obfuscation = props.getObfuscation();
+        if (obfuscation.isEnabled()) {
+            requireMinimum("consent-threshold", obfuscation.getConsentThreshold(), MIN_CONSENT_THRESHOLD);
+            requireMinimum("chart-threshold", obfuscation.getChartThreshold(), MIN_CHART_THRESHOLD);
+            requireMinimum("chart-minimum-cohort", obfuscation.getChartMinimumCohort(), MIN_CHART_MINIMUM_COHORT);
+        }
+        this.consentThreshold = obfuscation.getConsentThreshold();
+        this.consentHalf = consentThreshold / 2;
+        this.chartThreshold = obfuscation.getChartThreshold();
+        this.chartHalf = chartThreshold / 2;
+        this.chartMinimumCohort = obfuscation.getChartMinimumCohort();
+        this.crossCountTotalOnly = obfuscation.isCrossCountTotalOnly();
+    }
+
+    /** Fails startup when obfuscation is enabled but a privacy-critical threshold is configured below its floor. */
+    private static void requireMinimum(String name, int configured, int minimum) {
+        if (configured < minimum) {
+            throw new IllegalStateException(
+                "aggregate.obfuscation." + name + "=" + configured + " is below the minimum of " + minimum
+                    + " required when aggregate.obfuscation.enabled is true"
             );
         }
-        this.consentThreshold = Math.max(configured, MIN_CONSENT_THRESHOLD);
-        this.consentHalf = consentThreshold / 2;
-        this.chartThreshold = props.getObfuscation().getChartThreshold();
-        this.chartHalf = chartThreshold / 2;
-        this.chartMinimumCohort = props.getObfuscation().getChartMinimumCohort();
-        this.crossCountTotalOnly = props.getObfuscation().isCrossCountTotalOnly();
     }
 
     public Map<String, String> processCrossCounts(String entityString) throws JsonProcessingException {

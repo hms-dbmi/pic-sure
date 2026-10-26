@@ -56,7 +56,10 @@ aggregate:
   connect-timeout-sec: 10
   read-timeout-sec: 60
   obfuscation:
-    # Consent groups, studies and the total: hidden below this (minimum 10); consent buckets are this wide.
+    # Master switch. False = open aggregate path is a full passthrough (raw results, no allow-list). When true the thresholds below are
+    # enforced at startup and must meet their minimums. Default on; set AGGREGATE_OBFUSCATION_ENABLED=false to passthrough.
+    enabled: ${AGGREGATE_OBFUSCATION_ENABLED:true}
+    # Consent groups, studies and the total: hidden below this (minimum 10 when enabled); consent buckets are this wide.
     consent-threshold: ${AGGREGATE_OBFUSCATION_CONSENT_THRESHOLD:10}
     # Chart buckets: hidden below this; otherwise rounded up to half of it.
     chart-threshold: ${AGGREGATE_OBFUSCATION_CHART_THRESHOLD:10}

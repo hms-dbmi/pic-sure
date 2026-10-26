@@ -23,8 +23,13 @@ public class AggregateProperties {
 
     public static class Obfuscation {
         /**
-         * Consent threshold for consent groups, studies and the total; values below 10 are raised to 10. Consent buckets are this wide
-         * and the total rounds up to half of it.
+         * Master switch for open-access obfuscation. True (the default) enforces the thresholds below at startup and obfuscates open
+         * results; false makes the open aggregate path a full passthrough: raw results, no allow-list, no suppression.
+         */
+        private boolean enabled = true;
+        /**
+         * Consent threshold for consent groups, studies and the total; must be at least 10 when obfuscation is enabled (startup fails
+         * otherwise). Consent buckets are this wide and the total rounds up to half of it.
          */
         private int consentThreshold = 10;
         /** Chart buckets below this show "< chartThreshold"; others round up to half of it, with that as their band. */
@@ -37,6 +42,14 @@ public class AggregateProperties {
          * reconstructing a consent group from its study and sibling counts.
          */
         private boolean crossCountTotalOnly = true;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
 
         public int getConsentThreshold() {
             return consentThreshold;

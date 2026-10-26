@@ -15,7 +15,7 @@ class AggregatePropertiesTest {
         var source = new MapConfigurationPropertySource(
             Map.of(
                 "aggregate.hpds-open-url", "http://hpds-open:8080", "aggregate.hpds-open-token", "open-token",
-                "aggregate.visualization-url", "http://viz:8080", "aggregate.obfuscation.consent-threshold", "20",
+                "aggregate.visualization-url", "http://viz:8080", "aggregate.obfuscation.enabled", "true", "aggregate.obfuscation.consent-threshold", "20",
                 "aggregate.obfuscation.chart-threshold", "12", "aggregate.obfuscation.chart-minimum-cohort", "60",
                 "aggregate.obfuscation.cross-count-total-only", "false"
             )
@@ -25,6 +25,7 @@ class AggregatePropertiesTest {
         assertThat(props.getHpdsOpenUrl()).isEqualTo("http://hpds-open:8080");
         assertThat(props.getHpdsOpenToken()).isEqualTo("open-token");
         assertThat(props.getVisualizationUrl()).isEqualTo("http://viz:8080");
+        assertThat(props.getObfuscation().isEnabled()).isTrue();
         assertThat(props.getObfuscation().getConsentThreshold()).isEqualTo(20);
         assertThat(props.getObfuscation().getChartThreshold()).isEqualTo(12);
         assertThat(props.getObfuscation().getChartMinimumCohort()).isEqualTo(60);
@@ -34,6 +35,7 @@ class AggregatePropertiesTest {
     @Test
     void appliesDefaults() {
         AggregateProperties props = new AggregateProperties();
+        assertThat(props.getObfuscation().isEnabled()).isTrue();
         assertThat(props.getObfuscation().getConsentThreshold()).isEqualTo(10);
         assertThat(props.getObfuscation().getChartThreshold()).isEqualTo(10);
         assertThat(props.getObfuscation().getChartMinimumCohort()).isEqualTo(50);

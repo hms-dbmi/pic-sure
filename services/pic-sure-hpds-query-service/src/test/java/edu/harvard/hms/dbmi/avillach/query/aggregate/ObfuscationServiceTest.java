@@ -10,6 +10,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ObfuscationServiceTest {
 
@@ -262,21 +264,38 @@ class ObfuscationServiceTest {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(ints = {-1, 0, 1, 4, 5, 9})
-    void consentThresholdsBelowTenBehaveAsTen(int configured) {
+    @org.junit.jupiter.params.provider.CsvSource({"consent-threshold,4", "chart-threshold,4", "chart-minimum-cohort,40"})
+    void belowMinimumThresholdFailsStartupWhenEnabled(String name, int value) {
         AggregateProperties props = new AggregateProperties();
-        props.getObfuscation().setConsentThreshold(configured);
-        props.getObfuscation().setCrossCountTotalOnly(false);
-        ObfuscationService clamped = new ObfuscationService(props, new VisualizationFormatter());
+        props.getObfuscation().setEnabled(true);
+        switch (name) {
+            case "consent-threshold" -> props.getObfuscation().setConsentThreshold(value);
+            case "chart-threshold" -> props.getObfuscation().setChartThreshold(value);
+            case "chart-minimum-cohort" -> props.getObfuscation().setChartMinimumCohort(value);
+            default -> throw new IllegalArgumentException(name);
+        }
+        assertThatThrownBy(() -> new ObfuscationService(props, new VisualizationFormatter()))
+            .isInstanceOf(IllegalStateException.class).hasMessageContaining(name).hasMessageContaining("minimum");
+    }
 
-        Map<String, String> study = new LinkedHashMap<>();
-        study.put(STUDY, "16");
-        study.put(HMB, "12");
-        study.put(GRU, "3");
-        study.put(TOTAL, "101");
-        assertThat(clamped.obfuscateCrossCounts(study)).isEqualTo(svc.obfuscateCrossCounts(study));
-        assertThat(clamped.obfuscateChartBucket(9)).isEqualTo(new ObfuscatedCount(0, "< 10", 9));
-        assertThat(clamped.maxChartBins(Map.of(TOTAL, "200"))).isEqualTo(20);
+    @Test
+    void thresholdsAtTheirMinimumStartWhenEnabled() {
+        AggregateProperties props = new AggregateProperties();
+        props.getObfuscation().setEnabled(true);
+        props.getObfuscation().setConsentThreshold(10);
+        props.getObfuscation().setChartThreshold(10);
+        props.getObfuscation().setChartMinimumCohort(50);
+        assertThatCode(() -> new ObfuscationService(props, new VisualizationFormatter())).doesNotThrowAnyException();
+    }
+
+    @Test
+    void belowMinimumThresholdsAreNotValidatedWhenDisabled() {
+        AggregateProperties props = new AggregateProperties();
+        props.getObfuscation().setEnabled(false);
+        props.getObfuscation().setConsentThreshold(4);
+        props.getObfuscation().setChartThreshold(4);
+        props.getObfuscation().setChartMinimumCohort(1);
+        assertThatCode(() -> new ObfuscationService(props, new VisualizationFormatter())).doesNotThrowAnyException();
     }
 
     @Test

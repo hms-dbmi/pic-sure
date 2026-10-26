@@ -44,7 +44,14 @@ class AggregateServiceTest {
 
     /** obfuscation-path tests don't exercise persistence; a throwaway QueryService mock keeps their construction terse. */
     private AggregateService service(AggregateBackendClient backend, AggregateProperties props) {
+        props.getObfuscation().setEnabled(true); // these tests exercise the obfuscation path, which is off by default
         return new AggregateService(backend, obfuscation(), props, mock(QueryService.class), new ConceptMetadataLookup(backend), new StudyConsentPathProvider(backend));
+    }
+
+    private static AggregateProperties enabledProps() {
+        AggregateProperties props = new AggregateProperties();
+        props.getObfuscation().setEnabled(true);
+        return props;
     }
 
     private Query sync(String expectedResultType) {
@@ -61,6 +68,23 @@ class AggregateServiceTest {
         AggregateService svc = service(backend, new AggregateProperties());
         assertThatThrownBy(() -> svc.querySync(sync("DATAFRAME"))).isInstanceOf(PicsureException.class);
         verify(backend, never()).querySync(any());
+    }
+
+    @Test
+    void passesThroughRawWhenObfuscationDisabled() {
+        // enabled=false (default): raw open results, no obfuscation, no allow-list, no study-consents rewrite.
+        AggregateBackendClient backend = mock(AggregateBackendClient.class);
+        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("1234"));
+        AggregateProperties disabled = new AggregateProperties();
+        disabled.getObfuscation().setEnabled(false);
+        AggregateService svc = new AggregateService(
+            backend, obfuscation(), disabled, mock(QueryService.class), new ConceptMetadataLookup(backend),
+            new StudyConsentPathProvider(backend)
+        );
+
+        assertThat(svc.querySync(sync("COUNT")).getBody()).isEqualTo("1234");
+        assertThat(svc.querySync(sync("DATAFRAME")).getBody()).isEqualTo("1234"); // a type off the allow-list is not rejected
+        verify(backend, never()).search(any());
     }
 
     @Test
@@ -315,7 +339,7 @@ class AggregateServiceTest {
         when(backend.search(any())).thenReturn(consentsSearch());
         QueryService queryService = mock(QueryService.class);
         AggregateService svc =
-            new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService, new ConceptMetadataLookup(backend),
+            new AggregateService(backend, obfuscation(), enabledProps(), queryService, new ConceptMetadataLookup(backend),
                 new StudyConsentPathProvider(backend));
 
         svc.query(sync("CROSS_COUNT"));
@@ -333,7 +357,7 @@ class AggregateServiceTest {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         QueryService queryService = mock(QueryService.class);
         AggregateService svc =
-            new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService, new ConceptMetadataLookup(backend),
+            new AggregateService(backend, obfuscation(), enabledProps(), queryService, new ConceptMetadataLookup(backend),
                 new StudyConsentPathProvider(backend));
 
         Query submitted = sync("COUNT");
@@ -351,7 +375,7 @@ class AggregateServiceTest {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         QueryService queryService = mock(QueryService.class);
         AggregateService svc =
-            new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService, new ConceptMetadataLookup(backend),
+            new AggregateService(backend, obfuscation(), enabledProps(), queryService, new ConceptMetadataLookup(backend),
                 new StudyConsentPathProvider(backend));
 
         assertThatThrownBy(() -> svc.query(withoutResultType())).isInstanceOf(PicsureException.class);
