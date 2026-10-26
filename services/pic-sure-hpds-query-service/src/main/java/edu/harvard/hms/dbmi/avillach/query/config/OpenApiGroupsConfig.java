@@ -12,6 +12,7 @@ import org.springframework.context.annotation.Configuration;
 
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Operation;
+import io.swagger.v3.oas.models.parameters.Parameter;
 import io.swagger.v3.oas.models.PathItem;
 import io.swagger.v3.oas.models.Paths;
 import io.swagger.v3.oas.models.info.Info;
@@ -58,7 +59,7 @@ public class OpenApiGroupsConfig {
     @ConditionalOnExpression("!'${hpds.open-url:}'.isBlank()")
     public GroupedOpenApi openAccessQueriesApi() {
         return GroupedOpenApi.builder().group(OPEN_GROUP).displayName(OPEN_TITLE).pathsToMatch("/hpds/open/**")
-            .addOpenApiCustomizer(openApi -> retitle(openApi, OPEN_TITLE)).build();
+            .addOpenApiCustomizer(openApi -> dropBackendParameter(retitle(openApi, OPEN_TITLE))).build();
     }
 
     private static OpenAPI retitle(OpenAPI openApi, String title) {
@@ -81,11 +82,11 @@ public class OpenApiGroupsConfig {
         openApi.getPaths().forEach((path, item) -> {
             if (path.contains(BACKEND_SEGMENT)) {
                 if (item.getParameters() != null) {
-                    item.getParameters().removeIf(parameter -> "backend".equals(parameter.getName()));
+                    item.getParameters().removeIf(OpenApiGroupsConfig::isBackendParameter);
                 }
                 for (Operation operation : item.readOperations()) {
                     if (operation.getParameters() != null) {
-                        operation.getParameters().removeIf(parameter -> "backend".equals(parameter.getName()));
+                        operation.getParameters().removeIf(OpenApiGroupsConfig::isBackendParameter);
                     }
                 }
             }
@@ -94,5 +95,17 @@ public class OpenApiGroupsConfig {
         Paths paths = new Paths();
         paths.putAll(pinned);
         openApi.setPaths(paths);
+        dropBackendParameter(openApi);
+    }
+
+    private static boolean isBackendParameter(Parameter parameter) {
+        return "backend".equals(parameter.getName()) || BackendParameterConfig.BACKEND_REFERENCE.equals(parameter.get$ref());
+    }
+
+    private static OpenAPI dropBackendParameter(OpenAPI openApi) {
+        if (openApi.getComponents() != null && openApi.getComponents().getParameters() != null) {
+            openApi.getComponents().getParameters().remove(BackendParameterConfig.BACKEND_PARAMETER);
+        }
+        return openApi;
     }
 }

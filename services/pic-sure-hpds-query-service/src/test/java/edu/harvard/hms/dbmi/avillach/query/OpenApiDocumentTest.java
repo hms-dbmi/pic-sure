@@ -108,9 +108,10 @@ class OpenApiDocumentTest {
             "/hpds/auth/query/{id}/signed-url", "/hpds/auth/query/{id}/metadata", "/hpds/auth/search", "/hpds/auth/search/values"
         );
         document.path("paths").forEach(item -> item.forEach(operation -> {
-            assertThat(backendParameter(operation).isMissingNode()).isTrue();
+            assertThat(backendParameter(document, operation).isMissingNode()).isTrue();
             assertThat(operation.path("description").asText()).doesNotContain("`open`", "{backend}");
         }));
+        assertNoBackendParameter(document);
     }
 
     @Test
@@ -143,6 +144,7 @@ class OpenApiDocumentTest {
             .containsExactly("COUNT", "CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT", "OBSERVATION_CROSS_COUNT");
         JsonNode response = sync.path("responses").path("200").path("content").path("application/json");
         assertThat(response.path("examples").path("COUNT below the threshold").path("value").asText()).isEqualTo("< 10");
+        assertNoBackendParameter(document);
     }
 
     @Test
@@ -296,10 +298,16 @@ class OpenApiDocumentTest {
             .readTree(mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
     }
 
-    private static JsonNode backendParameter(JsonNode operation) {
+    private static void assertNoBackendParameter(JsonNode document) {
+        assertThat(document.toString()).doesNotContain("#/components/parameters/Backend");
+        assertThat(document.path("components").path("parameters").has("Backend")).isFalse();
+    }
+
+    private static JsonNode backendParameter(JsonNode document, JsonNode operation) {
+        String reference = "#/components/parameters/Backend";
         for (JsonNode parameter : operation.path("parameters")) {
-            if (parameter.path("name").asText().equals("backend")) {
-                return parameter;
+            if (parameter.path("$ref").asText().equals(reference)) {
+                return document.path("components").path("parameters").path("Backend");
             }
         }
         return MissingNode.getInstance();
