@@ -53,4 +53,24 @@ class PlainTextRequestTest {
 
         assertThat(validator.validate(request)).isEmpty();
     }
+
+    @Test
+    void applicationCreateRejectsMarkupInNameDescriptionAndUrl() {
+        ApplicationCreateRequest request = new ApplicationCreateRequest(MARKUP, MARKUP, MARKUP, null, null);
+
+        assertThat(rejectedMembers(validator.validate(request))).containsExactlyInAnyOrder("name", "description", "url");
+    }
+
+    @Test
+    void applicationCreateAcceptsPlainText() {
+        assertThat(validator.validate(new ApplicationCreateRequest("PICSURE", "The PIC-SURE API application", "/picsureui", null, null)))
+            .isEmpty();
+    }
+
+    @Test
+    void applicationUpdateRejectsMarkupInNameDescriptionAndUrl() {
+        ApplicationUpdateRequest request = new ApplicationUpdateRequest(UUID.randomUUID(), MARKUP, MARKUP, MARKUP, null, null);
+
+        assertThat(rejectedMembers(validator.validate(request))).containsExactlyInAnyOrder("name", "description", "url");
+    }
 }
