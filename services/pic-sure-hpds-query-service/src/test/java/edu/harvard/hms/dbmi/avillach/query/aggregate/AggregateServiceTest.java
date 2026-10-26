@@ -1,8 +1,11 @@
 package edu.harvard.hms.dbmi.avillach.query.aggregate;
 
+import edu.harvard.dbmi.avillach.domain.BinRange;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -24,6 +27,8 @@ import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilter;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.query.config.AggregateProperties;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
@@ -34,16 +39,19 @@ class AggregateServiceTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
     private ObfuscationService obfuscation() {
-        AggregateProperties p = new AggregateProperties();
-        p.getObfuscation().setThreshold(10);
-        p.getObfuscation().setVariance(3);
-        p.getObfuscation().setSalt("fixed");
-        return new ObfuscationService(p, new VisualizationFormatter());
+        return new ObfuscationService(new AggregateProperties(), new VisualizationFormatter());
     }
 
     /** obfuscation-path tests don't exercise persistence; a throwaway QueryService mock keeps their construction terse. */
     private AggregateService service(AggregateBackendClient backend, AggregateProperties props) {
-        return new AggregateService(backend, obfuscation(), props, mock(QueryService.class));
+        props.getObfuscation().setEnabled(true); // these tests exercise the obfuscation path, which is off by default
+        return new AggregateService(backend, obfuscation(), props, mock(QueryService.class), new ConceptMetadataLookup(backend), new StudyConsentPathProvider(backend));
+    }
+
+    private static AggregateProperties enabledProps() {
+        AggregateProperties props = new AggregateProperties();
+        props.getObfuscation().setEnabled(true);
+        return props;
     }
 
     private Query sync(String expectedResultType) {
@@ -63,6 +71,23 @@ class AggregateServiceTest {
     }
 
     @Test
+    void passesThroughRawWhenObfuscationDisabled() {
+        // enabled=false (default): raw open results, no obfuscation, no allow-list, no study-consents rewrite.
+        AggregateBackendClient backend = mock(AggregateBackendClient.class);
+        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("1234"));
+        AggregateProperties disabled = new AggregateProperties();
+        disabled.getObfuscation().setEnabled(false);
+        AggregateService svc = new AggregateService(
+            backend, obfuscation(), disabled, mock(QueryService.class), new ConceptMetadataLookup(backend),
+            new StudyConsentPathProvider(backend)
+        );
+
+        assertThat(svc.querySync(sync("COUNT")).getBody()).isEqualTo("1234");
+        assertThat(svc.querySync(sync("DATAFRAME")).getBody()).isEqualTo("1234"); // a type off the allow-list is not rejected
+        verify(backend, never()).search(any());
+    }
+
+    @Test
     void rejectsMissingExpectedResultTypeWith400() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         AggregateService svc = service(backend, new AggregateProperties());
@@ -77,37 +102,47 @@ class AggregateServiceTest {
     }
 
     @Test
-    void countBelowThresholdIsFloored() {
+    void countReturnsObfuscatedStudyConsentsTotal() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
-        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("5"));
+        when(backend.search(any())).thenReturn(consentsSearch());
+        when(backend.querySync(any()))
+            .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"101\",\"\\\\_studies_consents\\\\phs1\\\\HMB\\\\\":\"3\"}"));
         AggregateService svc = service(backend, new AggregateProperties());
 
         ResponseEntity<String> out = svc.querySync(sync("COUNT"));
-        assertThat(out.getBody()).isEqualTo("< 10");
+        assertThat(out.getBody()).isEqualTo("105 ±10");
+
+        // HPDS is asked for the study-consents CROSS_COUNT, never a raw COUNT
+        ArgumentCaptor<QueryRequest> cap = ArgumentCaptor.forClass(QueryRequest.class);
+        verify(backend).querySync(cap.capture());
+        Query sent = (Query) cap.getValue().getQuery();
+        assertThat(sent.expectedResultType()).isEqualTo(ResultType.CROSS_COUNT);
+        assertThat(sent.select()).containsExactly("\\study\\a\\consent\\", "\\study\\b\\consent\\");
     }
 
     @Test
-    void countAtOrAboveThresholdIsVarianceRandomized() {
+    void countBelowTenIsSuppressed() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
-        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("100"));
+        when(backend.search(any())).thenReturn(consentsSearch());
+        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"4\"}"));
         AggregateService svc = service(backend, new AggregateProperties());
 
-        ResponseEntity<String> out = svc.querySync(sync("COUNT"));
-        assertThat(out.getBody()).matches("\\d+ ±3");
+        assertThat(svc.querySync(sync("COUNT")).getBody()).isEqualTo("< 10");
     }
 
     @Test
-    void crossCountObfuscatesEachEntry() throws Exception {
+    void crossCountReturnsOnlyTheTotalByDefault() throws Exception {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         // changeQueryToOpenCrossCount first searches consents, then the backend returns the cross counts
         when(backend.search(any())).thenReturn(consentsSearch());
-        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\study\\\\a\\\\\":\"5\",\"\\\\study\\\\b\\\\\":\"100\"}"));
+        when(backend.querySync(any()))
+            .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"101\",\"\\\\_studies_consents\\\\phs1\\\\HMB\\\\\":\"3\"}"));
         AggregateService svc = service(backend, new AggregateProperties());
 
         ResponseEntity<String> out = svc.querySync(sync("CROSS_COUNT"));
         Map<String, String> body = mapper.readValue(out.getBody(), Map.class);
-        assertThat(body.get("\\study\\a\\")).isEqualTo("< 10");
-        assertThat(body.get("\\study\\b\\")).matches("\\d+ ±3");
+        assertThat(body).containsOnlyKeys("\\_studies_consents\\");
+        assertThat(body.get("\\_studies_consents\\")).isEqualTo("105 ±10");
     }
 
     @Test
@@ -137,7 +172,37 @@ class AggregateServiceTest {
         AggregateService svc = service(backend, new AggregateProperties());
 
         ResponseEntity<String> out = svc.querySync(sync("CATEGORICAL_CROSS_COUNT"));
-        assertThat(out.getBody()).contains("\"male\"").contains("< 10");
+        // male (5) is folded into the grouped bucket rather than named
+        assertThat(out.getBody()).doesNotContain("\"male\"").contains("\"female\"").contains("Other (grouped)").contains("< 10");
+    }
+
+    @Test
+    void categoricalChartOmitsTheGroupedBucketWhenEveryValueIsNamed() {
+        AggregateBackendClient backend = mock(AggregateBackendClient.class);
+        when(backend.search(any())).thenAnswer(inv -> {
+            QueryRequest req = inv.getArgument(0);
+            if ("\\sex\\".equals(req.getQuery())) {
+                return new SearchResults()
+                    .setResults(Map.of("phenotypes", Map.of("\\sex\\", Map.of("categoryValues", List.of("Female", "Male")))));
+            }
+            return consentsSearch();
+        });
+        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\sex\\\\\":{\"Female\":212,\"Male\":190}}"))
+            .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"500\"}"));
+
+        ResponseEntity<String> out = service(backend, new AggregateProperties()).querySync(sync("CATEGORICAL_CROSS_COUNT"));
+        assertThat(out.getBody()).contains("Female").contains("Male").doesNotContain("Other (grouped)");
+    }
+
+    @Test
+    void categoricalCrossCountSuppressedWhenCohortBelowFifty() {
+        AggregateBackendClient backend = mock(AggregateBackendClient.class);
+        when(backend.search(any())).thenReturn(consentsSearch());
+        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\gender\\\\\":{\"male\":20,\"female\":29}}"))
+            .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"49\"}"));
+        AggregateService svc = service(backend, new AggregateProperties());
+
+        assertThat(svc.querySync(sync("CATEGORICAL_CROSS_COUNT")).getBody()).isNull();
     }
 
     @Test
@@ -175,23 +240,48 @@ class AggregateServiceTest {
         AggregateService svc = service(backend, new AggregateProperties());
 
         ResponseEntity<String> out = svc.querySync(sync("CONTINUOUS_CROSS_COUNT"));
-        assertThat(out.getBody()).contains("\"5\"").matches(s -> s.matches(".*±3.*"));
+        assertThat(out.getBody()).contains("\"5\"").contains("100 ±5");
     }
 
     @Test
     void continuousCrossCountBinsViaVisualizationWhenConfigured() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
-        when(backend.search(any())).thenReturn(consentsSearch());
+        stubSearchWithRange(backend, "\\age\\");
         when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"5\":100}}"))
             .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"500\"}"));
         when(backend.binContinuous(any())).thenReturn("{\"bins\":{\"\\\\age\\\\\":{\"0-10\":100}}}");
-        AggregateProperties props = new AggregateProperties();
-        props.setVisualizationUrl("http://viz.example");
-        AggregateService svc = service(backend, props);
+        AggregateService svc = service(backend, withVisualization());
 
         ResponseEntity<String> out = svc.querySync(sync("CONTINUOUS_CROSS_COUNT"));
         assertThat(out.getBody()).contains("\"0-10\"");
-        verify(backend).binContinuous(any());
+        verify(backend).binContinuous(argThat(r -> r.ranges().equals(Map.of("\\age\\", new BinRange(0, 120))) && r.maxBins() == 50));
+    }
+
+    @Test
+    void continuousChartSpansTheConceptsOverallRangeNotTheQueryRange() {
+        AggregateBackendClient backend = mock(AggregateBackendClient.class);
+        stubSearchWithRange(backend, "\\age\\");
+        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"30\":100}}"))
+            .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"500\"}"));
+        when(backend.binContinuous(any())).thenReturn("{\"bins\":{\"\\\\age\\\\\":{\"0.0 - 120.0\":100}}}");
+        AggregateService svc = service(backend, withVisualization());
+
+        PhenotypicFilter ageFilter = new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\age\\", null, 18.0, 65.0, false);
+        svc.querySync(new Query(List.of("\\age\\"), null, ageFilter, null, ResultType.CONTINUOUS_CROSS_COUNT, null, null));
+
+        verify(backend).binContinuous(argThat(r -> r.ranges().equals(Map.of("\\age\\", new BinRange(0, 120)))));
+    }
+
+    @Test
+    void continuousConceptWithNoKnownRangeIsLeftOut() {
+        AggregateBackendClient backend = mock(AggregateBackendClient.class);
+        when(backend.search(any())).thenReturn(consentsSearch());
+        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"30\":100}}"))
+            .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"500\"}"));
+        when(backend.binContinuous(any())).thenReturn("{\"bins\":{}}");
+
+        service(backend, withVisualization()).querySync(sync("CONTINUOUS_CROSS_COUNT"));
+        verify(backend).binContinuous(argThat(r -> r.query().isEmpty() && r.ranges().isEmpty()));
     }
 
     /**
@@ -201,7 +291,7 @@ class AggregateServiceTest {
     @Test
     void continuousCrossCountOutputIsUnchangedByTheBinningResponseRecord() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
-        when(backend.search(any())).thenReturn(consentsSearch());
+        stubSearchWithRange(backend, "\\demographics\\AGE\\");
         when(backend.querySync(any())).thenReturn(
             ResponseEntity.ok("{\"\\\\demographics\\\\AGE\\\\\":{\"20\":5,\"30\":12,\"40\":25,\"50\":40,\"60\":31,\"70\":18,\"80\":6}}")
         ).thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"500\"}"));
@@ -215,9 +305,9 @@ class AggregateServiceTest {
         ResponseEntity<String> out = svc.querySync(sync("CONTINUOUS_CROSS_COUNT"));
 
         assertThat(out.getBody()).isEqualTo(
-            "{\"\\\\demographics\\\\AGE\\\\\":{\"20.0 - 40.0\":{\"count\":15,\"display\":\"15 ±3\",\"variance\":3},"
-                + "\"40.0 - 60.0\":{\"count\":63,\"display\":\"63 ±3\",\"variance\":3},"
-                + "\"60.0 - 80.0\":{\"count\":47,\"display\":\"47 ±3\",\"variance\":3},"
+            "{\"\\\\demographics\\\\AGE\\\\\":{\"20.0 - 40.0\":{\"count\":20,\"display\":\"20 ±5\",\"variance\":5},"
+                + "\"40.0 - 60.0\":{\"count\":65,\"display\":\"65 ±5\",\"variance\":5},"
+                + "\"60.0 - 80.0\":{\"count\":50,\"display\":\"50 ±5\",\"variance\":5},"
                 + "\"80.0 +\":{\"count\":0,\"display\":\"< 10\",\"variance\":9}}}"
         );
     }
@@ -229,7 +319,7 @@ class AggregateServiceTest {
     @Test
     void continuousCrossCountRejectsABinningResponseWithoutBins() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
-        when(backend.search(any())).thenReturn(consentsSearch());
+        stubSearchWithRange(backend, "\\demographics\\AGE\\");
         when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\demographics\\\\AGE\\\\\":{\"20\":100}}"))
             .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"500\"}"));
         when(backend.binContinuous(any())).thenReturn("{\"\\\\demographics\\\\AGE\\\\\":{\"20.0\":100}}");
@@ -248,7 +338,9 @@ class AggregateServiceTest {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         when(backend.search(any())).thenReturn(consentsSearch());
         QueryService queryService = mock(QueryService.class);
-        AggregateService svc = new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService);
+        AggregateService svc =
+            new AggregateService(backend, obfuscation(), enabledProps(), queryService, new ConceptMetadataLookup(backend),
+                new StudyConsentPathProvider(backend));
 
         svc.query(sync("CROSS_COUNT"));
 
@@ -264,7 +356,9 @@ class AggregateServiceTest {
         // Async submissions rewrite only CROSS_COUNT; other types pass through without fetching consents.
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         QueryService queryService = mock(QueryService.class);
-        AggregateService svc = new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService);
+        AggregateService svc =
+            new AggregateService(backend, obfuscation(), enabledProps(), queryService, new ConceptMetadataLookup(backend),
+                new StudyConsentPathProvider(backend));
 
         Query submitted = sync("COUNT");
         svc.query(submitted);
@@ -280,7 +374,9 @@ class AggregateServiceTest {
         // Reject a missing expectedResultType before touching the backend.
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         QueryService queryService = mock(QueryService.class);
-        AggregateService svc = new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService);
+        AggregateService svc =
+            new AggregateService(backend, obfuscation(), enabledProps(), queryService, new ConceptMetadataLookup(backend),
+                new StudyConsentPathProvider(backend));
 
         assertThatThrownBy(() -> svc.query(withoutResultType())).isInstanceOf(PicsureException.class);
         verifyNoInteractions(queryService);
@@ -290,12 +386,29 @@ class AggregateServiceTest {
     void propagatesQueryMetadataHeaderUnderRealHpdsHeaderName() {
         // Stub the literal HPDS header rather than the constant so this remains a contract check.
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
-        when(backend.querySync(any())).thenReturn(ResponseEntity.ok().header("queryMetadata", "rid").body("12"));
+        when(backend.querySync(any())).thenReturn(ResponseEntity.ok().header("queryMetadata", "rid").body("[]"));
         AggregateService svc = service(backend, new AggregateProperties());
 
-        ResponseEntity<String> out = svc.querySync(sync("COUNT"));
+        ResponseEntity<String> out = svc.querySync(sync("INFO_COLUMN_LISTING"));
         assertThat(out.getHeaders().getFirst("queryMetadata")).isEqualTo("rid");
         assertThat(AggregateBackendClient.QUERY_METADATA_FIELD).isEqualTo("queryMetadata");
+    }
+
+    private static AggregateProperties withVisualization() {
+        AggregateProperties props = new AggregateProperties();
+        props.setVisualizationUrl("http://viz.example");
+        return props;
+    }
+
+    /** Answers the study-consents search, and a concept search for {@code concept} with an overall range of 0 to 120. */
+    private void stubSearchWithRange(AggregateBackendClient backend, String concept) {
+        when(backend.search(any())).thenAnswer(inv -> {
+            QueryRequest req = inv.getArgument(0);
+            if (concept.equals(req.getQuery())) {
+                return new SearchResults().setResults(Map.of("phenotypes", Map.of(concept, Map.of("min", 0, "max", 120))));
+            }
+            return consentsSearch();
+        });
     }
 
     private SearchResults consentsSearch() {
