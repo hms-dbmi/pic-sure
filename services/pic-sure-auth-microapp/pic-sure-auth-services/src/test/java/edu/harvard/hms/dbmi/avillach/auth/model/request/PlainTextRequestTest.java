@@ -110,4 +110,26 @@ class PlainTextRequestTest {
 
         assertThat(rejectedMembers(validator.validate(request))).containsExactlyInAnyOrder("email");
     }
+
+    @Test
+    void mappingCreateRejectsMarkupInBothPaths() {
+        UserMetadataMappingCreateRequest request = new UserMetadataMappingCreateRequest(new ConnectionRef("fence"), MARKUP, MARKUP);
+
+        assertThat(rejectedMembers(validator.validate(request)))
+            .containsExactlyInAnyOrder("generalMetadataJsonPath", "auth0MetadataJsonPath");
+    }
+
+    @Test
+    void mappingCreateAcceptsOrdinaryPaths() {
+        assertThat(validator.validate(new UserMetadataMappingCreateRequest(new ConnectionRef("fence"), "$.email", "$.profile.email")))
+            .isEmpty();
+    }
+
+    @Test
+    void mappingUpdateRejectsMarkupInBothPaths() {
+        UserMetadataMappingUpdateRequest request = new UserMetadataMappingUpdateRequest(UUID.randomUUID(), null, MARKUP, MARKUP);
+
+        assertThat(rejectedMembers(validator.validate(request)))
+            .containsExactlyInAnyOrder("generalMetadataJsonPath", "auth0MetadataJsonPath");
+    }
 }

@@ -13,8 +13,8 @@ import java.lang.annotation.Target;
  * a stored name or description can never carry markup into a screen that renders it. A {@code null} value passes; pair the member with
  * {@code @NotBlank} when it is required.
  *
- * <p>Use it on labels and descriptions only. Members that hold syntax, such as JSON paths and JSON documents, may legitimately contain
- * these characters and are not marked.</p>
+ * <p>Use it on labels, descriptions and short path expressions. Members that hold a JSON document, such as {@code requiredFields}, are not
+ * marked: the raw text check misses a bracket hidden behind a JSON escape.</p>
  */
 @Documented
 @Constraint(validatedBy = PlainTextValidator.class)
