@@ -1,9 +1,11 @@
 package edu.harvard.dbmi.avillach.visualization.service;
 
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
+import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.dbmi.avillach.logging.RequestInfo;
+import edu.harvard.dbmi.avillach.visualization.error.HpdsUpstreamException;
 import edu.harvard.dbmi.avillach.visualization.model.AccessType;
 import edu.harvard.dbmi.avillach.visualization.model.DistributionType;
 import edu.harvard.dbmi.avillach.domain.ObfuscatedCount;
@@ -23,6 +25,7 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
 /**
@@ -43,6 +46,8 @@ public class QueryServiceClient {
 
     private static final Logger logger = LoggerFactory.getLogger(QueryServiceClient.class);
 
+    private static final String INTERNAL_TOKEN_HEADER = "X-PIC-SURE-INTERNAL-TOKEN";
+
     /** Gateway-owned identity headers and the caller credential to forward downstream. */
     public record GatewayIdentity(
         String userId, String subject, String email, String roles, String privileges, String authorizationHeader
@@ -53,16 +58,64 @@ public class QueryServiceClient {
         }
     }
 
+    private record SearchBody(String query) {
+    }
+
     private final RestClient restClient;
     private final LoggingClient loggingClient;
     private final String queryServiceBaseUrl;
+    private final String internalToken;
 
     public QueryServiceClient(
-        RestClient restClient, LoggingClient loggingClient, @Value("${picsure.query-service.base-url}") String queryServiceBaseUrl
+        RestClient restClient, LoggingClient loggingClient, @Value("${picsure.query-service.base-url}") String queryServiceBaseUrl,
+        @Value("${picsure.query-service.internal-token:}") String internalToken
     ) {
         this.restClient = restClient;
         this.loggingClient = loggingClient;
         this.queryServiceBaseUrl = queryServiceBaseUrl;
+        this.internalToken = internalToken;
+    }
+
+    /**
+     * Runs a concept search through query-service's token-gated {@code /internal/search/{auth,open}} endpoint. The backend segment is
+     * chosen from {@code accessType}. Only the internal token is sent; the end user's identity headers are not forwarded because the
+     * internal endpoint does not read them.
+     *
+     * @param query the search term, or null to list everything
+     * @param accessType selects the authorized or open backend
+     * @param requestId optional correlation id sent as {@code X-Request-Id} when present
+     * @return the search results returned by query-service
+     * @throws IllegalStateException if no internal token is configured
+     * @throws HpdsUpstreamException if query-service rejects the call or cannot be reached
+     */
+    public SearchResults search(String query, AccessType accessType, String requestId) {
+        if (internalToken == null || internalToken.isBlank()) {
+            throw new IllegalStateException("picsure.query-service.internal-token must be configured to call the internal search endpoint");
+        }
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+        headers.set(INTERNAL_TOKEN_HEADER, internalToken);
+        setIfPresent(headers, "X-Request-Id", requestId);
+
+        String url = queryServiceBaseUrl + internalSearchPath(accessType);
+        try {
+            return restClient.post().uri(url).headers(h -> h.addAll(headers)).body(new SearchBody(query)).retrieve()
+                .body(SearchResults.class);
+        } catch (HttpStatusCodeException e) {
+            logger.warn(
+                "query-service internal search failed requestId={} accessType={} status={}", requestId, accessTypeValue(accessType),
+                e.getStatusCode().value()
+            );
+            throw new HpdsUpstreamException(
+                "Query service search failed with status " + e.getStatusCode().value() + ": " + e.getStatusText(), e
+            );
+        } catch (ResourceAccessException e) {
+            logger.warn(
+                "Could not reach query service for internal search requestId={} accessType={}", requestId, accessTypeValue(accessType), e
+            );
+            throw new HpdsUpstreamException("Query service search failed: " + e.getMessage(), e);
+        }
     }
 
     public Map<String, Map<String, Integer>> getAuthCrossCounts(
@@ -189,6 +242,10 @@ public class QueryServiceClient {
 
     private String querySyncPath(AccessType accessType) {
         return accessType == AccessType.OPEN ? "/hpds/open/query/sync" : "/hpds/auth/query/sync";
+    }
+
+    private String internalSearchPath(AccessType accessType) {
+        return accessType == AccessType.OPEN ? "/internal/search/open" : "/internal/search/auth";
     }
 
     private void sendQueryEvent(

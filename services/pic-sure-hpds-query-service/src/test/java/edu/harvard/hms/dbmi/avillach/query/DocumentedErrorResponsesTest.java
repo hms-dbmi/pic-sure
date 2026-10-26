@@ -150,7 +150,6 @@ class DocumentedErrorResponsesTest {
             endpoint("status", id -> authorized(get("/hpds/auth/query/{id}/status", id))),
             endpoint("result", id -> authorized(get("/hpds/auth/query/{id}/result", id))),
             endpoint("signed-url", id -> authorized(get("/hpds/auth/query/{id}/signed-url", id))),
-            endpoint("search", id -> authorized(post("/hpds/auth/search")).content("{\"query\":\"age\"}")),
             endpoint("search values", id -> identified(get("/hpds/auth/search/values")).param("genomicConceptPath", "\\gene\\")),
             endpoint("open submit", id -> authorized(post("/hpds/open/query")).content(QUERY_BODY))
         );

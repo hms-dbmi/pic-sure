@@ -26,16 +26,15 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter;
  * {@code X-User-*} headers at all; security here must not require an identity that will never be present.</li> <li>{@code /internal/**} --
  * explicitly {@code permitAll()} at THIS layer (belt-and-suspenders, redundant with the catch-all rule below). Spring Security performs no
  * authentication/authorization for these paths because it isn't the real gate:
- * {@code edu.harvard.hms.dbmi.avillach.operations.query.InternalTokenFilter}, registered by {@code InternalTokenFilterConfig} against the
+ * {@code edu.harvard.hms.dbmi.avillach.commons.security.InternalTokenFilter}, registered by {@code InternalTokenFilterConfig} against the
  * exact same {@code /internal/*} URL pattern, is what actually enforces the shared-secret check on every request the container routes
  * here.</li> <li>{@code /dataset/**} -- requires an authenticated caller, i.e. the gateway supplied {@code X-User-Id}. Spring Security's
  * {@code authenticated()} already excludes the default anonymous principal (see {@code AuthenticatedAuthorizationManager}), so a request
- * with no identity is correctly rejected rather than silently treated as authenticated.</li>
- * <li>{@code GET /banners/active} is public; other {@code /banners/**} requests require {@code ADMIN}, {@code SUPER_ADMIN},
- * or {@code BANNER_MANAGEMENT}.</li>
- * <li>Everything else is permitted at this
- * layer; the controllers enforce any remaining per-endpoint rules themselves: {@code @PreAuthorize} on the {@code /configuration/admin}
- * writes, which require the {@code SUPER_ADMIN} authority, and the {@code NamedDataset} owner-email check.</li> </ol>
+ * with no identity is correctly rejected rather than silently treated as authenticated.</li> <li>{@code GET /banners/active} is public;
+ * other {@code /banners/**} requests require {@code ADMIN}, {@code SUPER_ADMIN}, or {@code BANNER_MANAGEMENT}.</li> <li>Everything else is
+ * permitted at this layer; the controllers enforce any remaining per-endpoint rules themselves: {@code @PreAuthorize} on the
+ * {@code /configuration/admin} writes, which require the {@code SUPER_ADMIN} authority, and the {@code NamedDataset} owner-email
+ * check.</li> </ol>
  *
  * <p>CSRF is disabled and sessions are stateless: every request carries its own trust via headers, there is no browser session to protect
  * and nothing is stored server-side between requests.
@@ -59,9 +58,9 @@ public class WebSecurityConfig {
                 auth -> auth.requestMatchers("/actuator/health", "/actuator/info", "/v3/api-docs/**", "/swagger-ui/**", "/openapi/**")
                     .permitAll().requestMatchers("/configuration/admin/**").authenticated()
                     .requestMatchers(HttpMethod.GET, "/configuration", "/configuration/*").permitAll().requestMatchers("/internal/**")
-                    .permitAll().requestMatchers(HttpMethod.GET, "/banners/active").permitAll()
-                    .requestMatchers("/dataset/**")
-                    .authenticated().requestMatchers("/banners/**").hasAnyAuthority(ADMIN, SUPER_ADMIN, BANNER_MANAGEMENT).anyRequest().permitAll()
+                    .permitAll().requestMatchers(HttpMethod.GET, "/banners/active").permitAll().requestMatchers("/dataset/**")
+                    .authenticated().requestMatchers("/banners/**").hasAnyAuthority(ADMIN, SUPER_ADMIN, BANNER_MANAGEMENT).anyRequest()
+                    .permitAll()
             ).build();
     }
 }
