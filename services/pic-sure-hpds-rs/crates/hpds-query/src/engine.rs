@@ -597,7 +597,7 @@ impl Engine {
     }
 
     /// The answer to a genomic result type, dispatched on `query.expected_result_type`.
-    /// An excerpt is written whole into the answer; [`Engine::vcf_excerpt`] streams it.
+    /// An excerpt is generated once, whole, into the answer ([`Engine::vcf_excerpt_once`]).
     fn genomic_sync(&self, query: &Query) -> Result<SyncResult> {
         match query.expected_result_type {
             ResultType::InfoColumnListing => {
@@ -609,11 +609,11 @@ impl Engine {
             ResultType::VariantListForQuery => {
                 Ok(SyncResult::VariantList(self.variant_list(query)?))
             }
-            _ => match self.vcf_excerpt(query)? {
+            _ => match self.vcf_excerpt_once(query)? {
                 ExcerptAnswer::Text(text) => Ok(SyncResult::Excerpt(text)),
-                ExcerptAnswer::Rows(excerpt) => {
-                    let mut body = Vec::with_capacity(usize::try_from(excerpt.len()).unwrap_or(0));
-                    excerpt.write_to(&mut body)?;
+                ExcerptAnswer::Rows(mut excerpt) => {
+                    let mut body = Vec::new();
+                    excerpt.write_measuring(&mut body)?;
                     Ok(SyncResult::Excerpt(String::from_utf8(body).unwrap_or_else(
                         |e| String::from_utf8_lossy(e.as_bytes()).into_owned(),
                     )))
@@ -772,6 +772,24 @@ impl Engine {
     /// names a numeric concept some subset patient holds; and [`QueryError::Block`] when
     /// the id concept's block cannot be loaded.
     pub fn vcf_excerpt(&self, query: &Query) -> Result<ExcerptAnswer<'_>> {
+        self.build_vcf_excerpt(query, true)
+    }
+
+    /// [`Engine::vcf_excerpt`] without the measure pass: the same text answers and the same
+    /// refusals up to the excerpt itself, which comes unmeasured, to be generated once with
+    /// [`VcfExcerpt::write_measuring`]. That call decides the refusals of the measure pass
+    /// (the byte bound and the excerpt's own [`QueryError::GenomicFilter`] and
+    /// [`QueryError::GenomicBlock`] cases) before it returns.
+    ///
+    /// # Errors
+    /// As for [`Engine::vcf_excerpt`], less the refusals [`VcfExcerpt::write_measuring`]
+    /// decides.
+    pub fn vcf_excerpt_once(&self, query: &Query) -> Result<ExcerptAnswer<'_>> {
+        self.build_vcf_excerpt(query, false)
+    }
+
+    /// The excerpt of `query`, measured when `measure` is set.
+    fn build_vcf_excerpt(&self, query: &Query, measure: bool) -> Result<ExcerptAnswer<'_>> {
         let include_patients = query.expected_result_type == ResultType::VcfExcerpt;
         let checked = self.admit_phenotypic(query, SelectUse::Distinct)?;
         if !self.variant_settings.excerpt_enabled(include_patients) {
@@ -801,15 +819,29 @@ impl Engine {
         } else {
             Vec::new()
         };
-        Ok(ExcerptAnswer::Rows(VcfExcerpt::new(
-            store,
-            lists,
-            &subset,
-            include_patients,
-            columns,
-            labels,
-            self.variant_settings.max_excerpt_bytes,
-        )?))
+        let max_bytes = self.variant_settings.max_excerpt_bytes;
+        let excerpt = if measure {
+            VcfExcerpt::new(
+                store,
+                lists,
+                &subset,
+                include_patients,
+                columns,
+                labels,
+                max_bytes,
+            )?
+        } else {
+            VcfExcerpt::unmeasured(
+                store,
+                lists,
+                &subset,
+                include_patients,
+                columns,
+                labels,
+                max_bytes,
+            )
+        };
+        Ok(ExcerptAnswer::Rows(excerpt))
     }
 
     /// Every node's variant list for an admitted query, with the phenotypic cohort it was

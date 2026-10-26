@@ -26,11 +26,13 @@
 //! - **Genotype cells** (VCF_EXCERPT): `0/1` when `het` holds the patient, else `1/1` when
 //!   `ho` does, else `0/0`.
 //!
-//! Streaming: the excerpt is generated twice, first to measure it (genotype cells counted,
-//! not written) so an excerpt over `HPDS_MAX_EXCERPT_BYTES` and every refusal above are
-//! decided before the first byte is written, then to write it. Either pass holds the mask and
-//! metadata chunks of at most one chunk per node of the contig it walks, plus one cursor
-//! chunk per node (see [`super::variants`]), and one row.
+//! Streaming: either the excerpt is generated twice, first to measure it (genotype cells
+//! counted, not written) so an excerpt over `HPDS_MAX_EXCERPT_BYTES` and every refusal above
+//! are decided before the first byte is written, then to write it ([`VcfExcerpt::write_to`]);
+//! or it is generated once into a writer that holds it, measured as it is written
+//! ([`VcfExcerpt::write_measuring`]), with the same refusals decided before it returns. Each
+//! pass holds the mask and metadata chunks of at most one chunk per node of the contig it
+//! walks, plus one cursor chunk per node (see [`super::variants`]), and one row.
 
 use std::io::Write;
 use std::sync::Arc;
@@ -181,6 +183,7 @@ pub struct VcfExcerpt<'e> {
     subset: Vec<Option<PosBitset>>,
     subset_count: u64,
     len: u64,
+    max_bytes: u64,
 }
 
 impl std::fmt::Debug for VcfExcerpt<'_> {
@@ -200,7 +203,8 @@ impl std::fmt::Debug for VcfExcerpt<'_> {
 pub enum ExcerptAnswer<'e> {
     /// A `text/plain` body written whole.
     Text(String),
-    /// The excerpt, `text/plain`, written row by row with [`VcfExcerpt::write_to`].
+    /// The excerpt, `text/plain`, written row by row with [`VcfExcerpt::write_to`], or once
+    /// with [`VcfExcerpt::write_measuring`] when it came unmeasured.
     Rows(VcfExcerpt<'e>),
 }
 
@@ -240,7 +244,32 @@ impl<'e> VcfExcerpt<'e> {
         labels: Vec<String>,
         max_bytes: u64,
     ) -> Result<Self> {
-        let mut excerpt = VcfExcerpt {
+        let mut excerpt = Self::unmeasured(
+            store,
+            lists,
+            subset,
+            include_patients,
+            columns,
+            labels,
+            max_bytes,
+        );
+        excerpt.len = excerpt.generate(false, &mut |_| Ok(false))?;
+        excerpt.refuse_over_limit()?;
+        Ok(excerpt)
+    }
+
+    /// The excerpt [`VcfExcerpt::new`] builds, not yet measured: its length is 0 until
+    /// [`VcfExcerpt::write_measuring`] writes it, and nothing has been refused yet.
+    pub(crate) fn unmeasured(
+        store: &'e GenomicStore,
+        lists: VariantLists,
+        subset: &roaring::RoaringBitmap,
+        include_patients: bool,
+        columns: Vec<String>,
+        labels: Vec<String>,
+        max_bytes: u64,
+    ) -> Self {
+        VcfExcerpt {
             store,
             lists,
             include_patients,
@@ -249,19 +278,23 @@ impl<'e> VcfExcerpt<'e> {
             subset: group_scopes(store, subset),
             subset_count: subset.len(),
             len: 0,
-        };
-        excerpt.len = excerpt.generate(false, &mut |_| Ok(()))?;
-        if excerpt.len > max_bytes {
-            return Err(QueryError::LimitExceeded(format!(
-                "the excerpt would be {} bytes, more than the {max_bytes} \
-                 HPDS_MAX_EXCERPT_BYTES allows",
-                excerpt.len
-            )));
+            max_bytes,
         }
-        Ok(excerpt)
     }
 
-    /// The body's length in bytes.
+    /// Refuses the excerpt when its measured length is over its byte bound.
+    fn refuse_over_limit(&self) -> Result<()> {
+        if self.len > self.max_bytes {
+            return Err(QueryError::LimitExceeded(format!(
+                "the excerpt would be {} bytes, more than the {} \
+                 HPDS_MAX_EXCERPT_BYTES allows",
+                self.len, self.max_bytes
+            )));
+        }
+        Ok(())
+    }
+
+    /// The body's length in bytes; 0 for an unmeasured excerpt not yet written.
     pub fn len(&self) -> u64 {
         self.len
     }
@@ -279,7 +312,8 @@ impl<'e> VcfExcerpt<'e> {
     pub fn write_to(&self, out: &mut dyn Write) -> Result<()> {
         let written = self.generate(true, &mut |bytes| {
             out.write_all(bytes)
-                .map_err(|e| QueryError::Output(Arc::new(e)))
+                .map_err(|e| QueryError::Output(Arc::new(e)))?;
+            Ok(true)
         })?;
         debug_assert_eq!(
             written, self.len,
@@ -288,9 +322,40 @@ impl<'e> VcfExcerpt<'e> {
         Ok(())
     }
 
+    /// Generates the excerpt once, writing the header and every row to `out` while the body
+    /// stays within its byte bound, and records its length. Past the bound nothing more is
+    /// written and the rest is only measured, so the refusal names the whole length, as the
+    /// measure pass of [`VcfExcerpt::new`] does. Every refusal of the measure pass is decided
+    /// before this returns, and none of them leaves a partial body that could be mistaken for
+    /// the excerpt: on any error `out` holds a prefix to discard.
+    ///
+    /// # Errors
+    /// As for [`VcfExcerpt::new`], and [`QueryError::Output`] when `out` fails.
+    pub fn write_measuring(&mut self, out: &mut dyn Write) -> Result<u64> {
+        let bound = self.max_bytes;
+        let mut written: u64 = 0;
+        self.len = self.generate(true, &mut |bytes| {
+            let next = written + bytes.len() as u64;
+            if next > bound {
+                return Ok(false);
+            }
+            out.write_all(bytes)
+                .map_err(|e| QueryError::Output(Arc::new(e)))?;
+            written = next;
+            Ok(true)
+        })?;
+        self.refuse_over_limit()?;
+        Ok(self.len)
+    }
+
     /// Generates the header and every row, handing each to `emit`, and returns the body's
-    /// length. Without `genotypes` the genotype cells are counted but not generated.
-    fn generate(&self, genotypes: bool, emit: &mut dyn FnMut(&[u8]) -> Result<()>) -> Result<u64> {
+    /// length. Without `genotypes` the genotype cells are counted but not generated, and
+    /// nothing is handed on. Once `emit` answers false the rest is generated that way.
+    fn generate(
+        &self,
+        genotypes: bool,
+        emit: &mut dyn FnMut(&[u8]) -> Result<bool>,
+    ) -> Result<u64> {
         let genotype_bytes = if self.include_patients {
             4 * self.subset_count
         } else {
@@ -314,7 +379,7 @@ impl<'e> VcfExcerpt<'e> {
         }
         row.push(b'\n');
         total += row.len() as u64;
-        emit(&row)?;
+        let mut writing = genotypes && emit(&row)?;
         let mut rows = Rows {
             excerpt: self,
             holders: (0..self.store.index().nodes().len())
@@ -336,10 +401,11 @@ impl<'e> VcfExcerpt<'e> {
                 return Ok(());
             }
             row.clear();
+            rows.genotypes = writing;
             rows.row(group, &mut row)?;
             *total += row.len() as u64;
-            if genotypes {
-                emit(&row)?;
+            if writing {
+                writing = emit(&row)?;
             } else {
                 *total += genotype_bytes;
             }
