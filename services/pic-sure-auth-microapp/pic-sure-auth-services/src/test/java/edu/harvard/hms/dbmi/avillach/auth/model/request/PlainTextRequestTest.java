@@ -89,10 +89,10 @@ class PlainTextRequestTest {
     }
 
     @Test
-    void userCreateRejectsMarkupInEmailAndGeneralMetadata() {
+    void userCreateRejectsMarkupInEmail() {
         UserCreateRequest request = new UserCreateRequest(MARKUP, null, MARKUP, null, Set.of(new EntityIdRef(UUID.randomUUID())));
 
-        assertThat(rejectedMembers(validator.validate(request))).containsExactlyInAnyOrder("email", "generalMetadata");
+        assertThat(rejectedMembers(validator.validate(request))).containsExactlyInAnyOrder("email");
     }
 
     @Test
@@ -105,9 +105,9 @@ class PlainTextRequestTest {
     }
 
     @Test
-    void userUpdateRejectsMarkupInEmailAndGeneralMetadata() {
+    void userUpdateRejectsMarkupInEmail() {
         UserUpdateRequest request = new UserUpdateRequest(UUID.randomUUID(), MARKUP, null, MARKUP, null, null);
 
-        assertThat(rejectedMembers(validator.validate(request))).containsExactlyInAnyOrder("email", "generalMetadata");
+        assertThat(rejectedMembers(validator.validate(request))).containsExactlyInAnyOrder("email");
     }
 }

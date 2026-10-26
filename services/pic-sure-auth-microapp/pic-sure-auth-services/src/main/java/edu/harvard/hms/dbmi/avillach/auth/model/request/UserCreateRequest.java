@@ -30,7 +30,7 @@ public record UserCreateRequest(
     @Schema(
         description = "Profile metadata of the user. The value is one string holding a JSON object.",
         example = "{\"email\":\"researcher@example.org\"}"
-    ) @PlainText String generalMetadata,
+    ) String generalMetadata,
     @Schema(
         description = "The existing connection the user signs in through, named by its business identifier."
     ) @Valid ConnectionRef connection,
