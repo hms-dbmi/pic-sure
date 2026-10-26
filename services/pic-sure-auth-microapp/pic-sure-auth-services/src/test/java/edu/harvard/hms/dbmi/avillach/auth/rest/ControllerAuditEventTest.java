@@ -67,16 +67,16 @@ class ControllerAuditEventTest {
     @Test
     void roleController() throws Exception {
         Class<?> c = RoleController.class;
-        // getRoleById(String roleId)
-        assertAuditEvent(c, "getRoleById", new Class[] {String.class}, "OTHER", "role.read");
+        // getRoleById(UUID roleId)
+        assertAuditEvent(c, "getRoleById", new Class[] {UUID.class}, "OTHER", "role.read");
         // getRoleAll()
         assertAuditEvent(c, "getRoleAll", new Class[] {}, "OTHER", "role.list");
         // addRole(List<RoleCreateRequest> roles, HttpServletRequest request)
         assertAuditEvent(c, "addRole", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "role.modify");
         // updateRole(List<RoleUpdateRequest> roles, HttpServletRequest request)
         assertAuditEvent(c, "updateRole", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "role.modify");
-        // removeById(String roleId, HttpServletRequest request)
-        assertAuditEvent(c, "removeById", new Class[] {String.class, HttpServletRequest.class}, "ADMIN", "role.delete");
+        // removeById(UUID roleId, HttpServletRequest request)
+        assertAuditEvent(c, "removeById", new Class[] {UUID.class, HttpServletRequest.class}, "ADMIN", "role.delete");
     }
 
     @Test

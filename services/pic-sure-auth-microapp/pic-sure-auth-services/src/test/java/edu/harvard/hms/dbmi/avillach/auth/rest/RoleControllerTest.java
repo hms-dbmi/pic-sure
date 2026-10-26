@@ -49,7 +49,7 @@ class RoleControllerTest {
     @Test
     void readingOneRoleReturnsTheEntityJson() throws Exception {
         Role role = fullRole();
-        when(roleService.getRoleById(role.getUuid().toString())).thenReturn(Optional.of(role));
+        when(roleService.getRoleById(role.getUuid())).thenReturn(Optional.of(role));
 
         mockMvc.perform(get("/role/{roleId}", role.getUuid())).andExpect(status().isOk()).andExpect(content().string(FrozenWire.json(role)))
             .andExpect(content().string(not(containsString("canary"))));
@@ -89,7 +89,7 @@ class RoleControllerTest {
     void deletingARoleReturnsTheRemainingOnesInTheEnvelope() throws Exception {
         UUID deleted = UUID.randomUUID();
         List<Role> remaining = List.of(fullRole());
-        when(roleService.removeRoleById(deleted.toString())).thenReturn(Optional.of(remaining));
+        when(roleService.removeRoleById(deleted)).thenReturn(Optional.of(remaining));
 
         mockMvc.perform(delete("/role/{roleId}", deleted)).andExpect(status().isOk()).andExpect(
             content().string(
@@ -103,7 +103,7 @@ class RoleControllerTest {
     @Test
     void readingAnUnknownRoleIs400InTheErrorEnvelope() throws Exception {
         UUID unknown = UUID.randomUUID();
-        when(roleService.getRoleById(unknown.toString())).thenReturn(Optional.empty());
+        when(roleService.getRoleById(unknown)).thenReturn(Optional.empty());
 
         mockMvc.perform(get("/role/{roleId}", unknown)).andExpect(status().isBadRequest()).andExpect(
             content().string("{\"message\":\"Invalid request\",\"content\":\"Role is not found by given role ID: " + unknown + "\"}")
@@ -121,7 +121,7 @@ class RoleControllerTest {
     @Test
     void deletingAnUnknownRoleIs400InTheErrorEnvelope() throws Exception {
         UUID unknown = UUID.randomUUID();
-        when(roleService.removeRoleById(unknown.toString())).thenReturn(Optional.empty());
+        when(roleService.removeRoleById(unknown)).thenReturn(Optional.empty());
 
         mockMvc.perform(delete("/role/{roleId}", unknown)).andExpect(status().isBadRequest())
             .andExpect(content().string("{\"message\":\"Invalid request\",\"content\":\"Role not found - uuid: " + unknown + "\"}"));

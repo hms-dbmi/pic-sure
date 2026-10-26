@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.GlobalExceptionHandler;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.ApplicationService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -24,8 +25,10 @@ class PathIdentifierWebTest {
     private static final String NOT_A_UUID = "not-a-uuid<script>";
 
     private final ApplicationService applicationService = mock(ApplicationService.class);
-    private final MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new ApplicationController(applicationService))
-        .setControllerAdvice(new GlobalExceptionHandler()).build();
+    private final RoleService roleService = mock(RoleService.class);
+    private final MockMvc mockMvc =
+        MockMvcBuilders.standaloneSetup(new ApplicationController(applicationService), new RoleController(roleService))
+            .setControllerAdvice(new GlobalExceptionHandler()).build();
 
     @Test
     void applicationReadRejectsAMalformedIdentifier() throws Exception {
@@ -46,5 +49,19 @@ class PathIdentifierWebTest {
         mockMvc.perform(get("/application/refreshToken/{id}", NOT_A_UUID)).andExpect(status().isBadRequest())
             .andExpect(content().string(not(containsString("script"))));
         verifyNoInteractions(applicationService);
+    }
+
+    @Test
+    void roleReadRejectsAMalformedIdentifier() throws Exception {
+        mockMvc.perform(get("/role/{id}", NOT_A_UUID)).andExpect(status().isBadRequest())
+            .andExpect(content().string(not(containsString("script"))));
+        verifyNoInteractions(roleService);
+    }
+
+    @Test
+    void roleDeleteRejectsAMalformedIdentifier() throws Exception {
+        mockMvc.perform(delete("/role/{id}", NOT_A_UUID)).andExpect(status().isBadRequest())
+            .andExpect(content().string(not(containsString("script"))));
+        verifyNoInteractions(roleService);
     }
 }

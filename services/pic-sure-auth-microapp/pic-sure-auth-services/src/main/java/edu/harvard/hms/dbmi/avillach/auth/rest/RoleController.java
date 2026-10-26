@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.text.MessageFormat;
 import java.util.List;
+import java.util.UUID;
 
 
 /**
@@ -52,7 +53,7 @@ public class RoleController {
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(produces = "application/json", path = "/{roleId}")
     public ResponseEntity<RoleResponse> getRoleById(
-        @Parameter(description = "The UUID of the role to fetch.") @PathVariable("roleId") String roleId
+        @Parameter(description = "The UUID of the role to fetch.") @PathVariable("roleId") UUID roleId
     ) {
         Role role = this.roleService.getRoleById(roleId).orElseThrow(
             () -> new PicSureResponseException(HttpStatus.BAD_REQUEST, "Invalid request", "Role is not found by given role ID: " + roleId)
@@ -118,10 +119,10 @@ public class RoleController {
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @DeleteMapping(produces = "application/json", path = "/{roleId}")
     public ResponseEntity<PicSureResponseBody<List<RoleResponse>>> removeById(
-        @Parameter(required = true, description = "The uuid of the role to delete.") @PathVariable("roleId") final String roleId,
+        @Parameter(required = true, description = "The uuid of the role to delete.") @PathVariable("roleId") final UUID roleId,
         HttpServletRequest request
     ) {
-        AuditAttributes.putMetadata(request, "role_id", roleId);
+        AuditAttributes.putMetadata(request, "role_id", roleId.toString());
         List<Role> remainingRoles = this.roleService.removeRoleById(roleId)
             .orElseThrow(() -> new PicSureResponseException(HttpStatus.BAD_REQUEST, "Invalid request", "Role not found - uuid: " + roleId));
 
