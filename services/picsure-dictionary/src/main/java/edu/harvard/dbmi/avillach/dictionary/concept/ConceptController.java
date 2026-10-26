@@ -246,16 +246,7 @@ public class ConceptController {
     @PostMapping(path = "/concepts/detail/{dataset}")
     public ResponseEntity<Concept> conceptDetail(
         @Parameter(description = DATASET, example = "Synthea") @PathVariable(name = "dataset") String dataset,
-        @io.swagger.v3.oas.annotations.parameters.RequestBody(
-            content = {
-                @Content(
-                    mediaType = "text/plain", schema = @Schema(type = "string", description = RAW_CONCEPT_PATH_BODY, example = EXAMPLE_PATH)
-                ),
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(type = "string", description = RAW_CONCEPT_PATH_BODY, example = EXAMPLE_PATH)
-                )}
-        ) @RequestBody() String conceptPath
+        @RawConceptPathBody(example = EXAMPLE_PATH) @RequestBody() String conceptPath
     ) {
         return conceptService.conceptDetail(dataset, conceptPath).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
@@ -285,17 +276,7 @@ public class ConceptController {
     @PostMapping(path = "/concepts/tree/{dataset}")
     public ResponseEntity<Concept> conceptTree(
         @Parameter(description = DATASET, example = "Synthea") @PathVariable(name = "dataset") String dataset,
-        @io.swagger.v3.oas.annotations.parameters.RequestBody(
-            content = {
-                @Content(
-                    mediaType = "text/plain",
-                    schema = @Schema(type = "string", description = RAW_CONCEPT_PATH_BODY, example = EXAMPLE_PARENT_PATH)
-                ),
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(type = "string", description = RAW_CONCEPT_PATH_BODY, example = EXAMPLE_PARENT_PATH)
-                )}
-        ) @RequestBody() String conceptPath,
+        @RawConceptPathBody(example = EXAMPLE_PARENT_PATH) @RequestBody() String conceptPath,
         @Parameter(description = DEPTH) @RequestParam(name = "depth", required = false, defaultValue = "2") Integer depth
     ) {
         if (depth < 0 || depth > MAX_DEPTH) {
@@ -311,16 +292,7 @@ public class ConceptController {
     @PostMapping(path = "/concepts/hierarchy/{dataset}")
     public ResponseEntity<List<Concept>> conceptHierarchy(
         @Parameter(description = DATASET, example = "Synthea") @PathVariable(name = "dataset") String dataset,
-        @io.swagger.v3.oas.annotations.parameters.RequestBody(
-            content = {
-                @Content(
-                    mediaType = "text/plain", schema = @Schema(type = "string", description = RAW_CONCEPT_PATH_BODY, example = EXAMPLE_PATH)
-                ),
-                @Content(
-                    mediaType = "application/json",
-                    schema = @Schema(type = "string", description = RAW_CONCEPT_PATH_BODY, example = EXAMPLE_PATH)
-                )}
-        ) @RequestBody() String conceptPath
+        @RawConceptPathBody(example = EXAMPLE_PATH) @RequestBody() String conceptPath
     ) {
         List<Concept> body = conceptService.conceptHierarchy(dataset, conceptPath);
         if (body.isEmpty()) {
