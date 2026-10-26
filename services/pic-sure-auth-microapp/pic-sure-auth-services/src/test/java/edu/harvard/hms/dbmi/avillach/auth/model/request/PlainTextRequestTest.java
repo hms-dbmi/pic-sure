@@ -87,4 +87,27 @@ class PlainTextRequestTest {
 
         assertThat(rejectedMembers(validator.validate(request))).containsExactlyInAnyOrder("id", "label", "subPrefix");
     }
+
+    @Test
+    void userCreateRejectsMarkupInEmailAndGeneralMetadata() {
+        UserCreateRequest request = new UserCreateRequest(MARKUP, null, MARKUP, null, Set.of(new EntityIdRef(UUID.randomUUID())));
+
+        assertThat(rejectedMembers(validator.validate(request))).containsExactlyInAnyOrder("email", "generalMetadata");
+    }
+
+    @Test
+    void userCreateAcceptsOrdinaryMetadata() {
+        UserCreateRequest request = new UserCreateRequest(
+            "researcher@example.org", null, "{\"email\":\"researcher@example.org\"}", null, Set.of(new EntityIdRef(UUID.randomUUID()))
+        );
+
+        assertThat(validator.validate(request)).isEmpty();
+    }
+
+    @Test
+    void userUpdateRejectsMarkupInEmailAndGeneralMetadata() {
+        UserUpdateRequest request = new UserUpdateRequest(UUID.randomUUID(), MARKUP, null, MARKUP, null, null);
+
+        assertThat(rejectedMembers(validator.validate(request))).containsExactlyInAnyOrder("email", "generalMetadata");
+    }
 }

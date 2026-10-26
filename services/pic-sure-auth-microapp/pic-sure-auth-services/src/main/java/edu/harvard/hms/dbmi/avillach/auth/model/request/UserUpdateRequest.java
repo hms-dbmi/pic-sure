@@ -27,12 +27,13 @@ public record UserUpdateRequest(
     @Schema(
         description = "UUID of the user to update.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6",
         requiredMode = Schema.RequiredMode.REQUIRED
-    ) @NotNull UUID uuid, @Schema(description = "New email address of the user.", example = "researcher@example.org") String email,
+    ) @NotNull UUID uuid,
+    @Schema(description = "New email address of the user.", example = "researcher@example.org") @PlainText String email,
     @Schema(description = "Whether the user may sign in.") Boolean active,
     @Schema(
         description = "New profile metadata of the user. The value is one string holding a JSON object.",
         example = "{\"email\":\"researcher@example.org\"}"
-    ) String generalMetadata,
+    ) @PlainText String generalMetadata,
     @Schema(
         description = "The existing connection the user should sign in through, named by its business identifier."
     ) @Valid ConnectionRef connection,
