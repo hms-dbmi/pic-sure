@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.query.aggregate;
 
+import edu.harvard.dbmi.avillach.domain.ContinuousBinningRequest;
+
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -68,7 +70,7 @@ public class AggregateBackendClient {
     }
 
     /** Visualization {@code /bin/continuous}. */
-    public String binContinuous(QueryRequest vizRequest) {
+    public String binContinuous(ContinuousBinningRequest vizRequest) {
         String uri = props.getVisualizationUrl() + "/bin/continuous";
         try {
             return withAuth(http.post().uri(uri).contentType(MediaType.APPLICATION_JSON)).body(vizRequest).retrieve().body(String.class);

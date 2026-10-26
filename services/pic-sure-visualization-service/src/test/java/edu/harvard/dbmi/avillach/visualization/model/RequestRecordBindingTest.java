@@ -1,5 +1,7 @@
 package edu.harvard.dbmi.avillach.visualization.model;
 
+import edu.harvard.dbmi.avillach.domain.ContinuousBinningRequest;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Map;
