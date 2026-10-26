@@ -1,5 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.query.aggregate;
 
+import edu.harvard.dbmi.avillach.domain.BinRange;
+import edu.harvard.dbmi.avillach.domain.ContinuousBinningRequest;
+
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.LinkedHashMap;
@@ -192,7 +195,7 @@ public class AggregateService {
      */
     private Map<String, Map<String, Object>> getBinnedContinuousCrossCount(Map<String, Map<String, Integer>> continuous, int maxBins)
         throws IOException {
-        Map<String, ChartRange> ranges = conceptMetadata.overallRanges(continuous.keySet());
+        Map<String, BinRange> ranges = conceptMetadata.overallRanges(continuous.keySet());
         continuous.keySet().retainAll(ranges.keySet());
         String binResponse = backend.binContinuous(new ContinuousBinningRequest(continuous, ranges, maxBins));
         ContinuousBinningResponse binned = objectMapper.readValue(binResponse, ContinuousBinningResponse.class);

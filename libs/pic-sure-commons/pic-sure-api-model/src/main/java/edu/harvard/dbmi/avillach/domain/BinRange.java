@@ -1,4 +1,4 @@
-package edu.harvard.dbmi.avillach.visualization.model;
+package edu.harvard.dbmi.avillach.domain;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 

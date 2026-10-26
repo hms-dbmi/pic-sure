@@ -1,6 +1,6 @@
 package edu.harvard.dbmi.avillach.visualization.processing;
 
-import edu.harvard.dbmi.avillach.visualization.model.BinRange;
+import edu.harvard.dbmi.avillach.domain.BinRange;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 

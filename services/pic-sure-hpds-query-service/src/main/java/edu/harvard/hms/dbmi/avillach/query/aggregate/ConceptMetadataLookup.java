@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.query.aggregate;
 
+import edu.harvard.dbmi.avillach.domain.BinRange;
+
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -36,12 +38,12 @@ public class ConceptMetadataLookup {
      * The overall range of each continuous concept. Open continuous charts span it rather than the cohort's observed values, since where
      * the data stops would reveal empty ranges. A concept whose range is unknown is left out.
      */
-    public Map<String, ChartRange> overallRanges(Set<String> concepts) {
-        Map<String, ChartRange> ranges = new LinkedHashMap<>();
+    public Map<String, BinRange> overallRanges(Set<String> concepts) {
+        Map<String, BinRange> ranges = new LinkedHashMap<>();
         for (String concept : concepts) {
             Map<String, Object> meta = metadata(concept);
             if (meta != null && meta.get("min") instanceof Number min && meta.get("max") instanceof Number max) {
-                ranges.put(concept, new ChartRange(min.doubleValue(), max.doubleValue()));
+                ranges.put(concept, new BinRange(min.doubleValue(), max.doubleValue()));
             } else {
                 logger.warn("No overall range for continuous concept {}; leaving its chart out", concept);
             }

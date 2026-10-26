@@ -4,7 +4,7 @@ import edu.harvard.dbmi.avillach.visualization.error.ConsentDeniedException;
 import edu.harvard.dbmi.avillach.visualization.error.HpdsUpstreamException;
 import edu.harvard.dbmi.avillach.visualization.error.VisualizationException;
 import edu.harvard.dbmi.avillach.domain.ObfuscatedCount;
-import edu.harvard.dbmi.avillach.visualization.model.BinRange;
+import edu.harvard.dbmi.avillach.domain.BinRange;
 import edu.harvard.dbmi.avillach.visualization.model.*;
 import edu.harvard.dbmi.avillach.visualization.processing.BinningService;
 import edu.harvard.dbmi.avillach.visualization.processing.CategoricalAggregationService;

@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.query.aggregate;
 
+import edu.harvard.dbmi.avillach.domain.BinRange;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -228,7 +230,7 @@ class AggregateServiceTest {
 
         ResponseEntity<String> out = svc.querySync(sync("CONTINUOUS_CROSS_COUNT"));
         assertThat(out.getBody()).contains("\"0-10\"");
-        verify(backend).binContinuous(argThat(r -> r.ranges().equals(Map.of("\\age\\", new ChartRange(0, 120))) && r.maxBins() == 50));
+        verify(backend).binContinuous(argThat(r -> r.ranges().equals(Map.of("\\age\\", new BinRange(0, 120))) && r.maxBins() == 50));
     }
 
     @Test
@@ -243,7 +245,7 @@ class AggregateServiceTest {
         PhenotypicFilter ageFilter = new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\age\\", null, 18.0, 65.0, false);
         svc.querySync(new Query(List.of("\\age\\"), null, ageFilter, null, ResultType.CONTINUOUS_CROSS_COUNT, null, null));
 
-        verify(backend).binContinuous(argThat(r -> r.ranges().equals(Map.of("\\age\\", new ChartRange(0, 120)))));
+        verify(backend).binContinuous(argThat(r -> r.ranges().equals(Map.of("\\age\\", new BinRange(0, 120)))));
     }
 
     @Test

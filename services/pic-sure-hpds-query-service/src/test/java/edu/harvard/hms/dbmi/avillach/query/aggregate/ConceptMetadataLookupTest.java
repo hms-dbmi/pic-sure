@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.query.aggregate;
 
+import edu.harvard.dbmi.avillach.domain.BinRange;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -35,14 +37,14 @@ class ConceptMetadataLookupTest {
     @Test
     void usesTheConceptsOverallRangeFromSearch() {
         ConceptMetadataLookup resolver = resolverWith(Map.of(AGE, Map.of("name", AGE, "min", 0.5, "max", 99.0, "categorical", false)));
-        assertThat(resolver.overallRanges(Set.of(AGE))).containsExactly(Map.entry(AGE, new ChartRange(0.5, 99)));
+        assertThat(resolver.overallRanges(Set.of(AGE))).containsExactly(Map.entry(AGE, new BinRange(0.5, 99)));
     }
 
     @Test
     void matchesTheExactConceptAmongSubstringHits() {
         ConceptMetadataLookup resolver =
             resolverWith(Map.of(AGE, Map.of("min", 0, "max", 120), "\\age\\at_visit\\", Map.of("min", 1, "max", 2)));
-        assertThat(resolver.overallRanges(Set.of(AGE))).containsExactly(Map.entry(AGE, new ChartRange(0, 120)));
+        assertThat(resolver.overallRanges(Set.of(AGE))).containsExactly(Map.entry(AGE, new BinRange(0, 120)));
     }
 
     @Test

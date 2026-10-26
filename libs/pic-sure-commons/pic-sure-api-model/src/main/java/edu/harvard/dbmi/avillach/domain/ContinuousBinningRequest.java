@@ -1,10 +1,10 @@
-package edu.harvard.dbmi.avillach.visualization.model;
-
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.NotNull;
+package edu.harvard.dbmi.avillach.domain;
 
 import java.util.Map;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
  * The {@code POST /bin/continuous} request body. The query service's open aggregate path posts its counts here, so the raw counts travel
@@ -22,7 +22,7 @@ public record ContinuousBinningRequest(
             + "numeric value of that concept, written as text such as `45` or `27.5`, to the number of participants with that value. A "
             + "key that is not a number is skipped.",
         requiredMode = Schema.RequiredMode.REQUIRED
-    ) @NotNull(message = "Request must contain a 'query' field") Map<String, Map<String, Integer>> query,
+    ) Map<String, Map<String, Integer>> query,
     @Schema(
         description = "Optional range each concept's chart spans, keyed by concept path. A concept without a range is binned across its "
             + "observed values."

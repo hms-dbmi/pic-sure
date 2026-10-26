@@ -1,5 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.query.aggregate;
 
+import edu.harvard.dbmi.avillach.domain.BinRange;
+import edu.harvard.dbmi.avillach.domain.ContinuousBinningRequest;
+
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
@@ -83,7 +86,7 @@ class AggregateBackendClientTest {
     @Test
     void binContinuousSendsRangesAndMaxBinsInTheBody() {
         hpds.stubFor(post(urlEqualTo("/bin/continuous")).willReturn(okJson("{\"bins\":{}}")));
-        client().binContinuous(new ContinuousBinningRequest(Map.of("age", Map.of("30", 4)), Map.of("age", new ChartRange(0, 120)), 20));
+        client().binContinuous(new ContinuousBinningRequest(Map.of("age", Map.of("30", 4)), Map.of("age", new BinRange(0, 120)), 20));
         hpds.verify(
             postRequestedFor(urlEqualTo("/bin/continuous")).withRequestBody(matchingJsonPath("$.query.age.30", WireMock.equalTo("4")))
                 .withRequestBody(matchingJsonPath("$.ranges.age.min", WireMock.equalTo("0.0")))

@@ -1,6 +1,6 @@
 package edu.harvard.dbmi.avillach.visualization.processing;
 
-import edu.harvard.dbmi.avillach.visualization.model.BinRange;
+import edu.harvard.dbmi.avillach.domain.BinRange;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.springframework.stereotype.Component;
 
