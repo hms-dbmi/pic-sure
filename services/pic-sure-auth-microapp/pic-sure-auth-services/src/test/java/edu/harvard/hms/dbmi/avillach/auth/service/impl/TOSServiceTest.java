@@ -7,6 +7,7 @@ import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -110,6 +111,15 @@ public class TOSServiceTest {
         Optional<TermsOfService> result = tosService.updateTermsOfService(html);
         assertTrue(result.isPresent());
         assertEquals(html, result.get().getContent());
+    }
+
+    @Test
+    public void testUpdateTermsOfServiceStoresSanitizedHtml() {
+        tosService.updateTermsOfService("<p>Terms</p><script>alert(1)</script>");
+
+        ArgumentCaptor<TermsOfService> saved = ArgumentCaptor.forClass(TermsOfService.class);
+        verify(termsOfServiceRepo).save(saved.capture());
+        assertEquals("<p>Terms</p>", saved.getValue().getContent());
     }
 
     @Test

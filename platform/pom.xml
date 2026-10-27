@@ -59,6 +59,7 @@
         <springdoc.version>2.9.1</springdoc.version>
         <swagger-core.version>2.2.55</swagger-core.version>
         <swagger-ui.version>5.32.14</swagger-ui.version>
+        <owasp-java-html-sanitizer.version>20240325.1</owasp-java-html-sanitizer.version>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -249,6 +250,11 @@
                 <groupId>io.swagger.core.v3</groupId>
                 <artifactId>swagger-annotations-jakarta</artifactId>
                 <version>${swagger-core.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.googlecode.owasp-java-html-sanitizer</groupId>
+                <artifactId>owasp-java-html-sanitizer</artifactId>
+                <version>${owasp-java-html-sanitizer.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.webjars</groupId>
