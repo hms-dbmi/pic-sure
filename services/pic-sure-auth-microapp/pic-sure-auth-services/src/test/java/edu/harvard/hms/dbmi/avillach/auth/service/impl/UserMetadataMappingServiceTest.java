@@ -95,7 +95,7 @@ public class UserMetadataMappingServiceTest {
         doNothing().when(userMetadataMappingRepo).deleteById(mappingId);
         when(userMetadataMappingRepo.findAll()).thenReturn(mappings);
 
-        List<UserMetadataMapping> result = userMetadataMappingService.removeMetadataMappingByIdAndRetrieveAll(mappingId.toString());
+        List<UserMetadataMapping> result = userMetadataMappingService.removeMetadataMappingByIdAndRetrieveAll(mappingId);
 
         assertEquals(mappings, result);
         verify(userMetadataMappingRepo, times(1)).deleteById(mappingId);

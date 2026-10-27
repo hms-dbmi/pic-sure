@@ -47,8 +47,8 @@ public class PrivilegeService {
     }
 
     @Transactional
-    public List<Privilege> deletePrivilegeByPrivilegeId(String privilegeId) {
-        Optional<Privilege> privilege = this.privilegeRepository.findById(UUID.fromString(privilegeId));
+    public List<Privilege> deletePrivilegeByPrivilegeId(UUID privilegeId) {
+        Optional<Privilege> privilege = this.privilegeRepository.findById(privilegeId);
 
         // Get security context with spring security context
         SecurityContext securityContext = SecurityContextHolder.getContext();
@@ -63,7 +63,7 @@ public class PrivilegeService {
             );
         }
 
-        this.privilegeRepository.deleteById(UUID.fromString(privilegeId));
+        this.privilegeRepository.deleteById(privilegeId);
         return this.getPrivilegesAll();
     }
 
@@ -146,8 +146,8 @@ public class PrivilegeService {
         return this.privilegeRepository.findAll();
     }
 
-    public Privilege getPrivilegeById(String privilegeId) {
-        return this.privilegeRepository.findById(UUID.fromString(privilegeId)).orElse(null);
+    public Privilege getPrivilegeById(UUID privilegeId) {
+        return this.privilegeRepository.findById(privilegeId).orElse(null);
     }
 
     public Privilege findByName(String privilegeName) {

@@ -25,6 +25,7 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.UUID;
 
 
 /**
@@ -118,10 +119,10 @@ public class UserMetadataMappingWebController {
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @DeleteMapping(path = "/{mappingId}", produces = "application/json")
     public ResponseEntity<List<UserMetadataMappingResponse>> removeById(
-        @Parameter(required = true, description = "The uuid of the mapping to delete.") @PathVariable("mappingId") final String mappingId,
+        @Parameter(required = true, description = "The uuid of the mapping to delete.") @PathVariable("mappingId") final UUID mappingId,
         HttpServletRequest request
     ) {
-        AuditAttributes.putMetadata(request, "mapping_id", mappingId);
+        AuditAttributes.putMetadata(request, "mapping_id", mappingId.toString());
         return PICSUREResponse
             .success(UserMetadataMappingResponse.fromAll(this.mappingService.removeMetadataMappingByIdAndRetrieveAll(mappingId)));
     }

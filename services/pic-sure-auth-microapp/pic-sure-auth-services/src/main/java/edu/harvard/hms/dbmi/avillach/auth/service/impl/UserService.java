@@ -144,8 +144,8 @@ public class UserService {
         return List.of();
     }
 
-    public User getUserById(String userId) {
-        Optional<User> user = this.userRepository.findById(UUID.fromString(userId));
+    public User getUserById(UUID userId) {
+        Optional<User> user = this.userRepository.findById(userId);
         if (user.isEmpty()) {
             logger.error("getUserById() cannot find user by UUID: {}", userId);
             throw new IllegalArgumentException("Cannot find user by input UUID: " + userId);
