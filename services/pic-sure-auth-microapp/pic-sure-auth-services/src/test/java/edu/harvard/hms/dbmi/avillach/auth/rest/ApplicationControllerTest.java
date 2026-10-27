@@ -54,7 +54,7 @@ class ApplicationControllerTest {
     @Test
     void readingOneApplicationReturnsTheDisplayJson() throws Exception {
         Application application = applicationWithPrivileges();
-        when(applicationService.getApplicationByID(application.getUuid().toString())).thenReturn(Optional.of(application));
+        when(applicationService.getApplicationByID(application.getUuid())).thenReturn(Optional.of(application));
 
         mockMvc.perform(get("/application/{applicationId}", application.getUuid())).andExpect(status().isOk())
             .andExpect(content().string(FrozenWire.json(Application.ApplicationForDisplay.from(application))))
@@ -98,7 +98,7 @@ class ApplicationControllerTest {
     void deletingAnApplicationReturnsTheRemainingOnesWithoutTheirTokens() throws Exception {
         UUID deleted = UUID.randomUUID();
         List<Application> remaining = List.of(applicationWithPrivileges());
-        when(applicationService.deleteApplicationById(deleted.toString())).thenReturn(remaining);
+        when(applicationService.deleteApplicationById(deleted)).thenReturn(remaining);
 
         mockMvc.perform(delete("/application/{applicationId}", deleted)).andExpect(status().isOk())
             .andExpect(content().string(FrozenWire.json(remaining, "token"))).andExpect(content().string(not(containsString("canary"))));
@@ -107,7 +107,7 @@ class ApplicationControllerTest {
     @Test
     void issuingATokenReturnsItUnderTheTokenMember() throws Exception {
         UUID applicationId = UUID.randomUUID();
-        when(applicationService.refreshApplicationToken(applicationId.toString())).thenReturn("new.application.token");
+        when(applicationService.refreshApplicationToken(applicationId)).thenReturn("new.application.token");
 
         mockMvc.perform(get("/application/refreshToken/{applicationId}", applicationId)).andExpect(status().isOk())
             .andExpect(content().string("{\"token\":\"new.application.token\"}"));
@@ -116,7 +116,7 @@ class ApplicationControllerTest {
     @Test
     void readingAnUnknownApplicationIs400InTheErrorEnvelope() throws Exception {
         UUID unknown = UUID.randomUUID();
-        when(applicationService.getApplicationByID(unknown.toString())).thenReturn(Optional.empty());
+        when(applicationService.getApplicationByID(unknown)).thenReturn(Optional.empty());
 
         mockMvc.perform(get("/application/{applicationId}", unknown)).andExpect(status().isBadRequest()).andExpect(
             content().string(
@@ -129,7 +129,7 @@ class ApplicationControllerTest {
     void deletingAnUnknownApplicationIs400InTheErrorEnvelope() throws Exception {
         UUID unknown = UUID.randomUUID();
         String reason = "Cannot find application by the given applicationId: " + unknown;
-        when(applicationService.deleteApplicationById(unknown.toString())).thenThrow(new IllegalArgumentException(reason));
+        when(applicationService.deleteApplicationById(unknown)).thenThrow(new IllegalArgumentException(reason));
 
         mockMvc.perform(delete("/application/{applicationId}", unknown)).andExpect(status().isBadRequest())
             .andExpect(content().string("{\"message\":\"Invalid request\",\"content\":\"" + reason + "\"}"));

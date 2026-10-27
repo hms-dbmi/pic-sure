@@ -32,10 +32,6 @@ public class RoleService {
         this.privilegeService = privilegeService;
     }
 
-    public Optional<Role> getRoleById(String roleId) {
-        return roleRepository.findById(UUID.fromString(roleId));
-    }
-
     public Optional<Role> getRoleById(UUID roleId) {
         return roleRepository.findById(roleId);
     }
@@ -106,8 +102,8 @@ public class RoleService {
     }
 
     @Transactional
-    public Optional<List<Role>> removeRoleById(String roleId) {
-        Optional<Role> optionalRole = roleRepository.findById(UUID.fromString(roleId));
+    public Optional<List<Role>> removeRoleById(UUID roleId) {
+        Optional<Role> optionalRole = roleRepository.findById(roleId);
         if (optionalRole.isEmpty()) {
             return Optional.empty();
         }

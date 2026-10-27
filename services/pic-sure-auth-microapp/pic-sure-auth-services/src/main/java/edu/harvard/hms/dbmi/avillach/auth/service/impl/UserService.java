@@ -10,6 +10,7 @@ import edu.harvard.hms.dbmi.avillach.auth.model.response.UserProfileResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.ConnectionRef;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.EntityIdRef;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.PlainTextValidator;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.UserCreateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.UserUpdateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
@@ -143,8 +144,8 @@ public class UserService {
         return List.of();
     }
 
-    public User getUserById(String userId) {
-        Optional<User> user = this.userRepository.findById(UUID.fromString(userId));
+    public User getUserById(UUID userId) {
+        Optional<User> user = this.userRepository.findById(userId);
         if (user.isEmpty()) {
             logger.error("getUserById() cannot find user by UUID: {}", userId);
             throw new IllegalArgumentException("Cannot find user by input UUID: " + userId);
@@ -309,6 +310,9 @@ public class UserService {
             if (user.getEmail() == null) {
                 user.setEmail(emailFromMetadata(user.getGeneralMetadata()));
             }
+            if (!PlainTextValidator.isPlain(user.getEmail())) {
+                throw new IllegalArgumentException("The email in the user metadata must not contain '<' or '>'.");
+            }
             users.add(user);
         }
 
@@ -321,8 +325,8 @@ public class UserService {
      *
      * @param requests the users to update, each named by UUID
      * @return the persisted users, or {@code null} when the security context holds no user
-     * @throws IllegalArgumentException if a request names a user, role or connection that does not exist, or changes whether the user
-     *         holds {@code SUPER_ADMIN} without the caller holding it
+     * @throws IllegalArgumentException if a request names a user, role or connection that does not exist, or changes whether the user holds
+     *         {@code SUPER_ADMIN} without the caller holding it
      */
     @Transactional
     public List<User> updateFrom(List<UserUpdateRequest> requests) {
@@ -379,9 +383,10 @@ public class UserService {
     private String emailFromMetadata(String generalMetadata) {
         try {
             logger.info("Parsing metadata for email address");
-            Map<String, String> metadata = new HashMap<String, String>(new ObjectMapper().readValue(generalMetadata, Map.class));
+            Map<String, Object> metadata = new HashMap<String, Object>(new ObjectMapper().readValue(generalMetadata, Map.class));
             List<String> emailKeys = metadata.keySet().stream().filter(key -> key.toLowerCase().contains("email")).toList();
-            return emailKeys.isEmpty() ? null : metadata.get(emailKeys.getFirst());
+            Object email = emailKeys.isEmpty() ? null : metadata.get(emailKeys.getFirst());
+            return email instanceof String text ? text : null;
         } catch (IOException | IllegalArgumentException e) {
             logger.error("Failed to parse metadata for email address", e);
             return null;

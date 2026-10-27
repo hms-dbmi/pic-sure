@@ -5,6 +5,7 @@ import edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint.Access;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.auth.enums.ApiKeyType;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.PicSureResponseException;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.PlainTextValidator;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.PlatformApiKeyRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.UserApiKeyRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.ApiKeyCreationResponse;
@@ -85,9 +86,7 @@ public class ApiKeyController {
         }
         String name = normalize(keyRequest.name());
         String email = normalize(keyRequest.email());
-        if (tooLong(name) || tooLong(email)) {
-            throw rejected("Name and email must be at most " + MAX_METADATA_FIELD_LENGTH + " characters.");
-        }
+        requireAcceptableMetadata(name, email);
         if (!captchaVerifier.verify(keyRequest.captchaToken(), AuditAttributes.extractClientIp(request))) {
             AuditAttributes.putMetadata(request, "captcha_result", "failure");
             throw rejected("CAPTCHA verification failed.");
@@ -136,9 +135,7 @@ public class ApiKeyController {
         if (name == null || email == null) {
             throw rejected("Platform keys require a name and a contact email.");
         }
-        if (tooLong(name) || tooLong(email)) {
-            throw rejected("Name and email must be at most " + MAX_METADATA_FIELD_LENGTH + " characters.");
-        }
+        requireAcceptableMetadata(name, email);
 
         ApiKeyCreationResponse created;
         try {
@@ -195,6 +192,15 @@ public class ApiKeyController {
         }
         String cleaned = value.replaceAll("\\p{Cntrl}", "").trim();
         return cleaned.isBlank() ? null : cleaned;
+    }
+
+    private static void requireAcceptableMetadata(String name, String email) {
+        if (tooLong(name) || tooLong(email)) {
+            throw rejected("Name and email must be at most " + MAX_METADATA_FIELD_LENGTH + " characters.");
+        }
+        if (!PlainTextValidator.isPlain(name) || !PlainTextValidator.isPlain(email)) {
+            throw rejected("Name and email must not contain '<' or '>'.");
+        }
     }
 
     private static boolean tooLong(String value) {

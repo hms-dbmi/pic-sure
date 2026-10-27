@@ -95,7 +95,7 @@ class UserMetadataMappingWebControllerTest {
     void deletingAMappingReturnsTheRemainingOnesAsABareArray() throws Exception {
         UUID deleted = UUID.randomUUID();
         List<UserMetadataMapping> remaining = List.of(mapping());
-        when(mappingService.removeMetadataMappingByIdAndRetrieveAll(deleted.toString())).thenReturn(remaining);
+        when(mappingService.removeMetadataMappingByIdAndRetrieveAll(deleted)).thenReturn(remaining);
 
         mockMvc.perform(delete("/mapping/{mappingId}", deleted)).andExpect(status().isOk())
             .andExpect(content().string(FrozenWire.json(remaining)));

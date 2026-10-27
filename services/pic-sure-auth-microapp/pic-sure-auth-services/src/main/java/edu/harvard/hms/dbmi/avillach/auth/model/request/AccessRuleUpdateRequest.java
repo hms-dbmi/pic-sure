@@ -31,8 +31,10 @@ public record AccessRuleUpdateRequest(
     @Schema(
         description = "UUID of the access rule to update.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6",
         requiredMode = Schema.RequiredMode.REQUIRED
-    ) @NotNull UUID uuid, @Schema(description = "New name of the access rule.", example = "AR_ONLY_SEARCH") String name,
-    @Schema(description = "New free-text description of what the rule allows.", example = "Allows search requests only") String description,
+    ) @NotNull UUID uuid, @Schema(description = "New name of the access rule.", example = "AR_ONLY_SEARCH") @PlainText String name,
+    @Schema(
+        description = "New free-text description of what the rule allows.", example = "Allows search requests only"
+    ) @PlainText String description,
     @Schema(
         description = "New way the value found at the rule's JSON path is compared, as one of the numbers GET /accessRule/allTypes lists.",
         example = "4"

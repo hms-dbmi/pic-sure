@@ -119,12 +119,12 @@ public class JWTUtil {
         try {
             jws = Jwts.parser().verifyWith(signingKey).build().parseSignedClaims(token);
         } catch (JwtException | IllegalArgumentException e) {
-            logger.error("parseToken() throws: {}, {}", e.getClass().getSimpleName(), e.getMessage());
-            throw new NotAuthorizedException(e.getClass().getSimpleName() + ": " + e.getMessage());
+            logger.error("parseToken() throws: {}", e.getClass().getSimpleName());
+            throw new NotAuthorizedException(e.getClass().getSimpleName());
         }
 
         if (jws == null) {
-            logger.error("parseToken() get null for jws body by parsing Token - {}", token);
+            logger.error("parseToken() got a null jws body");
             throw new NotAuthorizedException("Please contact admin to see the log");
         }
 
@@ -147,7 +147,7 @@ public class JWTUtil {
             // Thrown after the signature is verified, so these claims are as trustworthy as any other.
             return Optional.ofNullable(e.getClaims());
         } catch (JwtException | IllegalArgumentException e) {
-            logger.error("parseTokenAllowingExpiration() throws: {}, {}", e.getClass().getSimpleName(), e.getMessage());
+            logger.error("parseTokenAllowingExpiration() throws: {}", e.getClass().getSimpleName());
             return Optional.empty();
         }
     }
@@ -205,7 +205,7 @@ public class JWTUtil {
             Ga4ghPassportV1 ga4ghPassportV1 = objectMapper.readValue(payload, Ga4ghPassportV1.class);
             return Optional.ofNullable(ga4ghPassportV1);
         } catch (IOException e) {
-            logger.error("parsePassport() throws: {}, {}", e.getClass().getSimpleName(), e.getMessage());
+            logger.error("parsePassport() throws: {}", e.getClass().getSimpleName());
         }
 
         return Optional.empty();
@@ -220,7 +220,7 @@ public class JWTUtil {
             Passport passport = objectMapper.readValue(payload, Passport.class);
             return Optional.ofNullable(passport);
         } catch (IOException e) {
-            logger.error("parsePassport() throws: {}, {}", e.getClass().getSimpleName(), e.getMessage());
+            logger.error("parsePassport() throws: {}", e.getClass().getSimpleName());
         }
 
         return Optional.empty();
@@ -234,7 +234,7 @@ public class JWTUtil {
             String payload = new String(decoder.decode(base64EncodedPayload));
             return Optional.of(payload);
         } catch (Exception e) {
-            logger.error("decodePassport() throws: {}, {}", e.getClass().getSimpleName(), e.getMessage());
+            logger.error("decodePassport() throws: {}", e.getClass().getSimpleName());
         }
 
         return Optional.empty();

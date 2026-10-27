@@ -113,7 +113,7 @@ public class UserServiceTest {
 
         when(userRepository.findById(testId)).thenReturn(Optional.of(user));
 
-        User result = userService.getUserById(testId.toString());
+        User result = userService.getUserById(testId);
         assertNotNull(result);
         assertEquals(testId, result.getUuid());
     }
@@ -124,7 +124,7 @@ public class UserServiceTest {
         when(userRepository.findById(testId)).thenReturn(Optional.empty());
 
         assertThrows(IllegalArgumentException.class, () -> {
-            userService.getUserById(testId.toString());
+            userService.getUserById(testId);
         });
     }
 
@@ -209,13 +209,6 @@ public class UserServiceTest {
         // Missing "sub" - should return null since subject is required
         HashMap<String, String> result = userService.getUserProfileResponse(userClaims);
         assertNull(result);
-    }
-
-    @Test
-    public void testGetUserById_invalidUUID() {
-        assertThrows(IllegalArgumentException.class, () -> {
-            userService.getUserById("not-a-real-uuid");
-        });
     }
 
     @Test

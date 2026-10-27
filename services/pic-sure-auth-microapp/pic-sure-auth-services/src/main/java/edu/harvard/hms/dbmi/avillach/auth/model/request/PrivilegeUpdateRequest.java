@@ -9,8 +9,8 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * One privilege in the body of {@code PATCH /privilege}. A member left out leaves the stored value unchanged, so an update that does not name
- * access rules keeps the ones the privilege holds.
+ * One privilege in the body of {@code PATCH /privilege}. A member left out leaves the stored value unchanged, so an update that does not
+ * name access rules keeps the ones the privilege holds.
  *
  * @param uuid the UUID of the privilege to update
  * @param name the new name
@@ -24,10 +24,11 @@ public record PrivilegeUpdateRequest(
     @Schema(
         description = "UUID of the privilege to update.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6",
         requiredMode = Schema.RequiredMode.REQUIRED
-    ) @NotNull UUID uuid, @Schema(description = "New unique name of the privilege.", example = "PRIV_FENCE_phs000007_c1") String name,
+    ) @NotNull UUID uuid,
+    @Schema(description = "New unique name of the privilege.", example = "PRIV_FENCE_phs000007_c1") @PlainText String name,
     @Schema(
         description = "New free-text description of what the privilege grants.", example = "Access to phs000007 consent group c1"
-    ) String description,
+    ) @PlainText String description,
     @Schema(description = "The existing application the privilege should belong to, named by UUID.") @Valid EntityIdRef application,
     @Schema(
         description = "Existing access rules the privilege should hold, each named by UUID. When present, it replaces the stored set; when left out, the privilege keeps the rules it holds."

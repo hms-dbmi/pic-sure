@@ -285,7 +285,7 @@ class DocumentedErrorResponsesTest {
     @Test
     void userIdThatIsNotAUuidIs400() throws Exception {
         mockMvc.perform(asSuperAdmin(HttpMethod.GET, "/user/{id}", "not-a-uuid")).andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.message").value("Invalid request"));
+            .andExpect(jsonPath("$.message").value("Bad Request"));
     }
 
     @Test

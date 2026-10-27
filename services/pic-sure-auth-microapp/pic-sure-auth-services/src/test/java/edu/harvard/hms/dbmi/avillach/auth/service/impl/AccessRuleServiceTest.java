@@ -100,7 +100,7 @@ public class AccessRuleServiceTest {
         doNothing().when(accessRuleRepo).deleteById(id);
         when(accessRuleRepo.findAll()).thenReturn(remainingRules);
 
-        List<AccessRule> result = accessRuleService.removeAccessRuleById(id.toString());
+        List<AccessRule> result = accessRuleService.removeAccessRuleById(id);
         assertEquals(1, result.size());
     }
 

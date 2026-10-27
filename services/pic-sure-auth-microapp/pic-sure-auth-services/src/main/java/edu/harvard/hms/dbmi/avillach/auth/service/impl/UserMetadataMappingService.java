@@ -95,8 +95,8 @@ public class UserMetadataMappingService {
         return this.connectionRepo.findById(connectionId).orElseThrow(() -> new IllegalArgumentException("Connection not found"));
     }
 
-    public List<UserMetadataMapping> removeMetadataMappingByIdAndRetrieveAll(String mappingId) {
-        this.userMetadataMappingRepo.deleteById(UUID.fromString(mappingId));
+    public List<UserMetadataMapping> removeMetadataMappingByIdAndRetrieveAll(UUID mappingId) {
+        this.userMetadataMappingRepo.deleteById(mappingId);
         return this.userMetadataMappingRepo.findAll();
     }
 }

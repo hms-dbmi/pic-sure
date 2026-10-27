@@ -79,7 +79,7 @@ class AccessRuleControllerTest {
     void deletingAnAccessRuleReturnsTheRemainingOnesAsABareArray() throws Exception {
         UUID deleted = UUID.randomUUID();
         List<AccessRule> remaining = List.of(gatedRule());
-        when(accessRuleService.removeAccessRuleById(deleted.toString())).thenReturn(remaining);
+        when(accessRuleService.removeAccessRuleById(deleted)).thenReturn(remaining);
 
         mockMvc.perform(delete("/accessRule/{accessRuleId}", deleted)).andExpect(status().isOk())
             .andExpect(content().string(FrozenWire.json(remaining)));
