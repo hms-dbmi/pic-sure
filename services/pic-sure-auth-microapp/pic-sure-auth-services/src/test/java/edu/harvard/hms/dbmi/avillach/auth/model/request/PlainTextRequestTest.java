@@ -132,4 +132,38 @@ class PlainTextRequestTest {
         assertThat(rejectedMembers(validator.validate(request)))
             .containsExactlyInAnyOrder("generalMetadataJsonPath", "auth0MetadataJsonPath");
     }
+
+    @Test
+    void roleCreateRejectsMarkupInNameAndDescription() {
+        assertThat(rejectedMembers(validator.validate(new RoleCreateRequest(MARKUP, MARKUP, null))))
+            .containsExactlyInAnyOrder("name", "description");
+    }
+
+    @Test
+    void roleUpdateRejectsMarkupInNameAndDescription() {
+        assertThat(rejectedMembers(validator.validate(new RoleUpdateRequest(UUID.randomUUID(), MARKUP, MARKUP, null))))
+            .containsExactlyInAnyOrder("name", "description");
+    }
+
+    @Test
+    void roleCreateAcceptsPlainText() {
+        assertThat(validator.validate(new RoleCreateRequest("PIC-SURE Top Admin", "Manages users", null))).isEmpty();
+    }
+
+    @Test
+    void privilegeCreateRejectsMarkupInNameAndDescription() {
+        assertThat(rejectedMembers(validator.validate(new PrivilegeCreateRequest(MARKUP, MARKUP, null, null))))
+            .containsExactlyInAnyOrder("name", "description");
+    }
+
+    @Test
+    void privilegeUpdateRejectsMarkupInNameAndDescription() {
+        assertThat(rejectedMembers(validator.validate(new PrivilegeUpdateRequest(UUID.randomUUID(), MARKUP, MARKUP, null, null))))
+            .containsExactlyInAnyOrder("name", "description");
+    }
+
+    @Test
+    void privilegeCreateAcceptsPlainText() {
+        assertThat(validator.validate(new PrivilegeCreateRequest("PRIV_FENCE_phs000007_c1", "Access to c1", null, null))).isEmpty();
+    }
 }

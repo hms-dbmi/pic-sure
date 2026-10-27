@@ -21,10 +21,10 @@ import java.util.Set;
 public record PrivilegeCreateRequest(
     @Schema(
         description = "Unique name of the privilege.", example = "PRIV_FENCE_phs000007_c1", requiredMode = Schema.RequiredMode.REQUIRED
-    ) @NotBlank String name,
+    ) @NotBlank @PlainText String name,
     @Schema(
         description = "Free-text description of what the privilege grants.", example = "Access to phs000007 consent group c1"
-    ) String description,
+    ) @PlainText String description,
     @Schema(description = "The existing application the privilege belongs to, named by UUID.") @Valid EntityIdRef application,
     @Schema(description = "Existing access rules to attach to the privilege, each named by UUID.") @Valid Set<EntityIdRef> accessRules
 ) {
