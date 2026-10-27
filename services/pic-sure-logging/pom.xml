@@ -21,7 +21,7 @@
              Javalin 7 supplies Jetty 12, which contains the fixes unavailable on Jetty 11. -->
         <javalin.version>7.2.3</javalin.version>
         <jetty.version>12.1.12</jetty.version>
-        <java-jwt.version>4.4.0</java-jwt.version>
+        <java-jwt.version>4.6.2</java-jwt.version>
     </properties>
 
     <dependencyManagement>
