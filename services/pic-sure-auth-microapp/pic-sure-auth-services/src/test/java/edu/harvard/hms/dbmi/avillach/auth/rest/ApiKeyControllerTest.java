@@ -93,6 +93,7 @@ public class ApiKeyControllerTest {
         );
 
         assertEquals(HttpStatus.BAD_REQUEST, rejected.getStatus());
+        assertEquals("Name and email must not contain '<' or '>'.", rejected.getMessage());
         verify(apiKeyService, never()).generateUserKey(any(), any());
     }
 
@@ -104,6 +105,7 @@ public class ApiKeyControllerTest {
         );
 
         assertEquals(HttpStatus.BAD_REQUEST, rejected.getStatus());
+        assertEquals("Name and email must not contain '<' or '>'.", rejected.getMessage());
         verify(apiKeyService, never()).generatePlatformKey(any(), any(), any(), anyBoolean());
     }
 
