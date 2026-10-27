@@ -172,6 +172,13 @@ class UserServiceOverPostingTest {
     }
 
     @Test
+    void createIgnoresAMetadataEmailThatIsNotAString() {
+        userService.createFrom(List.of(new UserCreateRequest(null, null, "{\"email\":{\"a\":1}}", null, Set.of(idRef(superAdminRole)))));
+
+        assertNull(savedUser().getEmail());
+    }
+
+    @Test
     void createRejectsAnEmailThatMetadataEscapesHide() {
         assertThrows(
             IllegalArgumentException.class,

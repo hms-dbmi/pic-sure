@@ -383,9 +383,10 @@ public class UserService {
     private String emailFromMetadata(String generalMetadata) {
         try {
             logger.info("Parsing metadata for email address");
-            Map<String, String> metadata = new HashMap<String, String>(new ObjectMapper().readValue(generalMetadata, Map.class));
+            Map<String, Object> metadata = new HashMap<String, Object>(new ObjectMapper().readValue(generalMetadata, Map.class));
             List<String> emailKeys = metadata.keySet().stream().filter(key -> key.toLowerCase().contains("email")).toList();
-            return emailKeys.isEmpty() ? null : metadata.get(emailKeys.getFirst());
+            Object email = emailKeys.isEmpty() ? null : metadata.get(emailKeys.getFirst());
+            return email instanceof String text ? text : null;
         } catch (IOException | IllegalArgumentException e) {
             logger.error("Failed to parse metadata for email address", e);
             return null;
