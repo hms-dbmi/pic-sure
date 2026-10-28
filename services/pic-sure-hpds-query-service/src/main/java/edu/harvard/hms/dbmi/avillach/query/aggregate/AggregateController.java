@@ -61,7 +61,7 @@ public class AggregateController {
         | Result type | Result |
         |---|---|
         | COUNT | Obfuscated patient count |
-        | CROSS_COUNT | Obfuscated patient count per study consent |
+        | CROSS_COUNT | One obfuscated patient count, the total across all studies |
         | CATEGORICAL_CROSS_COUNT | Obfuscated counts per value of each categorical concept the filters name |
         | CONTINUOUS_CROSS_COUNT | Obfuscated counts per bin of each continuous concept the filters name |
 
@@ -90,8 +90,7 @@ public class AggregateController {
 
     private static final String COUNT_BELOW_THRESHOLD_EXAMPLE = "< 10";
 
-    private static final String CROSS_COUNT_EXAMPLE =
-        "{\"\\\\_studies_consents\\\\\":\"1232 ±3\",\"\\\\_studies_consents\\\\phs000007\\\\\":\"< 10\"}";
+    private static final String CROSS_COUNT_EXAMPLE = "{\"\\\\_studies_consents\\\\\":\"1232 ±3\"}";
 
     private static final String CATEGORICAL_CROSS_COUNT_EXAMPLE =
         "{\"\\\\demographics\\\\SEX\\\\\":{\"Female\":{\"count\":698,\"display\":\"698 ±3\",\"variance\":3},"
@@ -120,7 +119,8 @@ public class AggregateController {
                 schema = @Schema(
                     type = "string",
                     description = "COUNT: an obfuscated count as text, either a count with its variance or a below-threshold marker. "
-                        + "CROSS_COUNT: a JSON object of study consent path to obfuscated count string. CATEGORICAL_CROSS_COUNT and "
+                        + "CROSS_COUNT: a JSON object with one entry, the total patient count as an obfuscated count string. It has no count per study "
+                        + "or consent. CATEGORICAL_CROSS_COUNT and "
                         + "CONTINUOUS_CROSS_COUNT: a JSON object of concept path to an object of value or bin to an object with count, "
                         + "display and variance."
                 ),
@@ -145,8 +145,8 @@ public class AggregateController {
                     ),
                     @ExampleObject(
                         name = "CROSS_COUNT",
-                        description = "Counts the matching patients in each study consent, each count obfuscated. "
-                            + "`select` stays empty: open access replaces it with every study consent.\n\n" + OPEN_EXAMPLE_NOTE,
+                        description = "Counts the matching patients as one obfuscated number, the total across all studies. The result has no count "
+                            + "per study or consent. `select` stays empty.\n\n" + OPEN_EXAMPLE_NOTE,
                         value = OpenQueryExamples.CROSS_COUNT
                     ),
                     @ExampleObject(
