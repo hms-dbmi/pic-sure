@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 import edu.harvard.hms.dbmi.avillach.auth.entity.TermsOfService;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.repository.TermsOfServiceRepository;
+import edu.harvard.hms.dbmi.avillach.auth.utils.TermsOfServiceSanitizer;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.rest.TermsOfServiceController;
 import jakarta.annotation.Nullable;
@@ -62,7 +63,7 @@ public class TOSService {
 
     public Optional<TermsOfService> updateTermsOfService(String html) {
         TermsOfService updatedTOS = new TermsOfService();
-        updatedTOS.setContent(html);
+        updatedTOS.setContent(TermsOfServiceSanitizer.sanitize(html));
         termsOfServiceRepo.save(updatedTOS);
         return termsOfServiceRepo.findTopByOrderByDateUpdatedDesc();
     }
