@@ -48,9 +48,7 @@ public class AuditFilterConfig {
                 new AuditRoute(Pattern.compile(PFX + "/query/[^/]+/status/?$"), null, "QUERY", "query.status"),
                 new AuditRoute(Pattern.compile(PFX + "/query/[^/]+/result/?$"), null, "DATA_ACCESS", "query.result"),
                 new AuditRoute(Pattern.compile(PFX + "/query/[^/]+/signed-url/?$"), null, "DATA_ACCESS", "query.signed_url"),
-                new AuditRoute(Pattern.compile(PFX + "/query/[^/]+/metadata/?$"), null, "QUERY", "query.metadata"),
-                new AuditRoute(Pattern.compile(PFX + "/search/[^/]+/?$"), "POST", "SEARCH", "search.execute"),
-                new AuditRoute(Pattern.compile(PFX + "/search/[^/]+/values/"), null, "SEARCH", "search.values", true)
+                new AuditRoute(Pattern.compile(PFX + "/query/[^/]+/metadata/?$"), null, "QUERY", "query.metadata")
             )
         );
     }
