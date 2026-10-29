@@ -25,4 +25,12 @@ class AggregateAuditRouteTest {
         assertThat(r.get().getEventType()).isEqualTo("QUERY");
         assertThat(r.get().getAction()).isEqualTo("query.sync");
     }
+
+    @Test
+    void searchPathsAreNotAuditedAtTheGateway() {
+        assertThat(config.auditRouteTable().match("/picsure/search/abc", "POST")).isEmpty();
+        assertThat(config.auditRouteTable().match("/picsure/search/abc/values/", "GET")).isEmpty();
+        assertThat(config.auditRouteTable().match("/hpds/auth/search", "POST")).isEmpty();
+        assertThat(config.auditRouteTable().match("/hpds/auth/search/values", "GET")).isEmpty();
+    }
 }
