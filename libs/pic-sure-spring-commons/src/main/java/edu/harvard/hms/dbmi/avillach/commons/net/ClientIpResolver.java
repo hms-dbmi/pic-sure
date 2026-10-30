@@ -14,7 +14,8 @@ import jakarta.servlet.http.HttpServletRequest;
  * <p>The peer is the starting point. When the peer is inside a trusted-proxy range the header is read: hops are walked right to left,
  * skipping any inside a trusted range, and the first untrusted hop is the client. If every hop is trusted the leftmost wins. A header from
  * an untrusted peer is ignored entirely, since the caller wrote all of it. Hops to the left of the client are never parsed, so a
- * caller-written prefix (AIO's httpd keeps one, BDC's ALB appends to one) can neither pick the result nor force a failure.
+ * caller-written prefix (AIO's httpd keeps one, BDC's ALB appends to one) can't pick the result, and a malformed entry in it can't force a
+ * failure. It can still push the header over a cap below.
  *
  * <p>A trusted peer forwarding a header that is over {@link #MAX_HEADER_LENGTH} characters or {@link #MAX_HOPS} hops, or whose walk reaches
  * an entry that isn't an IP literal, falls back to the peer and is marked {@link ClientIp#resolutionFailed()}.
