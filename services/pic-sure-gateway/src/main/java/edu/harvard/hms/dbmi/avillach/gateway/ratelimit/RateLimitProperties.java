@@ -10,7 +10,7 @@ import edu.harvard.hms.dbmi.avillach.commons.net.CidrRange;
  * Open-access rate-limit configuration, bound from {@code picsure.gateway.rate-limit.*}. The defaults and the {@code RATE_LIMIT_*} env var
  * names deployments set live in {@code application.yml}. A zero or negative limit, a malformed CIDR in either list, or {@code enabled=true}
  * with no trusted proxies throws during binding and stops the context. The CIDR lists stay strings, trimmed with blank entries dropped;
- * consumers parse them with {@link CidrRange#parse}.
+ * consumers take them parsed from {@link #trustedProxyRanges()} and {@link #platformAllowlist()}.
  */
 @ConfigurationProperties(prefix = "picsure.gateway.rate-limit")
 public record RateLimitProperties(
@@ -39,6 +39,16 @@ public record RateLimitProperties(
                     + "one rate-limit bucket."
             );
         }
+    }
+
+    /** {@link #trustedProxies()} parsed: the peers whose {@code X-Forwarded-For} is honoured. */
+    public List<CidrRange> trustedProxyRanges() {
+        return CidrRange.parseList(String.join(",", trustedProxies));
+    }
+
+    /** {@link #platformAllowlistedSourceCidrs()} parsed. */
+    public List<CidrRange> platformAllowlist() {
+        return CidrRange.parseList(String.join(",", platformAllowlistedSourceCidrs));
     }
 
     /** Per-minute burst and per-UTC-day sustained limits for one kind of confirmed key. */
@@ -79,14 +89,10 @@ public record RateLimitProperties(
     }
 
     private static List<String> cidrs(List<String> entries, String property) {
-        List<String> cleaned = entries == null ? List.of() : entries.stream().map(String::trim).filter(entry -> !entry.isEmpty()).toList();
-        for (String entry : cleaned) {
-            try {
-                CidrRange.parse(entry);
-            } catch (IllegalArgumentException e) {
-                throw new IllegalArgumentException(PREFIX + "." + property + ": " + e.getMessage(), e);
-            }
+        try {
+            return CidrRange.parseList(entries == null ? null : String.join(",", entries)).stream().map(CidrRange::toString).toList();
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(PREFIX + "." + property + ": " + e.getMessage(), e);
         }
-        return cleaned;
     }
 }

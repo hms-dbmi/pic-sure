@@ -68,7 +68,7 @@
     {
       "name": "picsure.gateway.rate-limit.platform-allowlisted-source-cidrs",
       "type": "java.util.List<java.lang.String>",
-      "description": "Comma-separated CIDRs whose PLATFORM-key traffic is exempt from rate limiting. Empty means no exemption. Env: RATE_LIMIT_PLATFORM_ALLOWLISTED_SOURCE_CIDRS."
+      "description": "Comma-separated CIDRs of trusted platform sources. Every open-access request from them skips the pre-validation per-IP throttle, and PLATFORM-key requests from them are also exempt from the per-key limiter. Empty means no exemption. Env: RATE_LIMIT_PLATFORM_ALLOWLISTED_SOURCE_CIDRS."
     }
   ]
 }

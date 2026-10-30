@@ -4,7 +4,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import edu.harvard.hms.dbmi.avillach.commons.net.CidrRange;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.InMemoryRateLimitStore;
 import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitProperties;
@@ -27,6 +26,6 @@ public class RateLimitConfig {
     /** Trusts {@code X-Forwarded-For} only from the configured trusted proxies. */
     @Bean
     ClientIpResolver clientIpResolver(RateLimitProperties props) {
-        return new ClientIpResolver(props.trustedProxies().stream().map(CidrRange::parse).toList());
+        return new ClientIpResolver(props.trustedProxyRanges());
     }
 }
