@@ -27,8 +27,8 @@ import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * The gateway's servlet filters, from {@code RequestIdFilter} to the identity-header sanitizer, built from their configuration classes and
- * run in configured order without a Spring context. A filter added to or reordered in {@link SecurityConfig}, {@link ObservabilityConfig}
- * or {@link AuditFilterConfig} belongs in the list here.
+ * run in configured order without a Spring context. A filter added to or removed from {@link SecurityConfig}, {@link ObservabilityConfig}
+ * or {@link AuditFilterConfig} has to be added to or removed from the list here.
  */
 final class AuditFilterChain {
 
