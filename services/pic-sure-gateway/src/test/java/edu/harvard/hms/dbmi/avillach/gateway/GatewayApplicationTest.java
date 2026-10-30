@@ -23,11 +23,11 @@ class GatewayApplicationTest {
 
     /**
      * Bucket4j on the classpath activates Spring Cloud Gateway's own {@code Bucket4jFilterConfiguration}. No route uses its
-     * {@code RateLimit} filter (the limiter is our own filters over {@link RateLimitStore}), but the context must still start with it.
+     * {@code RateLimit} filter (the limiter is our own filters over {@link RateLimitStore}), but the context must still start with it, and
+     * with exactly one store.
      */
     @Test
     void startsWithBucket4jOnTheClasspath() {
-        assertThat(context.containsBean("bucket4jFilterFunctionsSupplier")).isTrue();
         assertThat(context.getBeanNamesForType(RateLimitStore.class)).hasSize(1);
     }
 

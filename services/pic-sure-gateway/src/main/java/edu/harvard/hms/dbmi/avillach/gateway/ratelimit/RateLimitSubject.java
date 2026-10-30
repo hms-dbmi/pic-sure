@@ -56,7 +56,6 @@ public record RateLimitSubject(Kind kind, String value) {
         byte[] prefix = Arrays.copyOf(address.getAddress(), 16);
         Arrays.fill(prefix, 8, 16, (byte) 0);
         try {
-            // getByAddress drops any scope id, so link-local addresses on different interfaces still share a prefix.
             return InetAddress.getByAddress(prefix).getHostAddress() + "/64";
         } catch (UnknownHostException e) {
             throw new IllegalStateException("16-byte address rejected", e);
