@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
@@ -166,16 +168,17 @@ class InboundIdentityHeaderSanitizingFilterTest {
         assertThat(captured.get().getHeaders("Authorization").hasMoreElements()).isFalse();
     }
 
-    @Test
-    void keepsAuthorizationCarryingAPicsureTokenThatIsNotAnApiKey() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"Bearer picsure_x_login.token", "Bearer picsure_login.token"})
+    void keepsAuthorizationCarryingAPicsureTokenThatIsNotAnApiKey(String authorization) throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
-        request.addHeader("Authorization", "Bearer picsure_x_login.token");
+        request.addHeader("Authorization", authorization);
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         AtomicReference<HttpServletRequest> captured = new AtomicReference<>();
         filter.doFilter(request, response, (req, resp) -> captured.set((HttpServletRequest) req));
 
-        assertThat(captured.get().getHeader("Authorization")).isEqualTo("Bearer picsure_x_login.token");
+        assertThat(captured.get().getHeader("Authorization")).isEqualTo(authorization);
     }
 
     @Test

@@ -10,7 +10,7 @@ import java.util.List;
 public final class ApiKeyBearer {
 
     /** {@code picsure_u_} (user), {@code picsure_p_} (platform) and {@code picsure_s_} (open-access session), copied from PSAMA. */
-    static final List<String> KEY_PREFIXES = List.of("picsure_u_", "picsure_p_", "picsure_s_");
+    private static final List<String> KEY_PREFIXES = List.of("picsure_u_", "picsure_p_", "picsure_s_");
 
     private static final String SCHEME = "Bearer ";
 
