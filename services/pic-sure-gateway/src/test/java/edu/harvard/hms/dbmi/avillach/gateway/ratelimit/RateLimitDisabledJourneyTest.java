@@ -27,8 +27,8 @@ import org.springframework.test.context.DynamicPropertySource;
 import com.github.tomakehurst.wiremock.WireMockServer;
 
 /**
- * Journey (g) of {@link RateLimitJourneyTest}: with {@code RATE_LIMIT_ENABLED=false} the same small limits, trusted proxy and allowlist
- * limit nothing. Full context, real HTTP, WireMock for PSAMA and operations-service.
+ * The {@link RateLimitJourneyTest} gateway with {@code RATE_LIMIT_ENABLED=false}: the same kind of small limits, trusted proxy and
+ * allowlist limit nothing. Full context, real HTTP, WireMock for PSAMA and operations-service.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class RateLimitDisabledJourneyTest {
