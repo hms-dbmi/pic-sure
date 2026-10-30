@@ -22,10 +22,13 @@ import org.springframework.mock.web.MockHttpServletResponse;
 
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
+import edu.harvard.hms.dbmi.avillach.commons.net.CidrRange;
+import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessValidation;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.OpenAccessFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitDecision;
+import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitProperties;
 import edu.harvard.hms.dbmi.avillach.gateway.request.InboundIdentityHeaderSanitizingFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.request.InternalEndpointGuardFilter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -60,6 +63,21 @@ class OpenAccessFilterOrderTest {
         assertThat(throttle).isGreaterThan(new SecurityConfig().bufferingFilter(props, new SimpleMeterRegistry()).getOrder())
             .isLessThan(new ObservabilityConfig().internalEndpointGuardFilter().getOrder())
             .isLessThan(AuditFilterOrderTest.openAccessRegistration(mock(PsamaClient.class), new AuditContext(), props).getOrder());
+    }
+
+    @Test
+    void perKeyLimiterRunsAfterOpenAccessGrantsAndBeforeTheIdentityHeaderSanitizer() {
+        GatewaySecurityProperties props = props();
+        RateLimitProperties rateLimit = new RateLimitProperties(
+            true, new RateLimitProperties.KeyLimits(60, 3000), new RateLimitProperties.KeyLimits(60, 3000),
+            new RateLimitProperties.IpLimits(60, 3000, 300), new RateLimitProperties.Store(1000), List.of(CidrRange.parse("192.0.2.10/32")),
+            List.of()
+        );
+        int perKey = new SecurityConfig().perKeyRateLimitFilter(rateLimit, new ClientIpResolver(List.of()), subject -> null).getOrder();
+
+        assertThat(perKey)
+            .isGreaterThan(AuditFilterOrderTest.openAccessRegistration(mock(PsamaClient.class), new AuditContext(), props).getOrder())
+            .isLessThan(new ObservabilityConfig().inboundIdentityHeaderSanitizingFilter().getOrder());
     }
 
     @Test
