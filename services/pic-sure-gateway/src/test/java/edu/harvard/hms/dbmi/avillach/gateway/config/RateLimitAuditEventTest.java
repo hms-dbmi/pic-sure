@@ -224,7 +224,7 @@ class RateLimitAuditEventTest {
     }
 
     @Test
-    void aBreachOnAPathTheAuditFilterSkipsIsStillAudited() throws Exception {
+    void aBreachOnAPathTheAuditFilterSkipsIsStillAudited(CapturedOutput output) throws Exception {
         MockHttpServletResponse response = send(
             breaching(RateLimitSubject.Kind.PREVALIDATION_IP, new RateLimitDecision(false, Window.BURST, 12)),
             request("/visualization/bin/continuous", "Bearer " + USER_KEY)
@@ -235,6 +235,7 @@ class RateLimitAuditEventTest {
         assertThat(event.getRequest().getUrl()).isEqualTo("/visualization/bin/continuous");
         assertThat(event.getMetadata()).containsEntry("auth_action", "open_access.rate_limited")
             .containsEntry("rate_limit_window", "prevalidation");
+        assertNeverContains(output, USER_KEY);
     }
 
     @Test
