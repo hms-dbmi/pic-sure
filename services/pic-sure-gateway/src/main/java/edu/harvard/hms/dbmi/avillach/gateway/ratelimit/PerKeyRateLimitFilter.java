@@ -26,10 +26,6 @@ import jakarta.servlet.http.HttpServletResponse;
  */
 public class PerKeyRateLimitFilter extends OncePerRequestFilter {
 
-    static final String KEY_TYPE_USER = "USER";
-    static final String KEY_TYPE_SESSION = "SESSION";
-    static final String KEY_TYPE_PLATFORM = "PLATFORM";
-
     private final boolean enabled;
     private final ClientIpResolver clientIps;
     private final List<CidrRange> allowlist;
@@ -68,16 +64,16 @@ public class PerKeyRateLimitFilter extends OncePerRequestFilter {
             req.getAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_VALIDATION) instanceof OpenAccessValidation v ? v : null;
         String keyType = validation == null ? null : validation.keyType();
         String keyId = validation == null ? null : validation.keyId();
-        if (KEY_TYPE_USER.equals(keyType)) {
+        if (OpenAccessValidation.KEY_TYPE_USER.equals(keyType)) {
             UUID keyUuid = parseUuid(keyId);
             if (keyUuid != null) {
                 return RateLimitSubject.user(keyUuid);
             }
-        } else if (KEY_TYPE_SESSION.equals(keyType) && keyId != null && !keyId.isBlank()) {
+        } else if (OpenAccessValidation.KEY_TYPE_SESSION.equals(keyType) && keyId != null && !keyId.isBlank()) {
             return RateLimitSubject.session(keyId);
         }
         ClientIp client = clientIps.resolve(req);
-        if (KEY_TYPE_PLATFORM.equals(keyType) && client.isIn(allowlist)) {
+        if (OpenAccessValidation.KEY_TYPE_PLATFORM.equals(keyType) && client.isIn(allowlist)) {
             return null;
         }
         return RateLimitSubject.ip(client.address());
