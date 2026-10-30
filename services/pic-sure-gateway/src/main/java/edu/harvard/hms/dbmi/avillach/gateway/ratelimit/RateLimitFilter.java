@@ -1,0 +1,69 @@
+package edu.harvard.hms.dbmi.avillach.gateway.ratelimit;
+
+import java.io.IOException;
+import java.util.List;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import edu.harvard.hms.dbmi.avillach.commons.net.CidrRange;
+import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
+import edu.harvard.hms.dbmi.avillach.commons.net.UnresolvablePeerException;
+import edu.harvard.hms.dbmi.avillach.gateway.error.GatewayErrors;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+/**
+ * The flow both rate-limit stages share: a request the stage doesn't charge passes, and any other draws from its subject's bucket and gets
+ * the standard 429 once that bucket is empty. Everything passes while the limiter is disabled. A peer the resolver cannot parse is refused
+ * with 500 rather than admitted or thrown.
+ */
+abstract class RateLimitFilter extends OncePerRequestFilter {
+
+    private static final Logger log = LoggerFactory.getLogger(RateLimitFilter.class);
+
+    protected final ClientIpResolver clientIps;
+    protected final List<CidrRange> allowlist;
+    private final boolean enabled;
+    private final RateLimitStore store;
+
+    RateLimitFilter(RateLimitProperties props, ClientIpResolver clientIps, RateLimitStore store) {
+        this.enabled = props.enabled();
+        this.clientIps = clientIps;
+        this.allowlist = props.platformAllowlistedSourceCidrs();
+        this.store = store;
+    }
+
+    /** The bucket this request draws from, or null when this stage doesn't limit it. */
+    protected abstract RateLimitSubject subject(HttpServletRequest req);
+
+    @Override
+    protected final void doFilterInternal(HttpServletRequest req, HttpServletResponse resp, FilterChain chain)
+        throws ServletException, IOException {
+        RateLimitSubject subject;
+        try {
+            subject = enabled ? subject(req) : null;
+        } catch (UnresolvablePeerException e) {
+            log.error("Cannot resolve connection peer '{}' in {}", req.getRemoteAddr(), getClass().getName());
+            GatewayErrors.write(
+                resp, HttpStatus.INTERNAL_SERVER_ERROR, "client_ip_unresolvable",
+                "The gateway could not determine the connection peer address."
+            );
+            return;
+        }
+        if (subject == null) {
+            chain.doFilter(req, resp);
+            return;
+        }
+        RateLimitDecision decision = store.tryConsume(subject);
+        if (!decision.allowed()) {
+            RateLimitBreach.reject(req, resp, subject, decision);
+            return;
+        }
+        chain.doFilter(req, resp);
+    }
+}
