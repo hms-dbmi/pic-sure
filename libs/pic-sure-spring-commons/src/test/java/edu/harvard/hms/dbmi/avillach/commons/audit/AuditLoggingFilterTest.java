@@ -262,6 +262,23 @@ class AuditLoggingFilterTest {
     }
 
     @Test
+    void aRepeatedXffHeaderIsReadFromItsLastLineWhereTheProxyAppended() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of());
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("X-Forwarded-For", "6.6.6.6");
+        request.addHeader("X-Forwarded-For", "203.0.113.9");
+
+        filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(client, times(1)).send(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getRequest().getSrcIp()).isEqualTo("203.0.113.9");
+    }
+
+    @Test
     void aSuppliedSourceIpFunctionReplacesTheXffRuleForSrcIp() throws Exception {
         LoggingClient client = mock(LoggingClient.class);
         when(client.isEnabled()).thenReturn(true);
