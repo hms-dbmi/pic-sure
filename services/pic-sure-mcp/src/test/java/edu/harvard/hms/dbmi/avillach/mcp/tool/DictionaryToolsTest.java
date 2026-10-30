@@ -81,12 +81,13 @@ class DictionaryToolsTest {
 
     @Test
     void searchSendsTheFacetsItWasGiven() {
-        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=10"))
-            .andExpect(
-                content().json("{\"facets\":[{\"category\":\"dataset_id\",\"name\":\"Nhanes\"}],\"search\":\"cholesterol\",\"consents\":[]}", true)
-            ).andRespond(withSuccess("{\"content\":[],\"totalElements\":6}", MediaType.APPLICATION_JSON));
+        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=10")).andExpect(
+            content()
+                .json("{\"facets\":[{\"category\":\"dataset_id\",\"name\":\"Nhanes\"}],\"search\":\"cholesterol\",\"consents\":[]}", true)
+        ).andRespond(withSuccess("{\"content\":[],\"totalElements\":6}", MediaType.APPLICATION_JSON));
 
-        ConceptSearchResult result = search.searchConcepts(context, "cholesterol", null, null, null, List.of(new FacetFilter("dataset_id", "Nhanes")));
+        ConceptSearchResult result =
+            search.searchConcepts(context, "cholesterol", null, null, null, List.of(new FacetFilter("dataset_id", "Nhanes")));
 
         server.verify();
         assertThat(result.total()).isEqualTo(6);
@@ -109,8 +110,9 @@ class DictionaryToolsTest {
     @Test
     void aFacetAloneBrowsesWithAnEmptySearch() {
         server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=10"))
-            .andExpect(content().json("{\"facets\":[{\"category\":\"data_type\",\"name\":\"continuous\"}],\"search\":\"\",\"consents\":[]}", true))
-            .andRespond(withSuccess("{\"content\":[],\"totalElements\":863}", MediaType.APPLICATION_JSON));
+            .andExpect(
+                content().json("{\"facets\":[{\"category\":\"data_type\",\"name\":\"continuous\"}],\"search\":\"\",\"consents\":[]}", true)
+            ).andRespond(withSuccess("{\"content\":[],\"totalElements\":863}", MediaType.APPLICATION_JSON));
         List<FacetFilter> continuous = List.of(new FacetFilter("data_type", "continuous"));
 
         assertThat(search.searchConcepts(context, "", null, null, null, continuous).total()).isEqualTo(863);
@@ -149,7 +151,8 @@ class DictionaryToolsTest {
 
     @Test
     void searchRefusesAMalformedFacetListBeforeCallingTheDictionary() {
-        List<FacetFilter> tooMany = IntStream.range(0, ConceptSearchTool.MAX_FACETS + 1).mapToObj(i -> new FacetFilter("c", "n" + i)).toList();
+        List<FacetFilter> tooMany =
+            IntStream.range(0, ConceptSearchTool.MAX_FACETS + 1).mapToObj(i -> new FacetFilter("c", "n" + i)).toList();
         List<FacetFilter> withNull = java.util.Arrays.asList(new FacetFilter("c", "n"), null);
 
         assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null, null, tooMany)).isInstanceOf(ToolFailure.class)
@@ -157,11 +160,14 @@ class DictionaryToolsTest {
         assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null, null, withNull)).isInstanceOf(ToolFailure.class);
         assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null, null, List.of(new FacetFilter(null, "n"))))
             .isInstanceOf(ToolFailure.class);
-        assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null, null, List.of(new FacetFilter("c", " ")))).isInstanceOf(ToolFailure.class);
+        assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null, null, List.of(new FacetFilter("c", " "))))
+            .isInstanceOf(ToolFailure.class);
         assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null, null, List.of(new FacetFilter("c", "a\nb"))))
             .isInstanceOf(ToolFailure.class);
         assertThatThrownBy(
-            () -> search.searchConcepts(context, "x", null, null, null, List.of(new FacetFilter("c", "n".repeat(ConceptSearchTool.MAX_FACET_TEXT_LENGTH + 1))))
+            () -> search.searchConcepts(
+                context, "x", null, null, null, List.of(new FacetFilter("c", "n".repeat(ConceptSearchTool.MAX_FACET_TEXT_LENGTH + 1)))
+            )
         ).isInstanceOf(ToolFailure.class);
         server.verify();
     }
@@ -271,7 +277,7 @@ class DictionaryToolsTest {
                 )
             );
 
-        FacetResult result = facets.listFacets(context, "asthma");
+        FacetResult result = facets.listFacets(context, "asthma", null, null);
 
         server.verify();
         assertThat(result.search()).isEqualTo("asthma");
@@ -292,7 +298,7 @@ class DictionaryToolsTest {
             .andExpect(content().json("{\"facets\":[],\"search\":\"\",\"consents\":[]}", true))
             .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
 
-        FacetResult result = facets.listFacets(context, null);
+        FacetResult result = facets.listFacets(context, null, null, null);
 
         server.verify();
         assertThat(result.categories()).isEmpty();
@@ -307,12 +313,137 @@ class DictionaryToolsTest {
         server.expect(requestTo(GATEWAY + "/dictionary/facets"))
             .andRespond(withSuccess("[" + categoriesJson + "]", MediaType.APPLICATION_JSON));
 
-        FacetResult result = facets.listFacets(context, "");
+        FacetResult result = facets.listFacets(context, "", null, null);
 
         assertThat(result.categories()).hasSize(FacetTool.MAX_CATEGORIES);
         assertThat(result.categoriesOmitted()).isEqualTo(2);
         assertThat(result.categories().get(0).facets()).hasSize(FacetTool.MAX_FACETS_PER_CATEGORY);
         assertThat(result.categories().get(0).facetsOmitted()).isEqualTo(5);
+    }
+
+    @Test
+    void facetsListNestedFacetsAfterTheirParent() {
+        server.expect(requestTo(GATEWAY + "/dictionary/facets")).andRespond(
+            withSuccess(
+                "[{\"name\":\"dataset_id\",\"facets\":[{\"name\":\"phs1\",\"count\":5,\"children\":"
+                    + "[{\"name\":\"phs1.v2\",\"display\":\"FHS v2\",\"count\":3}]},{\"name\":\"phs2\",\"count\":1}]}]",
+                MediaType.APPLICATION_JSON
+            )
+        );
+
+        FacetResult result = facets.listFacets(context, "", null, null);
+
+        assertThat(result.categories().get(0).facets()).containsExactly(
+            new FacetResult.Facet("phs1", null, 5, null), new FacetResult.Facet("phs1.v2", "FHS v2", 3, "phs1"),
+            new FacetResult.Facet("phs2", null, 1, null)
+        );
+    }
+
+    @Test
+    void categoryAndMatchFindAFacetTheCapWouldDrop() {
+        String facetJson = IntStream.range(0, 40).mapToObj(i -> "{\"name\":\"f" + i + "\",\"display\":\"Facet " + i + "\",\"count\":1}")
+            .collect(Collectors.joining(","));
+        // The other category holds a facet that matches too, so only the category filter can leave it out.
+        server.expect(requestTo(GATEWAY + "/dictionary/facets")).andRespond(
+            withSuccess(
+                "[{\"name\":\"other\",\"facets\":[{\"name\":\"f37\",\"display\":\"Facet 37\"}]},{\"name\":\"c\",\"facets\":["
+                    + facetJson + "]}]",
+                MediaType.APPLICATION_JSON
+            )
+        );
+
+        FacetResult result = facets.listFacets(context, "", "c", "FACET 37");
+
+        assertThat(result.categories()).singleElement().satisfies(category -> {
+            assertThat(category.name()).isEqualTo("c");
+            assertThat(category.facets()).extracting(FacetResult.Facet::name).containsExactly("f37");
+            assertThat(category.facetsOmitted()).isNull();
+        });
+    }
+
+    @Test
+    void categoryAloneListsOnlyThatCategoryWithTheCapStillApplied() {
+        String facetJson =
+            IntStream.range(0, 30).mapToObj(i -> "{\"name\":\"f" + i + "\",\"count\":1}").collect(Collectors.joining(","));
+        server.expect(requestTo(GATEWAY + "/dictionary/facets")).andRespond(
+            withSuccess(
+                "[{\"name\":\"a\",\"facets\":[{\"name\":\"x\"}]},{\"name\":\"c\",\"facets\":[" + facetJson + "]}]",
+                MediaType.APPLICATION_JSON
+            )
+        );
+
+        FacetResult result = facets.listFacets(context, "", "c", null);
+
+        assertThat(result.categoriesOmitted()).isNull();
+        assertThat(result.categories()).singleElement().satisfies(category -> {
+            assertThat(category.name()).isEqualTo("c");
+            assertThat(category.facets()).hasSize(FacetTool.MAX_FACETS_PER_CATEGORY);
+            assertThat(category.facetsOmitted()).isEqualTo(5);
+        });
+    }
+
+    @Test
+    void anUnknownCategoryListsNothing() {
+        server.expect(requestTo(GATEWAY + "/dictionary/facets"))
+            .andRespond(withSuccess("[{\"name\":\"a\",\"facets\":[{\"name\":\"x\"}]}]", MediaType.APPLICATION_JSON));
+
+        FacetResult result = facets.listFacets(context, "", "nope", null);
+
+        assertThat(result.categories()).isEmpty();
+        assertThat(result.categoriesOmitted()).isNull();
+    }
+
+    @Test
+    void matchReadsTheFacetNameIgnoringCase() {
+        server.expect(requestTo(GATEWAY + "/dictionary/facets")).andRespond(
+            withSuccess("[{\"name\":\"a\",\"facets\":[{\"name\":\"bmi_2020\"},{\"name\":\"age\"}]}]", MediaType.APPLICATION_JSON)
+        );
+
+        FacetResult result = facets.listFacets(context, "", null, "  BMI ");
+
+        assertThat(result.categories().get(0).facets()).extracting(FacetResult.Facet::name).containsExactly("bmi_2020");
+    }
+
+    @Test
+    void aNestedFacetNamesItsImmediateParentAndMatchesOnItsOwn() {
+        server.expect(requestTo(GATEWAY + "/dictionary/facets")).andRespond(
+            withSuccess(
+                "[{\"name\":\"dataset_id\",\"facets\":[{\"name\":\"phs1\",\"children\":[{\"name\":\"phs1.v2\",\"children\":"
+                    + "[{\"name\":\"phs1.v2.p1\",\"display\":\"Consent 1\"}]}]}]}]",
+                MediaType.APPLICATION_JSON
+            )
+        );
+
+        FacetResult result = facets.listFacets(context, "", null, "consent");
+
+        assertThat(result.categories().get(0).facets()).containsExactly(new FacetResult.Facet("phs1.v2.p1", "Consent 1", null, "phs1.v2"));
+    }
+
+    @Test
+    void facetsRejectBadCategoryOrMatchWithoutCallingTheGateway() {
+        String tooLong = "x".repeat(FacetTool.MAX_FILTER_LENGTH + 1);
+
+        assertThatThrownBy(() -> facets.listFacets(context, "", tooLong, null)).isInstanceOf(ToolFailure.class)
+            .hasMessageContaining("category");
+        assertThatThrownBy(() -> facets.listFacets(context, "", null, tooLong)).isInstanceOf(ToolFailure.class)
+            .hasMessageContaining("match");
+        assertThatThrownBy(() -> facets.listFacets(context, "", "a\nb", null)).isInstanceOf(ToolFailure.class);
+        assertThatThrownBy(() -> facets.listFacets(context, "", null, "a\u0000b")).isInstanceOf(ToolFailure.class);
+        server.verify();
+    }
+
+    @Test
+    void matchDropsCategoriesWithNoMatchingFacet() {
+        server.expect(requestTo(GATEWAY + "/dictionary/facets")).andRespond(
+            withSuccess(
+                "[{\"name\":\"a\",\"facets\":[{\"name\":\"asthma\"}]},{\"name\":\"b\",\"facets\":[{\"name\":\"bmi\"}]}]",
+                MediaType.APPLICATION_JSON
+            )
+        );
+
+        FacetResult result = facets.listFacets(context, "", null, "bm");
+
+        assertThat(result.categories()).extracting(FacetResult.Category::name).containsExactly("b");
     }
 
     @Test
@@ -392,9 +523,10 @@ class DictionaryToolsTest {
         server.expect(requestTo(GATEWAY + "/dictionary/concepts/detail/phs1"))
             .andRespond(withStatus(httpStatus).body(LEAK).contentType(MediaType.TEXT_PLAIN));
 
-        assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null, null, null)).isInstanceOf(ToolFailure.class).hasMessage(expected)
-            .hasNoCause().satisfies(e -> assertThat(e.getMessage()).doesNotContain(LEAK));
-        assertThatThrownBy(() -> facets.listFacets(context, "x")).isInstanceOf(ToolFailure.class).hasMessage(expected).hasNoCause();
+        assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null, null, null)).isInstanceOf(ToolFailure.class)
+            .hasMessage(expected).hasNoCause().satisfies(e -> assertThat(e.getMessage()).doesNotContain(LEAK));
+        assertThatThrownBy(() -> facets.listFacets(context, "x", null, null)).isInstanceOf(ToolFailure.class).hasMessage(expected)
+            .hasNoCause();
         assertThatThrownBy(() -> detail.getConcept(context, "phs1", "\\p\\")).isInstanceOf(ToolFailure.class).hasMessage(expected)
             .hasNoCause();
     }
@@ -407,7 +539,7 @@ class DictionaryToolsTest {
 
         assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null, null, null)).isInstanceOf(ToolFailure.class)
             .hasMessage("The dictionary endpoint was not found.").hasNoCause();
-        assertThatThrownBy(() -> facets.listFacets(context, "x")).isInstanceOf(ToolFailure.class)
+        assertThatThrownBy(() -> facets.listFacets(context, "x", null, null)).isInstanceOf(ToolFailure.class)
             .hasMessage("The dictionary endpoint was not found.").hasNoCause();
     }
 
@@ -415,7 +547,7 @@ class DictionaryToolsTest {
     void connectionFailureBecomesUnavailableWithoutTheHostOrCause() {
         server.expect(requestTo(GATEWAY + "/dictionary/facets")).andRespond(withException(new IOException("refused gateway.test:8080")));
 
-        assertThatThrownBy(() -> facets.listFacets(context, "x")).isInstanceOf(ToolFailure.class)
+        assertThatThrownBy(() -> facets.listFacets(context, "x", null, null)).isInstanceOf(ToolFailure.class)
             .hasMessage("The dictionary is unavailable. Try again shortly.").hasNoCause();
     }
 
@@ -429,7 +561,8 @@ class DictionaryToolsTest {
 
         assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null, null, null)).isInstanceOf(ToolFailure.class)
             .hasMessage(unavailable).hasNoCause();
-        assertThatThrownBy(() -> facets.listFacets(context, "x")).isInstanceOf(ToolFailure.class).hasMessage(unavailable).hasNoCause();
+        assertThatThrownBy(() -> facets.listFacets(context, "x", null, null)).isInstanceOf(ToolFailure.class).hasMessage(unavailable)
+            .hasNoCause();
         assertThatThrownBy(() -> detail.getConcept(context, "phs1", "\\p\\")).isInstanceOf(ToolFailure.class).hasMessage(unavailable)
             .hasNoCause();
         server.verify();
