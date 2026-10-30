@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 import org.slf4j.Logger;
@@ -43,6 +44,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     private final List<String> skipContains;
     private final ClientTypeAllowlist clientTypes;
     private final Predicate<String> forwardAuthorization;
+    private final Function<HttpServletRequest, String> sourceIp;
 
     /**
      * Creates a filter that records the client-supplied {@code X-Client-Type} header as the audit event's {@code caller}.
@@ -83,12 +85,25 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
         LoggingClient client, AuditRouteTable routes, AuditContext audit, List<String> skipContains, ClientTypeAllowlist clientTypes,
         Predicate<String> forwardAuthorization
     ) {
+        this(client, routes, audit, skipContains, clientTypes, forwardAuthorization, AuditLoggingFilter::resolveSourceIp);
+    }
+
+    /**
+     * @param clientTypes as above
+     * @param forwardAuthorization as above
+     * @param sourceIp the client address recorded as the event's {@code srcIp}, which also seeds the fallback session id
+     */
+    public AuditLoggingFilter(
+        LoggingClient client, AuditRouteTable routes, AuditContext audit, List<String> skipContains, ClientTypeAllowlist clientTypes,
+        Predicate<String> forwardAuthorization, Function<HttpServletRequest, String> sourceIp
+    ) {
         this.client = client;
         this.routes = routes;
         this.audit = audit;
         this.skipContains = skipContains != null ? List.copyOf(skipContains) : List.of();
         this.clientTypes = clientTypes;
         this.forwardAuthorization = Objects.requireNonNull(forwardAuthorization, "forwardAuthorization");
+        this.sourceIp = Objects.requireNonNull(sourceIp, "sourceIp");
     }
 
     @Override
@@ -147,7 +162,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
             requestId = MDC.get("requestId");
         }
 
-        String srcIp = resolveSourceIp(request);
+        String srcIp = sourceIp.apply(request);
         String userAgent = request.getHeader("User-Agent");
         String sessionId = SessionIdResolver.resolve(request.getHeader("X-Session-Id"), srcIp, userAgent);
 
@@ -203,13 +218,16 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     /**
      * Takes the RIGHTMOST X-Forwarded-For entry, not the leftmost: clients can send an arbitrary XFF header of their own, and the trusted
      * front proxy (AIO httpd) APPENDS the address it saw -- so the rightmost entry is the nearest trusted hop and cannot be client-forged,
-     * while the leftmost is whatever the client chose to send.
+     * while the leftmost is whatever the client chose to send. An empty rightmost entry (a header of only commas, say) falls back to the
+     * connection peer, so a malformed header never drops the event. The default {@code srcIp} source.
      */
-    private String resolveSourceIp(HttpServletRequest request) {
+    static String resolveSourceIp(HttpServletRequest request) {
         String forwardedFor = request.getHeader("X-Forwarded-For");
-        if (forwardedFor != null && !forwardedFor.isBlank()) {
+        if (forwardedFor != null) {
             String[] hops = forwardedFor.split(",");
-            return hops[hops.length - 1].trim();
+            if (hops.length > 0 && !hops[hops.length - 1].isBlank()) {
+                return hops[hops.length - 1].trim();
+            }
         }
         return request.getRemoteAddr();
     }
