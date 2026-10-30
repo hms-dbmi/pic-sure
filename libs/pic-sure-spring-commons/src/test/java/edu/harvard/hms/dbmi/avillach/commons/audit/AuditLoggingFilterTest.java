@@ -2,6 +2,8 @@ package edu.harvard.hms.dbmi.avillach.commons.audit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -445,5 +447,36 @@ class AuditLoggingFilterTest {
 
         assertThat(event.getEventType()).isEqualTo("OTHER");
         assertThat(event.getAction()).isEqualTo("POST");
+    }
+
+    @Test
+    void forwardsTheAuthorizationHeaderByDefault() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of());
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("Authorization", "Bearer some.jwt.token");
+        request.addHeader("X-Request-Id", "req-1");
+
+        filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
+
+        verify(client).send(any(LoggingEvent.class), eq("Bearer some.jwt.token"), eq("req-1"));
+    }
+
+    @Test
+    void anAuthorizationTheForwardPredicateRejectsIsNotSentButTheRequestIdStillIs() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter =
+            new AuditLoggingFilter(client, routes, new AuditContext(), List.of(), null, authorization -> !authorization.contains("secret"));
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("Authorization", "Bearer secret-key");
+        request.addHeader("X-Request-Id", "req-1");
+
+        filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
+
+        verify(client).send(any(LoggingEvent.class), isNull(), eq("req-1"));
     }
 }

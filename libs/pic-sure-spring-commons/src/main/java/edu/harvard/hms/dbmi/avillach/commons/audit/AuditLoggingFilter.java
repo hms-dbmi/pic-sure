@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,6 +41,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     private final AuditContext audit;
     private final List<String> skipContains;
     private final ClientTypeAllowlist clientTypes;
+    private final Predicate<String> forwardAuthorization;
 
     /**
      * Creates a filter that records the client-supplied {@code X-Client-Type} header as the audit event's {@code caller}.
@@ -68,11 +70,24 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     public AuditLoggingFilter(
         LoggingClient client, AuditRouteTable routes, AuditContext audit, List<String> skipContains, ClientTypeAllowlist clientTypes
     ) {
+        this(client, routes, audit, skipContains, clientTypes, authorization -> true);
+    }
+
+    /**
+     * @param clientTypes as for the five-argument constructor
+     * @param forwardAuthorization whether a request's {@code Authorization} value is passed on to the logging service, which reads user
+     *        claims from it; a rejected value is dropped and the event is sent without one
+     */
+    public AuditLoggingFilter(
+        LoggingClient client, AuditRouteTable routes, AuditContext audit, List<String> skipContains, ClientTypeAllowlist clientTypes,
+        Predicate<String> forwardAuthorization
+    ) {
         this.client = client;
         this.routes = routes;
         this.audit = audit;
         this.skipContains = skipContains != null ? List.copyOf(skipContains) : List.of();
         this.clientTypes = clientTypes;
+        this.forwardAuthorization = forwardAuthorization;
     }
 
     @Override
@@ -174,6 +189,9 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
         LoggingEvent event = eventBuilder.build();
 
         String authHeader = request.getHeader("Authorization");
+        if (authHeader != null && !forwardAuthorization.test(authHeader)) {
+            authHeader = null;
+        }
         if (authHeader != null || requestId != null) {
             client.send(event, authHeader, requestId);
         } else {
