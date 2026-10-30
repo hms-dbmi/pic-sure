@@ -1,0 +1,88 @@
+{
+  "type": "record",
+  "name": "Entity",
+  "doc": "The PFB envelope, copied from make_avro_schema in https://github.com/uc-cdis/pypfb/blob/master/src/pfb/writer.py. The object union holds only Metadata here; PfbSchema appends one record per exported node.",
+  "fields": [
+    {"name": "id", "type": ["null", "string"], "default": null},
+    {"name": "name", "type": "string"},
+    {
+      "name": "object",
+      "type": [
+        {
+          "type": "record",
+          "name": "Metadata",
+          "fields": [
+            {
+              "name": "nodes",
+              "type": {
+                "type": "array",
+                "items": {
+                  "type": "record",
+                  "name": "Node",
+                  "fields": [
+                    {"name": "name", "type": "string"},
+                    {"name": "ontology_reference", "type": "string"},
+                    {"name": "values", "type": {"type": "map", "values": "string"}},
+                    {
+                      "name": "links",
+                      "type": {
+                        "type": "array",
+                        "items": {
+                          "type": "record",
+                          "name": "Link",
+                          "fields": [
+                            {
+                              "name": "multiplicity",
+                              "type": {
+                                "type": "enum",
+                                "name": "Multiplicity",
+                                "symbols": ["ONE_TO_ONE", "ONE_TO_MANY", "MANY_TO_ONE", "MANY_TO_MANY"]
+                              }
+                            },
+                            {"name": "dst", "type": "string"},
+                            {"name": "name", "type": "string"}
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "name": "properties",
+                      "type": {
+                        "type": "array",
+                        "items": {
+                          "type": "record",
+                          "name": "Property",
+                          "fields": [
+                            {"name": "name", "type": "string"},
+                            {"name": "ontology_reference", "type": "string"},
+                            {"name": "values", "type": {"type": "map", "values": "string"}}
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {"name": "misc", "type": {"type": "map", "values": "string"}}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "relations",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "Relation",
+          "fields": [
+            {"name": "dst_id", "type": "string"},
+            {"name": "dst_name", "type": "string"}
+          ]
+        }
+      },
+      "default": []
+    }
+  ]
+}
