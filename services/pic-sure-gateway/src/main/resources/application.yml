@@ -144,6 +144,27 @@ picsure:
           url: ${PSAMA_URL:http://psama:8090}
           docs-path: /auth/v3/api-docs
           public-prefix: /psama
+    # Open-access rate limiting, off by default. The env var names are the deployment contract (AIO gateway.env,
+    # BDC/AIM-AHEAD gateway.env.tftpl). Limits are requests per minute (burst, reset on the minute boundary) and per
+    # UTC day (sustained, reset at midnight UTC); every limit must be positive. trusted-proxies and
+    # platform-allowlisted-source-cidrs are comma-separated CIDRs (a bare address is /32 or /128). Enabling with no
+    # trusted proxies fails startup: the reverse proxy (httpd) must be listed, or every client shares one bucket.
+    rate-limit:
+      enabled: ${RATE_LIMIT_ENABLED:false}
+      user:
+        burst-per-minute: ${RATE_LIMIT_USER_BURST_PER_MINUTE:60}
+        sustained-per-day: ${RATE_LIMIT_USER_SUSTAINED_PER_DAY:3000}
+      session:
+        burst-per-minute: ${RATE_LIMIT_SESSION_BURST_PER_MINUTE:60}
+        sustained-per-day: ${RATE_LIMIT_SESSION_SUSTAINED_PER_DAY:3000}
+      ip:
+        burst-per-minute: ${RATE_LIMIT_IP_BURST_PER_MINUTE:60}
+        sustained-per-day: ${RATE_LIMIT_IP_SUSTAINED_PER_DAY:3000}
+        prevalidation-per-minute: ${RATE_LIMIT_IP_PREVALIDATION_PER_MINUTE:300}
+      store:
+        max-subjects: ${RATE_LIMIT_STORE_MAX_SUBJECTS:100000}
+      trusted-proxies: ${RATE_LIMIT_TRUSTED_PROXIES:}
+      platform-allowlisted-source-cidrs: ${RATE_LIMIT_PLATFORM_ALLOWLISTED_SOURCE_CIDRS:}
     security:
       open-access-enabled: ${GATEWAY_OPEN_ACCESS_ENABLED:false}
       max-body-bytes: ${GATEWAY_AUTH_MAX_BODY_BYTES:10485760}

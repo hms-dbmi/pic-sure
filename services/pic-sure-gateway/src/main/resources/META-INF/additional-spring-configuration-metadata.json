@@ -5,6 +5,70 @@
       "type": "java.lang.Long",
       "description": "Throttle window, in milliseconds, during which GET /system/status reuses the last computed deep-health result instead of re-running SystemHealthService's check.",
       "defaultValue": 60000
+    },
+    {
+      "name": "picsure.gateway.rate-limit.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Master switch for both rate-limit stages (pre-validation per-IP throttle and post-grant per-key limiter). Enabling requires trusted-proxies. Env: RATE_LIMIT_ENABLED.",
+      "defaultValue": false
+    },
+    {
+      "name": "picsure.gateway.rate-limit.user.burst-per-minute",
+      "type": "java.lang.Long",
+      "description": "Requests per USER key per minute, reset on the minute boundary. Must be positive. Env: RATE_LIMIT_USER_BURST_PER_MINUTE.",
+      "defaultValue": 60
+    },
+    {
+      "name": "picsure.gateway.rate-limit.user.sustained-per-day",
+      "type": "java.lang.Long",
+      "description": "Requests per USER key per day, reset at midnight UTC. Must be positive. Env: RATE_LIMIT_USER_SUSTAINED_PER_DAY.",
+      "defaultValue": 3000
+    },
+    {
+      "name": "picsure.gateway.rate-limit.session.burst-per-minute",
+      "type": "java.lang.Long",
+      "description": "Requests per open-access session per minute, reset on the minute boundary. Must be positive. Env: RATE_LIMIT_SESSION_BURST_PER_MINUTE.",
+      "defaultValue": 60
+    },
+    {
+      "name": "picsure.gateway.rate-limit.session.sustained-per-day",
+      "type": "java.lang.Long",
+      "description": "Requests per open-access session per day, reset at midnight UTC. Must be positive. Env: RATE_LIMIT_SESSION_SUSTAINED_PER_DAY.",
+      "defaultValue": 3000
+    },
+    {
+      "name": "picsure.gateway.rate-limit.ip.burst-per-minute",
+      "type": "java.lang.Long",
+      "description": "Post-grant requests per client IP (IPv6 /64) per minute, for valid requests with no key or a PLATFORM key from a non-allowlisted source. Must be positive. Env: RATE_LIMIT_IP_BURST_PER_MINUTE.",
+      "defaultValue": 60
+    },
+    {
+      "name": "picsure.gateway.rate-limit.ip.sustained-per-day",
+      "type": "java.lang.Long",
+      "description": "Post-grant requests per client IP (IPv6 /64) per day, reset at midnight UTC. Must be positive. Env: RATE_LIMIT_IP_SUSTAINED_PER_DAY.",
+      "defaultValue": 3000
+    },
+    {
+      "name": "picsure.gateway.rate-limit.ip.prevalidation-per-minute",
+      "type": "java.lang.Long",
+      "description": "Requests per client IP (IPv6 /64) per minute that may reach PSAMA key validation. Must be positive. Env: RATE_LIMIT_IP_PREVALIDATION_PER_MINUTE.",
+      "defaultValue": 300
+    },
+    {
+      "name": "picsure.gateway.rate-limit.store.max-subjects",
+      "type": "java.lang.Long",
+      "description": "Maximum number of rate-limit buckets held in memory; past it the least-valuable bucket is evicted, never a request rejected. Must be positive. Env: RATE_LIMIT_STORE_MAX_SUBJECTS.",
+      "defaultValue": 100000
+    },
+    {
+      "name": "picsure.gateway.rate-limit.trusted-proxies",
+      "type": "java.util.List<java.lang.String>",
+      "description": "Comma-separated CIDRs of the proxies in front of the gateway whose X-Forwarded-For is honoured; a bare address is /32 or /128. Must include the reverse proxy (httpd) when rate limiting is enabled. Env: RATE_LIMIT_TRUSTED_PROXIES."
+    },
+    {
+      "name": "picsure.gateway.rate-limit.platform-allowlisted-source-cidrs",
+      "type": "java.util.List<java.lang.String>",
+      "description": "Comma-separated CIDRs whose PLATFORM-key traffic is exempt from rate limiting. Empty means no exemption. Env: RATE_LIMIT_PLATFORM_ALLOWLISTED_SOURCE_CIDRS."
     }
   ]
 }
