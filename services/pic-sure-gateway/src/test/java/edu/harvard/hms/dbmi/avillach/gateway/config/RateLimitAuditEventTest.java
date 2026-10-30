@@ -328,8 +328,9 @@ class RateLimitAuditEventTest {
     }
 
     @Test
-    void anOverCapChainIsAuditedAsTheProxyWithTheResolutionFailureFlagged() throws Exception {
-        String overCap = String.join(", ", Collections.nCopies(ClientIpResolver.MAX_HOPS + 1, CLIENT));
+    void anOverCapChainBucketsOnTheProxyWithTheFailureFlaggedButKeepsTheAppendedHopAsSrcIp() throws Exception {
+        // the caller's padding, then the hop httpd appended
+        String overCap = String.join(", ", Collections.nCopies(ClientIpResolver.MAX_HOPS, "6.6.6.6")) + ", " + CLIENT;
 
         send(
             breaching(RateLimitSubject.Kind.PREVALIDATION_IP, new RateLimitDecision(false, Window.BURST, 12)),
@@ -337,7 +338,8 @@ class RateLimitAuditEventTest {
         );
 
         LoggingEvent event = emitted();
-        assertThat(event.getRequest().getSrcIp()).isEqualTo(PROXY);
+        // the caller's padding can move its bucket onto the proxy, but not its address out of the audit trail
+        assertThat(event.getRequest().getSrcIp()).isEqualTo(CLIENT);
         assertThat(event.getMetadata()).containsEntry("rate_limit_subject", PROXY).containsEntry("rate_limit_ip_resolution_failed", true);
     }
 

@@ -172,10 +172,10 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     /**
      * Takes the RIGHTMOST X-Forwarded-For entry, not the leftmost: clients can send an arbitrary XFF header of their own, and the trusted
      * front proxy (AIO httpd) APPENDS the address it saw -- so the rightmost entry is the nearest trusted hop and cannot be client-forged,
-     * while the leftmost is whatever the client chose to send. An empty rightmost entry (a header of only commas, say) falls back to the
+     * while the leftmost is whatever the client chose to send. A blank rightmost entry, or a header of only commas, falls back to the
      * connection peer, so a malformed header never drops the event. The default {@code srcIp} source.
      */
-    static String resolveSourceIp(HttpServletRequest request) {
+    public static String resolveSourceIp(HttpServletRequest request) {
         String forwardedFor = request.getHeader("X-Forwarded-For");
         if (forwardedFor != null) {
             String[] hops = forwardedFor.split(",");

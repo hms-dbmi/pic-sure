@@ -23,20 +23,20 @@ import jakarta.servlet.http.HttpServletResponse;
  * service-to-service {@code X-PIC-SURE-INTERNAL-TOKEN} (a client-presented internal token must never transit the gateway) from every
  * inbound CLIENT request before anything downstream -- routing, the auth chain, or proxied services -- can ever see a client-supplied
  * value. <p> {@code X-Forwarded-For} is deliberately NOT stripped: the trusted front proxies legitimately append to it, and the gateway
- * reads it only through {@code ClientIpResolver}, which honours it from trusted proxies alone and takes the rightmost untrusted hop, never
- * the client-forgeable leftmost one. {@code X-Session-Id}, {@code request-source}, and ordinary {@code X-Client-Type} values are
- * deliberately left unstripped as client telemetry. The reserved {@code X-Client-Type: service} value is stripped because downstream
- * services use it to identify internal calls. An {@code Authorization} header carrying a PSAMA key ({@link ApiKeyBearer}) is stripped too;
- * a login token passes through. <p> {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} already hides the
- * identity headers from the client, but this filter exists as an independent trust boundary: even if the DB-free auth chain were ever
- * bypassed or misconfigured, a client's own {@code X-User-Id}/{@code X-User-Privileges}/etc. must never pass through untouched -- that
- * would be an identity/privilege-spoofing hole. This filter closes that hole unconditionally, independent of anything the auth chain does.
- * <p> Runs at order 25: after {@code OpenAccessFilter} (order 20) has read the optional API key from {@code Authorization} for PSAMA, and
- * before the remaining DB-free auth chain (introspection order 30+). This ensures the key never reaches introspection or downstream
- * services while still allowing open-access validation to consume it.
- * {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} (order 50) still runs afterward and sets the
- * gateway-resolved values on its own wrapper, which never falls through to the (already-sanitized) client request for these names -- so
- * normal propagation of resolved identity is unaffected by this filter running first.
+ * reads it through {@code ClientIpResolver}, which honours it from trusted proxies alone and takes the rightmost untrusted hop. Audit
+ * {@code srcIp} uses the rightmost entry when no trusted proxies are configured or resolution fails. Neither reads the client-forgeable
+ * leftmost one. {@code X-Session-Id}, {@code request-source}, and ordinary {@code X-Client-Type} values are deliberately left unstripped as
+ * client telemetry. The reserved {@code X-Client-Type: service} value is stripped because downstream services use it to identify internal
+ * calls. An {@code Authorization} header carrying a PSAMA key ({@link ApiKeyBearer}) is stripped too; a login token passes through. <p>
+ * {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} already hides the identity headers from the client, but
+ * this filter exists as an independent trust boundary: even if the DB-free auth chain were ever bypassed or misconfigured, a client's own
+ * {@code X-User-Id}/{@code X-User-Privileges}/etc. must never pass through untouched -- that would be an identity/privilege-spoofing hole.
+ * This filter closes that hole unconditionally, independent of anything the auth chain does. <p> Runs at order 25: after
+ * {@code OpenAccessFilter} (order 20) has read the optional API key from {@code Authorization} for PSAMA, and before the remaining DB-free
+ * auth chain (introspection order 30+). This ensures the key never reaches introspection or downstream services while still allowing
+ * open-access validation to consume it. {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} (order 50) still
+ * runs afterward and sets the gateway-resolved values on its own wrapper, which never falls through to the (already-sanitized) client
+ * request for these names -- so normal propagation of resolved identity is unaffected by this filter running first.
  */
 public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter {
 
