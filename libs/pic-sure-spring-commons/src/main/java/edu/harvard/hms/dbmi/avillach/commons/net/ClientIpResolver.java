@@ -1,7 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.commons.net;
 
 import java.net.InetAddress;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Enumeration;
 import java.util.List;
@@ -14,11 +13,11 @@ import jakarta.servlet.http.HttpServletRequest;
  *
  * <p>The peer is the starting point. When the peer is inside a trusted-proxy range the header is read: hops are walked right to left,
  * skipping any inside a trusted range, and the first untrusted hop is the client. If every hop is trusted the leftmost wins. A header from
- * an untrusted peer is ignored entirely, since the caller wrote all of it. Hops to the left of the client are never consulted for the
- * answer, which is why a caller-supplied prefix (AIO's httpd keeps one) cannot pick the result.
+ * an untrusted peer is ignored entirely, since the caller wrote all of it. Hops to the left of the client are never parsed, so a
+ * caller-written prefix (AIO's httpd keeps one, BDC's ALB appends to one) can neither pick the result nor force a failure.
  *
- * <p>A trusted peer forwarding a header that is over {@link #MAX_HEADER_LENGTH} characters, over {@link #MAX_HOPS} hops, or contains any
- * entry that isn't an IP literal falls back to the peer and is marked {@link ClientIp#resolutionFailed()}.
+ * <p>A trusted peer forwarding a header that is over {@link #MAX_HEADER_LENGTH} characters or {@link #MAX_HOPS} hops, or whose walk reaches
+ * an entry that isn't an IP literal, falls back to the peer and is marked {@link ClientIp#resolutionFailed()}.
  *
  * <p>Distinct from any allowlist: trusted-proxy membership only permits reading the header. Check allowlists with
  * {@link ClientIp#isIn(Collection)} on the result.
@@ -56,39 +55,31 @@ public final class ClientIpResolver {
      */
     public ClientIp resolve(String remoteAddr, String forwardedFor) {
         InetAddress peer = parsePeer(remoteAddr);
-        if (forwardedFor == null || forwardedFor.isBlank() || !CidrRange.anyContains(trustedProxies, peer)) {
+        if (forwardedFor == null || !CidrRange.anyContains(trustedProxies, peer)) {
             return new ClientIp(peer, false);
         }
-        List<InetAddress> hops = parseChain(forwardedFor);
-        if (hops == null) {
+        if (forwardedFor.length() > MAX_HEADER_LENGTH) {
             return new ClientIp(peer, true);
         }
-        for (int i = hops.size() - 1; i >= 0; i--) {
-            if (!CidrRange.anyContains(trustedProxies, hops.get(i))) {
-                return new ClientIp(hops.get(i), false);
-            }
+        if (forwardedFor.isBlank()) {
+            return new ClientIp(peer, false);
         }
-        return new ClientIp(hops.get(0), false);
-    }
-
-    /** The hops in header order, or null if the header is over a cap or any hop is malformed. */
-    private static List<InetAddress> parseChain(String forwardedFor) {
-        if (forwardedFor.length() > MAX_HEADER_LENGTH) {
-            return null;
+        String[] hops = forwardedFor.split(",", -1);
+        if (hops.length > MAX_HOPS) {
+            return new ClientIp(peer, true);
         }
-        String[] entries = forwardedFor.split(",", -1);
-        if (entries.length > MAX_HOPS) {
-            return null;
-        }
-        List<InetAddress> hops = new ArrayList<>(entries.length);
-        for (String entry : entries) {
+        InetAddress hop = null;
+        for (int i = hops.length - 1; i >= 0; i--) {
             try {
-                hops.add(IpLiterals.parseHop(entry.trim()));
+                hop = IpLiterals.parseHop(hops[i].trim());
             } catch (IllegalArgumentException e) {
-                return null;
+                return new ClientIp(peer, true);
+            }
+            if (!CidrRange.anyContains(trustedProxies, hop)) {
+                return new ClientIp(hop, false);
             }
         }
-        return hops;
+        return new ClientIp(hop, false);
     }
 
     private static InetAddress parsePeer(String remoteAddr) {
@@ -116,7 +107,7 @@ public final class ClientIpResolver {
             }
             joined.append(values.nextElement());
             if (joined.length() > MAX_HEADER_LENGTH) {
-                break; // already over the cap; parseChain rejects it without reading the rest
+                break; // already over the cap; resolve rejects it without reading the rest
             }
         }
         return joined.toString();

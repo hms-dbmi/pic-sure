@@ -96,12 +96,30 @@ class ClientIpResolverTest {
 
     @ParameterizedTest
     @ValueSource(
-        strings = {"not-an-ip", FORGED + ", garbage, " + CLIENT, CLIENT + ",", "," + CLIENT, FORGED + ",," + CLIENT, "unknown",
-            "example.com", "203.0.113.7:99999", "203.0.113.7:", "[2001:db8::1", "[203.0.113.7]", "2001:db8::1:443x", "010.0.0.1",
-            "fe80::1%eth0", "203.0.113.7 198.51.100.66"}
+        strings = {"not-an-ip", CLIENT + ",", CLIENT + ", 172.18.0.9 , garbage", "garbage, 172.18.0.9", "unknown", "example.com",
+            "203.0.113.7:99999", "203.0.113.7:", "[2001:db8::1", "[203.0.113.7]", "2001:db8::1:443x", "010.0.0.1", "fe80::1%eth0",
+            "203.0.113.7 198.51.100.66"}
     )
     void malformedChainFallsBackToPeerAndIsFlagged(String header) {
         assertFailedToPeer(aio.resolve(HTTPD, header));
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+        strings = {FORGED + ", garbage, " + CLIENT, "unknown, " + CLIENT, "x.x.x.x, " + CLIENT, "," + CLIENT, FORGED + ",," + CLIENT}
+    )
+    void malformedEntriesLeftOfTheClientAreNeverParsed(String header) {
+        assertResolved(aio.resolve(HTTPD, header), CLIENT);
+    }
+
+    @Test
+    void blankHeaderFromTrustedPeerIsTreatedAsAbsent() {
+        assertResolved(aio.resolve(HTTPD, "  "), HTTPD);
+    }
+
+    @Test
+    void overLongBlankHeaderFallsBack() {
+        assertFailedToPeer(aio.resolve(HTTPD, " ".repeat(ClientIpResolver.MAX_HEADER_LENGTH + 1)));
     }
 
     @Test

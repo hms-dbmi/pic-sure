@@ -35,7 +35,16 @@ public final class CidrRange {
             String addressPart = slash < 0 ? trimmed : trimmed.substring(0, slash);
             byte[] bytes = IpLiterals.parse(addressPart).getAddress();
             int maxBits = bytes.length * 8;
-            int prefix = slash < 0 ? maxBits : parsePrefix(trimmed.substring(slash + 1), maxBits);
+            int prefix = maxBits;
+            if (slash >= 0) {
+                // An IPv4-mapped literal (::ffff:a.b.c.d) parses to four bytes, but its prefix counts all 128 bits.
+                boolean mapped = bytes.length == 4 && addressPart.indexOf(':') >= 0;
+                int offset = mapped ? 96 : 0;
+                prefix = parsePrefix(trimmed.substring(slash + 1), maxBits + offset) - offset;
+                if (prefix < 0) {
+                    throw new IllegalArgumentException("IPv4-mapped prefix shorter than /96");
+                }
+            }
             mask(bytes, prefix);
             return new CidrRange(bytes, prefix, trimmed);
         } catch (IllegalArgumentException e) {
@@ -62,8 +71,11 @@ public final class CidrRange {
         return List.copyOf(ranges);
     }
 
-    /** Whether any of {@code ranges} contains {@code address}. False for a null address. */
-    public static boolean anyContains(Collection<CidrRange> ranges, InetAddress address) {
+    /**
+     * Whether any of {@code ranges} contains {@code address}. False for a null address. Package-private so allowlist checks go through
+     * {@link ClientIp#isIn}, which refuses failed resolutions.
+     */
+    static boolean anyContains(Collection<CidrRange> ranges, InetAddress address) {
         if (address == null) {
             return false;
         }
@@ -109,7 +121,8 @@ public final class CidrRange {
     }
 
     private static int parsePrefix(String text, int maxBits) {
-        if (text.isEmpty() || text.length() > 3 || !text.chars().allMatch(c -> c >= '0' && c <= '9')) {
+        boolean leadingZero = text.length() > 1 && text.charAt(0) == '0';
+        if (text.isEmpty() || text.length() > 3 || leadingZero || !text.chars().allMatch(c -> c >= '0' && c <= '9')) {
             throw new IllegalArgumentException("bad prefix length");
         }
         int prefix = Integer.parseInt(text);

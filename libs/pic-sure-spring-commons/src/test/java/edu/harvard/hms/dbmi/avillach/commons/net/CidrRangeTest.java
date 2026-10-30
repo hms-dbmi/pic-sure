@@ -57,6 +57,13 @@ class CidrRangeTest {
     }
 
     @Test
+    void ipv4MappedRangeCountsPrefixOverAll128Bits() {
+        assertThat(CidrRange.parse("::ffff:192.0.2.0/120")).isEqualTo(CidrRange.parse("192.0.2.0/24"));
+        assertThat(CidrRange.parse("::ffff:0:0/96").contains(ip("203.0.113.7"))).isTrue();
+        assertThat(CidrRange.parse("::ffff:192.0.2.1").prefixLength()).isEqualTo(32);
+    }
+
+    @Test
     void parsesListTrimmingSpacesAndSkippingBlanks() {
         assertThat(CidrRange.parseList(" 10.0.0.0/8 , ,2001:db8::/32,, 192.0.2.1 "))
             .containsExactly(CidrRange.parse("10.0.0.0/8"), CidrRange.parse("2001:db8::/32"), CidrRange.parse("192.0.2.1"));
@@ -74,7 +81,8 @@ class CidrRangeTest {
     @ParameterizedTest
     @ValueSource(
         strings = {"", "10.0.0.0/", "10.0.0.0/33", "2001:db8::/129", "10.0.0.0/-1", "10.0.0.0/8/8", "10.0.0", "10.0.0.0.0", "010.0.0.0/8",
-            "example.com", "localhost", "[2001:db8::]/32", "fe80::1%eth0", "10.0.0.0 /8", "10.0.0.0/ 8"}
+            "example.com", "localhost", "[2001:db8::]/32", "fe80::1%eth0", "10.0.0.0 /8", "10.0.0.0/ 8", "10.0.0.0/08",
+            "::ffff:192.0.2.0/95", "::ffff:192.0.2.0/129"}
     )
     void rejectsMalformedEntries(String cidr) {
         assertThatThrownBy(() -> CidrRange.parse(cidr)).isInstanceOf(IllegalArgumentException.class)
