@@ -9,7 +9,6 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -18,8 +17,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
-import org.springframework.boot.web.servlet.FilterRegistrationBean;
-import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
@@ -27,23 +24,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
-import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
-import edu.harvard.hms.dbmi.avillach.commons.net.CidrRange;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessValidation;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
-import edu.harvard.hms.dbmi.avillach.gateway.filter.AuditFilterConfig;
 import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitDecision;
 import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitDecision.Window;
-import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitProperties;
 import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitStore;
 import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitSubject;
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import jakarta.servlet.Filter;
-import jakarta.servlet.http.HttpServlet;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * A 429 from either stage, through the registered gateway filters from {@code RequestIdFilter} to the identity-header sanitizer (25) in
@@ -61,44 +48,13 @@ class RateLimitAuditEventTest {
     private static final String USER_DISPLAY_PREFIX = "picsure_u_AbCd";
     private static final String SESSION_TOKEN = "picsure_s_eyJhbGciOiJIUzI1NiJ9.session.signature";
 
-    /** Stands in for the proxied route: anything that gets past the filters is answered 200. */
-    private static final HttpServlet UPSTREAM = new HttpServlet() {
-        @Override
-        protected void service(HttpServletRequest req, HttpServletResponse resp) {}
-    };
-
     private final LoggingClient logging = mock(LoggingClient.class);
     private final PsamaClient psama = mock(PsamaClient.class);
     /** {@code RATE_LIMIT_TRUSTED_PROXIES}; the limiter is enabled only when this is non-empty, as the gateway requires. */
     private List<String> trustedProxies = List.of(PROXY + "/32");
 
     private MockHttpServletResponse send(RateLimitStore store, MockHttpServletRequest request) throws Exception {
-        when(logging.isEnabled()).thenReturn(true);
-        AuditContext audit = new AuditContext();
-        GatewaySecurityProperties props =
-            new GatewaySecurityProperties(List.of(), true, 1024, "http://psama.local/introspect", "http://psama.local/open-access", "svc");
-        RateLimitProperties rateLimit = new RateLimitProperties(
-            !trustedProxies.isEmpty(), new RateLimitProperties.KeyLimits(60, 3000), new RateLimitProperties.KeyLimits(60, 3000),
-            new RateLimitProperties.IpLimits(60, 3000, 300), new RateLimitProperties.Store(1000), trustedProxies, List.of()
-        );
-        PublicEndpointPolicy publicEndpoints = new PublicEndpointPolicy(List.of());
-        ClientIpResolver clientIps = new ClientIpResolver(trustedProxies.stream().map(CidrRange::parse).toList());
-        SecurityConfig security = new SecurityConfig();
-        ObservabilityConfig observability = new ObservabilityConfig();
-        AuditFilterConfig auditConfig = new AuditFilterConfig();
-        List<FilterRegistrationBean<?>> registrations = List.of(
-            observability.requestIdFilter(), observability.accessLogFilter(),
-            auditConfig.auditLoggingFilter(logging, auditConfig.auditRouteTable(), audit, rateLimit, clientIps),
-            security.bufferingFilter(props, new SimpleMeterRegistry()),
-            security.prevalidationThrottleFilter(props, publicEndpoints, rateLimit, clientIps, store, audit),
-            observability.internalEndpointGuardFilter(), security.openAccessFilter(psama, audit, props, publicEndpoints),
-            security.perKeyRateLimitFilter(rateLimit, clientIps, store, audit), observability.inboundIdentityHeaderSanitizingFilter()
-        );
-        Filter[] filters = registrations.stream().sorted(Comparator.comparingInt(FilterRegistrationBean::getOrder))
-            .map(FilterRegistrationBean::getFilter).toArray(Filter[]::new);
-        MockHttpServletResponse response = new MockHttpServletResponse();
-        new MockFilterChain(UPSTREAM, filters).doFilter(request, response);
-        return response;
+        return AuditFilterChain.send(trustedProxies, store, logging, psama, request);
     }
 
     /** Breaches only subjects of {@code kind}, with {@code decision}; every other subject is allowed. */
