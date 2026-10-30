@@ -1,19 +1,22 @@
 package edu.harvard.hms.dbmi.avillach.gateway.ratelimit;
 
 import java.util.List;
+import java.util.Objects;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import edu.harvard.hms.dbmi.avillach.commons.net.CidrRange;
+
 /**
  * Open-access rate-limit configuration, bound from {@code picsure.gateway.rate-limit.*}. The defaults and the {@code RATE_LIMIT_*} env var
- * names deployments set live in {@code application.yml}. A zero or negative limit, or {@code enabled=true} with no trusted proxies, throws
- * during binding and stops the context. The two CIDR lists stay raw strings here, trimmed with blank entries dropped. Their CIDR syntax is
- * not validated yet; that comes with the stage filters that parse them.
+ * names deployments set live in {@code application.yml}. A zero or negative limit, a malformed CIDR in either list, or {@code enabled=true}
+ * with no trusted proxies throws during binding and stops the context. The CIDR lists bind straight to {@link CidrRange} through
+ * {@code RateLimitConfig}'s converter, which parses each entry once and turns a blank one into null, which this record drops.
  */
 @ConfigurationProperties(prefix = "picsure.gateway.rate-limit")
 public record RateLimitProperties(
-    boolean enabled, KeyLimits user, KeyLimits session, IpLimits ip, Store store, List<String> trustedProxies,
-    List<String> platformAllowlistedSourceCidrs
+    boolean enabled, KeyLimits user, KeyLimits session, IpLimits ip, Store store, List<CidrRange> trustedProxies,
+    List<CidrRange> platformAllowlistedSourceCidrs
 ) {
 
     static final String PREFIX = "picsure.gateway.rate-limit";
@@ -27,8 +30,8 @@ public record RateLimitProperties(
         session.validate(PREFIX + ".session");
         ip.validate();
         store.validate();
-        trustedProxies = clean(trustedProxies);
-        platformAllowlistedSourceCidrs = clean(platformAllowlistedSourceCidrs);
+        trustedProxies = ranges(trustedProxies);
+        platformAllowlistedSourceCidrs = ranges(platformAllowlistedSourceCidrs);
         if (enabled && trustedProxies.isEmpty()) {
             throw new IllegalArgumentException(
                 PREFIX + ".enabled is true but " + PREFIX + ".trusted-proxies (RATE_LIMIT_TRUSTED_PROXIES) is empty. Add the reverse proxy "
@@ -75,7 +78,8 @@ public record RateLimitProperties(
         }
     }
 
-    private static List<String> clean(List<String> entries) {
-        return entries == null ? List.of() : entries.stream().map(String::trim).filter(entry -> !entry.isEmpty()).toList();
+    /** The binder hands a blank entry over as null; an unset list arrives as null. */
+    private static List<CidrRange> ranges(List<CidrRange> bound) {
+        return bound == null ? List.of() : bound.stream().filter(Objects::nonNull).toList();
     }
 }
