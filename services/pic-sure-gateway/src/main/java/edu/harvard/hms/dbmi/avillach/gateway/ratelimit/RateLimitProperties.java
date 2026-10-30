@@ -43,12 +43,12 @@ public record RateLimitProperties(
 
     /** {@link #trustedProxies()} parsed: the peers whose {@code X-Forwarded-For} is honoured. */
     public List<CidrRange> trustedProxyRanges() {
-        return CidrRange.parseList(String.join(",", trustedProxies));
+        return trustedProxies.stream().map(CidrRange::parse).toList();
     }
 
     /** {@link #platformAllowlistedSourceCidrs()} parsed. */
     public List<CidrRange> platformAllowlist() {
-        return CidrRange.parseList(String.join(",", platformAllowlistedSourceCidrs));
+        return platformAllowlistedSourceCidrs.stream().map(CidrRange::parse).toList();
     }
 
     /** Per-minute burst and per-UTC-day sustained limits for one kind of confirmed key. */
