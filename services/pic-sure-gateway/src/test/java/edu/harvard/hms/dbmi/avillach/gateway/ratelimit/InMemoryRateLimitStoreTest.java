@@ -13,6 +13,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Test;
 
@@ -21,6 +22,7 @@ import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitProperties.IpLim
 import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitProperties.KeyLimits;
 import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitProperties.Store;
 import io.github.bucket4j.TimeMeter;
+import io.github.bucket4j.distributed.proxy.AbstractProxyManager;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 /**
@@ -30,6 +32,10 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 class InMemoryRateLimitStoreTest {
 
     private static final RateLimitSubject USER = RateLimitSubject.user(UUID.fromString("00000000-0000-0000-0000-000000000001"));
+
+    /** GatedClock holds a request where Bucket4j 8.14.0 stamps it; a Bucket4j upgrade that moves that step fails here. */
+    private static final String HELD_AT_YESTERDAYS_TIME =
+        "held request read yesterday's time; if not, check that Bucket4j still stamps requests in AbstractProxyManager.getClientSideTime";
 
     private final FakeClock clock = new FakeClock("2026-10-29T10:00:30Z");
     private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
@@ -296,9 +302,102 @@ class InMemoryRateLimitStoreTest {
         assertThat(store.tryConsume(USER).allowed()).as("at midnight").isTrue();
     }
 
+    /**
+     * A request reads the time just before midnight and is held before it reaches its exhausted bucket, while another request arrives after
+     * midnight and finds the entry expired. They must not draw from two buckets, and the held request's stale time must not earn it the new
+     * day's refill, so the new day admits only the later request.
+     */
+    @Test
+    void requestHoldingYesterdaysBucketAcrossMidnightAndANewRequestAdmitOnlyOne() throws Exception {
+        GatedClock gated = new GatedClock(clock);
+        InMemoryRateLimitStore store = new InMemoryRateLimitStore(props(1, 1, 1, 1000), meters, gated);
+        clock.set("2026-10-29T23:00:00Z");
+        consume(store, USER, 1);
+
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            clock.set("2026-10-29T23:59:59.999Z");
+            Future<RateLimitDecision> held = pool.submit(() -> {
+                gated.gateThisThread();
+                return store.tryConsume(USER);
+            });
+            assertThat(gated.awaitHeld()).as(HELD_AT_YESTERDAYS_TIME).isTrue();
+
+            clock.set("2026-10-30T00:00:00.001Z");
+            RateLimitDecision afterMidnight = pool.submit(() -> store.tryConsume(USER)).get(10, TimeUnit.SECONDS);
+            gated.release();
+
+            assertThat(afterMidnight.allowed()).as("after midnight").isTrue();
+            // In this order the held request is rejected either way; this wait is what proves its stale time earned no refill.
+            // It is measured from the held request's own time, so a day plus 1 ms rounds up to 86,401 s (a fresh read gives 86,400).
+            assertThat(held.get(10, TimeUnit.SECONDS)).as("held").isEqualTo(RateLimitDecision.rejected(Window.BOTH, 86_401));
+        } finally {
+            gated.release();
+            pool.shutdownNow();
+        }
+    }
+
     @Test
     void refusesANonWallClock() {
         assertThatThrownBy(() -> new InMemoryRateLimitStore(props(1, 1, 1, 1), meters, TimeMeter.SYSTEM_NANOTIME))
             .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    /**
+     * Wraps the fake clock so that one thread blocks when Bucket4j reads it to timestamp that thread's request, which happens before the
+     * proxy manager enters the subject's {@code compute}, and its request keeps the time read before the block. The test can then move time
+     * and send other requests between the two.
+     */
+    private static final class GatedClock implements TimeMeter {
+
+        private final FakeClock delegate;
+        private final CountDownLatch held = new CountDownLatch(1);
+        private final CountDownLatch released = new CountDownLatch(1);
+        private volatile Thread gated;
+
+        GatedClock(FakeClock delegate) {
+            this.delegate = delegate;
+        }
+
+        void gateThisThread() {
+            gated = Thread.currentThread();
+        }
+
+        boolean awaitHeld() throws InterruptedException {
+            return held.await(10, TimeUnit.SECONDS);
+        }
+
+        void release() {
+            released.countDown();
+        }
+
+        @Override
+        public long currentTimeNanos() {
+            long now = delegate.currentTimeNanos();
+            if (Thread.currentThread() == gated && timestampingARequest()) {
+                gated = null;
+                held.countDown();
+                try {
+                    released.await(10, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            return now; // read before the hold, so a held request carries the time it was gated at
+        }
+
+        @Override
+        public boolean isWallClockBased() {
+            return true;
+        }
+
+        // Bucket4j 8.14.0 timestamps each proxy request in AbstractProxyManager.getClientSideTime.
+        private static boolean timestampingARequest() {
+            return StackWalker.getInstance().walk(
+                frames -> frames.anyMatch(
+                    f -> f.getClassName().equals(AbstractProxyManager.class.getName()) && f.getMethodName().equals("getClientSideTime")
+                )
+            );
+        }
     }
 }
