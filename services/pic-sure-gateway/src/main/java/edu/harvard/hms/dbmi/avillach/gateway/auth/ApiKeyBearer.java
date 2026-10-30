@@ -1,18 +1,20 @@
 package edu.harvard.hms.dbmi.avillach.gateway.auth;
 
+import java.util.List;
+
 /**
  * PSAMA API keys and open-access session tokens arrive as {@code Authorization: Bearer picsure_...}, the same header a login token uses.
- * The {@code picsure_} prefix tells them apart: a login token is a JWT and starts with {@code eyJ}.
+ * Only the prefixes PSAMA's {@code ApiKeyService} issues for open access mark a key; any other value, including another {@code picsure_}
+ * token, is left for introspection.
  */
 public final class ApiKeyBearer {
 
-    /** Shared by every key type: {@code picsure_u_} (user), {@code picsure_p_} (platform), {@code picsure_s_} (open-access session). */
-    public static final String KEY_PREFIX = "picsure_";
+    /** {@code picsure_u_} (user), {@code picsure_p_} (platform) and {@code picsure_s_} (open-access session), copied from PSAMA. */
+    static final List<String> KEY_PREFIXES = List.of("picsure_u_", "picsure_p_", "picsure_s_");
 
     private static final String SCHEME = "Bearer ";
 
-    private ApiKeyBearer() {
-    }
+    private ApiKeyBearer() {}
 
     /** Returns the key carried by an {@code Authorization} header value, or {@code null} if the value is not a bearer PSAMA key. */
     public static String extract(String authorization) {
@@ -20,6 +22,6 @@ public final class ApiKeyBearer {
             return null;
         }
         String token = authorization.substring(SCHEME.length()).trim();
-        return token.startsWith(KEY_PREFIX) ? token : null;
+        return KEY_PREFIXES.stream().anyMatch(token::startsWith) ? token : null;
     }
 }

@@ -167,6 +167,18 @@ class InboundIdentityHeaderSanitizingFilterTest {
     }
 
     @Test
+    void keepsAuthorizationCarryingAPicsureTokenThatIsNotAnApiKey() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("Authorization", "Bearer picsure_x_login.token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        AtomicReference<HttpServletRequest> captured = new AtomicReference<>();
+        filter.doFilter(request, response, (req, resp) -> captured.set((HttpServletRequest) req));
+
+        assertThat(captured.get().getHeader("Authorization")).isEqualTo("Bearer picsure_x_login.token");
+    }
+
+    @Test
     void nonIdentityHeadersPassThroughUnchangedWhenNoSpoofAttempted() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/query/sync");
         request.addHeader("Authorization", "Bearer abc");
