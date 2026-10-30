@@ -23,8 +23,10 @@ import io.micrometer.core.instrument.MeterRegistry;
  * consumes from a multi-limit bucket only when every limit has the token.
  *
  * <p>The cache is capped at {@code max-subjects}. At the cap Caffeine evicts by its size policy, even a live bucket, whose subject comes
- * back with a full allowance; nothing is rejected for capacity. An entry expires at the first midnight UTC after it was created, when both
- * its windows would be full again anyway, so a cached bucket never spans two UTC days. Counters reset on restart.
+ * back with a full allowance; nothing is rejected for capacity. An entry expires an hour after the first midnight UTC following its last
+ * use, when both its windows would be full again anyway. Until then a subject keeps one bucket across midnight, and that bucket's own
+ * aligned refill starts the new day: expiring it exactly at midnight would let a request that fetched it just before midnight consume from
+ * it after midnight while a later request got a second, full bucket. Counters reset on restart.
  */
 public final class InMemoryRateLimitStore implements RateLimitStore {
 
@@ -32,6 +34,8 @@ public final class InMemoryRateLimitStore implements RateLimitStore {
 
     private static final Duration MINUTE = Duration.ofMinutes(1);
     private static final Duration DAY = Duration.ofDays(1);
+    /** How long past midnight an idle entry outlives its last day. Far longer than any request holds a bucket between fetch and consume. */
+    static final Duration EXPIRY_GRACE = Duration.ofHours(1);
 
     private final RateLimitProperties props;
     private final TimeMeter clock;
@@ -48,7 +52,7 @@ public final class InMemoryRateLimitStore implements RateLimitStore {
         }
         this.props = props;
         this.clock = clock;
-        this.buckets = Caffeine.newBuilder().maximumSize(props.store().maxSubjects()).expireAfter(new UntilNextUtcMidnight())
+        this.buckets = Caffeine.newBuilder().maximumSize(props.store().maxSubjects()).expireAfter(new PastNextUtcMidnight())
             .ticker(clock::currentTimeNanos).build();
         Gauge.builder(SIZE_METRIC, buckets, Cache::estimatedSize).description("Rate-limit subjects currently held in the in-memory store")
             .register(meterRegistry);
@@ -61,7 +65,7 @@ public final class InMemoryRateLimitStore implements RateLimitStore {
         if (probe.isConsumed()) {
             return RateLimitDecision.ALLOWED;
         }
-        // Indexes follow the order limits were added in newBucket: burst first, then sustained if present.
+        // Indexes follow the order limits were added in calendarBucket: burst first, then sustained if present.
         long[] available = result.getDiagnostics().getAvailableTokensPerEachBandwidth();
         boolean burst = available[0] < 1;
         boolean sustained = available.length > 1 && available[1] < 1;
@@ -112,27 +116,27 @@ public final class InMemoryRateLimitStore implements RateLimitStore {
         return now.truncatedTo(unit).plus(1, unit);
     }
 
-    private static final class UntilNextUtcMidnight implements Expiry<RateLimitSubject, Bucket> {
+    private static final class PastNextUtcMidnight implements Expiry<RateLimitSubject, Bucket> {
 
         @Override
         public long expireAfterCreate(RateLimitSubject subject, Bucket bucket, long currentTime) {
-            return untilMidnight(currentTime);
+            return pastNextMidnight(currentTime);
         }
 
         @Override
         public long expireAfterUpdate(RateLimitSubject subject, Bucket bucket, long currentTime, long currentDuration) {
-            return currentDuration;
+            return pastNextMidnight(currentTime);
         }
 
         @Override
         public long expireAfterRead(RateLimitSubject subject, Bucket bucket, long currentTime, long currentDuration) {
-            return currentDuration;
+            return pastNextMidnight(currentTime);
         }
 
         // The cache's ticker is the store's wall clock, so currentTime is nanoseconds since the epoch.
-        private static long untilMidnight(long currentTime) {
+        private static long pastNextMidnight(long currentTime) {
             Instant now = now(currentTime);
-            return Duration.between(now, nextBoundary(now, ChronoUnit.DAYS)).toNanos();
+            return Duration.between(now, nextBoundary(now, ChronoUnit.DAYS).plus(EXPIRY_GRACE)).toNanos();
         }
     }
 }
