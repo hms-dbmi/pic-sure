@@ -107,7 +107,11 @@ class RateLimitAuditEventTest {
     }
 
     private static MockHttpServletRequest request(String authorization) {
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        return request("/query/sync", authorization);
+    }
+
+    private static MockHttpServletRequest request(String path, String authorization) {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", path);
         request.setRemoteAddr(PROXY);
         request.addHeader("X-Forwarded-For", CLIENT);
         if (authorization != null) {
@@ -203,6 +207,20 @@ class RateLimitAuditEventTest {
             .containsEntry("rate_limit_window", "burst").doesNotContainKey("rate_limit_key_display_prefix");
         assertThat(event.getMetadata().values()).doesNotContain(KEY_ID.toString());
         assertNeverContains(event, output, platformKey);
+    }
+
+    @Test
+    void aBreachOnAPathTheAuditFilterSkipsIsStillAudited() throws Exception {
+        MockHttpServletResponse response = send(
+            breaching(RateLimitSubject.Kind.PREVALIDATION_IP, new RateLimitDecision(false, Window.BURST, 12)),
+            request("/visualization/bin/continuous", "Bearer " + USER_KEY)
+        );
+
+        assertThat(response.getStatus()).isEqualTo(429);
+        LoggingEvent event = emitted();
+        assertThat(event.getRequest().getUrl()).isEqualTo("/visualization/bin/continuous");
+        assertThat(event.getMetadata()).containsEntry("auth_action", "open_access.rate_limited")
+            .containsEntry("rate_limit_window", "prevalidation");
     }
 
     @Test
