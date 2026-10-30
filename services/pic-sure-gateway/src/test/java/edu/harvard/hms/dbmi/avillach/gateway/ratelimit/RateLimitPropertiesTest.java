@@ -86,6 +86,18 @@ class RateLimitPropertiesTest {
         });
     }
 
+    @ParameterizedTest
+    @CsvSource(
+        {"RATE_LIMIT_TRUSTED_PROXIES, trusted-proxies", "RATE_LIMIT_PLATFORM_ALLOWLISTED_SOURCE_CIDRS, platform-allowlisted-source-cidrs"}
+    )
+    void malformedCidrStopsStartupNamingThePropertyAndEntry(String envVar, String property) {
+        runner.withPropertyValues(envVar + "=10.0.0.0/8, 10.0.0.0/33").run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure()).hasStackTraceContaining("picsure.gateway.rate-limit." + property)
+                .hasStackTraceContaining("'10.0.0.0/33'");
+        });
+    }
+
     @Test
     void enabledWithTrustedProxiesAndEmptyAllowlistStarts() {
         runner.withPropertyValues("RATE_LIMIT_ENABLED=true", "RATE_LIMIT_TRUSTED_PROXIES=10.89.0.0/24").run(context -> {

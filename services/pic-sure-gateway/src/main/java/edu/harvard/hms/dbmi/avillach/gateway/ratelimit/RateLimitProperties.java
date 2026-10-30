@@ -4,11 +4,13 @@ import java.util.List;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import edu.harvard.hms.dbmi.avillach.commons.net.CidrRange;
+
 /**
  * Open-access rate-limit configuration, bound from {@code picsure.gateway.rate-limit.*}. The defaults and the {@code RATE_LIMIT_*} env var
- * names deployments set live in {@code application.yml}. A zero or negative limit, or {@code enabled=true} with no trusted proxies, throws
- * during binding and stops the context. The two CIDR lists stay raw strings here, trimmed with blank entries dropped. Their CIDR syntax is
- * not validated yet; that comes with the stage filters that parse them.
+ * names deployments set live in {@code application.yml}. A zero or negative limit, a malformed CIDR in either list, or {@code enabled=true}
+ * with no trusted proxies throws during binding and stops the context. The CIDR lists stay strings, trimmed with blank entries dropped;
+ * consumers parse them with {@link CidrRange#parse}.
  */
 @ConfigurationProperties(prefix = "picsure.gateway.rate-limit")
 public record RateLimitProperties(
@@ -27,8 +29,9 @@ public record RateLimitProperties(
         session.validate(PREFIX + ".session");
         ip.validate();
         store.validate();
-        trustedProxies = clean(trustedProxies);
-        platformAllowlistedSourceCidrs = clean(platformAllowlistedSourceCidrs);
+        trustedProxies = cidrs(trustedProxies, "trusted-proxies (RATE_LIMIT_TRUSTED_PROXIES)");
+        platformAllowlistedSourceCidrs =
+            cidrs(platformAllowlistedSourceCidrs, "platform-allowlisted-source-cidrs (RATE_LIMIT_PLATFORM_ALLOWLISTED_SOURCE_CIDRS)");
         if (enabled && trustedProxies.isEmpty()) {
             throw new IllegalArgumentException(
                 PREFIX + ".enabled is true but " + PREFIX + ".trusted-proxies (RATE_LIMIT_TRUSTED_PROXIES) is empty. Add the reverse proxy "
@@ -75,7 +78,15 @@ public record RateLimitProperties(
         }
     }
 
-    private static List<String> clean(List<String> entries) {
-        return entries == null ? List.of() : entries.stream().map(String::trim).filter(entry -> !entry.isEmpty()).toList();
+    private static List<String> cidrs(List<String> entries, String property) {
+        List<String> cleaned = entries == null ? List.of() : entries.stream().map(String::trim).filter(entry -> !entry.isEmpty()).toList();
+        for (String entry : cleaned) {
+            try {
+                CidrRange.parse(entry);
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException(PREFIX + "." + property + ": " + e.getMessage(), e);
+            }
+        }
+        return cleaned;
     }
 }
