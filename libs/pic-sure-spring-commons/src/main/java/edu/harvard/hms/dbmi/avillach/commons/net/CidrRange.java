@@ -74,8 +74,11 @@ public final class CidrRange {
         return List.copyOf(ranges);
     }
 
-    /** Whether any of {@code ranges} contains {@code address}. False for a null address. */
-    public static boolean anyContains(Collection<CidrRange> ranges, InetAddress address) {
+    /**
+     * Whether any of {@code ranges} contains {@code address}. False for a null address. Package-private so allowlist checks go through
+     * {@link ClientIp#isIn}, which refuses failed resolutions.
+     */
+    static boolean anyContains(Collection<CidrRange> ranges, InetAddress address) {
         if (address == null) {
             return false;
         }
@@ -113,7 +116,8 @@ public final class CidrRange {
     }
 
     private static int parsePrefix(String text, int maxBits) {
-        if (text.isEmpty() || text.length() > 3 || !text.chars().allMatch(c -> c >= '0' && c <= '9')) {
+        boolean leadingZero = text.length() > 1 && text.charAt(0) == '0';
+        if (text.isEmpty() || text.length() > 3 || leadingZero || !text.chars().allMatch(c -> c >= '0' && c <= '9')) {
             throw new IllegalArgumentException("bad prefix length");
         }
         int prefix = Integer.parseInt(text);
