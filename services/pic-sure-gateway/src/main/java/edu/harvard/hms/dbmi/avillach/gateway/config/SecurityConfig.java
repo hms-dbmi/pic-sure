@@ -114,9 +114,10 @@ public class SecurityConfig {
 
     @Bean
     FilterRegistrationBean<PrevalidationThrottleFilter> prevalidationThrottleFilter(
-        OpenAccessRequests openAccessRequests, RateLimitProperties rateLimit, ClientIpResolver clientIps, RateLimitStore store
+        OpenAccessRequests openAccessRequests, RateLimitProperties rateLimit, ClientIpResolver clientIps, RateLimitStore store,
+        AuditContext audit
     ) {
-        var r = new FilterRegistrationBean<>(new PrevalidationThrottleFilter(rateLimit, openAccessRequests, clientIps, store));
+        var r = new FilterRegistrationBean<>(new PrevalidationThrottleFilter(rateLimit, openAccessRequests, clientIps, store, audit));
         r.setOrder(16);
         r.addUrlPatterns("/*");
         return r;
@@ -151,9 +152,9 @@ public class SecurityConfig {
 
     @Bean
     FilterRegistrationBean<PerKeyRateLimitFilter> perKeyRateLimitFilter(
-        RateLimitProperties rateLimit, ClientIpResolver clientIps, RateLimitStore store
+        RateLimitProperties rateLimit, ClientIpResolver clientIps, RateLimitStore store, AuditContext audit
     ) {
-        var r = new FilterRegistrationBean<>(new PerKeyRateLimitFilter(rateLimit, clientIps, store));
+        var r = new FilterRegistrationBean<>(new PerKeyRateLimitFilter(rateLimit, clientIps, store, audit));
         r.setOrder(22);
         r.addUrlPatterns("/*");
         return r;

@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.gateway.ratelimit;
 
 import java.util.UUID;
 
+import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIp;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessValidation;
@@ -18,13 +19,13 @@ import jakarta.servlet.http.HttpServletRequest;
  */
 public class PerKeyRateLimitFilter extends RateLimitFilter {
 
-    public PerKeyRateLimitFilter(RateLimitProperties props, ClientIpResolver clientIps, RateLimitStore store) {
-        super(props, clientIps, store);
+    public PerKeyRateLimitFilter(RateLimitProperties props, ClientIpResolver clientIps, RateLimitStore store, AuditContext audit) {
+        super(props, clientIps, store, audit);
     }
 
     /** The bucket for a granted request, or null for an exempt one. Identity PSAMA reported incompletely falls back to the client IP. */
     @Override
-    protected RateLimitSubject subject(HttpServletRequest req) {
+    protected Target target(HttpServletRequest req) {
         if (!Boolean.TRUE.equals(req.getAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_GRANTED))) {
             return null;
         }
@@ -35,16 +36,16 @@ public class PerKeyRateLimitFilter extends RateLimitFilter {
         if (OpenAccessValidation.KEY_TYPE_USER.equals(keyType)) {
             UUID keyUuid = parseUuid(keyId);
             if (keyUuid != null) {
-                return RateLimitSubject.user(keyUuid);
+                return new Target(RateLimitSubject.user(keyUuid), null);
             }
         } else if (OpenAccessValidation.KEY_TYPE_SESSION.equals(keyType) && keyId != null && !keyId.isBlank()) {
-            return RateLimitSubject.session(keyId);
+            return new Target(RateLimitSubject.session(keyId), null);
         }
         ClientIp client = clientIps.resolve(req);
         if (OpenAccessValidation.KEY_TYPE_PLATFORM.equals(keyType) && client.isIn(allowlist)) {
             return null;
         }
-        return RateLimitSubject.ip(client.address());
+        return new Target(RateLimitSubject.ip(client.address()), client.address());
     }
 
     private static UUID parseUuid(String value) {

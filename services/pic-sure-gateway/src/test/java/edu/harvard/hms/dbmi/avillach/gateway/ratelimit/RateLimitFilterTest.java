@@ -14,22 +14,26 @@ import org.springframework.mock.web.MockHttpServletResponse;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.net.CidrRange;
+import edu.harvard.hms.dbmi.avillach.commons.net.ClientIp;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
 import jakarta.servlet.http.HttpServletRequest;
 
 class RateLimitFilterTest {
 
     private final RateLimitStore store = mock(RateLimitStore.class);
+    private final AuditContext audit = new AuditContext();
     private final MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
     private final MockHttpServletResponse response = new MockHttpServletResponse();
     private final MockFilterChain chain = new MockFilterChain();
 
     private RateLimitFilter filter(boolean enabled) {
-        return new RateLimitFilter(properties(enabled), new ClientIpResolver(List.of()), store) {
+        return new RateLimitFilter(properties(enabled), new ClientIpResolver(List.of()), store, audit) {
             @Override
-            protected RateLimitSubject subject(HttpServletRequest req) {
-                return RateLimitSubject.ip(clientIps.resolve(req).address());
+            protected Target target(HttpServletRequest req) {
+                ClientIp client = clientIps.resolve(req);
+                return new Target(RateLimitSubject.ip(client.address()), client.address());
             }
         };
     }
@@ -55,6 +59,8 @@ class RateLimitFilterTest {
             """));
         assertThat(chain.getRequest()).isNull();
         verifyNoInteractions(store);
+        assertThat(audit.getMetadata()).containsEntry("auth_result", "failure")
+            .containsEntry("auth_failure_reason", "client_ip_unresolvable");
     }
 
     @Test
@@ -64,21 +70,23 @@ class RateLimitFilterTest {
 
         assertThat(response.getStatus()).isEqualTo(200);
         assertThat(chain.getRequest()).isSameAs(request);
+        assertThat(audit.getMetadata()).isEmpty();
         verifyNoInteractions(store);
     }
 
     @Test
     void unrelatedTargetFailuresAreNotConvertedIntoPeerFailures() {
         IllegalArgumentException failure = new IllegalArgumentException("unrelated target failure");
-        RateLimitFilter filter = new RateLimitFilter(properties(true), new ClientIpResolver(List.of()), store) {
+        RateLimitFilter filter = new RateLimitFilter(properties(true), new ClientIpResolver(List.of()), store, audit) {
             @Override
-            protected RateLimitSubject subject(HttpServletRequest req) {
+            protected Target target(HttpServletRequest req) {
                 throw failure;
             }
         };
 
         assertThatThrownBy(() -> filter.doFilter(request, response, chain)).isSameAs(failure);
         verifyNoInteractions(store);
+        assertThat(audit.getMetadata()).isEmpty();
         assertThat(chain.getRequest()).isNull();
     }
 }
