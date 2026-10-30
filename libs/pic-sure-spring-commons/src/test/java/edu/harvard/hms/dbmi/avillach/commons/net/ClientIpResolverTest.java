@@ -242,6 +242,14 @@ class ClientIpResolverTest {
     }
 
     @Test
+    void bestEffortClientNeverParsesNonIpPaddingLeftOfTheCaller() {
+        MockHttpServletRequest request = request(HTTPD, "junk, ".repeat(ClientIpResolver.MAX_HOPS + 1) + "junk, " + CLIENT);
+
+        assertThat(aio.resolve(request).resolutionFailed()).isTrue();
+        assertThat(aio.bestEffortClient(request)).contains(ip(CLIENT));
+    }
+
+    @Test
     void bestEffortClientStopsAtAMalformedHopInsteadOfReadingPastIt() {
         assertThat(aio.bestEffortClient(request(HTTPD, CLIENT + ", not-an-ip"))).isEmpty();
         assertThat(aio.bestEffortClient(request(HTTPD, CLIENT + ","))).isEmpty();
