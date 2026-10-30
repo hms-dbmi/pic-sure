@@ -66,13 +66,20 @@ class McpEndpointTest {
         }
         JsonNode getConcept = null;
         JsonNode searchConcepts = null;
+        JsonNode listFacets = null;
         for (JsonNode tool : tools) {
             if ("get_concept".equals(tool.path("name").asText())) {
                 getConcept = tool;
             } else if ("search_concepts".equals(tool.path("name").asText())) {
                 searchConcepts = tool;
+            } else if ("list_facets".equals(tool.path("name").asText())) {
+                listFacets = tool;
             }
         }
+        assertThat(listFacets).isNotNull();
+        assertThat(listFacets.path("inputSchema").path("properties").fieldNames()).toIterable()
+            .containsExactlyInAnyOrder("search", "category", "match");
+        assertThat(listFacets.path("inputSchema").path("required")).isEmpty();
         assertThat(getConcept).isNotNull();
         assertThat(searchConcepts).isNotNull();
         assertThat(searchConcepts.path("outputSchema").path("required")).extracting(JsonNode::asText).contains("concepts")
