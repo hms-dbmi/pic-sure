@@ -34,7 +34,7 @@ class RateLimitFilterTest {
             @Override
             protected Target target(HttpServletRequest req) {
                 ClientIp client = clientIps.resolve(req);
-                return new Target(RateLimitSubject.ip(client.address()), client.address());
+                return new Target(RateLimitSubject.ip(client.address()), client);
             }
         };
     }

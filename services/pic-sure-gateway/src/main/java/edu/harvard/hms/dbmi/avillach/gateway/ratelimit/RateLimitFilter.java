@@ -1,7 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.gateway.ratelimit;
 
 import java.io.IOException;
-import java.net.InetAddress;
 import java.util.List;
 
 import org.slf4j.Logger;
@@ -12,6 +11,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditLoggingFilter;
 import edu.harvard.hms.dbmi.avillach.commons.net.CidrRange;
+import edu.harvard.hms.dbmi.avillach.commons.net.ClientIp;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
 import edu.harvard.hms.dbmi.avillach.commons.net.UnresolvablePeerException;
 import edu.harvard.hms.dbmi.avillach.gateway.error.GatewayErrors;
@@ -29,8 +29,8 @@ abstract class RateLimitFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(RateLimitFilter.class);
 
-    /** The subject a request draws from and, for an IP subject, the full client address it was built from. */
-    protected record Target(RateLimitSubject subject, InetAddress clientAddress) {
+    /** The subject a request draws from and, for an IP subject, the resolved client it was built from. */
+    protected record Target(RateLimitSubject subject, ClientIp client) {
     }
 
     protected final ClientIpResolver clientIps;
@@ -73,7 +73,7 @@ abstract class RateLimitFilter extends OncePerRequestFilter {
         }
         RateLimitDecision decision = store.tryConsume(target.subject());
         if (!decision.allowed()) {
-            RateLimitBreach.reject(req, resp, audit, target.subject(), target.clientAddress(), decision);
+            RateLimitBreach.reject(req, resp, audit, target.subject(), target.client(), decision);
             return;
         }
         chain.doFilter(req, resp);
