@@ -63,8 +63,8 @@ class McpCallerFilterOrderTest {
         return List.of(
             observability.inboundIdentityHeaderSanitizingFilter(ClientTypeAllowlist.DEFAULT),
             security.introspectionFilter(psama, audit, noPublicRoutes),
-            security.openAccessFilter(psama, audit, props(openAccessEnabled), noPublicRoutes), mcpRegistration(),
-            observability.internalEndpointGuardFilter()
+            security.openAccessFilter(psama, audit, security.openAccessRequests(props(openAccessEnabled), noPublicRoutes)),
+            mcpRegistration(), observability.internalEndpointGuardFilter()
         );
     }
 
@@ -89,7 +89,9 @@ class McpCallerFilterOrderTest {
 
         assertThat(order).isGreaterThan(observability.internalEndpointGuardFilter().getOrder())
             .isLessThan(
-                security.openAccessFilter(mock(PsamaClient.class), audit, props(true), new PublicEndpointPolicy(List.of())).getOrder()
+                security.openAccessFilter(
+                    mock(PsamaClient.class), audit, security.openAccessRequests(props(true), new PublicEndpointPolicy(List.of()))
+                ).getOrder()
             ).isLessThan(observability.inboundIdentityHeaderSanitizingFilter(ClientTypeAllowlist.DEFAULT).getOrder())
             .isLessThan(security.introspectionFilter(mock(PsamaClient.class), audit, new PublicEndpointPolicy(List.of())).getOrder());
     }
