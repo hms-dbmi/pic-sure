@@ -344,6 +344,20 @@ class RateLimitAuditEventTest {
     }
 
     @Test
+    void anOverCapChainSplitAcrossRepeatedHeadersStillKeepsTheAppendedHopAsSrcIp() throws Exception {
+        MockHttpServletRequest request = request(
+            "/query/sync", "Bearer " + USER_KEY, PROXY, String.join(", ", Collections.nCopies(ClientIpResolver.MAX_HOPS, "6.6.6.6"))
+        );
+        request.addHeader("X-Forwarded-For", CLIENT);
+
+        send(breaching(RateLimitSubject.Kind.PREVALIDATION_IP, new RateLimitDecision(false, Window.BURST, 12)), request);
+
+        LoggingEvent event = emitted();
+        assertThat(event.getRequest().getSrcIp()).isEqualTo(CLIENT);
+        assertThat(event.getMetadata()).containsEntry("rate_limit_ip_resolution_failed", true);
+    }
+
+    @Test
     void withNoTrustedProxiesSrcIpKeepsTheRightmostForwardedForEntry() throws Exception {
         trustedProxies = List.of();
         grant(OpenAccessValidation.KEY_TYPE_USER, KEY_ID.toString(), USER_DISPLAY_PREFIX);

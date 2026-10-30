@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.commons.audit;
 
 import java.io.IOException;
+import java.util.Enumeration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -172,11 +173,16 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     /**
      * Takes the RIGHTMOST X-Forwarded-For entry, not the leftmost: clients can send an arbitrary XFF header of their own, and the trusted
      * front proxy (AIO httpd) APPENDS the address it saw -- so the rightmost entry is the nearest trusted hop and cannot be client-forged,
-     * while the leftmost is whatever the client chose to send. A blank rightmost entry, or a header of only commas, falls back to the
-     * connection peer, so a malformed header never drops the event. The default {@code srcIp} source.
+     * while the leftmost is whatever the client chose to send. A repeated header is read from its last line, which holds that entry. A
+     * blank rightmost entry, or a header of only commas, falls back to the connection peer, so a malformed header never drops the event.
+     * The default {@code srcIp} source.
      */
     public static String resolveSourceIp(HttpServletRequest request) {
-        String forwardedFor = request.getHeader("X-Forwarded-For");
+        String forwardedFor = null;
+        Enumeration<String> lines = request.getHeaders("X-Forwarded-For");
+        while (lines != null && lines.hasMoreElements()) {
+            forwardedFor = lines.nextElement();
+        }
         if (forwardedFor != null) {
             String[] hops = forwardedFor.split(",");
             if (hops.length > 0 && !hops[hops.length - 1].isBlank()) {
