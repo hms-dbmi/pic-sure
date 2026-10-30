@@ -50,7 +50,7 @@ class RateLimitAuditEventTest {
 
     private final LoggingClient logging = mock(LoggingClient.class);
     private final PsamaClient psama = mock(PsamaClient.class);
-    /** {@code RATE_LIMIT_TRUSTED_PROXIES}; the limiter is enabled only when this is non-empty, as the gateway requires. */
+    /** {@code RATE_LIMIT_TRUSTED_PROXIES}. */
     private List<String> trustedProxies = List.of(PROXY + "/32");
 
     private MockHttpServletResponse send(RateLimitStore store, MockHttpServletRequest request) throws Exception {
