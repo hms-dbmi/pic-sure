@@ -219,6 +219,8 @@ class RateLimitJourneyTest {
 
         assertRateLimited(limited);
         assertThat(limited.getHeaders().getFirst(OpenAccessFilter.SESSION_REFRESH_HEADER)).isEqualTo(REFRESHED);
+        assertThat(CONSUMED).filteredOn(s -> s.kind() != RateLimitSubject.Kind.PREVALIDATION_IP)
+            .containsOnly(RateLimitSubject.session("7c5e0618-5a3f-4d1b-9f0e-2b6c1d8a4e10"));
     }
 
     // Journey (e): a key PSAMA rejects
