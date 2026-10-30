@@ -11,6 +11,8 @@ import static org.mockito.Mockito.when;
 import java.io.ByteArrayInputStream;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.mock.web.MockHttpServletResponse;
 
@@ -66,12 +68,49 @@ class BufferingFilterTest {
     }
 
     @Test
-    void overCapReturns413WithErrorBodyBeforeChainAndIncrementsMetric() throws Exception {
+    void bodyExactlyAtCapPassesThrough() throws Exception {
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        FilterChain chain = mock(FilterChain.class);
+        when(req.getRequestURI()).thenReturn("/query");
+        when(req.getInputStream()).thenReturn(stream("12345678"));
+        when(req.getContentLengthLong()).thenReturn(8L);
+
+        new BufferingFilter(8, new SimpleMeterRegistry()).doFilter(req, resp, chain);
+
+        ArgumentCaptor<ServletRequest> captor = ArgumentCaptor.forClass(ServletRequest.class);
+        verify(chain).doFilter(captor.capture(), eq(resp));
+        assertThat(new String(((BufferedRequestWrapper) captor.getValue()).getBody())).isEqualTo("12345678");
+    }
+
+    // The buffer used to be pre-sized from Content-Length, so a tiny body declaring ~2 GB reserved ~2 GB of heap per request.
+    @ParameterizedTest
+    @ValueSource(longs = {9L, 2_000_000_000L, Long.MAX_VALUE})
+    void declaredLengthOverCapReturns413WithoutReadingTheBody(long declared) throws Exception {
+        SimpleMeterRegistry metrics = new SimpleMeterRegistry();
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestURI()).thenReturn("/query");
+        when(req.getContentLengthLong()).thenReturn(declared);
+        when(req.getInputStream()).thenReturn(stream("tiny"));
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
+
+        new BufferingFilter(8, metrics).doFilter(req, resp, chain);
+
+        assertThat(resp.getStatus()).isEqualTo(413);
+        assertThat(resp.getContentAsString()).contains("\"errorType\":\"REQUEST_BODY_TOO_LARGE\"");
+        verify(req, never()).getInputStream();
+        verify(chain, never()).doFilter(any(), any());
+        assertThat(metrics.counter("gateway.auth.body_too_large").count()).isEqualTo(1.0);
+    }
+
+    @Test
+    void undeclaredLengthOverCapReturns413WithErrorBodyBeforeChainAndIncrementsMetric() throws Exception {
         SimpleMeterRegistry metrics = new SimpleMeterRegistry();
         BufferingFilter f = new BufferingFilter(8, metrics); // tiny cap
         HttpServletRequest req = mock(HttpServletRequest.class);
         when(req.getRequestURI()).thenReturn("/query");
-        when(req.getContentLengthLong()).thenReturn(100L);
+        when(req.getContentLengthLong()).thenReturn(-1L); // chunked: only the read loop can enforce the cap
         when(req.getInputStream()).thenReturn(stream("this body is well over the tiny cap"));
         MockHttpServletResponse resp = new MockHttpServletResponse();
         FilterChain chain = mock(FilterChain.class);
