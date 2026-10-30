@@ -68,7 +68,7 @@ class OpenApiDocumentTest {
         OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/concepts/dump", "200", "ConceptPage");
         OpenApiDocumentAssertions.assertSchemaHasFields(
             document, "ConceptPage", "content", "pageable", "totalElements", "totalPages", "last", "numberOfElements", "sort", "first",
-            "size", "number", "empty"
+            "size", "number", "empty", "termTotals", "matches"
         );
         OpenApiDocumentAssertions
             .assertSchemaHasFields(document, "ConceptPageable", "pageNumber", "pageSize", "sort", "offset", "paged", "unpaged");
@@ -178,9 +178,10 @@ class OpenApiDocumentTest {
         document.path("components").path("schemas").fieldNames().forEachRemaining(names::add);
 
         assertThat(names).containsExactlyInAnyOrder(
-            "CategoricalConcept", "CategoricalMetadata", "Concept", "ConceptPage", "ConceptPageable", "ConceptSort", "ContinuousConcept",
-            "ContinuousMetadata", "Dashboard", "DashboardColumn", "DashboardDrawer", "Dataset", "Facet", "FacetCategory", "Filter",
-            "LegacyResponse", "LegacySearchCriteria", "LegacySearchQuery", "Metadata", "Result", "Results", "SearchResult"
+            "CategoricalConcept", "CategoricalMetadata", "Concept", "ConceptMatch", "ConceptPage", "ConceptPageable", "ConceptSort",
+            "ContinuousConcept", "ContinuousMetadata", "Dashboard", "DashboardColumn", "DashboardDrawer", "Dataset", "Facet",
+            "FacetCategory", "Filter", "LegacyResponse", "LegacySearchCriteria", "LegacySearchQuery", "Metadata", "Result", "Results",
+            "SearchResult"
         );
         assertThat(schema(document, "Metadata").path("description").asText()).isNotBlank();
         OpenApiDocumentAssertions.assertSchemaHasFields(document, "LegacyResponse", "results");
