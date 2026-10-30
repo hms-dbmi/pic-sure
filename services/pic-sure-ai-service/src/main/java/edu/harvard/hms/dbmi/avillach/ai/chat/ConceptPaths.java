@@ -1,29 +1,32 @@
 package edu.harvard.hms.dbmi.avillach.ai.chat;
 
-import java.util.HashSet;
-import java.util.Iterator;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.TextNode;
 
 /**
  * The concept paths seen during one chat turn, used to refuse a tool call that names a path the model was never shown.
  *
- * <p>Small models invent paths, often by copying the placeholder paths in a tool's example arguments. A path counts as seen if a tool result
- * or the researcher's current query contained it; backslash variants of the same path (doubled, or missing the leading or trailing one) are
- * treated as the same path. One instance per chat turn; not thread-safe.
+ * <p>Small models invent paths, often by copying the placeholder paths in a tool's example arguments. A path counts as seen if a tool
+ * result or the researcher's current query contained it; backslash variants of the same path (doubled, or missing the leading or trailing
+ * one) are treated as the same path when checking, then rewritten to the form first seen before the call goes out (see
+ * {@link #canonicalize(String)}), since HPDS matches concept paths by exact key. One instance per chat turn; not thread-safe.
  */
 final class ConceptPaths {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Pattern BACKSLASH_RUN = Pattern.compile("\\\\+");
 
-    private final Set<String> seen = new HashSet<>();
+    /** Normalized path to the path exactly as first seen. */
+    private final Map<String, String> seen = new HashMap<>();
 
     /**
      * Collapses every run of backslashes to one and ensures exactly one leading and one trailing backslash.
@@ -72,7 +75,7 @@ final class ConceptPaths {
             return;
         }
         if (node.isObject()) {
-            node.fields().forEachRemaining(entry -> {
+            node.properties().forEach(entry -> {
                 JsonNode value = entry.getValue();
                 if ("conceptPath".equals(entry.getKey()) && value.isTextual()) {
                     learn(value.asText());
@@ -93,7 +96,7 @@ final class ConceptPaths {
     private void learn(String path) {
         String normalized = normalize(path);
         if (normalized != null && !normalized.isBlank()) {
-            seen.add(normalized);
+            seen.putIfAbsent(normalized, path.strip());
         }
     }
 
@@ -103,7 +106,65 @@ final class ConceptPaths {
      */
     boolean isKnown(String path) {
         String normalized = normalize(path);
-        return normalized != null && seen.contains(normalized);
+        return normalized != null && seen.containsKey(normalized);
+    }
+
+    /**
+     * Rewrites every seen {@code conceptPath} value and {@code select} entry in a tool call's arguments, at any depth, to the path exactly
+     * as this turn first saw it, so a backslash variant the model wrote still matches when the tool looks it up. Unseen paths are left as
+     * written.
+     *
+     * @param argumentsJson the raw JSON arguments of a tool call, or null
+     * @return the rewritten arguments, or the input unchanged if nothing needed rewriting or it can't be read
+     */
+    String canonicalize(String argumentsJson) {
+        if (argumentsJson == null || argumentsJson.isBlank()) {
+            return argumentsJson;
+        }
+        try {
+            JsonNode arguments = MAPPER.readTree(argumentsJson);
+            return canonicalize(arguments) ? MAPPER.writeValueAsString(arguments) : argumentsJson;
+        } catch (JsonProcessingException e) {
+            return argumentsJson;
+        }
+    }
+
+    private boolean canonicalize(JsonNode node) {
+        boolean changed = false;
+        if (node.isObject()) {
+            ObjectNode object = (ObjectNode) node;
+            for (Map.Entry<String, JsonNode> entry : object.properties()) {
+                JsonNode value = entry.getValue();
+                if ("conceptPath".equals(entry.getKey()) && value.isTextual()) {
+                    String canonical = canonicalOrNull(value.asText());
+                    if (canonical != null) {
+                        entry.setValue(TextNode.valueOf(canonical));
+                        changed = true;
+                    }
+                } else if ("select".equals(entry.getKey()) && value.isArray()) {
+                    ArrayNode select = (ArrayNode) value;
+                    for (int i = 0; i < select.size(); i++) {
+                        String canonical = select.get(i).isTextual() ? canonicalOrNull(select.get(i).asText()) : null;
+                        if (canonical != null) {
+                            select.set(i, TextNode.valueOf(canonical));
+                            changed = true;
+                        }
+                    }
+                }
+                changed |= canonicalize(entry.getValue());
+            }
+        } else if (node.isArray()) {
+            for (JsonNode item : node) {
+                changed |= canonicalize(item);
+            }
+        }
+        return changed;
+    }
+
+    /** The path as first seen, or null if it's unseen or already written that way. */
+    private String canonicalOrNull(String path) {
+        String canonical = seen.get(normalize(path));
+        return canonical == null || canonical.equals(path) ? null : canonical;
     }
 
     /**
@@ -144,9 +205,7 @@ final class ConceptPaths {
 
     private String firstUnseenIn(JsonNode node) {
         if (node.isObject()) {
-            Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
-            while (fields.hasNext()) {
-                Map.Entry<String, JsonNode> entry = fields.next();
+            for (Map.Entry<String, JsonNode> entry : node.properties()) {
                 JsonNode value = entry.getValue();
                 String unseen = null;
                 if ("conceptPath".equals(entry.getKey()) && value.isTextual()) {

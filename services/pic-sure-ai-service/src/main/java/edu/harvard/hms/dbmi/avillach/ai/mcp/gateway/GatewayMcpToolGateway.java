@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.ai.mcp.gateway;
 
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -11,6 +13,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -40,6 +43,8 @@ public class GatewayMcpToolGateway implements McpToolGateway {
 
     private static final String PROTOCOL_VERSION = "2025-06-18";
     private static final MediaType EVENT_STREAM = MediaType.valueOf("text/event-stream");
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
+    private static final Duration READ_TIMEOUT = Duration.ofSeconds(60);
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
@@ -47,7 +52,12 @@ public class GatewayMcpToolGateway implements McpToolGateway {
 
     public GatewayMcpToolGateway(@Value("${picsure.ai.mcp.gateway-url:}") String gatewayUrl, ObjectMapper objectMapper) {
         requireNonBlank(gatewayUrl);
-        this.restClient = RestClient.builder().baseUrl(gatewayUrl + "/mcp").build();
+        // Finite timeouts so a gateway that accepts the connection and never answers can't hold a servlet thread forever.
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(
+            HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).connectTimeout(CONNECT_TIMEOUT).build()
+        );
+        requestFactory.setReadTimeout(READ_TIMEOUT);
+        this.restClient = RestClient.builder().baseUrl(gatewayUrl + "/mcp").requestFactory(requestFactory).build();
         this.objectMapper = objectMapper;
     }
 
@@ -110,7 +120,10 @@ public class GatewayMcpToolGateway implements McpToolGateway {
                 clientInfo.put("name", "pic-sure-ai-service");
                 clientInfo.put("version", "1.0.0");
                 params.set("clientInfo", clientInfo);
-                post(rpcRequest(0, "initialize", params), caller);
+                JsonNode error = post(rpcRequest(0, "initialize", params), caller).path("error");
+                if (!error.isMissingNode()) {
+                    throw new RestClientException("MCP initialize failed: " + error.path("message").asText("JSON-RPC error"));
+                }
 
                 ObjectNode notification = objectMapper.createObjectNode();
                 notification.put("jsonrpc", "2.0");

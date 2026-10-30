@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClientException;
 
 import edu.harvard.hms.dbmi.avillach.ai.mcp.McpToolGateway;
 import edu.harvard.hms.dbmi.avillach.ai.mcp.ToolDefinition;
@@ -50,7 +51,9 @@ class ToolUseLoopService implements ChatOrchestrator {
         conceptPath only from search_concepts or get_concept results in this conversation, exactly as returned; \
         never copy the placeholder paths in a tool's example. Search first and wait for the results before calling \
         a tool that needs a path. Search with short terms (for example "sex", "age", "body mass index"), one \
-        concept at a time, not whole sentences. Call a tool rather than describing what you would do. Reply to the researcher with the answer only: no planning notes or thinking out loud. The researcher does not see queries: never show query JSON or a query object in your reply; to change what they see, call propose_query, and describe the result in plain words. If a search \
+        concept at a time, not whole sentences. Call a tool rather than describing what you would do. Reply to the researcher with the answer only: no planning notes or thinking out loud. The researcher does not see queries: never show query JSON or a query object in your reply; to suggest a change, call propose_query, which only checks the proposal and \
+        does not change anything the researcher sees, then describe the suggested change in plain words. Never say their query or results \
+        were updated. If a search \
         returns no results, retry with synonyms or the spelled-out term (for example "body mass index" for "BMI") \
         before telling the researcher nothing matched. Counts are obfuscated open-access counts that ignore the researcher's consents: say so, and \
         never present one as an exact or authorized number.""";
@@ -90,7 +93,7 @@ class ToolUseLoopService implements ChatOrchestrator {
     @Override
     public ChatResponse handle(ChatRequest request, CallerContext caller) {
         List<ToolDefinition> tools =
-            new ArrayList<>(toolGateway.listTools(caller).stream().filter(tool -> !excludedTools.contains(tool.name())).toList());
+            new ArrayList<>(listTools(caller).stream().filter(tool -> !excludedTools.contains(tool.name())).toList());
         tools.add(proposeQueryTool.definition());
         List<ConversationEntry> history = new ArrayList<>();
         history.add(new UserEntry(request.message()));
@@ -125,6 +128,19 @@ class ToolUseLoopService implements ChatOrchestrator {
             return ChatResponse.textOnly(turn.text() == null || turn.text().isBlank() ? FALLBACK_TEXT : turn.text());
         }
         return ChatResponse.textOnly(turn.text() == null || turn.text().isBlank() ? FALLBACK_TEXT : turn.text());
+    }
+
+    private List<ToolDefinition> listTools(CallerContext caller) {
+        try {
+            return toolGateway.listTools(caller);
+        } catch (RestClientException e) {
+            log.warn("Tool listing failed", e);
+            // Unlike a single tool call, there is no turn to fold this into yet: without the tool list the model can't look anything up.
+            throw new PicsureException(
+                HttpStatus.SERVICE_UNAVAILABLE, "tools_unavailable",
+                "The dictionary/query service is currently unavailable. Please try again."
+            );
+        }
     }
 
     private ModelTurnResult callModel(List<ConversationEntry> history, List<ToolDefinition> tools, int iteration) {
@@ -187,10 +203,12 @@ class ToolUseLoopService implements ChatOrchestrator {
                         + "this conversation, exactly as returned. Call search_concepts first, wait for its results, then use a path from them."
                 );
             }
+            // HPDS matches paths by exact key, so a backslash variant the guard accepted goes out as the path the search returned.
+            String arguments = conceptPaths.canonicalize(call.argumentsJson());
             if (ProposeQueryTool.NAME.equals(call.name())) {
-                return proposeQueryTool.propose(call.argumentsJson());
+                return proposeQueryTool.propose(arguments);
             }
-            return toolGateway.callTool(call.name(), call.argumentsJson(), caller);
+            return toolGateway.callTool(call.name(), arguments, caller);
         } catch (RuntimeException e) {
             return ToolResult.failure("The " + call.name() + " lookup failed: " + e.getMessage());
         }
