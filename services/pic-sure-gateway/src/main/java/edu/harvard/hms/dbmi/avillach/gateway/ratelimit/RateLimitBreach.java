@@ -7,6 +7,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
+import edu.harvard.hms.dbmi.avillach.commons.audit.AuditLoggingFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessValidation;
 import edu.harvard.hms.dbmi.avillach.gateway.error.GatewayErrors;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.OpenAccessFilter;
@@ -19,7 +20,7 @@ import jakarta.servlet.http.HttpServletResponse;
  */
 public record RateLimitBreach(RateLimitSubject subject, RateLimitDecision decision) {
 
-    /** Request attribute holding the {@link RateLimitBreach}, set before the 429 is written. */
+    /** Request attribute holding the {@link RateLimitBreach}, set before the 429 is written, naming the bucket that refused the request. */
     public static final String REQUEST_ATTRIBUTE = RateLimitBreach.class.getName();
 
     /** 429 error type. Part of the frontend contract. */
@@ -56,10 +57,12 @@ public record RateLimitBreach(RateLimitSubject subject, RateLimitDecision decisi
     }
 
     /**
-     * Overwrites the outcome a stage-2 request was given on its grant, so a 429 is never audited as a plain grant. Never records the key or
-     * session token: a key subject is its key UUID or session {@code sub}, plus the display prefix PSAMA reported for it.
+     * Overwrites the outcome a stage-2 request was given on its grant, so a 429 is never audited as a plain grant, and marks the request
+     * audit-required so paths the audit filter otherwise skips still report it. Never records the key or session token: a key subject is
+     * its key UUID or session {@code sub}, plus the display prefix PSAMA reported for it.
      */
     private void audit(HttpServletRequest req, AuditContext audit, InetAddress clientAddress) {
+        req.setAttribute(AuditLoggingFilter.AUDIT_REQUIRED_ATTRIBUTE, Boolean.TRUE);
         audit.put("auth_result", "failure");
         audit.put("auth_action", AUDIT_ACTION);
         audit.put("auth_failure_reason", ERROR_TYPE);
