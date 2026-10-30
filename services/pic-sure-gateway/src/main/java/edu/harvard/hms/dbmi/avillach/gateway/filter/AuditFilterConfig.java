@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.gateway.filter;
 
+import java.net.InetAddress;
 import java.util.List;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
@@ -84,7 +85,11 @@ public class AuditFilterConfig {
                 } catch (UnresolvablePeerException e) {
                     return request.getRemoteAddr();
                 }
-                return ip.resolutionFailed() ? AuditLoggingFilter.resolveSourceIp(request) : ip.address().getHostAddress();
+                if (!ip.resolutionFailed()) {
+                    return ip.address().getHostAddress();
+                }
+                return clientIps.bestEffortClient(request).map(InetAddress::getHostAddress)
+                    .orElseGet(() -> AuditLoggingFilter.resolveSourceIp(request));
             });
         var registration = new FilterRegistrationBean<>(filter);
         registration.setOrder(AUDIT_FILTER_ORDER);
