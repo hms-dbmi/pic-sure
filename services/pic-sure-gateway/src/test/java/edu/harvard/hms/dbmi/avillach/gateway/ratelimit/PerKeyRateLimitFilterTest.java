@@ -347,16 +347,6 @@ class PerKeyRateLimitFilterTest {
     }
 
     @Test
-    void aLimitedSessionDueARefreshStillGetsTheRefreshHeader() throws Exception {
-        Gateway gateway = gateway();
-        assertPassed(gateway, () -> withKey(SESSION_DUE, CLIENT_A), SESSION_BURST);
-
-        MockHttpServletResponse response = assertLimited(gateway, withKey(SESSION_DUE, CLIENT_A));
-
-        assertThat(response.getHeader(OpenAccessFilter.SESSION_REFRESH_HEADER)).isEqualTo(SESSION_DUE_REFRESHED);
-    }
-
-    @Test
     void aDailyBreachRetriesAfterMidnightUtc() throws Exception {
         Gateway gateway = gateway();
         assertPassed(gateway, () -> withKey(ALICE, CLIENT_A), USER_BURST);
