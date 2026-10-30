@@ -17,23 +17,30 @@ import org.springframework.web.context.annotation.RequestScope;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
+import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessRequests;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.BufferingFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.OpenAccessFilter;
+import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.PrevalidationThrottleFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.PsamaIntrospectionFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.TokenRefreshResponseFilter;
+import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitProperties;
+import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitStore;
 import io.micrometer.core.instrument.MeterRegistry;
 
 /**
- * Wires the DB-free auth filter chain: {@code BufferingFilter}(10) -&gt; {@code OpenAccessFilter}(20) -&gt;
- * {@code PsamaIntrospectionFilter}(30) -&gt; {@code TokenRefreshResponseFilter}(40) -&gt; {@code IdentityPropagationFilter}(50). The audit
- * filter (60) is wired in {@code AuditFilterConfig}. No datasource or JPA is used. {@link PsamaClient} talks to PSAMA over HTTP. <p> Spring
- * Security itself stays permit-all because the introspection filter above enforces the authentication boundary.
+ * Wires the DB-free auth filter chain: {@code BufferingFilter}(10) -&gt; {@code PrevalidationThrottleFilter}(12) -&gt;
+ * {@code OpenAccessFilter}(20) -&gt; {@code PsamaIntrospectionFilter}(30) -&gt; {@code TokenRefreshResponseFilter}(40) -&gt;
+ * {@code IdentityPropagationFilter}(50). The audit filter is wired in {@code AuditFilterConfig}, ahead of all of them. No datasource or JPA
+ * is used. {@link PsamaClient} talks to PSAMA over HTTP. <p> Spring Security itself stays permit-all because the introspection filter above
+ * enforces the authentication boundary.
  *
- * <p><b>Always registered:</b> all five filters are installed unconditionally. The shared {@link PublicEndpointPolicy} defines the
- * intentional public-route bypasses used by both authentication filters; all other routes traverse the normal auth chain.
+ * <p><b>Always registered:</b> all six filters are installed unconditionally; the throttle passes everything through when rate limiting is
+ * disabled. The shared {@link PublicEndpointPolicy} defines the intentional public-route bypasses used by both authentication filters; all
+ * other routes traverse the normal auth chain.
  */
 @Configuration
 @EnableConfigurationProperties(GatewaySecurityProperties.class)
@@ -85,6 +92,12 @@ public class SecurityConfig {
         return new PublicEndpointPolicy(props.publicRoutes());
     }
 
+    /** The one open-access classifier, shared so the stage-1 throttle counts exactly the requests {@code OpenAccessFilter} validates. */
+    @Bean
+    OpenAccessRequests openAccessRequests(GatewaySecurityProperties props, PublicEndpointPolicy publicEndpoints) {
+        return new OpenAccessRequests(props.openAccessEnabled(), publicEndpoints);
+    }
+
     @Bean
     FilterRegistrationBean<BufferingFilter> bufferingFilter(GatewaySecurityProperties props, MeterRegistry meterRegistry) {
         var r = new FilterRegistrationBean<>(new BufferingFilter(props.maxBodyBytes(), meterRegistry));
@@ -94,10 +107,20 @@ public class SecurityConfig {
     }
 
     @Bean
-    FilterRegistrationBean<OpenAccessFilter> openAccessFilter(
-        PsamaClient client, AuditContext audit, GatewaySecurityProperties props, PublicEndpointPolicy publicEndpoints
+    FilterRegistrationBean<PrevalidationThrottleFilter> prevalidationThrottleFilter(
+        OpenAccessRequests openAccessRequests, RateLimitProperties rateLimit, ClientIpResolver clientIps, RateLimitStore store
     ) {
-        var r = new FilterRegistrationBean<>(new OpenAccessFilter(client, audit, props.openAccessEnabled(), publicEndpoints));
+        var r = new FilterRegistrationBean<>(new PrevalidationThrottleFilter(rateLimit, openAccessRequests, clientIps, store));
+        r.setOrder(12); // Before InternalEndpointGuardFilter (15) and OpenAccessFilter (20), so a throttled request never reaches PSAMA.
+        r.addUrlPatterns("/*");
+        return r;
+    }
+
+    @Bean
+    FilterRegistrationBean<OpenAccessFilter> openAccessFilter(
+        PsamaClient client, AuditContext audit, OpenAccessRequests openAccessRequests
+    ) {
+        var r = new FilterRegistrationBean<>(new OpenAccessFilter(client, audit, openAccessRequests));
         r.setOrder(20);
         r.addUrlPatterns("/*");
         return r;
