@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.gateway.filter;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
@@ -9,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.io.ByteArrayInputStream;
+import java.lang.management.ManagementFactory;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -81,6 +83,27 @@ class BufferingFilterTest {
         ArgumentCaptor<ServletRequest> captor = ArgumentCaptor.forClass(ServletRequest.class);
         verify(chain).doFilter(captor.capture(), eq(resp));
         assertThat(new String(((BufferedRequestWrapper) captor.getValue()).getBody())).isEqualTo("12345678");
+    }
+
+    @Test
+    void declaredLengthUnderCapReservesNoMemoryUntilBytesArrive() throws Exception {
+        assumeTrue(ManagementFactory.getThreadMXBean() instanceof com.sun.management.ThreadMXBean);
+        com.sun.management.ThreadMXBean threads = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
+        assumeTrue(threads.isThreadAllocatedMemorySupported() && threads.isThreadAllocatedMemoryEnabled());
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        FilterChain chain = mock(FilterChain.class);
+        when(req.getRequestURI()).thenReturn("/query");
+        when(req.getInputStream()).thenReturn(stream(""));
+        when(req.getContentLengthLong()).thenReturn(8L * 1024 * 1024);
+        BufferingFilter filter = new BufferingFilter(16 * 1024 * 1024, new SimpleMeterRegistry());
+
+        long before = threads.getCurrentThreadAllocatedBytes();
+        filter.doFilter(req, resp, chain);
+        long allocated = threads.getCurrentThreadAllocatedBytes() - before;
+
+        verify(chain).doFilter(any(), eq(resp));
+        assertThat(allocated).isLessThan(1024 * 1024);
     }
 
     @ParameterizedTest
