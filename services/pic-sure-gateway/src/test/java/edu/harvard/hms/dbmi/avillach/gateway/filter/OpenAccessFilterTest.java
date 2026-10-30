@@ -54,6 +54,23 @@ class OpenAccessFilterTest {
         verifyNoInteractions(client);
     }
 
+    @ParameterizedTest
+    @MethodSource("nonOpenAccessPicsureBearers")
+    void picsureBearerOfAnotherKindPassesThroughToIntrospection(String authorization, boolean enabled) throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        OpenAccessFilter f = filter(client, new AuditContext(), enabled);
+        BufferedRequestWrapper req = wrap(authorization);
+        FilterChain chain = mock(FilterChain.class);
+        f.doFilter(req, new MockHttpServletResponse(), chain);
+        verify(chain).doFilter(eq(req), any());
+        verifyNoInteractions(client);
+    }
+
+    static Stream<Arguments> nonOpenAccessPicsureBearers() {
+        return Stream.of("Bearer picsure_x_login.token", "Bearer picsure_login.token")
+            .flatMap(a -> Stream.of(Arguments.of(a, true), Arguments.of(a, false)));
+    }
+
     @Test
     void enabledOpenAccessSkipsValidationForPublicSystemStatus() throws Exception {
         PsamaClient client = mock(PsamaClient.class);
@@ -97,12 +114,12 @@ class OpenAccessFilterTest {
         when(client.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(true));
         OpenAccessFilter f = filter(client, new AuditContext(), true);
 
-        BufferedRequestWrapper req = wrap("Bearer " + "picsure_testKeyValue123");
+        BufferedRequestWrapper req = wrap("Bearer " + "picsure_u_testKeyValue123");
         f.doFilter(req, mock(HttpServletResponse.class), mock(FilterChain.class));
 
         ArgumentCaptor<Map<String, Object>> cap = ArgumentCaptor.forClass(Map.class);
         verify(client).validateOpenAccess(cap.capture());
-        assertThat(cap.getValue()).containsEntry("apiKey", "picsure_testKeyValue123");
+        assertThat(cap.getValue()).containsEntry("apiKey", "picsure_u_testKeyValue123");
     }
 
     @Test
@@ -137,11 +154,11 @@ class OpenAccessFilterTest {
         when(client.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(true));
         OpenAccessFilter f = filter(client, new AuditContext(), true);
 
-        f.doFilter(wrap("bearer  picsure_testKeyValue123 "), mock(HttpServletResponse.class), mock(FilterChain.class));
+        f.doFilter(wrap("bearer  picsure_u_testKeyValue123 "), mock(HttpServletResponse.class), mock(FilterChain.class));
 
         ArgumentCaptor<Map<String, Object>> cap = ArgumentCaptor.forClass(Map.class);
         verify(client).validateOpenAccess(cap.capture());
-        assertThat(cap.getValue()).containsEntry("apiKey", "picsure_testKeyValue123");
+        assertThat(cap.getValue()).containsEntry("apiKey", "picsure_u_testKeyValue123");
     }
 
     @Test
@@ -152,7 +169,7 @@ class OpenAccessFilterTest {
         MockHttpServletResponse resp = new MockHttpServletResponse();
         FilterChain chain = mock(FilterChain.class);
 
-        f.doFilter(wrap("Bearer " + "picsure_testKeyValue123"), resp, chain);
+        f.doFilter(wrap("Bearer " + "picsure_u_testKeyValue123"), resp, chain);
 
         assertThat(resp.getStatus()).isEqualTo(401);
         assertThat(resp.getContentAsString()).contains("\"errorType\":\"unauthorized\"").contains("Open access is not enabled.");
@@ -269,7 +286,7 @@ class OpenAccessFilterTest {
         AuditContext ctx = new AuditContext();
         OpenAccessFilter f = filter(client, ctx, true);
 
-        BufferedRequestWrapper req = wrap("Bearer " + "picsure_testKeyValue123");
+        BufferedRequestWrapper req = wrap("Bearer " + "picsure_u_testKeyValue123");
         FilterChain chain = mock(FilterChain.class);
         f.doFilter(req, new MockHttpServletResponse(), chain);
 
@@ -365,13 +382,13 @@ class OpenAccessFilterTest {
         OpenAccessFilter f = filter(client, ctx, true);
 
         MockHttpServletResponse resp = new MockHttpServletResponse();
-        BufferedRequestWrapper req = wrap("Bearer " + "picsure_testKeyValue123");
+        BufferedRequestWrapper req = wrap("Bearer " + "picsure_u_testKeyValue123");
         FilterChain chain = mock(FilterChain.class);
         f.doFilter(req, resp, chain);
 
         assertThat(resp.getStatus()).isEqualTo(401);
         assertThat(resp.getContentAsString()).contains("\"errorType\":\"" + expectedErrorType + "\"")
-            .doesNotContain("picsure_testKeyValue123");
+            .doesNotContain("picsure_u_testKeyValue123");
         verify(chain, never()).doFilter(any(), any());
         assertThat(req.getAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_VALIDATION)).isNull();
         assertThat(ctx.getMetadata()).containsEntry("auth_result", "failure").containsEntry("auth_action", "open_access.denied")
