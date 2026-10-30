@@ -74,6 +74,9 @@ class PerKeyRateLimitFilterTest {
     /** A session whose {@code sub} is the same string as Alice's key UUID. */
     private static final String SESSION_LIKE_ALICE = "picsure_s_like_alice";
     private static final String OLD_PSAMA_KEY = "picsure_u_old_psama";
+    private static final String USER_WITH_BAD_ID = "picsure_u_bad_id";
+    private static final String SESSION_WITHOUT_SUB = "picsure_s_no_sub";
+    private static final String UNKNOWN_KEY_TYPE = "picsure_u_unknown_type";
 
     static WireMockServer psama;
 
@@ -105,6 +108,9 @@ class PerKeyRateLimitFilterTest {
         stubKey(SESSION_DUE_REFRESHED, granted("SESSION", "sub-due", null));
         stubKey(SESSION_LIKE_ALICE, granted("SESSION", ALICE_ID.toString(), null));
         stubKey(OLD_PSAMA_KEY, "true");
+        stubKey(USER_WITH_BAD_ID, granted("USER", "not-a-uuid", null));
+        stubKey(SESSION_WITHOUT_SUB, granted("SESSION", " ", null));
+        stubKey(UNKNOWN_KEY_TYPE, granted("SERVICE", ALICE_ID.toString(), null));
     }
 
     private static String granted(String keyType, String keyId, String refreshedToken) {
@@ -247,6 +253,8 @@ class PerKeyRateLimitFilterTest {
         assertPassed(gateway, () -> withKey(PLATFORM, "not-an-ip"), IP_BURST);
 
         assertLimited(gateway, withKey(PLATFORM, "not-an-ip"));
+
+        assertThat(consumed).containsOnly(RateLimitSubject.ip(address(PROXY)));
     }
 
     @Test
@@ -265,6 +273,17 @@ class PerKeyRateLimitFilterTest {
         assertPassed(gateway, () -> withKey(OLD_PSAMA_KEY, CLIENT_A), IP_BURST);
 
         assertLimited(gateway, withKey(OLD_PSAMA_KEY, CLIENT_A));
+
+        assertThat(consumed).containsOnly(RateLimitSubject.ip(address(CLIENT_A)));
+    }
+
+    @Test
+    void aGrantWithIncompleteOrUnknownKeyIdentityDrawsFromTheClientIp() throws Exception {
+        Gateway gateway = gateway();
+        assertPassed(gateway, () -> withKey(USER_WITH_BAD_ID, CLIENT_A), 1);
+        assertPassed(gateway, () -> withKey(SESSION_WITHOUT_SUB, CLIENT_A), 1);
+
+        assertLimited(gateway, withKey(UNKNOWN_KEY_TYPE, CLIENT_A));
 
         assertThat(consumed).containsOnly(RateLimitSubject.ip(address(CLIENT_A)));
     }
