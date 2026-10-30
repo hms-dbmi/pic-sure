@@ -2,8 +2,10 @@ package edu.harvard.hms.dbmi.avillach.commons.net;
 
 import java.net.InetAddress;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.Optional;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -18,7 +20,8 @@ import jakarta.servlet.http.HttpServletRequest;
  * failure. It can still push the header over a cap below.
  *
  * <p>A trusted peer forwarding a header that is over {@link #MAX_HEADER_LENGTH} characters or {@link #MAX_HOPS} hops, or whose walk reaches
- * an entry that isn't an IP literal, falls back to the peer and is marked {@link ClientIp#resolutionFailed()}.
+ * an entry that isn't an IP literal, falls back to the peer and is marked {@link ClientIp#resolutionFailed()}. For logging after such a
+ * failure, {@link #bestEffortClient(HttpServletRequest)} still names the caller when the hops nearest the peer allow it.
  *
  * <p>Distinct from any allowlist: trusted-proxy membership only permits reading the header. Check allowlists with
  * {@link ClientIp#isIn(Collection)} on the result.
@@ -81,6 +84,36 @@ public final class ClientIpResolver {
             }
         }
         return new ClientIp(hop, false);
+    }
+
+    /**
+     * The caller's address for logs when {@link #resolve(HttpServletRequest)} failed: the same right-to-left walk over the rightmost
+     * {@link #MAX_HOPS} hops of every {@code X-Forwarded-For} line, ignoring {@link #MAX_HEADER_LENGTH} and the hop count, so padding the
+     * caller put on the left can't hide the hop a trusted proxy appended for it. Empty when the peer isn't trusted, the walk reaches an
+     * entry that isn't an IP literal, or every walked hop is trusted. Never use this for limiting or allowlists: on a failed resolution
+     * those stay on the peer.
+     */
+    public Optional<InetAddress> bestEffortClient(HttpServletRequest request) {
+        if (!CidrRange.anyContains(trustedProxies, parsePeer(request.getRemoteAddr()))) {
+            return Optional.empty();
+        }
+        Enumeration<String> lines = request.getHeaders(HEADER_X_FORWARDED_FOR);
+        if (lines == null || !lines.hasMoreElements()) {
+            return Optional.empty();
+        }
+        String[] hops = String.join(",", Collections.list(lines)).split(",", -1);
+        for (int i = hops.length - 1; i >= Math.max(0, hops.length - MAX_HOPS); i--) {
+            InetAddress hop;
+            try {
+                hop = IpLiterals.parseHop(hops[i].trim());
+            } catch (IllegalArgumentException e) {
+                return Optional.empty();
+            }
+            if (!CidrRange.anyContains(trustedProxies, hop)) {
+                return Optional.of(hop);
+            }
+        }
+        return Optional.empty();
     }
 
     private static InetAddress parsePeer(String remoteAddr) {
