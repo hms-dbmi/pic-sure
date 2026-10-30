@@ -22,11 +22,11 @@ import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * Base {@link OncePerRequestFilter} that maps each non-skipped request to an {@link AuditRoute} and emits an audit event through the
- * {@link LoggingClient}. Both the skip check and route matching use {@link RoutedRequestPath}, the decoded path a path-pattern router
+ * {@link LoggingClient}. Both the event-skip check and route matching use {@link RoutedRequestPath}, the decoded path a path-pattern router
  * matches, so an encoded spelling of a path is skipped or gets the same event type and action exactly as its plain spelling does; the
- * event's {@code url} stays the raw request URI. {@code shouldNotFilter} is deliberately {@code protected} and non-final so gateway
- * subclasses can widen the skip set for pass-through paths. Skipped paths and {@code OPTIONS} still run inside the filter, so a request
- * marked with {@link #AUDIT_REQUIRED_ATTRIBUTE} on its way through is audited anyway.
+ * event's {@code url} stays the raw request URI. Requests {@link #skipsEvent} matches still run inside the filter and emit nothing, unless
+ * the chain marks them with {@link #AUDIT_REQUIRED_ATTRIBUTE}; subclasses widen that skip set by overriding {@code skipsEvent}. Overriding
+ * the protected, non-final {@code shouldNotFilter} bypasses the filter outright, so such requests are never audited, marked or not.
  */
 public class AuditLoggingFilter extends OncePerRequestFilter {
 
