@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
+import edu.harvard.hms.dbmi.avillach.commons.audit.AuditLoggingFilter;
 import edu.harvard.hms.dbmi.avillach.commons.net.CidrRange;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
 import edu.harvard.hms.dbmi.avillach.commons.net.UnresolvablePeerException;
@@ -57,6 +58,7 @@ abstract class RateLimitFilter extends OncePerRequestFilter {
             target = enabled ? target(req) : null;
         } catch (UnresolvablePeerException e) {
             log.error("Cannot resolve connection peer '{}' in {}", req.getRemoteAddr(), getClass().getName());
+            req.setAttribute(AuditLoggingFilter.AUDIT_REQUIRED_ATTRIBUTE, Boolean.TRUE);
             audit.put("auth_result", "failure");
             audit.put("auth_failure_reason", "client_ip_unresolvable");
             GatewayErrors.write(

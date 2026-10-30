@@ -36,31 +36,31 @@ class AuditLoggingFilterTest {
     }
 
     @Test
-    void shouldNotFilterIsTrueForOptionsRequests() {
+    void optionsRequestsSkipTheEvent() {
         LoggingClient client = mock(LoggingClient.class);
         when(client.isEnabled()).thenReturn(true);
         AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of());
 
-        assertThat(filter.shouldNotFilter(new MockHttpServletRequest("OPTIONS", "/query/sync"))).isTrue();
+        assertThat(filter.skipsEvent(new MockHttpServletRequest("OPTIONS", "/query/sync"))).isTrue();
     }
 
     @Test
-    void shouldNotFilterIsTrueForSystemStatusAndOpenapiPaths() {
+    void systemStatusAndOpenapiPathsSkipTheEvent() {
         LoggingClient client = mock(LoggingClient.class);
         when(client.isEnabled()).thenReturn(true);
         AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of());
 
-        assertThat(filter.shouldNotFilter(new MockHttpServletRequest("GET", "/system/status"))).isTrue();
-        assertThat(filter.shouldNotFilter(new MockHttpServletRequest("GET", "/openapi.json"))).isTrue();
+        assertThat(filter.skipsEvent(new MockHttpServletRequest("GET", "/system/status"))).isTrue();
+        assertThat(filter.skipsEvent(new MockHttpServletRequest("GET", "/openapi.json"))).isTrue();
     }
 
     @Test
-    void shouldNotFilterIsTrueWhenPathContainsASkipContainsEntry() {
+    void aPathContainingASkipContainsEntrySkipsTheEvent() {
         LoggingClient client = mock(LoggingClient.class);
         when(client.isEnabled()).thenReturn(true);
         AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of("/proxy/pic-sure-logging/"));
 
-        assertThat(filter.shouldNotFilter(new MockHttpServletRequest("GET", "/proxy/pic-sure-logging/audit"))).isTrue();
+        assertThat(filter.skipsEvent(new MockHttpServletRequest("GET", "/proxy/pic-sure-logging/audit"))).isTrue();
     }
 
     @Test
@@ -70,6 +70,30 @@ class AuditLoggingFilterTest {
         AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of());
 
         assertThat(filter.shouldNotFilter(new MockHttpServletRequest("POST", "/query/sync"))).isFalse();
+        assertThat(filter.skipsEvent(new MockHttpServletRequest("POST", "/query/sync"))).isFalse();
+    }
+
+    @Test
+    void aSkippedPathEmitsNothingUnlessTheChainMarksTheRequestAuditRequired() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of("/bin/continuous"));
+
+        filter.doFilter(new MockHttpServletRequest("POST", "/bin/continuous"), new MockHttpServletResponse(), new MockFilterChain());
+        verify(client, never()).send(any(LoggingEvent.class));
+
+        MockFilterChain marking = new MockFilterChain() {
+            @Override
+            public void doFilter(jakarta.servlet.ServletRequest request, jakarta.servlet.ServletResponse response) {
+                request.setAttribute(AuditLoggingFilter.AUDIT_REQUIRED_ATTRIBUTE, Boolean.TRUE);
+                ((jakarta.servlet.http.HttpServletResponse) response).setStatus(429);
+            }
+        };
+        filter.doFilter(new MockHttpServletRequest("POST", "/bin/continuous"), new MockHttpServletResponse(), marking);
+
+        ArgumentCaptor<LoggingEvent> event = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(client).send(event.capture());
+        assertThat(event.getValue().getRequest().getStatus()).isEqualTo(429);
     }
 
     /**

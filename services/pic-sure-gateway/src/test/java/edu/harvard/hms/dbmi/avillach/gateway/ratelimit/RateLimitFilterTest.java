@@ -15,6 +15,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
+import edu.harvard.hms.dbmi.avillach.commons.audit.AuditLoggingFilter;
 import edu.harvard.hms.dbmi.avillach.commons.net.CidrRange;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIp;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
@@ -59,6 +60,7 @@ class RateLimitFilterTest {
             """));
         assertThat(chain.getRequest()).isNull();
         verifyNoInteractions(store);
+        assertThat(request.getAttribute(AuditLoggingFilter.AUDIT_REQUIRED_ATTRIBUTE)).isEqualTo(Boolean.TRUE);
         assertThat(audit.getMetadata()).containsEntry("auth_result", "failure")
             .containsEntry("auth_failure_reason", "client_ip_unresolvable");
     }
@@ -70,6 +72,7 @@ class RateLimitFilterTest {
 
         assertThat(response.getStatus()).isEqualTo(200);
         assertThat(chain.getRequest()).isSameAs(request);
+        assertThat(request.getAttribute(AuditLoggingFilter.AUDIT_REQUIRED_ATTRIBUTE)).isNull();
         assertThat(audit.getMetadata()).isEmpty();
         verifyNoInteractions(store);
     }
