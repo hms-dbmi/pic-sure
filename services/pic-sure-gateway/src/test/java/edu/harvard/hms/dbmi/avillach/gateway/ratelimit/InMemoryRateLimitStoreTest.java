@@ -337,6 +337,35 @@ class InMemoryRateLimitStoreTest {
         }
     }
 
+    /** The same race with the held request reaching the store first, after its entry has expired: still only one of the two is admitted. */
+    @Test
+    void heldRequestReachingTheExpiredEntryFirstStillAdmitsOnlyOne() throws Exception {
+        GatedClock gated = new GatedClock(clock);
+        InMemoryRateLimitStore store = new InMemoryRateLimitStore(props(1, 1, 1, 1000), meters, gated);
+        clock.set("2026-10-29T23:00:00Z");
+        consume(store, USER, 1);
+
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            clock.set("2026-10-29T23:59:59.999Z");
+            Future<RateLimitDecision> held = pool.submit(() -> {
+                gated.gateThisThread();
+                return store.tryConsume(USER);
+            });
+            assertThat(gated.awaitHeld()).as(HELD_AT_YESTERDAYS_TIME).isTrue();
+
+            clock.set("2026-10-30T00:00:00.001Z");
+            gated.release();
+            RateLimitDecision heldDecision = held.get(10, TimeUnit.SECONDS);
+            RateLimitDecision afterMidnight = store.tryConsume(USER);
+
+            assertThat(List.of(heldDecision.allowed(), afterMidnight.allowed())).as("held, then after midnight").containsOnlyOnce(true);
+        } finally {
+            gated.release();
+            pool.shutdownNow();
+        }
+    }
+
     @Test
     void refusesANonWallClock() {
         assertThatThrownBy(() -> new InMemoryRateLimitStore(props(1, 1, 1, 1), meters, TimeMeter.SYSTEM_NANOTIME))
