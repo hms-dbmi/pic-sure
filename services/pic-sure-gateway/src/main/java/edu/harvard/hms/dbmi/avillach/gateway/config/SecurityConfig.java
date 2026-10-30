@@ -104,10 +104,10 @@ public class SecurityConfig {
     @Bean
     FilterRegistrationBean<PrevalidationThrottleFilter> prevalidationThrottleFilter(
         GatewaySecurityProperties props, PublicEndpointPolicy publicEndpoints, RateLimitProperties rateLimit, ClientIpResolver clientIps,
-        RateLimitStore store
+        RateLimitStore store, AuditContext audit
     ) {
         var openAccessRequests = new OpenAccessRequests(props.openAccessEnabled(), publicEndpoints);
-        var r = new FilterRegistrationBean<>(new PrevalidationThrottleFilter(rateLimit, openAccessRequests, clientIps, store));
+        var r = new FilterRegistrationBean<>(new PrevalidationThrottleFilter(rateLimit, openAccessRequests, clientIps, store, audit));
         r.setOrder(12); // Before InternalEndpointGuardFilter (15) and OpenAccessFilter (20), so a throttled request never reaches PSAMA.
         r.addUrlPatterns("/*");
         return r;
@@ -125,9 +125,9 @@ public class SecurityConfig {
 
     @Bean
     FilterRegistrationBean<PerKeyRateLimitFilter> perKeyRateLimitFilter(
-        RateLimitProperties rateLimit, ClientIpResolver clientIps, RateLimitStore store
+        RateLimitProperties rateLimit, ClientIpResolver clientIps, RateLimitStore store, AuditContext audit
     ) {
-        var r = new FilterRegistrationBean<>(new PerKeyRateLimitFilter(rateLimit, clientIps, store));
+        var r = new FilterRegistrationBean<>(new PerKeyRateLimitFilter(rateLimit, clientIps, store, audit));
         r.setOrder(22); // After OpenAccessFilter (20) grants, before InboundIdentityHeaderSanitizingFilter (25).
         r.addUrlPatterns("/*");
         return r;
