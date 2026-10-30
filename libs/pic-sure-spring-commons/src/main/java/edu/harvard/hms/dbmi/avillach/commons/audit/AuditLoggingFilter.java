@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Predicate;
 
 import org.slf4j.Logger;
@@ -54,7 +55,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
         this.routes = routes;
         this.audit = audit;
         this.skipContains = skipContains != null ? List.copyOf(skipContains) : List.of();
-        this.forwardAuthorization = forwardAuthorization;
+        this.forwardAuthorization = Objects.requireNonNull(forwardAuthorization, "forwardAuthorization");
     }
 
     @Override
