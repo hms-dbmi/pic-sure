@@ -23,6 +23,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
+import edu.harvard.hms.dbmi.avillach.commons.net.CidrRange;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessValidation;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
@@ -82,7 +83,11 @@ class AuditFilterOrderTest {
 
     private static FilterRegistrationBean<?> auditRegistration(LoggingClient client, AuditContext audit) {
         AuditFilterConfig config = new AuditFilterConfig();
-        return config.auditLoggingFilter(client, config.auditRouteTable(), audit, rateLimit(), new ClientIpResolver(List.of()));
+        RateLimitProperties rateLimit = rateLimit();
+        return config.auditLoggingFilter(
+            client, config.auditRouteTable(), audit, rateLimit,
+            new ClientIpResolver(rateLimit.trustedProxies().stream().map(CidrRange::parse).toList())
+        );
     }
 
     @Test
