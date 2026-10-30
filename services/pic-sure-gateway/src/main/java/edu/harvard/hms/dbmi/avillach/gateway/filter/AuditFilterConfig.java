@@ -11,6 +11,7 @@ import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditLoggingFilter;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditRoute;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditRouteTable;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.ApiKeyBearer;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingClientFactory;
 
@@ -59,8 +60,10 @@ public class AuditFilterConfig {
     public FilterRegistrationBean<AuditLoggingFilter> auditLoggingFilter(LoggingClient client, AuditRouteTable routes, AuditContext audit) {
         // The base filter skips paths ending in /system/status or /openapi.json and paths containing /info/,
         // /bin/continuous, or /logging. Gateway-local actuator and API-documentation paths are also skipped.
+        // An open-access key or session token is never sent to the logging service; a login token is, for its user claims.
         AuditLoggingFilter filter = new AuditLoggingFilter(
-            client, routes, audit, List.of("/info/", "/bin/continuous", "/logging", "/actuator", "/openapi", "/swagger-ui")
+            client, routes, audit, List.of("/info/", "/bin/continuous", "/logging", "/actuator", "/openapi", "/swagger-ui"),
+            authorization -> ApiKeyBearer.extract(authorization) == null
         );
         var registration = new FilterRegistrationBean<>(filter);
         registration.setOrder(AUDIT_FILTER_ORDER);
