@@ -61,6 +61,21 @@ class ConverseSdkModelClientTest {
     }
 
     @Test
+    void readsAToolCallFromALaterGenerationAndJoinsTheText() {
+        // Spring AI emits one Generation per Converse content block; the tool call often follows a text block.
+        AssistantMessage toolCall = AssistantMessage.builder().content("")
+            .toolCalls(List.of(new AssistantMessage.ToolCall("c1", "function", "search_concepts", "{\"query\":\"bmi\"}"))).build();
+        when(chatModel.call(any(Prompt.class)))
+            .thenReturn(new ChatResponse(List.of(new Generation(new AssistantMessage("Searching.")), new Generation(toolCall))));
+
+        ModelTurnResult result = client.send("sys", List.of(new UserEntry("hi")), List.of());
+
+        assertThat(result.done()).isFalse();
+        assertThat(result.toolCalls()).containsExactly(new RequestedToolCall("c1", "search_concepts", "{\"query\":\"bmi\"}"));
+        assertThat(result.text()).isEqualTo("Searching.");
+    }
+
+    @Test
     void sendsSystemUserAssistantAndBatchedToolResultMessagesWithToolsAdvertised() {
         when(chatModel.call(any(Prompt.class))).thenReturn(new ChatResponse(List.of(new Generation(new AssistantMessage("ok")))));
         List<ConversationEntry> history = List.of(
