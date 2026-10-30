@@ -4,6 +4,7 @@ import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Arrays;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -64,6 +65,6 @@ public record RateLimitSubject(Kind kind, String value) {
 
     @Override
     public String toString() {
-        return kind.name().toLowerCase() + ":" + value;
+        return kind.name().toLowerCase(Locale.ROOT) + ":" + value;
     }
 }

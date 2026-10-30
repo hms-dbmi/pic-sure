@@ -7,8 +7,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * Open-access rate-limit configuration, bound from {@code picsure.gateway.rate-limit.*}. The defaults and the {@code RATE_LIMIT_*} env var
  * names deployments set live in {@code application.yml}. A zero or negative limit, or {@code enabled=true} with no trusted proxies, throws
- * during binding and stops the context. The two CIDR lists stay raw strings here: they are trimmed and blank entries dropped, but their
- * syntax is checked by the client-IP resolver that consumes them.
+ * during binding and stops the context. The two CIDR lists stay raw strings here, trimmed with blank entries dropped. Their CIDR syntax is
+ * not validated yet; that comes with the stage filters that parse them.
  */
 @ConfigurationProperties(prefix = "picsure.gateway.rate-limit")
 public record RateLimitProperties(

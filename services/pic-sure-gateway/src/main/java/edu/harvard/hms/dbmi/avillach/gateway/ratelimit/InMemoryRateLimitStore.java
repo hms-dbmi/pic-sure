@@ -113,7 +113,7 @@ public final class InMemoryRateLimitStore implements RateLimitStore {
     /**
      * Limits that reset on the minute boundary and at midnight UTC, the first after {@code now}. {@code perDay} of 0 means no daily limit.
      */
-    private static BucketConfiguration calendarConfiguration(long perMinute, long perDay, Instant now) {
+    static BucketConfiguration calendarConfiguration(long perMinute, long perDay, Instant now) {
         ConfigurationBuilder builder = BucketConfiguration.builder()
             .addLimit(limit -> limit.capacity(perMinute).refillIntervallyAligned(perMinute, MINUTE, nextBoundary(now, ChronoUnit.MINUTES)));
         if (perDay > 0) {
