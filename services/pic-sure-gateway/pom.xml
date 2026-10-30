@@ -50,6 +50,17 @@
             <groupId>edu.harvard.dbmi.avillach</groupId>
             <artifactId>pic-sure-logging-client</artifactId>
         </dependency>
+        <!-- rate limiting: Bucket4j buckets held in one bounded Caffeine cache. Pinned to the Bucket4j version
+             Spring Cloud Gateway 4.3.0 was built against; Caffeine's version comes from the Spring Boot BOM. -->
+        <dependency>
+            <groupId>com.bucket4j</groupId>
+            <artifactId>bucket4j_jdk17-core</artifactId>
+            <version>8.14.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
