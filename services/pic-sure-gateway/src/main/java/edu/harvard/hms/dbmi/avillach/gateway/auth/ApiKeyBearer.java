@@ -9,7 +9,7 @@ import java.util.List;
  */
 public final class ApiKeyBearer {
 
-    static final List<String> KEY_PREFIXES = List.of("picsure_u_", "picsure_p_", "picsure_s_");
+    private static final List<String> KEY_PREFIXES = List.of("picsure_u_", "picsure_p_", "picsure_s_");
 
     private static final String SCHEME = "Bearer ";
 
