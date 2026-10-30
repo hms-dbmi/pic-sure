@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.ai.chat;
 
 import java.util.List;
+import java.util.Set;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -59,7 +60,8 @@ final class ChatStateValidator {
     }
 
     /**
-     * Binds and validates a client-supplied {@code query}, tolerating the UI's extra fields (see {@link ProposeQueryBinder#bindClientQuery}).
+     * Binds and validates a client-supplied {@code query}, tolerating the UI's extra fields (see
+     * {@link ProposeQueryBinder#bindClientQuery}).
      *
      * @param query the query node, possibly null or JSON null
      * @return the validated input, or null if absent
@@ -134,12 +136,20 @@ final class ChatStateValidator {
     }
 
     /**
+     * Formatting characters ordinary text carries: the zero-width non-joiner and joiner (Persian and Indic scripts, emoji sequences) and
+     * the soft hyphen. Refusing these would fail a whole chat turn over a legitimate facet name or search term.
+     */
+    private static final Set<Integer> BENIGN_FORMAT = Set.of(0x200C, 0x200D, 0x00AD);
+
+    /**
      * @param text text bound for the dictionary
      * @throws IllegalArgumentException if it holds a control character (newlines, NUL, escapes...) or an invisible formatting one
-     *         (zero-width, bidirectional override...), the usual vehicles for smuggling content past a reader
+     *         (zero-width space, bidirectional override, tag characters...), the usual vehicles for smuggling content past a reader; the
+     *         {@linkplain #BENIGN_FORMAT benign formatting characters} are allowed
      */
     static void requireCleanText(String text) {
-        boolean harmful = text.codePoints().anyMatch(c -> Character.isISOControl(c) || Character.getType(c) == Character.FORMAT);
+        boolean harmful = text.codePoints()
+            .anyMatch(c -> Character.isISOControl(c) || Character.getType(c) == Character.FORMAT && !BENIGN_FORMAT.contains(c));
         if (harmful) {
             throw new IllegalArgumentException("It must not contain control or invisible formatting characters.");
         }
