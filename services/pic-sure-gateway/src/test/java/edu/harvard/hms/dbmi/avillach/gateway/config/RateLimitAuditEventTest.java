@@ -46,8 +46,10 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * A 429 from either stage, through every registered gateway filter in configured order, sends one audit event to the {@link LoggingClient}
- * that names the breach and never the presented key. The store is stubbed per subject kind, so each test picks which stage breaches.
+ * A 429 from either stage, through the registered gateway filters from {@code RequestIdFilter} to the identity-header sanitizer (25) in
+ * configured order, sends one audit event to the {@link LoggingClient} that names the breach and never the presented key. The store is
+ * stubbed per subject kind, so each test picks which stage breaches. {@code RateLimitJourneyTest} runs the limiter through the whole
+ * gateway.
  */
 @ExtendWith(OutputCaptureExtension.class)
 class RateLimitAuditEventTest {
