@@ -83,7 +83,6 @@ class BufferingFilterTest {
         assertThat(new String(((BufferedRequestWrapper) captor.getValue()).getBody())).isEqualTo("12345678");
     }
 
-    // The buffer used to be pre-sized from Content-Length, so a tiny body declaring ~2 GB reserved ~2 GB of heap per request.
     @ParameterizedTest
     @ValueSource(longs = {9L, 2_000_000_000L, Long.MAX_VALUE})
     void declaredLengthOverCapReturns413WithoutReadingTheBody(long declared) throws Exception {

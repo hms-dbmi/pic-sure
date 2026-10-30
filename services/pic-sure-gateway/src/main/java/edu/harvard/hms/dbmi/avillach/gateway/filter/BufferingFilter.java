@@ -52,12 +52,11 @@ public class BufferingFilter extends OncePerRequestFilter {
     }
 
     private byte[] readBody(HttpServletRequest req) throws IOException {
-        // Reject an over-cap declared length before allocating: the buffer is sized from it, and it is client-controlled.
-        long declared = req.getContentLengthLong();
-        if (declared > maxBytes) {
+        if (req.getContentLengthLong() > maxBytes) {
             throw new BodyTooLargeException();
         }
-        ByteArrayOutputStream out = new ByteArrayOutputStream(Math.max(0, (int) declared));
+        // Not pre-sized from Content-Length: an unauthenticated client can declare the cap, send nothing, and hold the allocation.
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
         try (InputStream in = req.getInputStream()) {
             byte[] buf = new byte[8192];
             int read, total = 0;
