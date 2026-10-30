@@ -1,20 +1,12 @@
 package edu.harvard.hms.dbmi.avillach.gateway.ratelimit;
 
-import java.io.IOException;
-import java.util.List;
 import java.util.UUID;
 
-import org.springframework.web.filter.OncePerRequestFilter;
-
-import edu.harvard.hms.dbmi.avillach.commons.net.CidrRange;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIp;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessValidation;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.OpenAccessFilter;
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * Stage 2 of the open-access rate limiter: limits each open-access request {@code OpenAccessFilter} granted, by the key identity PSAMA
@@ -24,42 +16,18 @@ import jakarta.servlet.http.HttpServletResponse;
  * resolved client IP's bucket (IPv6 by /64). A failed IP resolution is never exempt. Requests that weren't granted open access pass
  * untouched, as does everything when the limiter is disabled.
  */
-public class PerKeyRateLimitFilter extends OncePerRequestFilter {
-
-    private final boolean enabled;
-    private final ClientIpResolver clientIps;
-    private final List<CidrRange> allowlist;
-    private final RateLimitStore store;
+public class PerKeyRateLimitFilter extends RateLimitFilter {
 
     public PerKeyRateLimitFilter(RateLimitProperties props, ClientIpResolver clientIps, RateLimitStore store) {
-        this.enabled = props.enabled();
-        this.clientIps = clientIps;
-        this.allowlist = props.platformAllowlistedSourceCidrs().stream().map(CidrRange::parse).toList();
-        this.store = store;
-    }
-
-    @Override
-    protected void doFilterInternal(HttpServletRequest req, HttpServletResponse resp, FilterChain chain)
-        throws ServletException, IOException {
-        if (!enabled || !Boolean.TRUE.equals(req.getAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_GRANTED))) {
-            chain.doFilter(req, resp);
-            return;
-        }
-        RateLimitSubject subject = subject(req);
-        if (subject == null) {
-            chain.doFilter(req, resp);
-            return;
-        }
-        RateLimitDecision decision = store.tryConsume(subject);
-        if (!decision.allowed()) {
-            RateLimitBreach.reject(req, resp, subject, decision);
-            return;
-        }
-        chain.doFilter(req, resp);
+        super(props, clientIps, store);
     }
 
     /** The bucket for a granted request, or null for an exempt one. Identity PSAMA reported incompletely falls back to the client IP. */
-    private RateLimitSubject subject(HttpServletRequest req) {
+    @Override
+    protected RateLimitSubject subject(HttpServletRequest req) {
+        if (!Boolean.TRUE.equals(req.getAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_GRANTED))) {
+            return null;
+        }
         OpenAccessValidation validation =
             req.getAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_VALIDATION) instanceof OpenAccessValidation v ? v : null;
         String keyType = validation == null ? null : validation.keyType();
