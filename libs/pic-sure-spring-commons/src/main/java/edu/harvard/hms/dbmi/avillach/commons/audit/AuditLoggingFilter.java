@@ -25,9 +25,13 @@ import jakarta.servlet.http.HttpServletResponse;
  * {@link LoggingClient}. Both the skip check and route matching use {@link RoutedRequestPath}, the decoded path a path-pattern router
  * matches, so an encoded spelling of a path is skipped or gets the same event type and action exactly as its plain spelling does; the
  * event's {@code url} stays the raw request URI. {@code shouldNotFilter} is deliberately {@code protected} and non-final so gateway
- * subclasses can widen the skip set for pass-through paths.
+ * subclasses can widen the skip set for pass-through paths. Skipped paths and {@code OPTIONS} still run inside the filter, so a request
+ * marked with {@link #AUDIT_REQUIRED_ATTRIBUTE} on its way through is audited anyway.
  */
 public class AuditLoggingFilter extends OncePerRequestFilter {
+
+    /** Request attribute that, when {@link Boolean#TRUE}, forces an event for a path or method this filter otherwise skips. */
+    public static final String AUDIT_REQUIRED_ATTRIBUTE = AuditLoggingFilter.class.getName() + ".required";
 
     private static final Logger logger = LoggerFactory.getLogger(AuditLoggingFilter.class);
 
@@ -73,9 +77,11 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        if (client == null || !client.isEnabled()) {
-            return true;
-        }
+        return client == null || !client.isEnabled();
+    }
+
+    /** Whether the request's event is dropped unless {@link #AUDIT_REQUIRED_ATTRIBUTE} is set. */
+    protected boolean skipsEvent(HttpServletRequest request) {
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
             return true;
         }
@@ -102,10 +108,12 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
         try {
             filterChain.doFilter(request, response);
         } finally {
-            try {
-                emit(request, response, System.currentTimeMillis() - startTime);
-            } catch (Exception e) {
-                logger.warn("AuditLoggingFilter failed to log request", e);
+            if (!skipsEvent(request) || Boolean.TRUE.equals(request.getAttribute(AUDIT_REQUIRED_ATTRIBUTE))) {
+                try {
+                    emit(request, response, System.currentTimeMillis() - startTime);
+                } catch (Exception e) {
+                    logger.warn("AuditLoggingFilter failed to log request", e);
+                }
             }
         }
     }
