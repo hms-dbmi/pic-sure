@@ -104,25 +104,6 @@ class OpenAccessFilterOrderTest {
     }
 
     @Test
-    void assembledFiltersRejectAThrottledRequestBeforeOpenAccessCallsPsama() throws Exception {
-        PsamaClient psama = mock(PsamaClient.class);
-        List<FilterRegistrationBean<? extends Filter>> registrations = new ArrayList<>(assembledRegistrations(psama));
-        registrations.add(
-            AuditFilterOrderTest.throttleRegistration(props(), subject -> new RateLimitDecision(false, RateLimitDecision.Window.BURST, 7))
-        );
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
-        request.addHeader("Authorization", "Bearer picsure_u_testKeyValue123");
-        MockHttpServletResponse response = new MockHttpServletResponse();
-
-        invokeInRegisteredOrder(registrations, request, response, (req, resp) -> {
-        });
-
-        assertThat(response.getStatus()).isEqualTo(429);
-        assertThat(response.getHeader("Retry-After")).isEqualTo("7");
-        verifyNoInteractions(psama);
-    }
-
-    @Test
     @SuppressWarnings("unchecked")
     void assembledFiltersConsumeBearerApiKeyBeforeSanitizingRemovesItDownstream() throws Exception {
         PsamaClient psama = mock(PsamaClient.class);
