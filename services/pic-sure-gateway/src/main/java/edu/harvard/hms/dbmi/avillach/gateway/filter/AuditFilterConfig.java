@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.gateway.filter;
 
 import java.util.List;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -11,7 +12,9 @@ import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditLoggingFilter;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditRoute;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditRouteTable;
+import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.ApiKeyBearer;
+import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitProperties;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingClientFactory;
 
@@ -57,14 +60,21 @@ public class AuditFilterConfig {
     }
 
     @Bean
-    public FilterRegistrationBean<AuditLoggingFilter> auditLoggingFilter(LoggingClient client, AuditRouteTable routes, AuditContext audit) {
+    public FilterRegistrationBean<AuditLoggingFilter> auditLoggingFilter(
+        LoggingClient client, AuditRouteTable routes, AuditContext audit, RateLimitProperties rateLimit, ClientIpResolver clientIps
+    ) {
         // The base filter skips paths ending in /system/status or /openapi.json and paths containing /info/,
         // /bin/continuous, or /logging. Gateway-local actuator and API-documentation paths are also skipped.
+        List<String> skipContains = List.of("/info/", "/bin/continuous", "/logging", "/actuator", "/openapi", "/swagger-ui");
         // An open-access key or session token is never sent to the logging service; a login token is, for its user claims.
-        AuditLoggingFilter filter = new AuditLoggingFilter(
-            client, routes, audit, List.of("/info/", "/bin/continuous", "/logging", "/actuator", "/openapi", "/swagger-ui"),
-            authorization -> ApiKeyBearer.extract(authorization) == null
-        );
+        Predicate<String> forwardAuthorization = authorization -> ApiKeyBearer.extract(authorization) == null;
+        // srcIp is the client the rate limiter sees. With no trusted proxies configured that would always be the peer (httpd), so the
+        // base filter's rightmost-X-Forwarded-For rule stays, which is right for AIO's single httpd.
+        AuditLoggingFilter filter = rateLimit.trustedProxies().isEmpty()
+            ? new AuditLoggingFilter(client, routes, audit, skipContains, forwardAuthorization)
+            : new AuditLoggingFilter(
+                client, routes, audit, skipContains, forwardAuthorization, request -> clientIps.resolve(request).address().getHostAddress()
+            );
         var registration = new FilterRegistrationBean<>(filter);
         registration.setOrder(AUDIT_FILTER_ORDER);
         registration.addUrlPatterns("/*");

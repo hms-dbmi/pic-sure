@@ -1,13 +1,13 @@
 package edu.harvard.hms.dbmi.avillach.gateway.ratelimit;
 
 import java.io.IOException;
-import java.net.InetAddress;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditLoggingFilter;
+import edu.harvard.hms.dbmi.avillach.commons.net.ClientIp;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessValidation;
 import edu.harvard.hms.dbmi.avillach.gateway.error.GatewayErrors;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.OpenAccessFilter;
@@ -37,17 +37,17 @@ public record RateLimitBreach(RateLimitSubject subject, RateLimitDecision decisi
 
     /**
      * Records the breach as {@link #REQUEST_ATTRIBUTE} and in the request's audit event, then writes {@code 429}, {@code Retry-After} and
-     * the standard gateway error body. {@code clientAddress} is the resolved client address an IP subject was built from (logged in full,
-     * not by the /64 an IPv6 bucket uses) and is ignored for key subjects. The response is not reset, so headers set earlier (such as a
-     * session refresh) are kept. The caller must not continue the chain.
+     * the standard gateway error body. {@code client} is the resolved client an IP subject was built from (its address logged in full, not
+     * by the /64 an IPv6 bucket uses) and is ignored for key subjects. The response is not reset, so headers set earlier (such as a session
+     * refresh) are kept. The caller must not continue the chain.
      */
     public static void reject(
-        HttpServletRequest req, HttpServletResponse resp, AuditContext audit, RateLimitSubject subject, InetAddress clientAddress,
+        HttpServletRequest req, HttpServletResponse resp, AuditContext audit, RateLimitSubject subject, ClientIp client,
         RateLimitDecision decision
     ) throws IOException {
         RateLimitBreach breach = new RateLimitBreach(subject, decision);
         req.setAttribute(REQUEST_ATTRIBUTE, breach);
-        breach.audit(req, audit, clientAddress);
+        breach.audit(req, audit, client);
         long retryAfter = decision.retryAfterSeconds();
         resp.setHeader(HttpHeaders.RETRY_AFTER, Long.toString(retryAfter));
         GatewayErrors.write(
@@ -59,9 +59,10 @@ public record RateLimitBreach(RateLimitSubject subject, RateLimitDecision decisi
     /**
      * Overwrites the outcome a stage-2 request was given on its grant, so a 429 is never audited as a plain grant, and marks the request
      * audit-required so paths the audit filter otherwise skips still report it. Never records the key or session token: a key subject is
-     * its key UUID or session {@code sub}, plus the display prefix PSAMA reported for it.
+     * its key UUID or session {@code sub}, plus the display prefix PSAMA reported for it. An IP subject whose resolution failed is the
+     * connection peer, not the client, so it also gets {@code rate_limit_ip_resolution_failed: true}; the field is absent otherwise.
      */
-    private void audit(HttpServletRequest req, AuditContext audit, InetAddress clientAddress) {
+    private void audit(HttpServletRequest req, AuditContext audit, ClientIp client) {
         req.setAttribute(AuditLoggingFilter.AUDIT_REQUIRED_ATTRIBUTE, Boolean.TRUE);
         audit.put("auth_result", "failure");
         audit.put("auth_action", AUDIT_ACTION);
@@ -69,7 +70,10 @@ public record RateLimitBreach(RateLimitSubject subject, RateLimitDecision decisi
         switch (subject.kind()) {
             case PREVALIDATION_IP, IP -> {
                 audit.put("rate_limit_subject_type", "client_ip");
-                audit.put("rate_limit_subject", clientAddress.getHostAddress());
+                audit.put("rate_limit_subject", client.address().getHostAddress());
+                if (client.resolutionFailed()) {
+                    audit.put("rate_limit_ip_resolution_failed", true);
+                }
             }
             case USER, SESSION -> {
                 audit.put("rate_limit_subject_type", subject.kind() == RateLimitSubject.Kind.USER ? "user_key" : "session");

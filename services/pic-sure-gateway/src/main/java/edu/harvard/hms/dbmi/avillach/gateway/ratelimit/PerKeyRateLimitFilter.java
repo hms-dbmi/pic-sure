@@ -45,7 +45,7 @@ public class PerKeyRateLimitFilter extends RateLimitFilter {
         if (OpenAccessValidation.KEY_TYPE_PLATFORM.equals(keyType) && client.isIn(allowlist)) {
             return null;
         }
-        return new Target(RateLimitSubject.ip(client.address()), client.address());
+        return new Target(RateLimitSubject.ip(client.address()), client);
     }
 
     private static UUID parseUuid(String value) {
