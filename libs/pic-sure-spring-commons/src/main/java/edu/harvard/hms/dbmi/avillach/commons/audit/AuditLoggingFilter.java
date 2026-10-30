@@ -21,9 +21,9 @@ import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * Base {@link OncePerRequestFilter} that maps each non-skipped request to an {@link AuditRoute} and emits an audit event through the
- * {@link LoggingClient}. {@code shouldNotFilter} is deliberately {@code protected} and non-final so gateway subclasses can widen the skip
- * set for pass-through paths. Skipped paths and {@code OPTIONS} still run inside the filter, so a request marked with
- * {@link #AUDIT_REQUIRED_ATTRIBUTE} on its way through is audited anyway.
+ * {@link LoggingClient}. Requests {@link #skipsEvent} matches still run inside the filter and emit nothing, unless the chain marks them
+ * with {@link #AUDIT_REQUIRED_ATTRIBUTE}; subclasses widen that skip set by overriding {@code skipsEvent}. Overriding the protected,
+ * non-final {@code shouldNotFilter} bypasses the filter outright, so such requests are never audited, marked or not.
  */
 public class AuditLoggingFilter extends OncePerRequestFilter {
 
