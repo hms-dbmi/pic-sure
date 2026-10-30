@@ -14,6 +14,7 @@ import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.ApiKeyBearer;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionTokenRejectedException;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessRequests;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessValidation;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
@@ -24,15 +25,15 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * Handles open-access requests, short-circuiting before {@code PsamaIntrospectionFilter} runs. Triggers when open access is enabled and
- * {@code Authorization} is blank, at most 7 characters, or a bearer PSAMA key ({@link ApiKeyBearer}). The open-access payload contains the
- * decoded path Spring resolved as {@code "Target Service"}, {@code ipAddress}, and the key as {@code apiKey} when one was presented; it
- * does not contain a login token or request body. A key presented while open access is disabled is denied here rather than introspected,
- * since PSAMA could only reject it as a login token. A denial whose reason is the API key gets its own 401 error type
- * ({@code api_key_missing} / {@code api_key_invalid}); every other denial is {@code unauthorized}. On a grant the
- * {@link OpenAccessValidation} is stored as {@link #ATTR_OPEN_ACCESS_VALIDATION}, and a refreshed open-access session token is returned in
- * {@value #SESSION_REFRESH_HEADER}. Routes selected by the shared {@link PublicEndpointPolicy}, a login bearer token, or disabled open
- * access without a key pass through untouched.
+ * Handles open-access requests, short-circuiting before {@code PsamaIntrospectionFilter} runs. Which requests take this path is decided by
+ * {@link OpenAccessRequests}, shared with the stage-1 throttle: open access enabled and {@code Authorization} blank, at most 7 characters,
+ * or a bearer PSAMA key ({@link ApiKeyBearer}). The open-access payload contains the decoded path Spring resolved as
+ * {@code "Target Service"}, {@code ipAddress}, and the key as {@code apiKey} when one was presented; it does not contain a login token or
+ * request body. A key presented while open access is disabled is denied here rather than introspected, since PSAMA could only reject it as
+ * a login token. A denial whose reason is the API key gets its own 401 error type ({@code api_key_missing} / {@code api_key_invalid});
+ * every other denial is {@code unauthorized}. On a grant the {@link OpenAccessValidation} is stored as
+ * {@link #ATTR_OPEN_ACCESS_VALIDATION}, and a refreshed open-access session token is returned in {@value #SESSION_REFRESH_HEADER}. Routes
+ * selected by the shared {@link PublicEndpointPolicy}, a login bearer token, or disabled open access without a key pass through untouched.
  */
 public class OpenAccessFilter extends OncePerRequestFilter {
 
@@ -74,14 +75,12 @@ public class OpenAccessFilter extends OncePerRequestFilter {
 
     private final PsamaClient psama;
     private final AuditContext audit;
-    private final boolean openAccessEnabled;
-    private final PublicEndpointPolicy publicEndpoints;
+    private final OpenAccessRequests openAccessRequests;
 
     public OpenAccessFilter(PsamaClient psama, AuditContext audit, boolean openAccessEnabled, PublicEndpointPolicy publicEndpoints) {
         this.psama = psama;
         this.audit = audit;
-        this.openAccessEnabled = openAccessEnabled;
-        this.publicEndpoints = publicEndpoints;
+        this.openAccessRequests = new OpenAccessRequests(openAccessEnabled, publicEndpoints);
     }
 
     /**
@@ -94,23 +93,16 @@ public class OpenAccessFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse resp, FilterChain chain)
         throws ServletException, IOException {
-        if (publicEndpoints.evaluate(req.getMethod(), req.getRequestURI()).publicEndpoint()) {
+        OpenAccessRequests.Classification route = openAccessRequests.classify(req);
+        if (route.route() == OpenAccessRequests.Route.NOT_OPEN_ACCESS) {
             chain.doFilter(req, resp);
             return;
         }
-
-        String authz = req.getHeader("Authorization");
-        String apiKey = ApiKeyBearer.extract(authz);
-        boolean noToken = authz == null || authz.isBlank() || authz.length() <= 7; // Missing or empty Bearer value.
-
-        if (apiKey == null && (!openAccessEnabled || !noToken)) {
-            chain.doFilter(req, resp);
-            return;
-        }
-        if (!openAccessEnabled) {
+        if (route.route() == OpenAccessRequests.Route.OPEN_ACCESS_DISABLED) {
             deny(resp, OPEN_ACCESS_DISABLED);
             return;
         }
+        String apiKey = route.apiKey();
 
         Map<String, Object> queryMap = buildOpenAccessRequest(req);
         Map<String, Object> body = new HashMap<>();

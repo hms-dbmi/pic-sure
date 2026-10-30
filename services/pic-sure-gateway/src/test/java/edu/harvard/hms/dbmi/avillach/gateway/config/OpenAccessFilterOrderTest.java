@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -25,8 +26,10 @@ import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessValidation;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.OpenAccessFilter;
+import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitDecision;
 import edu.harvard.hms.dbmi.avillach.gateway.request.InboundIdentityHeaderSanitizingFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.request.InternalEndpointGuardFilter;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import jakarta.servlet.Filter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -47,6 +50,37 @@ class OpenAccessFilterOrderTest {
         });
 
         assertThat(response.getStatus()).isEqualTo(404);
+        verifyNoInteractions(psama);
+    }
+
+    @Test
+    void assembledFiltersThrottleAfterBufferingAndBeforeTheInternalGuardAndOpenAccess() {
+        GatewaySecurityProperties props = props();
+        int throttle = AuditFilterOrderTest.throttleRegistration(props, subject -> null).getOrder();
+
+        assertThat(throttle).isGreaterThan(new SecurityConfig().bufferingFilter(props, new SimpleMeterRegistry()).getOrder())
+            .isLessThan(new ObservabilityConfig().internalEndpointGuardFilter().getOrder()).isLessThan(
+                new SecurityConfig()
+                    .openAccessFilter(mock(PsamaClient.class), new AuditContext(), props, new PublicEndpointPolicy(List.of())).getOrder()
+            );
+    }
+
+    @Test
+    void assembledFiltersRejectAThrottledRequestBeforeOpenAccessCallsPsama() throws Exception {
+        PsamaClient psama = mock(PsamaClient.class);
+        List<FilterRegistrationBean<? extends Filter>> registrations = new ArrayList<>(assembledRegistrations(psama));
+        registrations.add(
+            AuditFilterOrderTest.throttleRegistration(props(), subject -> new RateLimitDecision(false, RateLimitDecision.Window.BURST, 7))
+        );
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("Authorization", "Bearer picsure_u_testKeyValue123");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        invokeInRegisteredOrder(registrations, request, response, (req, resp) -> {
+        });
+
+        assertThat(response.getStatus()).isEqualTo(429);
+        assertThat(response.getHeader("Retry-After")).isEqualTo("7");
         verifyNoInteractions(psama);
     }
 
@@ -111,10 +145,14 @@ class OpenAccessFilterOrderTest {
         assertThat(downstreamRequest.get().getHeaders("Authorization").hasMoreElements()).isFalse();
     }
 
-    private static List<FilterRegistrationBean<? extends Filter>> assembledRegistrations(PsamaClient psama) {
-        GatewaySecurityProperties props = new GatewaySecurityProperties(
+    private static GatewaySecurityProperties props() {
+        return new GatewaySecurityProperties(
             List.of(), true, 1024, "http://psama.local/introspect", "http://psama.local/open-access", "svc-token"
         );
+    }
+
+    private static List<FilterRegistrationBean<? extends Filter>> assembledRegistrations(PsamaClient psama) {
+        GatewaySecurityProperties props = props();
         SecurityConfig securityConfig = new SecurityConfig();
         ObservabilityConfig observabilityConfig = new ObservabilityConfig();
         return List.of(
