@@ -13,6 +13,7 @@ import edu.harvard.hms.dbmi.avillach.commons.audit.AuditLoggingFilter;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditRoute;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditRouteTable;
 import edu.harvard.hms.dbmi.avillach.commons.audit.ClientTypeAllowlist;
+import edu.harvard.hms.dbmi.avillach.commons.net.ClientIp;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
 import edu.harvard.hms.dbmi.avillach.commons.net.UnresolvablePeerException;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.ApiKeyBearer;
@@ -77,11 +78,13 @@ public class AuditFilterConfig {
         AuditLoggingFilter filter = rateLimit.trustedProxies().isEmpty()
             ? new AuditLoggingFilter(client, routes, audit, skipContains, clientTypes, forwardAuthorization)
             : new AuditLoggingFilter(client, routes, audit, skipContains, clientTypes, forwardAuthorization, request -> {
+                ClientIp ip;
                 try {
-                    return clientIps.resolve(request).address().getHostAddress();
+                    ip = clientIps.resolve(request);
                 } catch (UnresolvablePeerException e) {
                     return request.getRemoteAddr();
                 }
+                return ip.resolutionFailed() ? AuditLoggingFilter.resolveSourceIp(request) : ip.address().getHostAddress();
             });
         var registration = new FilterRegistrationBean<>(filter);
         registration.setOrder(AUDIT_FILTER_ORDER);
