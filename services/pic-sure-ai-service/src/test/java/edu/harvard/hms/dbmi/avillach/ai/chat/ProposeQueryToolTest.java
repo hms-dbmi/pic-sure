@@ -51,11 +51,79 @@ class ProposeQueryToolTest {
     }
 
     @Test
+    void querySentAtTheTopLevelIsReadAsTheQuery() {
+        // Gpt-oss sent {"select":[...]} with no query wrapper and was refused.
+        ProposeQueryTool.Outcome outcome = tool.propose("{\"select\":[\"\\\\demo\\\\race\\\\\"]}", knownFacets);
+
+        assertFalse(outcome.result().error(), outcome.result().content());
+        assertEquals(List.of("\\demo\\race\\"), outcome.proposal().query().select());
+    }
+
+    @Test
+    void addSelectAndSelectAreReadAsAdditionsAndRemoveSelectAsRemovals() {
+        ProposeQueryTool.Outcome outcome = tool.propose("""
+            {"query":{"addSelect":["\\\\demo\\\\race\\\\"],"select":["\\\\demo\\\\sex\\\\","\\\\demo\\\\race\\\\"],\
+            "removeSelect":["\\\\demo\\\\bmi\\\\"]}}""", knownFacets);
+
+        assertFalse(outcome.result().error(), outcome.result().content());
+        assertEquals(List.of("\\demo\\race\\", "\\demo\\sex\\"), outcome.proposal().query().select());
+        assertEquals(List.of("\\demo\\bmi\\"), outcome.proposal().removeSelect());
+    }
+
+    @Test
+    void aBlankRemovedPathIsRefused() {
+        ProposeQueryTool.Outcome outcome = tool.propose("{\"query\":{\"removeSelect\":[\" \"]}}", knownFacets);
+
+        assertTrue(outcome.result().error());
+        assertTrue(outcome.result().content().contains("removeSelect"), outcome.result().content());
+    }
+
+    @Test
+    void aQueryFieldSentBesideQueryIsMovedIntoIt() {
+        // Gpt-oss sent {"query":{"removeSelect":[...]},"addSelect":[...]} and was refused.
+        ProposeQueryTool.Outcome outcome = tool.propose("""
+            {"query":{"removeSelect":["\\\\demo\\\\bmi\\\\"]},"addSelect":["\\\\demo\\\\race\\\\"]}""", knownFacets);
+
+        assertFalse(outcome.result().error(), outcome.result().content());
+        assertEquals(List.of("\\demo\\race\\"), outcome.proposal().query().select());
+        assertEquals(List.of("\\demo\\bmi\\"), outcome.proposal().removeSelect());
+    }
+
+    @Test
+    void aQueryFieldSentBothBesideAndInsideQueryIsRefused() {
+        ProposeQueryTool.Outcome outcome = tool.propose("""
+            {"query":{"addSelect":["\\\\demo\\\\bmi\\\\"]},"addSelect":["\\\\demo\\\\race\\\\"]}""", knownFacets);
+
+        assertTrue(outcome.result().error());
+        assertTrue(outcome.result().content().contains("addSelect"), outcome.result().content());
+    }
+
+    @Test
     void anEmptyFacetListIsAValidClearingProposal() {
         ProposeQueryTool.Outcome outcome = tool.propose("{\"facets\":[]}", knownFacets);
 
         assertFalse(outcome.result().error(), outcome.result().content());
         assertEquals(List.of(), outcome.proposal().facets());
+    }
+
+    @Test
+    void emptyObjectsSentForFieldsTheModelMeansToOmitAreReadAsNotSent() {
+        // The shape gpt-oss sent for a select-only request: no filter and no search, each as {}.
+        ProposeQueryTool.Outcome outcome = tool.propose("""
+            {"search":{},"query":{"select":["\\\\demo\\\\bmi\\\\"],"genomicFilters":[],"phenotypicClause":{}},"facets":[]}""", knownFacets);
+
+        assertFalse(outcome.result().error(), outcome.result().content());
+        assertEquals(List.of("\\demo\\bmi\\"), outcome.proposal().query().select());
+        assertNull(outcome.proposal().query().phenotypicClause());
+        assertNull(outcome.proposal().search());
+    }
+
+    @Test
+    void aNonEmptyUnrecognisedClauseStillFailsAndTellsTheModelToOmitItWhenThereIsNothingToFilter() {
+        ProposeQueryTool.Outcome outcome = tool.propose("{\"query\":{\"phenotypicClause\":{\"bogus\":1}}}", knownFacets);
+
+        assertTrue(outcome.result().error());
+        assertTrue(outcome.result().content().contains("leave phenotypicClause out"), outcome.result().content());
     }
 
     @Test
@@ -97,17 +165,19 @@ class ProposeQueryToolTest {
     }
 
     @Test
-    void acceptsAProposalWithNoFieldsPresent() {
+    void rejectsAProposalWithNoFieldsPresent() {
         ToolResult result = propose("{}");
 
-        assertFalse(result.error(), result.content());
+        assertTrue(result.error());
+        assertTrue(result.content().contains("empty"), result.content());
     }
 
     @Test
-    void acceptsBlankArguments() {
+    void rejectsBlankArguments() {
         ToolResult result = propose("");
 
-        assertFalse(result.error(), result.content());
+        assertTrue(result.error());
+        assertTrue(result.content().contains("empty"), result.content());
     }
 
     @Test
@@ -163,13 +233,34 @@ class ProposeQueryToolTest {
     }
 
     @Test
-    void rejectsADisallowedFieldLikeNotOnAFilter() {
-        ToolResult result = propose(
-            "{\"query\":{\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"\\\\demo\\\\\",\"not\":true}}}"
-        );
+    void rejectsADisallowedFieldLikeAuthorizationFilters() {
+        ToolResult result = propose("{\"query\":{\"authorizationFilters\":[]}}");
 
         assertTrue(result.error());
-        assertTrue(result.content().contains("not"), result.content());
+        assertTrue(result.content().contains("authorizationFilters"), result.content());
+    }
+
+    @Test
+    void keepsNotOnAFilterSoAnExclusionStaysAnExclusion() {
+        ProposeQueryTool.Outcome outcome = tool.propose(
+            "{\"query\":{\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"\\\\demo\\\\\",\"not\":true}}}",
+            knownFacets
+        );
+
+        assertFalse(outcome.result().error(), outcome.result().content());
+        assertTrue(((ProposeQueryInput.Filter) outcome.proposal().query().phenotypicClause()).isNegated());
+    }
+
+    @Test
+    void aSubqueryWithNotIsStillReadAsASubquery() {
+        // Both clause types carry not, so where it appears must not decide which one a clause is.
+        ProposeQueryTool.Outcome outcome = tool.propose("""
+            {"query":{"phenotypicClause":{"not":false,"operator":"AND","phenotypicClauses":[\
+            {"not":true,"phenotypicFilterType":"REQUIRED","conceptPath":"\\\\demo\\\\"}]}}}""", knownFacets);
+
+        assertFalse(outcome.result().error(), outcome.result().content());
+        ProposeQueryInput.Subquery subquery = (ProposeQueryInput.Subquery) outcome.proposal().query().phenotypicClause();
+        assertTrue(((ProposeQueryInput.Filter) subquery.phenotypicClauses().getFirst()).isNegated());
     }
 
     @Test

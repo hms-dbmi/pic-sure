@@ -30,7 +30,10 @@ class ChatStateValidatorTest {
     @Test
     void aQueryWithWrongTypedFieldsIsRefused() throws Exception {
         assertThrows(IllegalArgumentException.class, () -> ChatStateValidator.query(json("{\"select\":\"a-string\"}")));
-        assertThrows(IllegalArgumentException.class, () -> ChatStateValidator.query(json("{\"phenotypicClause\":{\"operator\":\"XOR\",\"phenotypicClauses\":[]}}")));
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> ChatStateValidator.query(json("{\"phenotypicClause\":{\"operator\":\"XOR\",\"phenotypicClauses\":[]}}"))
+        );
         assertThrows(IllegalArgumentException.class, () -> ChatStateValidator.query(json("[]")));
     }
 
@@ -106,7 +109,19 @@ class ChatStateValidatorTest {
     }
 
     @Test
+    void formattingCharactersOrdinaryTextCarriesAreAccepted() {
+        for (String text : List.of("می\u200Cخواهم", "family\u200Demoji", "soft\u00ADhyphen")) {
+            assertDoesNotThrow(() -> ChatStateValidator.requireValidSearch(text), text);
+            assertDoesNotThrow(() -> ChatStateValidator.requireValidFacets(List.of(new FacetSelection("study", text))), text);
+        }
+        assertThrows(IllegalArgumentException.class, () -> ChatStateValidator.requireValidSearch("tag\uDB40\uDC41smuggled"));
+    }
+
+    @Test
     void anOverlongSearchIsRefused() {
-        assertThrows(IllegalArgumentException.class, () -> ChatStateValidator.requireValidSearch("x".repeat(ChatStateValidator.MAX_SEARCH_LENGTH + 1)));
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> ChatStateValidator.requireValidSearch("x".repeat(ChatStateValidator.MAX_SEARCH_LENGTH + 1))
+        );
     }
 }

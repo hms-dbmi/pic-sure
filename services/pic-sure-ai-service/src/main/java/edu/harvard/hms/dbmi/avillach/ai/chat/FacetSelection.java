@@ -1,5 +1,10 @@
 package edu.harvard.hms.dbmi.avillach.ai.chat;
 
+import java.util.ArrayList;
+import java.util.List;
+
+import com.fasterxml.jackson.databind.JsonNode;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
@@ -15,4 +20,19 @@ public record FacetSelection(
     @Schema(description = "The facet category name.", example = "study") String category,
     @Schema(description = "The facet's name within its category.", example = "phs000001") String name
 ) {
+
+    /** @return the {category, name} pairs in a tool call's {@code facets}, skipping malformed entries */
+    static List<FacetSelection> listedIn(JsonNode arguments) {
+        JsonNode facets = arguments.path("facets");
+        if (!facets.isArray()) {
+            return List.of();
+        }
+        List<FacetSelection> found = new ArrayList<>();
+        for (JsonNode facet : facets) {
+            if (facet.path("category").isTextual() && facet.path("name").isTextual()) {
+                found.add(new FacetSelection(facet.path("category").asText(), facet.path("name").asText()));
+            }
+        }
+        return found;
+    }
 }

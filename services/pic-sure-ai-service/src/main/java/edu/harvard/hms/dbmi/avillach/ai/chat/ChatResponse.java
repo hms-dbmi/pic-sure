@@ -9,10 +9,13 @@ import io.swagger.v3.oas.annotations.media.Schema;
 /**
  * {@code POST /ai/chat}'s response body: {@code { response, query?, facets?, search? }}. Each of
  * {@code query}/{@code facets}/{@code search} is present only when this turn actually changed it -- most turns are dictionary Q&A with no
- * query involved at all, per {@code PLAN.md}'s Goal section.
+ * query involved at all, per {@code PLAN.md}'s Goal section. A part that is present replaces that part of the researcher's state whole.
+ *
+ * <p>{@code query} holds only the fields the assistant may set -- {@code select}, {@code phenotypicClause}, {@code genomicFilters}. The UI
+ * sets those three on its own query object and keeps the rest ({@code expectedResultType}, {@code authorizationFilters}, ...).
  *
  * @param response the model's final chat reply
- * @param query the updated query object, or null if this turn didn't change it
+ * @param query the updated {@code select}/{@code phenotypicClause}/{@code genomicFilters}, or null if this turn didn't change it
  * @param facets the updated facet selection, or null if this turn didn't change it
  * @param search the updated dictionary search text, or null if this turn didn't change it
  */
@@ -23,7 +26,10 @@ public record ChatResponse(
         description = "The model's final chat reply.", example = "Three studies include blood pressure measurements.",
         requiredMode = Schema.RequiredMode.REQUIRED
     ) String response,
-    @Schema(description = "The updated query object. Absent when the turn did not change it.") JsonNode query,
+    @Schema(
+        description = "The updated select, phenotypicClause and genomicFilters, to set on the researcher's own query object, keeping "
+            + "its other fields. Absent when the turn did not change it."
+    ) JsonNode query,
     @Schema(description = "The updated facet selection. Absent when the turn did not change it.") List<FacetSelection> facets,
     @Schema(
         description = "The updated dictionary search text; empty clears it. Absent when the turn did not change it.", example = "blood pressure"

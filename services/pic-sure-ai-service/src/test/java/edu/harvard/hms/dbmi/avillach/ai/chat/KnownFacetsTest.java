@@ -28,6 +28,16 @@ class KnownFacetsTest {
     }
 
     @Test
+    void aNestedFacetListedUnderItsParentIsKnown() {
+        KnownFacets known = new KnownFacets();
+
+        known.learnFromListFacets("""
+            {"categories":[{"name":"dataset_id","facets":[{"name":"phs1"},{"name":"phs1.v2","parent":"phs1"}]}]}""");
+
+        assertTrue(known.isKnown(new FacetSelection("dataset_id", "phs1.v2")));
+    }
+
+    @Test
     void aFacetNameIsOnlyKnownUnderItsOwnCategory() {
         KnownFacets known = new KnownFacets();
         known.learnFromListFacets(LIST_FACETS_RESULT);
@@ -66,5 +76,15 @@ class KnownFacetsTest {
 
         assertEquals(new FacetSelection("study", "nope"), unknown);
         assertNull(known.firstUnknownIn(List.of(new FacetSelection("study", "demo"))));
+    }
+
+    @Test
+    void listingNamesEveryFacetByCategoryInTheOrderSeen() {
+        KnownFacets known = new KnownFacets();
+        assertNull(known.listing());
+
+        known.learnFromListFacets(LIST_FACETS_RESULT);
+
+        assertEquals("study: demo, nhanes; sex: female", known.listing());
     }
 }

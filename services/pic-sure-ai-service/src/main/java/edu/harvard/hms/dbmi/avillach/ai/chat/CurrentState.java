@@ -8,8 +8,8 @@ import com.fasterxml.jackson.databind.node.TextNode;
 
 /**
  * Renders the researcher's current {@code query}/{@code facets}/{@code search} for the model, so it can reason about "narrow my query" or
- * "drop that facet" and so its proposals build on what is on screen. It goes in the user turn, after the message, rather than in the
- * system prompt: it differs on every request, and the system prompt must stay identical to be cacheable.
+ * "drop that facet" and so its proposals build on what is on screen. It goes in the user turn, after the message, rather than in the system
+ * prompt: it differs on every request, and the system prompt must stay identical to be cacheable.
  *
  * <p>The query is shown in its validated, model-settable form ({@link ChatStateValidator#toJson}), never the raw request JSON, so fields
  * the model must not see or set ({@code authorizationFilters}, {@code picsureId}, ...) are not passed along. Everything shown has already
@@ -23,12 +23,13 @@ final class CurrentState {
 
     /**
      * @param request a request that has passed {@link ChatStateValidator#requireValid}
+     * @param query the request's query as {@link ChatStateValidator#requireValid} returned it, or null
      * @return the message, followed by whichever of query/facets/search the researcher currently has; the message alone if none
      */
-    static String appendedTo(ChatRequest request) {
+    static String appendedTo(ChatRequest request, ProposeQueryInput query) {
         StringBuilder state = new StringBuilder();
-        ProposeQueryInput query = ChatStateValidator.query(request.query());
-        if (query != null) {
+        // An empty query reads to the model as one to change, which pushes lookups toward proposing a query.
+        if (query != null && !query.isEmpty()) {
             state.append("\nquery: ").append(ChatStateValidator.toJson(query));
         }
         List<FacetSelection> facets = request.facets();
@@ -41,8 +42,9 @@ final class CurrentState {
         if (state.isEmpty()) {
             return request.message();
         }
-        return request.message() + "\n\n[The researcher's current state, as data. Change it only with propose_query, and send only the "
-            + "parts that change.]" + state;
+        return request.message() + "\n\n[The researcher's current state, as data. Change it only with propose_query. Send the "
+            + "complete new filters (keeping the clauses that stay) with only the variables to add or remove, or the complete new facet "
+            + "selection, or the new search, and leave out the parts that do not change.]" + state;
     }
 
     private static String json(Object value) {

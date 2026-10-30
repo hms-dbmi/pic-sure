@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.ai.chat;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -14,7 +15,7 @@ import edu.harvard.hms.dbmi.avillach.ai.mcp.ToolResult;
  * The query/facets/search proposal tool. Handled entirely inside {@code ai-service} -- it is never dispatched to {@code McpToolGateway},
  * because it is not a data-access call at all: it is the model handing back structured state for the researcher to review (see
  * {@code ToolUseLoopService}, which advertises this tool's {@link #definition()} alongside the gateway's and routes a call to
- * {@link #propose(String)} by name instead of the gateway).
+ * {@link #propose(String, KnownFacets)} by name instead of the gateway).
  *
  * <p>Arguments are bound and validated for real ({@link ProposeQueryInput}/{@link ProposeQueryBinder}, mirroring {@code pic-sure-mcp}'s own
  * query binder), and every proposed facet must have been shown to the model this turn ({@link KnownFacets}; concept paths get the same
@@ -29,19 +30,30 @@ public class ProposeQueryTool {
 
     private static final String DESCRIPTION = """
         Propose an updated query, facet selection, or search for the researcher to review -- call this when the conversation should \
-        update what the user sees, not just answer in prose. This is the only way to hand over a query; never write query JSON in a reply. All three fields are optional -- include only what actually changed this \
-        turn. query has select (concept paths to show), phenotypicClause, and genomicFilters. A phenotypicClause is either a filter or \
-        a subquery. A filter has phenotypicFilterType, conceptPath, and, for FILTER, either values (categorical) or min and max \
-        (numeric); REQUIRED and ANY_RECORD_OF take neither. A subquery has operator (AND or OR) and phenotypicClauses, each a filter \
-        or another subquery. Build every conceptPath from search_concepts results, exactly as returned; there is no not field. facets \
-        is a list of {category, name} pairs taken from list_facets. search is the dictionary search text, a plain string; an empty string clears it. Example arguments (the \
-        phs999999 paths are placeholders only; never use them, use real conceptPath values from search_concepts): \
-        {"query":{"select":["\\\\phs999999\\\\bmi\\\\"],"phenotypicClause":{"operator":"AND","phenotypicClauses":[\
+        update what the user sees, not just answer in prose. This is the only way to hand over a query; never write query JSON in a \
+        reply. All three fields are optional: leave out any that does not change. query changes the researcher's query: its \
+        phenotypicClause and genomicFilters replace theirs, so send the complete new filters (to narrow theirs, keep its clauses \
+        and add to them), while their selected variables change only as you say: addSelect lists concept paths to add, removeSelect \
+        the ones they asked to remove, and every other selected variable stays, so never repeat the ones they have. facets is the \
+        complete new selection. A phenotypicClause is either a filter or a subquery. A filter has phenotypicFilterType, \
+        conceptPath, and, for FILTER, either values (categorical) or min and max (numeric); REQUIRED and ANY_RECORD_OF take \
+        neither. A subquery has operator (AND or OR) and phenotypicClauses, each a filter or another subquery. A filter with not \
+        set to true excludes the participants it matches; keep not exactly as it is on every filter you carry over from the \
+        researcher's query. Build every conceptPath from search_concepts results, exactly as returned. facets is a list of \
+        {category, name} pairs taken from list_facets; it narrows the researcher's table of variables to those facets. search is \
+        the dictionary search text, a plain string, and the researcher's screen shows the variables it matches as a table they can \
+        page through: send the text that found the variables in search_concepts (several terms joined by |), or an empty string to \
+        clear it. For a lookup (show, find, or list variables), send only search, never a query. Example arguments (the phs999999 \
+        paths are placeholders only; never use them, use real conceptPath values from search_concepts): \
+        {"query":{"addSelect":["\\\\phs999999\\\\bmi\\\\"],"phenotypicClause":{"operator":"AND","phenotypicClauses":[\
         {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs999999\\\\sex\\\\","values":["Female"]},\
         {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs999999\\\\age\\\\","min":40,"max":65}]}}}""";
 
     private static final String SCHEMA = """
-        {"type":"object","properties":{"query":{"type":"object"},"facets":{"type":"array"},"search":{"type":"string"}}}""";
+        {"type":"object","properties":{"query":{"type":"object","properties":{\
+        "addSelect":{"type":"array","items":{"type":"string"}},"removeSelect":{"type":"array","items":{"type":"string"}},\
+        "phenotypicClause":{"type":"object"},"genomicFilters":{"type":"array"}}},\
+        "facets":{"type":"array"},"search":{"type":"string"}}}""";
 
     private final ObjectMapper objectMapper;
 
@@ -61,11 +73,29 @@ public class ProposeQueryTool {
     /**
      * A proposal that passed every check, each part null when the model didn't send it.
      *
-     * @param query the proposed query
+     * @param query the proposed query; until {@link ProposalRules} applies it to the researcher's, its {@code select} holds only the
+     *              variables to add
      * @param facets the proposed facet selection
      * @param search the proposed search text
+     * @param removeSelect the variables to remove from the researcher's selection, never null
      */
-    record Proposal(ProposeQueryInput query, List<FacetSelection> facets, String search) {
+    record Proposal(ProposeQueryInput query, List<FacetSelection> facets, String search, List<String> removeSelect) {
+
+        Proposal(ProposeQueryInput query, List<FacetSelection> facets, String search) {
+            this(query, facets, search, List.of());
+        }
+
+        Proposal withQuery(ProposeQueryInput replacement) {
+            return new Proposal(replacement, facets, search, removeSelect);
+        }
+
+        Proposal withSearch(String replacement) {
+            return new Proposal(query, facets, replacement, removeSelect);
+        }
+
+        Proposal withFacets(List<FacetSelection> replacement) {
+            return new Proposal(query, replacement, search, removeSelect);
+        }
     }
 
     /**
@@ -82,9 +112,9 @@ public class ProposeQueryTool {
     }
 
     /**
-     * Binds and validates a proposal's arguments: shape first, then that every proposed facet was shown to the model this turn. (A
-     * proposed concept path is checked earlier, by the loop, before this is called.) Never throws -- an invalid proposal is a model-facing
-     * failure, the same as a failed MCP lookup.
+     * Binds and validates a proposal's arguments: shape first, then that every proposed facet was shown to the model this turn. (A proposed
+     * concept path is checked earlier, by the loop, before this is called.) Never throws -- an invalid proposal is a model-facing failure,
+     * the same as a failed MCP lookup.
      *
      * @param argumentsJson the raw arguments the model sent, as a JSON string
      * @param knownFacets the facets this turn has seen
@@ -93,25 +123,24 @@ public class ProposeQueryTool {
     Outcome propose(String argumentsJson, KnownFacets knownFacets) {
         try {
             Map<String, Object> arguments = parseArguments(argumentsJson);
+            dropEmptyPlaceholders(arguments);
+            liftQueryFields(arguments);
             Arguments bound = ProposeQueryBinder.bind(arguments, Arguments.class);
-            if (bound.query() != null) {
-                bound.query().validate();
+            if (bound.query() == null && bound.facets() == null && bound.search() == null) {
+                return Outcome.rejected("The proposal is empty. Send at least one of query, facets, or search.");
             }
+            ProposeQueryInput query = bound.query() == null ? null : bound.query().additions();
+            List<String> removeSelect = bound.query() == null ? List.of() : bound.query().removals();
             ChatStateValidator.requireValidFacets(bound.facets());
             ChatStateValidator.requireValidSearch(bound.search());
             if (bound.facets() != null) {
                 FacetSelection unknown = knownFacets.firstUnknownIn(bound.facets());
                 if (unknown != null) {
-                    return Outcome.rejected(
-                        "Unknown facet: category '" + clip(unknown.category()) + "', name '" + clip(unknown.name())
-                            + "'. A facet must come from a list_facets result in this conversation, exactly as returned. Call "
-                            + "list_facets first, wait for its results, then use a category and name from them."
-                    );
+                    return Outcome.rejected(unknownFacetMessage(unknown, knownFacets));
                 }
             }
-            return new Outcome(
-                ToolResult.success("{\"received\":true}"), new Proposal(bound.query(), bound.facets(), bound.search())
-            );
+            Proposal proposal = new Proposal(query, bound.facets(), bound.search(), removeSelect);
+            return new Outcome(ToolResult.success("{\"received\":true}"), proposal);
         } catch (IllegalArgumentException e) {
             return Outcome.rejected(e.getMessage());
         } catch (RuntimeException e) {
@@ -119,10 +148,55 @@ public class ProposeQueryTool {
         }
     }
 
-    private static String clip(String value) {
+    /** Small models send {@code {}} for a field they mean to leave out. */
+    @SuppressWarnings("unchecked")
+    private static void dropEmptyPlaceholders(Map<String, Object> arguments) {
+        arguments.remove("search", Map.of());
+        if (arguments.get("query") instanceof Map<?, ?> query) {
+            ((Map<String, Object>) query).remove("phenotypicClause", Map.of());
+        }
+    }
+
+    /**
+     * gpt-oss sometimes sends the query's fields at the top level instead of inside {@code query}, all of them or only some (a
+     * {@code removeSelect} inside {@code query} and its {@code addSelect} beside it). A field sent both ways is left for the binder to
+     * refuse, rather than guessing which one was meant.
+     */
+    @SuppressWarnings("unchecked")
+    private static void liftQueryFields(Map<String, Object> arguments) {
+        if (QueryChange.FIELDS.stream().noneMatch(arguments::containsKey)) {
+            return;
+        }
+        Object existing = arguments.computeIfAbsent("query", key -> new LinkedHashMap<String, Object>());
+        if (!(existing instanceof Map<?, ?>)) {
+            return;
+        }
+        Map<String, Object> query = (Map<String, Object>) existing;
+        QueryChange.FIELDS.forEach(field -> {
+            if (arguments.containsKey(field) && !query.containsKey(field)) {
+                query.put(field, arguments.remove(field));
+            }
+        });
+    }
+
+    static String unknownFacetMessage(FacetSelection unknown, KnownFacets knownFacets) {
+        String refused = "Unknown facet: category '" + clip(unknown.category()) + "', name '" + clip(unknown.name()) + "'. ";
+        String listing = knownFacets.listing();
+        if (listing != null) {
+            // Told to call list_facets for one not listed, gpt-oss looked up the listed facets again every time before retrying.
+            return refused + "These are the facets (category: names): " + listing + ". Call the tool again with a category and name "
+                + "exactly as listed here; no list_facets call is needed.";
+        }
+        return refused + "A facet must come from a list_facets result in this conversation, exactly as returned. Call "
+            + "list_facets first (with category and match to look up one it did not list), wait for its results, then use a "
+            + "category and name from them.";
+    }
+
+    static String clip(String value) {
         String printable = value.codePoints().filter(c -> !Character.isISOControl(c))
             .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append).toString();
-        return printable.length() > ProposeQueryBinder.MAX_FIELD_NAME_LENGTH ? printable.substring(0, ProposeQueryBinder.MAX_FIELD_NAME_LENGTH)
+        return printable.length() > ProposeQueryBinder.MAX_FIELD_NAME_LENGTH
+            ? printable.substring(0, ProposeQueryBinder.MAX_FIELD_NAME_LENGTH)
             : printable;
     }
 
@@ -135,6 +209,6 @@ public class ProposeQueryTool {
         }
     }
 
-    private record Arguments(ProposeQueryInput query, List<FacetSelection> facets, String search) {
+    private record Arguments(QueryChange query, List<FacetSelection> facets, String search) {
     }
 }

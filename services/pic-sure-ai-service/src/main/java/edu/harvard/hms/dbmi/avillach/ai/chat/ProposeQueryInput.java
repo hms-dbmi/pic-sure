@@ -1,9 +1,11 @@
 package edu.harvard.hms.dbmi.avillach.ai.chat;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.UnaryOperator;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
@@ -16,8 +18,9 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
  * request's current {@code query} (client input), both validated by the same code ({@link ChatStateValidator}). It carries the real
  * {@code hpds.data.query.v3.Query} fields the model is allowed to set, mirroring {@code pic-sure-mcp}'s own {@code query.QueryInput} --
  * {@code select}, {@code phenotypicClause} (a filter or a nested subquery), and {@code genomicFilters} -- with the same exclusions: no
- * {@code authorizationFilters}, {@code picsureId}, {@code id}, or {@code not} on either clause type, since those must never come from the
- * model.
+ * {@code authorizationFilters}, {@code picsureId}, or {@code id}, since those must never come from the model. Unlike {@code QueryInput}, both
+ * clause types keep their {@code not}: dropping it from the researcher's query would turn an exclusion into an inclusion in every proposal
+ * built on that query.
  *
  * <p>Unlike {@code QueryInput}, there is no {@code toQuery()}/{@code toClause()}: this input is never executed or sent anywhere. A
  * validated one is serialized back out as the response's {@code query}, so what the UI receives is built from these checked fields, not
@@ -64,6 +67,11 @@ public record ProposeQueryInput(List<String> select, Clause phenotypicClause, Li
         }
     }
 
+    @JsonIgnore // otherwise serialized as an "empty" query field
+    public boolean isEmpty() {
+        return (select == null || select.isEmpty()) && phenotypicClause == null && (genomicFilters == null || genomicFilters.isEmpty());
+    }
+
     /**
      * Rewrites every concept path (in {@code select} and in every filter), leaving the rest untouched.
      *
@@ -73,11 +81,37 @@ public record ProposeQueryInput(List<String> select, Clause phenotypicClause, Li
     public ProposeQueryInput mapPaths(UnaryOperator<String> rewrite) {
         return new ProposeQueryInput(
             select == null ? null : select.stream().map(rewrite).toList(),
-            phenotypicClause == null ? null : phenotypicClause.mapPaths(rewrite), genomicFilters
+            phenotypicClause == null ? null : phenotypicClause.mapFilters(filter -> filter.withConceptPath(rewrite.apply(filter.conceptPath()))),
+            genomicFilters
         );
     }
 
-    private static void requirePath(String field, String path) {
+    /** @return this input with {@code not: false} written as an absent {@code not}, which means the same, so the two compare equal */
+    public ProposeQueryInput withoutFalseNots() {
+        return phenotypicClause == null ? this : new ProposeQueryInput(select, withoutFalseNots(phenotypicClause), genomicFilters);
+    }
+
+    private static Clause withoutFalseNots(Clause clause) {
+        return switch (clause) {
+            case Filter filter -> filter.isNegated() ? filter : filter.withNot(null);
+            case Subquery subquery -> new Subquery(
+                subquery.phenotypicClauses().stream().map(ProposeQueryInput::withoutFalseNots).toList(), subquery.operator(),
+                Boolean.TRUE.equals(subquery.not()) ? subquery.not() : null
+            );
+        };
+    }
+
+    /** The UI exports every variable it filters on, so each filtered path is added to {@code select}. */
+    public ProposeQueryInput withFilterPathsSelected() {
+        if (phenotypicClause == null) {
+            return this;
+        }
+        Set<String> paths = new LinkedHashSet<>(select == null ? List.of() : select);
+        phenotypicClause.addPathsTo(paths);
+        return new ProposeQueryInput(List.copyOf(paths), phenotypicClause, genomicFilters);
+    }
+
+    static void requirePath(String field, String path) {
         if (path == null || path.isBlank()) {
             throw new IllegalArgumentException("Field '" + field + "' must not hold a blank concept path.");
         }
@@ -86,7 +120,10 @@ public record ProposeQueryInput(List<String> select, Clause phenotypicClause, Li
         }
     }
 
-    /** A phenotypic clause without {@code not}: a single {@link Filter} or a nested {@link Subquery}, told apart by their fields. */
+    /**
+     * A phenotypic clause: a single {@link Filter} or a nested {@link Subquery}, told apart by their fields. Both carry {@code not}, so its
+     * presence never decides which one a clause is.
+     */
     @JsonTypeInfo(use = JsonTypeInfo.Id.DEDUCTION)
     @JsonSubTypes({@JsonSubTypes.Type(Subquery.class), @JsonSubTypes.Type(Filter.class)})
     public sealed interface Clause permits Filter, Subquery {
@@ -100,23 +137,40 @@ public record ProposeQueryInput(List<String> select, Clause phenotypicClause, Li
         void validate(int depth);
 
         /**
-         * @param rewrite maps a concept path to the form to emit
-         * @return this clause with every concept path rewritten
+         * @param rewrite maps a filter to the form to emit
+         * @return this clause with every filter in it rewritten
          */
-        Clause mapPaths(UnaryOperator<String> rewrite);
+        Clause mapFilters(UnaryOperator<Filter> rewrite);
+
+        void addPathsTo(Set<String> paths);
     }
 
     /**
-     * {@code PhenotypicFilter} without {@code not}.
+     * {@code PhenotypicFilter}.
      *
      * @param phenotypicFilterType how the filter matches
      * @param conceptPath the concept path to match
      * @param values categorical values to match, not combined with {@code min}/{@code max}
      * @param min numeric lower bound
      * @param max numeric upper bound
+     * @param not true to match the participants the filter would otherwise exclude
      */
-    public record Filter(PhenotypicFilterType phenotypicFilterType, String conceptPath, Set<String> values, Double min, Double max)
-        implements Clause {
+    public record Filter(
+        PhenotypicFilterType phenotypicFilterType, String conceptPath, Set<String> values, Double min, Double max, Boolean not
+    ) implements Clause {
+
+        @JsonIgnore // otherwise serialized as a "negated" query field
+        public boolean isNegated() {
+            return Boolean.TRUE.equals(not);
+        }
+
+        Filter withConceptPath(String replacement) {
+            return new Filter(phenotypicFilterType, replacement, values, min, max, not);
+        }
+
+        Filter withNot(Boolean replacement) {
+            return new Filter(phenotypicFilterType, conceptPath, values, min, max, replacement);
+        }
 
         @Override
         public void validate(int depth) {
@@ -146,18 +200,24 @@ public record ProposeQueryInput(List<String> select, Clause phenotypicClause, Li
         }
 
         @Override
-        public Clause mapPaths(UnaryOperator<String> rewrite) {
-            return new Filter(phenotypicFilterType, rewrite.apply(conceptPath), values, min, max);
+        public Clause mapFilters(UnaryOperator<Filter> rewrite) {
+            return rewrite.apply(this);
+        }
+
+        @Override
+        public void addPathsTo(Set<String> paths) {
+            paths.add(conceptPath);
         }
     }
 
     /**
-     * {@code PhenotypicSubquery} without {@code not}.
+     * {@code PhenotypicSubquery}.
      *
      * @param phenotypicClauses the nested clauses, at least one
      * @param operator how the nested clauses combine
+     * @param not carried through as sent; HPDS does not implement it on a subquery yet
      */
-    public record Subquery(List<Clause> phenotypicClauses, Operator operator) implements Clause {
+    public record Subquery(List<Clause> phenotypicClauses, Operator operator, Boolean not) implements Clause {
 
         @Override
         public void validate(int depth) {
@@ -179,8 +239,13 @@ public record ProposeQueryInput(List<String> select, Clause phenotypicClause, Li
         }
 
         @Override
-        public Clause mapPaths(UnaryOperator<String> rewrite) {
-            return new Subquery(phenotypicClauses.stream().map(clause -> clause.mapPaths(rewrite)).toList(), operator);
+        public Clause mapFilters(UnaryOperator<Filter> rewrite) {
+            return new Subquery(phenotypicClauses.stream().map(clause -> clause.mapFilters(rewrite)).toList(), operator, not);
+        }
+
+        @Override
+        public void addPathsTo(Set<String> paths) {
+            phenotypicClauses.forEach(clause -> clause.addPathsTo(paths));
         }
     }
 }
