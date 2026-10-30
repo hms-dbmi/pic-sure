@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.mcp.gateway;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -12,9 +13,35 @@ import java.util.Objects;
  * @param content the concepts on this page
  * @param totalElements the total count in the flat page form, or null
  * @param page the nested page block, or null in the flat form
+ * @param termTotals for a term breakdown, how many concepts each term matches on its own, or null
+ * @param matches for a term breakdown, the terms that match each concept of the page, or null
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record DictionaryPage(List<DictionaryConcept> content, Long totalElements, PageInfo page) {
+public record DictionaryPage(
+    List<DictionaryConcept> content, Long totalElements, PageInfo page, Map<String, Long> termTotals, List<TermMatch> matches
+) {
+
+    /**
+     * A page without a term breakdown.
+     *
+     * @param content the concepts on this page
+     * @param totalElements the total count in the flat page form, or null
+     * @param page the nested page block, or null in the flat form
+     */
+    public DictionaryPage(List<DictionaryConcept> content, Long totalElements, PageInfo page) {
+        this(content, totalElements, page, null, null);
+    }
+
+    /**
+     * The terms that match one concept of a term-breakdown page.
+     *
+     * @param dataset the dataset of the concept
+     * @param conceptPath the concept path
+     * @param terms the matching terms, in the order the search gave them
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record TermMatch(String dataset, String conceptPath, List<String> terms) {
+    }
 
     /**
      * The nested page block of the newer page serialization.

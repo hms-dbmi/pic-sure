@@ -13,6 +13,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import edu.harvard.hms.dbmi.avillach.mcp.caller.CallerHeaders;
 import edu.harvard.hms.dbmi.avillach.mcp.config.GatewayRequestInterceptor;
 import edu.harvard.hms.dbmi.avillach.mcp.gateway.DictionaryClient;
+import edu.harvard.hms.dbmi.avillach.mcp.gateway.FacetFilter;
 import io.modelcontextprotocol.common.McpTransportContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,18 +24,15 @@ import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.test.web.client.ResponseCreator;
 import org.springframework.web.client.RestClient;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 /**
- * Covers {@code search_concepts} with several {@code terms} against a mock gateway that accepts the parallel requests in any order: every
- * request replays the caller's headers, pages merge in the given term order with each term's own order kept, duplicates collapse into one
- * concept that names every matching term, the merged list is capped with a {@code truncated} flag, a failed term becomes a warning, and the
- * argument rules that hold before any request is sent.
+ * Covers {@code search_concepts} with several {@code terms} against a mock gateway: the terms go to the dictionary as one {@code |}-joined
+ * search with the term breakdown on, the caller's headers are replayed, the breakdown comes back as {@code matchedTerms} on each concept and
+ * {@code termTotals} on the result, and the argument rules that hold before any request is sent.
  */
 class ConceptSearchTermsTest {
 
@@ -57,198 +55,193 @@ class ConceptSearchTermsTest {
     }
 
     @Test
-    void everyParallelTermRequestReplaysTheCallerHeaders() {
-        for (String term : List.of("blood pressure", "bp", "hypertension")) {
-            server.expect(once(), requestTo(GATEWAY + "/dictionary/concepts?page_number=1&page_size=5")).andExpect(method(HttpMethod.POST))
-                .andExpect(header("Authorization", BEARER)).andExpect(header("X-PICSURE-API-Key", "caller-api-key"))
-                .andExpect(header("X-Request-Id", "req-9")).andExpect(header("X-Forwarded-For", "203.0.113.7"))
-                .andExpect(header("X-PIC-SURE-MCP-TOKEN", "mcp-token"))
-                .andExpect(content().json("{\"facets\":[],\"search\":\"" + term + "\",\"consents\":[]}", true))
-                .andRespond(page(0, List.of()));
-        }
+    void theTermsGoInOneRequestWithTheBreakdownOnAndTheCallerHeadersReplayed() {
+        server.expect(once(), requestTo(GATEWAY + "/dictionary/concepts?page_number=1&page_size=5&term_breakdown=true"))
+            .andExpect(method(HttpMethod.POST)).andExpect(header("Authorization", BEARER)).andExpect(header("X-PICSURE-API-Key", "caller-api-key"))
+            .andExpect(header("X-Request-Id", "req-9")).andExpect(header("X-Forwarded-For", "203.0.113.7"))
+            .andExpect(header("X-PIC-SURE-MCP-TOKEN", "mcp-token"))
+            .andExpect(content().json("{\"facets\":[],\"search\":\"blood pressure|bp|hypertension\",\"consents\":[]}", true))
+            .andRespond(breakdown(0, Map.of(), List.of()));
 
-        ConceptSearchResult result = search.searchConcepts(context, null, List.of("blood pressure", "bp", "hypertension"), 1, 5);
+        ConceptSearchResult result =
+            search.searchConcepts(context, null, List.of("blood pressure", "bp", "hypertension"), 1, 5, null);
+
+        server.verify();
+        assertThat(result.page()).isEqualTo(1);
+        assertThat(result.pageSize()).isEqualTo(5);
+        assertThat(result.search()).isNull();
+    }
+
+    @Test
+    void eachConceptNamesTheTermsThatMatchItAndTheResultGivesEachTermsTotal() {
+        server.expect(once(), requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=10&term_breakdown=true")).andRespond(
+            breakdown(
+                50, linked("blood pressure", 40, "bp", 7, "hypertension", 3),
+                List.of(
+                    match("A", "blood pressure", "bp"), match("D", "bp"), match("B", "blood pressure", "hypertension"),
+                    match("E", "hypertension")
+                )
+            )
+        );
+
+        ConceptSearchResult result = search.searchConcepts(context, null, List.of("blood pressure", "bp", "hypertension"), null, null, null);
 
         server.verify();
         assertThat(result.terms()).containsExactly("blood pressure", "bp", "hypertension");
-        assertThat(result.page()).isEqualTo(1);
-        assertThat(result.pageSize()).isEqualTo(5);
-    }
-
-    @Test
-    void termsInterleaveInTheGivenOrderAndDuplicatesNameEveryMatchingTerm() {
-        expectTerm("blood pressure", page(40, concepts("A", "B", "C")));
-        expectTerm("bp", page(7, concepts("D", "A")));
-        expectTerm("hypertension", page(3, concepts("B", "E")));
-
-        ConceptSearchResult result = search.searchConcepts(context, null, List.of("blood pressure", "bp", "hypertension"), null, null);
-
-        server.verify();
-        assertThat(result.concepts()).extracting(ConceptSummary::conceptPath).containsExactly("A", "D", "B", "E", "C");
-        assertThat(matched(result, "A")).containsExactly("blood pressure", "bp");
-        assertThat(matched(result, "B")).containsExactly("blood pressure", "hypertension");
-        assertThat(matched(result, "C")).containsExactly("blood pressure");
-        assertThat(matched(result, "D")).containsExactly("bp");
-        assertThat(matched(result, "E")).containsExactly("hypertension");
-        assertThat(result.total()).isEqualTo(50);
-        assertThat(result.search()).isNull();
-        assertThat(result.page()).isZero();
-        assertThat(result.pageSize()).isEqualTo(ConceptSearchTool.DEFAULT_PAGE_SIZE);
-        assertThat(result.truncated()).isFalse();
-        assertThat(result.warnings()).isNull();
-    }
-
-    @Test
-    void theMergedListIsCappedAtTheMaximumPageSizeWithTruncatedSet() {
-        expectTerm("alpha", page(30, IntStream.range(0, 25).mapToObj(i -> "a" + i).toList()));
-        expectTerm("beta", page(30, IntStream.range(0, 25).mapToObj(i -> "b" + i).toList()));
-
-        ConceptSearchResult result = search.searchConcepts(context, null, List.of("alpha", "beta"), 0, 25);
-
-        assertThat(result.concepts()).hasSize(ConceptSearchTool.MAX_PAGE_SIZE);
-        assertThat(result.concepts()).extracting(ConceptSummary::conceptPath).startsWith("a0", "b0", "a1", "b1").endsWith("a12");
-        assertThat(result.truncated()).isTrue();
-        assertThat(result.total()).isEqualTo(60);
-    }
-
-    @Test
-    void exactlyTheCapAfterDeduplicationIsNotTruncated() {
-        List<String> shared = IntStream.range(0, 25).mapToObj(i -> "c" + i).toList();
-        expectTerm("alpha", page(25, shared));
-        expectTerm("beta", page(25, shared));
-
-        ConceptSearchResult result = search.searchConcepts(context, null, List.of("alpha", "beta"), 0, 25);
-
-        assertThat(result.concepts()).hasSize(25).allSatisfy(c -> assertThat(c.matchedTerms()).containsExactly("alpha", "beta"));
-        assertThat(result.truncated()).isFalse();
-    }
-
-    @Test
-    void aFailingTermBecomesAWarningAndTheOtherTermsStillReturn() {
-        expectTerm("blood pressure", page(2, concepts("A", "B")));
-        server.expect(once(), content().json("{\"search\":\"bp\"}"))
-            .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE).body(LEAK).contentType(MediaType.TEXT_PLAIN));
-
-        ConceptSearchResult result = search.searchConcepts(context, null, List.of("blood pressure", "bp"), null, null);
-
-        server.verify();
-        assertThat(result.concepts()).extracting(ConceptSummary::conceptPath).containsExactly("A", "B");
-        assertThat(result.total()).isEqualTo(2);
-        assertThat(result.warnings()).containsExactly("Term 'bp' failed: The dictionary is unavailable. Try again shortly.");
-        assertThat(result.toString()).doesNotContain(LEAK);
-    }
-
-    @Test
-    void aTermWhoseResponseHasNoBodyBecomesAWarning() {
-        expectTerm("blood pressure", page(1, concepts("A")));
-        server.expect(once(), content().json("{\"search\":\"bp\"}")).andRespond(withSuccess());
-        server.expect(once(), content().json("{\"search\":\"htn\"}")).andRespond(DictionaryToolsTest.noBody(302));
-
-        ConceptSearchResult result = search.searchConcepts(context, null, List.of("blood pressure", "bp", "htn"), null, null);
-
-        server.verify();
-        assertThat(result.concepts()).extracting(ConceptSummary::conceptPath).containsExactly("A");
-        assertThat(result.warnings()).containsExactly(
-            "Term 'bp' failed: The dictionary is unavailable. Try again shortly.",
-            "Term 'htn' failed: The dictionary is unavailable. Try again shortly."
+        assertThat(result.termTotals()).containsExactly(
+            Map.entry("blood pressure", 40L), Map.entry("bp", 7L), Map.entry("hypertension", 3L)
         );
+        assertThat(result.total()).isEqualTo(50);
+        assertThat(result.pageSize()).isEqualTo(ConceptSearchTool.DEFAULT_PAGE_SIZE);
+        assertThat(result.concepts()).extracting(ConceptSummary::conceptPath).containsExactly("A", "D", "B", "E");
+        assertThat(matched(result, "A")).containsExactly("blood pressure", "bp");
+        assertThat(matched(result, "D")).containsExactly("bp");
+        assertThat(matched(result, "B")).containsExactly("blood pressure", "hypertension");
+        assertThat(matched(result, "E")).containsExactly("hypertension");
     }
 
     @Test
-    void whenEveryTermFailsTheToolFails() {
-        server.expect(once(), content().json("{\"search\":\"alpha\"}")).andRespond(withStatus(HttpStatus.FORBIDDEN).body(LEAK));
-        server.expect(once(), content().json("{\"search\":\"beta\"}")).andRespond(withStatus(HttpStatus.FORBIDDEN).body(LEAK));
+    void aTermAtZeroShowsInTheTotals() {
+        server.expect(once(), requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=10&term_breakdown=true"))
+            .andRespond(breakdown(2, linked("sleep", 2, "bmi", 0), List.of(match("A", "sleep"))));
 
-        assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("alpha", "beta"), null, null)).isInstanceOf(ToolFailure.class)
+        ConceptSearchResult result = search.searchConcepts(context, null, List.of("sleep", "bmi"), null, null, null);
+
+        assertThat(result.termTotals()).containsEntry("bmi", 0L);
+    }
+
+    @Test
+    void facetsNarrowTheTermsSearchToo() {
+        server.expect(once(), requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=10&term_breakdown=true"))
+            .andExpect(content().json("{\"facets\":[{\"category\":\"dataset_id\",\"name\":\"Nhanes\"}],\"search\":\"a|b\"}"))
+            .andRespond(breakdown(0, Map.of(), List.of()));
+
+        search.searchConcepts(context, null, List.of("a", "b"), null, null, List.of(new FacetFilter("dataset_id", "Nhanes")));
+
+        server.verify();
+    }
+
+    @Test
+    void aDictionaryWithoutTheBreakdownStillAnswersWithoutMatchedTerms() {
+        server.expect(once(), requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=10&term_breakdown=true"))
+            .andRespond(withSuccess("{\"content\":[" + concept("A") + "],\"totalElements\":1}", MediaType.APPLICATION_JSON));
+
+        ConceptSearchResult result = search.searchConcepts(context, null, List.of("sex", "gender"), null, null, null);
+
+        assertThat(result.terms()).containsExactly("sex", "gender");
+        assertThat(result.termTotals()).isNull();
+        assertThat(matched(result, "A")).isNull();
+    }
+
+    @Test
+    void aRepeatedTermIsSentOnce() {
+        server.expect(once(), content().json("{\"search\":\"sex\"}")).andRespond(breakdown(1, linked("sex", 1), List.of(match("S", "sex"))));
+
+        ConceptSearchResult result = search.searchConcepts(context, null, List.of("sex", "sex"), null, null, null);
+
+        server.verify();
+        assertThat(result.terms()).containsExactly("sex");
+    }
+
+    @Test
+    void aFailedDictionaryCallFailsTheToolWithoutLeakingTheBody() {
+        server.expect(once(), requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=10&term_breakdown=true"))
+            .andRespond(withStatus(HttpStatus.FORBIDDEN).body(LEAK));
+
+        assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("alpha", "beta"), null, null, null)).isInstanceOf(ToolFailure.class)
             .hasMessage("The caller is not authorized for the dictionary.").hasNoCause();
         server.verify();
     }
 
     @Test
-    void aRepeatedTermIsSearchedOnce() {
-        expectTerm("sex", page(1, concepts("S")));
+    void aResponseWithNoBodyFailsTheTool() {
+        server.expect(once(), requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=10&term_breakdown=true"))
+            .andRespond(DictionaryToolsTest.noBody(302));
 
-        ConceptSearchResult result = search.searchConcepts(context, null, List.of("sex", "sex"), null, null);
-
+        assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("alpha", "beta"), null, null, null))
+            .isInstanceOf(ToolFailure.class);
         server.verify();
-        assertThat(result.terms()).containsExactly("sex");
-        assertThat(matched(result, "S")).containsExactly("sex");
     }
 
     @Test
     void queryAndTermsTogetherOrNeitherIsRejectedWithoutCallingTheGateway() {
-        assertThatThrownBy(() -> search.searchConcepts(context, "sex", List.of("bp"), null, null)).isInstanceOf(ToolFailure.class)
+        assertThatThrownBy(() -> search.searchConcepts(context, "sex", List.of("bp"), null, null, null)).isInstanceOf(ToolFailure.class)
             .hasMessage("Give either 'search' or 'terms', not both.");
-        assertThatThrownBy(() -> search.searchConcepts(context, null, null, null, null)).isInstanceOf(ToolFailure.class)
-            .hasMessage("Give either 'search' or 'terms'.");
-        assertThatThrownBy(() -> search.searchConcepts(context, " ", List.of(), null, null)).isInstanceOf(ToolFailure.class)
-            .hasMessage("Give either 'search' or 'terms'.");
+        assertThatThrownBy(() -> search.searchConcepts(context, null, null, null, null, null)).isInstanceOf(ToolFailure.class)
+            .hasMessage("Give 'search', 'terms', or 'facets'.");
+        assertThatThrownBy(() -> search.searchConcepts(context, " ", List.of(), null, null, null)).isInstanceOf(ToolFailure.class)
+            .hasMessage("Give 'search', 'terms', or 'facets'.");
         server.verify();
     }
 
     @Test
     void badTermsAreRejectedWithoutCallingTheGateway() {
-        assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("a", "b", "c", "d", "e", "f"), null, null))
+        assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("a", "b", "c", "d", "e", "f"), null, null, null))
             .isInstanceOf(ToolFailure.class).hasMessage("Argument 'terms' takes at most 5 terms.");
-        assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("bp", " "), null, null)).isInstanceOf(ToolFailure.class)
+        assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("bp", " "), null, null, null)).isInstanceOf(ToolFailure.class)
             .hasMessage("Argument 'terms[1]' is required.");
-        assertThatThrownBy(() -> search.searchConcepts(context, null, Arrays.asList("bp", null), null, null))
+        assertThatThrownBy(() -> search.searchConcepts(context, null, Arrays.asList("bp", null), null, null, null))
             .isInstanceOf(ToolFailure.class).hasMessage("Argument 'terms[1]' is required.");
-        assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("x".repeat(201)), null, null)).isInstanceOf(ToolFailure.class)
-            .hasMessage("Argument 'terms[0]' must be at most 200 characters.");
-        assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("a\nb"), null, null)).isInstanceOf(ToolFailure.class)
+        assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("x".repeat(201)), null, null, null))
+            .isInstanceOf(ToolFailure.class).hasMessage("Argument 'terms[0]' must be at most 200 characters.");
+        assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("a\nb"), null, null, null)).isInstanceOf(ToolFailure.class)
             .hasMessage("Argument 'terms[0]' must not contain control characters.");
+        assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("a", "b|c"), null, null, null)).isInstanceOf(ToolFailure.class)
+            .hasMessage("Argument 'terms[1]' must not contain '|'; give each alternative as its own term.");
+        assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("x".repeat(150), "y".repeat(150)), null, null, null))
+            .isInstanceOf(ToolFailure.class).hasMessage("Argument 'terms' must total at most 200 characters.");
         server.verify();
     }
 
     @Test
     void aQuerySearchLeavesTheTermFieldsOut() {
-        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=10")).andRespond(page(1, concepts("A")));
+        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=10"))
+            .andRespond(withSuccess("{\"content\":[" + concept("A") + "],\"totalElements\":1}", MediaType.APPLICATION_JSON));
 
-        ConceptSearchResult result = search.searchConcepts(context, "sex", null, null, null);
+        ConceptSearchResult result = search.searchConcepts(context, "sex", null, null, null, null);
 
         assertThat(result.search()).isEqualTo("sex");
         assertThat(result.terms()).isNull();
-        assertThat(result.truncated()).isNull();
-        assertThat(result.warnings()).isNull();
+        assertThat(result.termTotals()).isNull();
         assertThat(result.concepts()).singleElement().satisfies(c -> assertThat(c.matchedTerms()).isNull());
     }
 
-    private void expectTerm(String term, ResponseCreator response) {
-        server.expect(once(), content().json("{\"search\":\"" + term + "\"}")).andRespond(response);
+    private static Map<String, Long> linked(Object... pairs) {
+        Map<String, Long> totals = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < pairs.length; i += 2) {
+            totals.put((String) pairs[i], ((Number) pairs[i + 1]).longValue());
+        }
+        return totals;
     }
 
-    private static ResponseCreator page(long total, List<String> paths) {
-        String content =
-            paths.stream().map(p -> "{\"type\":\"Categorical\",\"conceptPath\":\"" + p + "\",\"dataset\":\"phs1\",\"values\":[\"x\"]}")
-                .collect(Collectors.joining(","));
-        return withSuccess("{\"content\":[" + content + "],\"totalElements\":" + total + "}", MediaType.APPLICATION_JSON);
+    private static String concept(String path) {
+        return "{\"type\":\"Categorical\",\"conceptPath\":\"" + path + "\",\"dataset\":\"phs1\",\"values\":[\"x\"]}";
     }
 
-    private static List<String> concepts(String... paths) {
-        return new ArrayList<>(List.of(paths));
+    /** One concept of a breakdown page and the terms that match it. */
+    private record Hit(String path, List<String> terms) {
+    }
+
+    private static Hit match(String path, String... terms) {
+        return new Hit(path, List.of(terms));
+    }
+
+    private static ResponseCreator breakdown(long total, Map<String, Long> termTotals, List<Hit> matches) {
+        String content = matches.stream().map(m -> concept(m.path())).collect(Collectors.joining(","));
+        String matchJson = matches.stream().map(
+            m -> "{\"dataset\":\"phs1\",\"conceptPath\":\"" + m.path() + "\",\"terms\":["
+                + m.terms().stream().map(t -> "\"" + t + "\"").collect(Collectors.joining(",")) + "]}"
+        ).collect(Collectors.joining(","));
+        String totalsJson =
+            termTotals.entrySet().stream().map(e -> "\"" + e.getKey() + "\":" + e.getValue()).collect(Collectors.joining(","));
+        return withSuccess(
+            "{\"content\":[" + content + "],\"totalElements\":" + total + ",\"termTotals\":{" + totalsJson + "},\"matches\":[" + matchJson
+                + "]}",
+            MediaType.APPLICATION_JSON
+        );
     }
 
     private static List<String> matched(ConceptSearchResult result, String path) {
         return result.concepts().stream().filter(c -> path.equals(c.conceptPath())).findFirst().orElseThrow().matchedTerms();
-    }
-
-    @Test
-    void aNullConceptInATermPageIsDroppedAndTheRestAreMerged() {
-        expectTerm(
-            "sex",
-            withSuccess(
-                """
-                    {"content":[null,{"type":"Categorical","conceptPath":"A","dataset":"phs1","values":["x"]}],"totalElements":2}""",
-                MediaType.APPLICATION_JSON
-            )
-        );
-        expectTerm("gender", page(1, concepts("B")));
-
-        ConceptSearchResult result = search.searchConcepts(context, null, List.of("sex", "gender"), null, null);
-
-        server.verify();
-        assertThat(result.concepts()).extracting(ConceptSummary::conceptPath).containsExactly("A", "B");
-        assertThat(result.warnings()).isNull();
     }
 }
