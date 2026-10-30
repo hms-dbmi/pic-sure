@@ -74,7 +74,8 @@ class OpenAccessFilterOrderTest {
             new RateLimitProperties.IpLimits(60, 3000, 300), new RateLimitProperties.Store(1000), List.of(CidrRange.parse("192.0.2.10/32")),
             List.of()
         );
-        int perKey = new SecurityConfig().perKeyRateLimitFilter(rateLimit, new ClientIpResolver(List.of()), subject -> null).getOrder();
+        int perKey = new SecurityConfig()
+            .perKeyRateLimitFilter(rateLimit, new ClientIpResolver(List.of()), subject -> null, new AuditContext()).getOrder();
 
         assertThat(perKey)
             .isGreaterThan(AuditFilterOrderTest.openAccessRegistration(mock(PsamaClient.class), new AuditContext(), props).getOrder())

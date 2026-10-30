@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.gateway.ratelimit;
 
+import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIp;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessRequests;
@@ -16,18 +17,19 @@ public class PrevalidationThrottleFilter extends RateLimitFilter {
     private final OpenAccessRequests openAccessRequests;
 
     public PrevalidationThrottleFilter(
-        RateLimitProperties props, OpenAccessRequests openAccessRequests, ClientIpResolver clientIps, RateLimitStore store
+        RateLimitProperties props, OpenAccessRequests openAccessRequests, ClientIpResolver clientIps, RateLimitStore store,
+        AuditContext audit
     ) {
-        super(props, clientIps, store);
+        super(props, clientIps, store, audit);
         this.openAccessRequests = openAccessRequests;
     }
 
     @Override
-    protected RateLimitSubject subject(HttpServletRequest req) {
+    protected Target target(HttpServletRequest req) {
         if (!openAccessRequests.validatesWithPsama(req)) {
             return null;
         }
         ClientIp client = clientIps.resolve(req);
-        return client.isIn(allowlist) ? null : RateLimitSubject.prevalidationIp(client.address());
+        return client.isIn(allowlist) ? null : new Target(RateLimitSubject.prevalidationIp(client.address()), client.address());
     }
 }

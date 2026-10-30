@@ -109,9 +109,10 @@ public class SecurityConfig {
 
     @Bean
     FilterRegistrationBean<PrevalidationThrottleFilter> prevalidationThrottleFilter(
-        OpenAccessRequests openAccessRequests, RateLimitProperties rateLimit, ClientIpResolver clientIps, RateLimitStore store
+        OpenAccessRequests openAccessRequests, RateLimitProperties rateLimit, ClientIpResolver clientIps, RateLimitStore store,
+        AuditContext audit
     ) {
-        var r = new FilterRegistrationBean<>(new PrevalidationThrottleFilter(rateLimit, openAccessRequests, clientIps, store));
+        var r = new FilterRegistrationBean<>(new PrevalidationThrottleFilter(rateLimit, openAccessRequests, clientIps, store, audit));
         // After InternalEndpointGuardFilter (15), which 404s without calling PSAMA, so internal-path probes spend no budget.
         // Before OpenAccessFilter (20), so a throttled request never reaches PSAMA.
         r.setOrder(16);
@@ -131,9 +132,9 @@ public class SecurityConfig {
 
     @Bean
     FilterRegistrationBean<PerKeyRateLimitFilter> perKeyRateLimitFilter(
-        RateLimitProperties rateLimit, ClientIpResolver clientIps, RateLimitStore store
+        RateLimitProperties rateLimit, ClientIpResolver clientIps, RateLimitStore store, AuditContext audit
     ) {
-        var r = new FilterRegistrationBean<>(new PerKeyRateLimitFilter(rateLimit, clientIps, store));
+        var r = new FilterRegistrationBean<>(new PerKeyRateLimitFilter(rateLimit, clientIps, store, audit));
         r.setOrder(22); // After OpenAccessFilter (20) grants, before InboundIdentityHeaderSanitizingFilter (25).
         r.addUrlPatterns("/*");
         return r;

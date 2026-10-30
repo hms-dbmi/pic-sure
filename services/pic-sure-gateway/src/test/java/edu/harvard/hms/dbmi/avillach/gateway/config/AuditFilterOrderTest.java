@@ -59,6 +59,10 @@ class AuditFilterOrderTest {
     private static final RateLimitStore ALWAYS_BREACHED = subject -> new RateLimitDecision(false, RateLimitDecision.Window.BURST, 30);
 
     static FilterRegistrationBean<?> throttleRegistration(GatewaySecurityProperties props, RateLimitStore store) {
+        return throttleRegistration(props, store, new AuditContext());
+    }
+
+    static FilterRegistrationBean<?> throttleRegistration(GatewaySecurityProperties props, RateLimitStore store, AuditContext audit) {
         RateLimitProperties rateLimit = new RateLimitProperties(
             true, new RateLimitProperties.KeyLimits(60, 3000), new RateLimitProperties.KeyLimits(60, 3000),
             new RateLimitProperties.IpLimits(60, 3000, 300), new RateLimitProperties.Store(1000), List.of(CidrRange.parse("192.0.2.10/32")),
@@ -66,7 +70,8 @@ class AuditFilterOrderTest {
         );
         SecurityConfig security = new SecurityConfig();
         return security.prevalidationThrottleFilter(
-            security.openAccessRequests(props, new PublicEndpointPolicy(List.of())), rateLimit, new ClientIpResolver(List.of()), store
+            security.openAccessRequests(props, new PublicEndpointPolicy(List.of())), rateLimit, new ClientIpResolver(List.of()), store,
+            audit
         );
     }
 
@@ -117,8 +122,9 @@ class AuditFilterOrderTest {
         FilterRegistrationBean<?> openAccess = openAccessRegistration(psama, audit, props(true));
 
         MockHttpServletResponse response = new MockHttpServletResponse();
-        containerOrderedChain(List.of(openAccess, throttleRegistration(props(true), ALWAYS_BREACHED), auditRegistration(logging, audit)))
-            .doFilter(new MockHttpServletRequest("POST", "/query/sync"), response);
+        containerOrderedChain(
+            List.of(openAccess, throttleRegistration(props(true), ALWAYS_BREACHED, audit), auditRegistration(logging, audit))
+        ).doFilter(new MockHttpServletRequest("POST", "/query/sync"), response);
 
         assertThat(response.getStatus()).isEqualTo(429);
         verifyNoInteractions(psama);
