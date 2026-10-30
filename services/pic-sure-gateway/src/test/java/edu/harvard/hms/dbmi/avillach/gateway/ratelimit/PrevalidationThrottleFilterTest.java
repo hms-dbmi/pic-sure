@@ -7,8 +7,8 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.util.ArrayList;
 import java.net.InetAddress;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
