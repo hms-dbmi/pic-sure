@@ -72,18 +72,12 @@ public final class ClientIpResolver {
         if (hops.length > MAX_HOPS) {
             return new ClientIp(peer, true);
         }
-        InetAddress hop = null;
-        for (int i = hops.length - 1; i >= 0; i--) {
-            try {
-                hop = IpLiterals.parseHop(hops[i].trim());
-            } catch (IllegalArgumentException e) {
-                return new ClientIp(peer, true);
-            }
-            if (!CidrRange.anyContains(trustedProxies, hop)) {
-                return new ClientIp(hop, false);
-            }
+        try {
+            InetAddress client = firstUntrustedHop(hops, 0);
+            return new ClientIp(client != null ? client : IpLiterals.parseHop(hops[0].trim()), false);
+        } catch (IllegalArgumentException e) {
+            return new ClientIp(peer, true);
         }
-        return new ClientIp(hop, false);
     }
 
     /**
@@ -102,18 +96,27 @@ public final class ClientIpResolver {
             return Optional.empty();
         }
         String[] hops = String.join(",", Collections.list(lines)).split(",", -1);
-        for (int i = hops.length - 1; i >= Math.max(0, hops.length - MAX_HOPS); i--) {
-            InetAddress hop;
-            try {
-                hop = IpLiterals.parseHop(hops[i].trim());
-            } catch (IllegalArgumentException e) {
-                return Optional.empty();
-            }
+        try {
+            return Optional.ofNullable(firstUntrustedHop(hops, Math.max(0, hops.length - MAX_HOPS)));
+        } catch (IllegalArgumentException e) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Walks {@code hops} from the right down to index {@code stop}, skipping trusted proxies.
+     *
+     * @return the first untrusted hop, or null when every walked hop is trusted
+     * @throws IllegalArgumentException if the walk reaches an entry that isn't an IP literal
+     */
+    private InetAddress firstUntrustedHop(String[] hops, int stop) {
+        for (int i = hops.length - 1; i >= stop; i--) {
+            InetAddress hop = IpLiterals.parseHop(hops[i].trim());
             if (!CidrRange.anyContains(trustedProxies, hop)) {
-                return Optional.of(hop);
+                return hop;
             }
         }
-        return Optional.empty();
+        return null;
     }
 
     private static InetAddress parsePeer(String remoteAddr) {

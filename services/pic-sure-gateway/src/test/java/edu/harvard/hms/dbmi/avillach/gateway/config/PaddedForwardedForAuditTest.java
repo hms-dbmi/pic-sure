@@ -40,8 +40,8 @@ import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * A caller that pads its {@code X-Forwarded-For} past {@link ClientIpResolver#MAX_HOPS} moves the limiter onto the proxy, but every audit
- * event, through every registered gateway filter in configured order, still records the caller as {@code srcIp}: on BDC past the ALB the
- * caller's padding sits in front of, and on AIO as the hop httpd appended.
+ * event, through the gateway's audit, security and rate-limit servlet filters in configured order, still records the caller as
+ * {@code srcIp}: on BDC past the ALB the caller's padding sits in front of, and on AIO as the hop httpd appended.
  */
 class PaddedForwardedForAuditTest {
 
