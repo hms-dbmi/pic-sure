@@ -58,12 +58,17 @@ class AuditFilterOrderTest {
     private static final RateLimitStore ALWAYS_BREACHED = subject -> new RateLimitDecision(false, RateLimitDecision.Window.BURST, 30);
 
     static FilterRegistrationBean<?> throttleRegistration(GatewaySecurityProperties props, RateLimitStore store) {
+        return throttleRegistration(props, store, new AuditContext());
+    }
+
+    static FilterRegistrationBean<?> throttleRegistration(GatewaySecurityProperties props, RateLimitStore store, AuditContext audit) {
         RateLimitProperties rateLimit = new RateLimitProperties(
             true, new RateLimitProperties.KeyLimits(60, 3000), new RateLimitProperties.KeyLimits(60, 3000),
             new RateLimitProperties.IpLimits(60, 3000, 300), new RateLimitProperties.Store(1000), List.of("192.0.2.10/32"), List.of()
         );
-        return new SecurityConfig()
-            .prevalidationThrottleFilter(props, new PublicEndpointPolicy(List.of()), rateLimit, new ClientIpResolver(List.of()), store);
+        return new SecurityConfig().prevalidationThrottleFilter(
+            props, new PublicEndpointPolicy(List.of()), rateLimit, new ClientIpResolver(List.of()), store, audit
+        );
     }
 
     private static LoggingClient enabledLoggingClient() {
@@ -110,8 +115,9 @@ class AuditFilterOrderTest {
             new SecurityConfig().openAccessFilter(psama, audit, props(true), new PublicEndpointPolicy(List.of()));
 
         MockHttpServletResponse response = new MockHttpServletResponse();
-        containerOrderedChain(List.of(openAccess, throttleRegistration(props(true), ALWAYS_BREACHED), auditRegistration(logging, audit)))
-            .doFilter(new MockHttpServletRequest("POST", "/query/sync"), response);
+        containerOrderedChain(
+            List.of(openAccess, throttleRegistration(props(true), ALWAYS_BREACHED, audit), auditRegistration(logging, audit))
+        ).doFilter(new MockHttpServletRequest("POST", "/query/sync"), response);
 
         assertThat(response.getStatus()).isEqualTo(429);
         verifyNoInteractions(psama);

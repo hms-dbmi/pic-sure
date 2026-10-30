@@ -112,8 +112,9 @@ class PrevalidationThrottleFilterTest {
             "http://127.0.0.1:" + psama.port() + "/open/validate", "service-token"
         );
         return new Gateway(
-            new PrevalidationThrottleFilter(props, new OpenAccessRequests(openAccessEnabled, publicEndpoints), resolver, recording),
-            new OpenAccessFilter(client, new AuditContext(), openAccessEnabled, publicEndpoints)
+            new PrevalidationThrottleFilter(
+                props, new OpenAccessRequests(openAccessEnabled, publicEndpoints), resolver, recording, new AuditContext()
+            ), new OpenAccessFilter(client, new AuditContext(), openAccessEnabled, publicEndpoints)
         );
     }
 

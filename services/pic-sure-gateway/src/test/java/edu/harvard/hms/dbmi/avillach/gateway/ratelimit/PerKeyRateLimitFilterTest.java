@@ -161,7 +161,8 @@ class PerKeyRateLimitFilterTest {
             "http://127.0.0.1:" + psama.port() + "/open/validate", "service-token"
         );
         return new Gateway(
-            new OpenAccessFilter(client, new AuditContext(), true, publicEndpoints), new PerKeyRateLimitFilter(props, resolver, recording)
+            new OpenAccessFilter(client, new AuditContext(), true, publicEndpoints),
+            new PerKeyRateLimitFilter(props, resolver, recording, new AuditContext())
         );
     }
 
