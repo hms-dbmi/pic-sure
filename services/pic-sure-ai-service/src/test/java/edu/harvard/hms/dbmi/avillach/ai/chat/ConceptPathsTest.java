@@ -73,6 +73,34 @@ class ConceptPathsTest {
     }
 
     @Test
+    void canonicalizeRewritesASeenVariantToThePathAsReturnedAndLeavesTheRestAlone() {
+        ConceptPaths paths = new ConceptPaths();
+        paths.learnFrom(TOOL_RESULT);
+        // Missing the trailing backslash in conceptPath, doubled backslashes in select; the unseen path is left as written.
+        String variants =
+            "{\"query\":{\"select\":[\"\\\\\\\\Nhanes\\\\\\\\examination\\\\\\\\body measures\\\\\\\\Body Mass Index (kg per m**2)\\\\\\\\\","
+                + "\"\\\\other\\\\\"],\"phenotypicClause\":{\"conceptPath\":\"\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\"}}}";
+
+        String canonical = paths.canonicalize(variants);
+
+        String exact = "\"\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\\"";
+        assertEquals(
+            "{\"query\":{\"select\":[" + exact + ",\"\\\\other\\\\\"],\"phenotypicClause\":{\"conceptPath\":" + exact + "}}}", canonical
+        );
+    }
+
+    @Test
+    void canonicalizeReturnsArgumentsThatNeedNoRewriteUnchanged() {
+        ConceptPaths paths = new ConceptPaths();
+        paths.learnFrom(TOOL_RESULT);
+        String exact = "{ \"conceptPath\" : \"\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\\" }";
+
+        assertEquals(exact, paths.canonicalize(exact));
+        assertEquals("not json", paths.canonicalize("not json"));
+        assertNull(paths.canonicalize(null));
+    }
+
+    @Test
     void firstUnseenInReturnsAnInventedPathAsWritten() {
         ConceptPaths paths = new ConceptPaths();
         paths.learnFrom(TOOL_RESULT);

@@ -7,6 +7,7 @@ import java.util.List;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.client.RestClientException;
 
 import edu.harvard.hms.dbmi.avillach.ai.mcp.McpToolGateway;
 import edu.harvard.hms.dbmi.avillach.ai.mcp.ToolDefinition;
@@ -120,6 +121,24 @@ class ToolUseLoopServiceTest {
     }
 
     @Test
+    void aBackslashVariantOfASeenPathIsForwardedAsTheSearchReturnedIt() {
+        String searchResult = "{\"concepts\":[{\"conceptPath\":\"\\\\demo\\\\body\\\\bmi\\\\\"}]}";
+        String countWithVariant =
+            "{\"query\":{\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"demo\\\\body\\\\bmi\"}}}";
+        FakeModelClient model = FakeModelClient.returning(
+            toolCallTurn("search_concepts", "{\"query\":\"bmi\"}"), toolCallTurn("count_participants", countWithVariant), doneTurn("Done")
+        );
+        FakeToolGateway tools = FakeToolGateway.returning(searchResult);
+
+        new ToolUseLoopService(model, tools, PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
+
+        assertEquals(
+            "{\"query\":{\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"\\\\demo\\\\body\\\\bmi\\\\\"}}}",
+            tools.calls.get(1).argumentsJson()
+        );
+    }
+
+    @Test
     void aPathFromTheResearchersCurrentQueryIsAllowedThrough() throws Exception {
         ChatRequest request = new ChatRequest(
             "narrow it", "conv-1", "req-1", new ObjectMapper().readTree("{\"select\":[\"\\\\demo\\\\age\\\\\"]}"), null, null
@@ -180,6 +199,18 @@ class ToolUseLoopServiceTest {
         assertTrue(tools.calls.isEmpty(), "the model never got a chance to request a tool");
     }
 
+    @Test
+    void aToolListingFailureThrowsAControlledUnavailableError() {
+        FakeModelClient model = FakeModelClient.returning(doneTurn("unused"));
+        FakeToolGateway tools = FakeToolGateway.thatFailsListing();
+
+        PicsureException thrown =
+            assertThrows(PicsureException.class, () -> new ToolUseLoopService(model, tools, PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER));
+
+        assertEquals("tools_unavailable", thrown.getErrorType());
+        assertEquals(0, model.callCount, "the model is never called without a tool list");
+    }
+
     private static ModelTurnResult doneTurn(String text) {
         return new ModelTurnResult(true, text, List.of(), 10, 5);
     }
@@ -233,28 +264,38 @@ class ToolUseLoopServiceTest {
 
         private final List<Call> calls = new ArrayList<>();
         private final boolean failEveryCall;
+        private final boolean failListing;
         private final String successContent;
 
         FakeToolGateway() {
-            this(false, "{}");
+            this(false, false, "{}");
         }
 
-        private FakeToolGateway(boolean failEveryCall, String successContent) {
+        private FakeToolGateway(boolean failEveryCall, boolean failListing, String successContent) {
             this.failEveryCall = failEveryCall;
+            this.failListing = failListing;
             this.successContent = successContent;
         }
 
         static FakeToolGateway thatFailsEveryCall() {
-            return new FakeToolGateway(true, "{}");
+            return new FakeToolGateway(true, false, "{}");
+        }
+
+        /** A gateway whose {@code tools/list} fails, as when the gateway is down before the turn starts. */
+        static FakeToolGateway thatFailsListing() {
+            return new FakeToolGateway(false, true, "{}");
         }
 
         /** A gateway whose every successful call returns the given content, e.g. a search result carrying concept paths. */
         static FakeToolGateway returning(String successContent) {
-            return new FakeToolGateway(false, successContent);
+            return new FakeToolGateway(false, false, successContent);
         }
 
         @Override
         public List<ToolDefinition> listTools(CallerContext caller) {
+            if (failListing) {
+                throw new RestClientException("mock gateway failure");
+            }
             return List.of();
         }
 

@@ -9,6 +9,7 @@ import com.github.tomakehurst.wiremock.client.WireMock;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.client.RestClientException;
 
 import edu.harvard.hms.dbmi.avillach.ai.chat.CallerContext;
 import edu.harvard.hms.dbmi.avillach.ai.mcp.ToolDefinition;
@@ -23,6 +24,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -136,6 +138,26 @@ class GatewayMcpToolGatewayTest {
         ToolResult result = gateway.callTool("search_concepts", "{}", callerWith("Bearer caller-token", "req-1"));
 
         assertTrue(result.error());
+    }
+
+    @Test
+    void aJsonRpcErrorOnInitializeFailsTheHandshakeAndTheNextCallRetriesIt() {
+        server.stubFor(post(urlEqualTo("/mcp")).withRequestBody(matchingJsonPath("$.method", equalTo("initialize"))).willReturn(okRpc("""
+            {"jsonrpc":"2.0","id":0,"error":{"code":-32603,"message":"not ready"}}""")));
+        server.stubFor(post(urlEqualTo("/mcp")).withRequestBody(matchingJsonPath("$.method", equalTo("tools/list"))).willReturn(okRpc("""
+            {"jsonrpc":"2.0","id":1,"result":{"tools":[]}}""")));
+        CallerContext caller = callerWith("Bearer caller-token", "req-1");
+
+        assertThrows(RestClientException.class, () -> gateway.listTools(caller));
+        server.verify(0, postRequestedFor(urlEqualTo("/mcp")).withRequestBody(matchingJsonPath("$.method", equalTo("tools/list"))));
+
+        server.stubFor(
+            post(urlEqualTo("/mcp")).withRequestBody(matchingJsonPath("$.method", equalTo("initialize"))).willReturn(okRpc(RPC_OK))
+        );
+        gateway.listTools(caller);
+
+        server.verify(2, postRequestedFor(urlEqualTo("/mcp")).withRequestBody(matchingJsonPath("$.method", equalTo("initialize"))));
+        server.verify(1, postRequestedFor(urlEqualTo("/mcp")).withRequestBody(matchingJsonPath("$.method", equalTo("tools/list"))));
     }
 
     @Test

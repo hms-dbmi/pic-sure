@@ -29,8 +29,8 @@ public class ProposeQueryTool {
     public static final String NAME = "propose_query";
 
     private static final String DESCRIPTION = """
-        Propose an updated query, facet selection, or search for the researcher to review -- call this when the conversation should \
-        update what the user sees, not just answer in prose. query is the same shape search_concepts/count_participants use (select, \
+        Propose an updated query, facet selection, or search. This only checks the proposal's shape and acknowledges it; it does not \
+        change what the researcher sees, so describe the suggested change in your reply and never say it was applied. query is the same shape search_concepts/count_participants use (select, \
         phenotypicClause, genomicFilters); build it from conceptPath values that search_concepts returns. facets is a list of \
         {category, name} pairs. search is free-form dictionary-search state. All three fields are optional -- include only what \
         actually changed this turn.""";
