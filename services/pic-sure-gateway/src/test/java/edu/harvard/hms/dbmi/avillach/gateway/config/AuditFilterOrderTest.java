@@ -21,9 +21,9 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
-import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
+import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessValidation;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;

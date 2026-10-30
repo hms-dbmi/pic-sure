@@ -37,6 +37,9 @@ public record RateLimitBreach(RateLimitSubject subject, RateLimitDecision decisi
         req.setAttribute(REQUEST_ATTRIBUTE, breach);
         long retryAfter = decision.retryAfterSeconds();
         resp.setHeader(HttpHeaders.RETRY_AFTER, Long.toString(retryAfter));
-        GatewayErrors.write(resp, HttpStatus.TOO_MANY_REQUESTS, ERROR_TYPE, "Too many requests. Try again in " + retryAfter + " seconds.");
+        GatewayErrors.write(
+            resp, HttpStatus.TOO_MANY_REQUESTS, ERROR_TYPE,
+            "Too many requests. Try again in " + retryAfter + (retryAfter == 1 ? " second." : " seconds.")
+        );
     }
 }

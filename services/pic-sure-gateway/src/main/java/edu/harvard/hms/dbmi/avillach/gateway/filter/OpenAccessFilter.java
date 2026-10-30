@@ -12,7 +12,6 @@ import org.springframework.web.util.UrlPathHelper;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.ApiKeyBearer;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionTokenRejectedException;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessRequests;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessValidation;
@@ -26,8 +25,7 @@ import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * Handles open-access requests, short-circuiting before {@code PsamaIntrospectionFilter} runs. Which requests take this path is decided by
- * {@link OpenAccessRequests}, shared with the stage-1 throttle: open access enabled and {@code Authorization} blank, at most 7 characters,
- * or a bearer PSAMA key ({@link ApiKeyBearer}). The open-access payload contains the decoded path Spring resolved as
+ * {@link OpenAccessRequests}, shared with the stage-1 throttle. The open-access payload contains the decoded path Spring resolved as
  * {@code "Target Service"}, {@code ipAddress}, and the key as {@code apiKey} when one was presented; it does not contain a login token or
  * request body. A key presented while open access is disabled is denied here rather than introspected, since PSAMA could only reject it as
  * a login token. A denial whose reason is the API key gets its own 401 error type ({@code api_key_missing} / {@code api_key_invalid});
@@ -93,16 +91,16 @@ public class OpenAccessFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse resp, FilterChain chain)
         throws ServletException, IOException {
-        OpenAccessRequests.Classification route = openAccessRequests.classify(req);
-        if (route.route() == OpenAccessRequests.Route.NOT_OPEN_ACCESS) {
+        OpenAccessRequests.Classification classification = openAccessRequests.classify(req);
+        if (classification.route() == OpenAccessRequests.Route.NOT_OPEN_ACCESS) {
             chain.doFilter(req, resp);
             return;
         }
-        if (route.route() == OpenAccessRequests.Route.OPEN_ACCESS_DISABLED) {
+        if (classification.route() == OpenAccessRequests.Route.OPEN_ACCESS_DISABLED) {
             deny(resp, OPEN_ACCESS_DISABLED);
             return;
         }
-        String apiKey = route.apiKey();
+        String apiKey = classification.apiKey();
 
         Map<String, Object> queryMap = buildOpenAccessRequest(req);
         Map<String, Object> body = new HashMap<>();
