@@ -23,8 +23,8 @@ import io.micrometer.core.instrument.MeterRegistry;
  * consumes from a multi-limit bucket only when every limit has the token.
  *
  * <p>The cache is capped at {@code max-subjects}. At the cap Caffeine evicts by its size policy, even a live bucket, whose subject comes
- * back with a full allowance; nothing is rejected for capacity. An entry expires at the midnight UTC after its last use, when both its
- * windows would be full again anyway. Counters reset on restart.
+ * back with a full allowance; nothing is rejected for capacity. An entry expires at the first midnight UTC after it was created, when both
+ * its windows would be full again anyway, so a cached bucket never spans two UTC days. Counters reset on restart.
  */
 public final class InMemoryRateLimitStore implements RateLimitStore {
 
@@ -85,15 +85,15 @@ public final class InMemoryRateLimitStore implements RateLimitStore {
 
     private Bucket newBucket(RateLimitSubject subject) {
         return switch (subject.kind()) {
-            case PREVALIDATION_IP -> withLimits(props.ip().prevalidationPerMinute(), 0);
-            case USER -> withLimits(props.user().burstPerMinute(), props.user().sustainedPerDay());
-            case SESSION -> withLimits(props.session().burstPerMinute(), props.session().sustainedPerDay());
-            case IP -> withLimits(props.ip().burstPerMinute(), props.ip().sustainedPerDay());
+            case PREVALIDATION_IP -> calendarBucket(props.ip().prevalidationPerMinute(), 0, clock);
+            case USER -> calendarBucket(props.user().burstPerMinute(), props.user().sustainedPerDay(), clock);
+            case SESSION -> calendarBucket(props.session().burstPerMinute(), props.session().sustainedPerDay(), clock);
+            case IP -> calendarBucket(props.ip().burstPerMinute(), props.ip().sustainedPerDay(), clock);
         };
     }
 
-    /** {@code perDay} of 0 means no sustained window. */
-    private Bucket withLimits(long perMinute, long perDay) {
+    /** A full bucket whose windows reset on the minute boundary and at midnight UTC. {@code perDay} of 0 means no sustained window. */
+    static Bucket calendarBucket(long perMinute, long perDay, TimeMeter clock) {
         Instant now = now(clock.currentTimeNanos());
         LocalBucketBuilder builder = Bucket.builder().withCustomTimePrecision(clock)
             .addLimit(limit -> limit.capacity(perMinute).refillIntervallyAligned(perMinute, MINUTE, nextBoundary(now, ChronoUnit.MINUTES)));
@@ -121,12 +121,12 @@ public final class InMemoryRateLimitStore implements RateLimitStore {
 
         @Override
         public long expireAfterUpdate(RateLimitSubject subject, Bucket bucket, long currentTime, long currentDuration) {
-            return untilMidnight(currentTime);
+            return currentDuration;
         }
 
         @Override
         public long expireAfterRead(RateLimitSubject subject, Bucket bucket, long currentTime, long currentDuration) {
-            return untilMidnight(currentTime);
+            return currentDuration;
         }
 
         // The cache's ticker is the store's wall clock, so currentTime is nanoseconds since the epoch.

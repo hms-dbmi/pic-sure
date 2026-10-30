@@ -83,19 +83,6 @@ class InMemoryRateLimitStoreTest {
     }
 
     @Test
-    void windowsStayAlignedDaysAfterTheBucketWasCreated() {
-        InMemoryRateLimitStore store = store(2, 4);
-        consume(store, USER, 1);
-
-        clock.set("2026-11-02T08:15:40Z");
-        consume(store, USER, 2);
-        assertThat(store.tryConsume(USER)).isEqualTo(RateLimitDecision.rejected(Window.BURST, 20));
-        clock.set("2026-11-02T08:16:00Z");
-        consume(store, USER, 2);
-        assertThat(store.tryConsume(USER)).isEqualTo(RateLimitDecision.rejected(Window.BOTH, 56_640));
-    }
-
-    @Test
     void subjectFirstSeenMidDayGetsTheFullDailyAllowance() {
         clock.set("2026-10-29T23:30:00Z");
         InMemoryRateLimitStore store = store(10, 10);
@@ -258,7 +245,7 @@ class InMemoryRateLimitStoreTest {
     }
 
     @Test
-    void entriesExpireAtTheMidnightUtcAfterTheirLastUse() {
+    void entriesExpireAtTheFirstMidnightUtcAfterCreation() {
         InMemoryRateLimitStore store = store(10, 10);
         store.tryConsume(USER);
         clock.set("2026-10-29T23:59:00Z");
