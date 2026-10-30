@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
@@ -66,6 +67,8 @@ class RateLimitAuditEventTest {
 
     private final LoggingClient logging = mock(LoggingClient.class);
     private final PsamaClient psama = mock(PsamaClient.class);
+    /** {@code RATE_LIMIT_TRUSTED_PROXIES}; the limiter is enabled only when this is non-empty, as the gateway requires. */
+    private List<String> trustedProxies = List.of(PROXY + "/32");
 
     private MockHttpServletResponse send(RateLimitStore store, MockHttpServletRequest request) throws Exception {
         when(logging.isEnabled()).thenReturn(true);
@@ -73,17 +76,17 @@ class RateLimitAuditEventTest {
         GatewaySecurityProperties props =
             new GatewaySecurityProperties(List.of(), true, 1024, "http://psama.local/introspect", "http://psama.local/open-access", "svc");
         RateLimitProperties rateLimit = new RateLimitProperties(
-            true, new RateLimitProperties.KeyLimits(60, 3000), new RateLimitProperties.KeyLimits(60, 3000),
-            new RateLimitProperties.IpLimits(60, 3000, 300), new RateLimitProperties.Store(1000), List.of(PROXY + "/32"), List.of()
+            !trustedProxies.isEmpty(), new RateLimitProperties.KeyLimits(60, 3000), new RateLimitProperties.KeyLimits(60, 3000),
+            new RateLimitProperties.IpLimits(60, 3000, 300), new RateLimitProperties.Store(1000), trustedProxies, List.of()
         );
         PublicEndpointPolicy publicEndpoints = new PublicEndpointPolicy(List.of());
-        ClientIpResolver clientIps = new ClientIpResolver(List.of(CidrRange.parse(PROXY + "/32")));
+        ClientIpResolver clientIps = new ClientIpResolver(trustedProxies.stream().map(CidrRange::parse).toList());
         SecurityConfig security = new SecurityConfig();
         ObservabilityConfig observability = new ObservabilityConfig();
         AuditFilterConfig auditConfig = new AuditFilterConfig();
         List<FilterRegistrationBean<?>> registrations = List.of(
             observability.requestIdFilter(), observability.accessLogFilter(),
-            auditConfig.auditLoggingFilter(logging, auditConfig.auditRouteTable(), audit),
+            auditConfig.auditLoggingFilter(logging, auditConfig.auditRouteTable(), audit, rateLimit, clientIps),
             security.bufferingFilter(props, new SimpleMeterRegistry()),
             security.prevalidationThrottleFilter(props, publicEndpoints, rateLimit, clientIps, store, audit),
             observability.internalEndpointGuardFilter(), security.openAccessFilter(psama, audit, props, publicEndpoints),
@@ -111,9 +114,13 @@ class RateLimitAuditEventTest {
     }
 
     private static MockHttpServletRequest request(String path, String authorization) {
+        return request(path, authorization, PROXY, CLIENT);
+    }
+
+    private static MockHttpServletRequest request(String path, String authorization, String peer, String forwardedFor) {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", path);
-        request.setRemoteAddr(PROXY);
-        request.addHeader("X-Forwarded-For", CLIENT);
+        request.setRemoteAddr(peer);
+        request.addHeader("X-Forwarded-For", forwardedFor);
         if (authorization != null) {
             request.addHeader("Authorization", authorization);
         }
@@ -162,7 +169,8 @@ class RateLimitAuditEventTest {
         assertThat(event.getMetadata()).containsEntry("auth_result", "failure").containsEntry("auth_action", "open_access.rate_limited")
             .containsEntry("rate_limit_subject_type", "client_ip").containsEntry("rate_limit_subject", CLIENT)
             .containsEntry("rate_limit_window", "prevalidation").containsEntry("rate_limit_retry_after_seconds", 12L)
-            .doesNotContainKey("rate_limit_key_display_prefix");
+            .doesNotContainKey("rate_limit_key_display_prefix").doesNotContainKey("rate_limit_ip_resolution_failed");
+        assertThat(event.getRequest().getSrcIp()).isEqualTo(CLIENT);
         assertNeverContains(output, USER_KEY);
     }
 
@@ -218,7 +226,8 @@ class RateLimitAuditEventTest {
 
         LoggingEvent event = emitted();
         assertThat(event.getMetadata()).containsEntry("rate_limit_subject_type", "client_ip").containsEntry("rate_limit_subject", CLIENT)
-            .containsEntry("rate_limit_window", "burst").doesNotContainKey("rate_limit_key_display_prefix");
+            .containsEntry("rate_limit_window", "burst").doesNotContainKey("rate_limit_key_display_prefix")
+            .doesNotContainKey("rate_limit_ip_resolution_failed");
         assertThat(event.getMetadata().values()).doesNotContain(KEY_ID.toString());
         assertNeverContains(output, platformKey);
     }
@@ -247,6 +256,99 @@ class RateLimitAuditEventTest {
         assertThat(response.getStatus()).isEqualTo(200);
         assertThat(emitted().getMetadata()).containsEntry("auth_action", "open_access.granted").doesNotContainKey("rate_limit_window");
         assertNeverContains(output, USER_KEY);
+    }
+
+    /** BDC: caller, ALB (10.0.1.0/24), httpd (192.0.2.10) as peer, and a forged leading entry the caller sent. */
+    private static final String ALB = "10.0.1.5";
+    private static final String BDC_CHAIN = "6.6.6.6, " + CLIENT + ", " + ALB;
+
+    private void bdcProxies() {
+        trustedProxies = List.of(PROXY + "/32", "10.0.1.0/24");
+    }
+
+    @Test
+    void aGrantOnTheBdcChainRecordsTheResolvedClientAsSrcIp() throws Exception {
+        bdcProxies();
+        grant(OpenAccessValidation.KEY_TYPE_USER, KEY_ID.toString(), USER_DISPLAY_PREFIX);
+
+        send(subject -> new RateLimitDecision(true, null, 0), request("/query/sync", "Bearer " + USER_KEY, PROXY, BDC_CHAIN));
+
+        assertThat(emitted().getRequest().getSrcIp()).isEqualTo(CLIENT);
+    }
+
+    @Test
+    void aDenialOnTheBdcChainRecordsTheResolvedClientAsSrcIp() throws Exception {
+        bdcProxies();
+        when(psama.validateOpenAccess(anyMap())).thenReturn(OpenAccessValidation.fromBoolean(false));
+
+        MockHttpServletResponse response =
+            send(subject -> new RateLimitDecision(true, null, 0), request("/query/sync", "Bearer " + USER_KEY, PROXY, BDC_CHAIN));
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        LoggingEvent event = emitted();
+        assertThat(event.getMetadata()).containsEntry("auth_action", "open_access.denied");
+        assertThat(event.getRequest().getSrcIp()).isEqualTo(CLIENT);
+    }
+
+    @Test
+    void aBreachOnTheBdcChainRecordsTheResolvedClientAsSrcIpAndSubject() throws Exception {
+        bdcProxies();
+
+        send(
+            breaching(RateLimitSubject.Kind.PREVALIDATION_IP, new RateLimitDecision(false, Window.BURST, 12)),
+            request("/query/sync", "Bearer " + USER_KEY, PROXY, BDC_CHAIN)
+        );
+
+        LoggingEvent event = emitted();
+        assertThat(event.getRequest().getSrcIp()).isEqualTo(CLIENT);
+        assertThat(event.getMetadata()).containsEntry("rate_limit_subject", CLIENT);
+    }
+
+    @Test
+    void anUntrustedPeersForwardedForIsIgnoredForSrcIp() throws Exception {
+        String peer = "198.51.100.9";
+        grant(OpenAccessValidation.KEY_TYPE_USER, KEY_ID.toString(), USER_DISPLAY_PREFIX);
+
+        send(subject -> new RateLimitDecision(true, null, 0), request("/query/sync", "Bearer " + USER_KEY, peer, CLIENT));
+
+        assertThat(emitted().getRequest().getSrcIp()).isEqualTo(peer);
+    }
+
+    @Test
+    void aCommaOnlyForwardedForFromATrustedPeerStillAuditsTheBreach() throws Exception {
+        MockHttpServletResponse response = send(
+            breaching(RateLimitSubject.Kind.PREVALIDATION_IP, new RateLimitDecision(false, Window.BURST, 12)),
+            request("/query/sync", "Bearer " + USER_KEY, PROXY, ",")
+        );
+
+        assertThat(response.getStatus()).isEqualTo(429);
+        LoggingEvent event = emitted();
+        assertThat(event.getRequest().getStatus()).isEqualTo(429);
+        assertThat(event.getRequest().getSrcIp()).isEqualTo(PROXY);
+    }
+
+    @Test
+    void anOverCapChainIsAuditedAsTheProxyWithTheResolutionFailureFlagged() throws Exception {
+        String overCap = String.join(", ", Collections.nCopies(ClientIpResolver.MAX_HOPS + 1, CLIENT));
+
+        send(
+            breaching(RateLimitSubject.Kind.PREVALIDATION_IP, new RateLimitDecision(false, Window.BURST, 12)),
+            request("/query/sync", "Bearer " + USER_KEY, PROXY, overCap)
+        );
+
+        LoggingEvent event = emitted();
+        assertThat(event.getRequest().getSrcIp()).isEqualTo(PROXY);
+        assertThat(event.getMetadata()).containsEntry("rate_limit_subject", PROXY).containsEntry("rate_limit_ip_resolution_failed", true);
+    }
+
+    @Test
+    void withNoTrustedProxiesSrcIpKeepsTheRightmostForwardedForEntry() throws Exception {
+        trustedProxies = List.of();
+        grant(OpenAccessValidation.KEY_TYPE_USER, KEY_ID.toString(), USER_DISPLAY_PREFIX);
+
+        send(subject -> new RateLimitDecision(true, null, 0), request("/query/sync", "Bearer " + USER_KEY, PROXY, "6.6.6.6, " + CLIENT));
+
+        assertThat(emitted().getRequest().getSrcIp()).isEqualTo(CLIENT);
     }
 
     @Test

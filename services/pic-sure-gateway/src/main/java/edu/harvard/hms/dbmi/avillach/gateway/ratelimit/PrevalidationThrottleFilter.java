@@ -30,6 +30,6 @@ public class PrevalidationThrottleFilter extends RateLimitFilter {
             return null;
         }
         ClientIp client = clientIps.resolve(req);
-        return client.isIn(allowlist) ? null : new Target(RateLimitSubject.prevalidationIp(client.address()), client.address());
+        return client.isIn(allowlist) ? null : new Target(RateLimitSubject.prevalidationIp(client.address()), client);
     }
 }
