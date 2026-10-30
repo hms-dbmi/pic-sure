@@ -26,6 +26,7 @@ import edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.OpenAccessFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.PsamaIntrospectionFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.TokenRefreshResponseFilter;
+import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.PerKeyRateLimitFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.PrevalidationThrottleFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitProperties;
 import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitStore;
@@ -33,14 +34,14 @@ import io.micrometer.core.instrument.MeterRegistry;
 
 /**
  * Wires the DB-free auth filter chain: {@code BufferingFilter}(10) -&gt; {@code PrevalidationThrottleFilter}(12) -&gt;
- * {@code OpenAccessFilter}(20) -&gt; {@code PsamaIntrospectionFilter}(30) -&gt; {@code TokenRefreshResponseFilter}(40) -&gt;
- * {@code IdentityPropagationFilter}(50). The audit filter is wired in {@code AuditFilterConfig}, ahead of all of them. No datasource or JPA
- * is used. {@link PsamaClient} talks to PSAMA over HTTP. <p> Spring Security itself stays permit-all because the introspection filter above
- * enforces the authentication boundary.
+ * {@code OpenAccessFilter}(20) -&gt; {@code PerKeyRateLimitFilter}(22) -&gt; {@code PsamaIntrospectionFilter}(30) -&gt;
+ * {@code TokenRefreshResponseFilter}(40) -&gt; {@code IdentityPropagationFilter}(50). The audit filter is wired in
+ * {@code AuditFilterConfig}, ahead of all of them. No datasource or JPA is used. {@link PsamaClient} talks to PSAMA over HTTP. <p> Spring
+ * Security itself stays permit-all because the introspection filter above enforces the authentication boundary.
  *
- * <p><b>Always registered:</b> all six filters are installed unconditionally; the throttle passes everything through when rate limiting is
- * disabled. The shared {@link PublicEndpointPolicy} defines the intentional public-route bypasses used by both authentication filters; all
- * other routes traverse the normal auth chain.
+ * <p><b>Always registered:</b> all seven filters are installed unconditionally; both rate-limit filters pass everything through when rate
+ * limiting is disabled. The shared {@link PublicEndpointPolicy} defines the intentional public-route bypasses used by both authentication
+ * filters; all other routes traverse the normal auth chain.
  */
 @Configuration
 @EnableConfigurationProperties(GatewaySecurityProperties.class)
@@ -118,6 +119,16 @@ public class SecurityConfig {
     ) {
         var r = new FilterRegistrationBean<>(new OpenAccessFilter(client, audit, props.openAccessEnabled(), publicEndpoints));
         r.setOrder(20);
+        r.addUrlPatterns("/*");
+        return r;
+    }
+
+    @Bean
+    FilterRegistrationBean<PerKeyRateLimitFilter> perKeyRateLimitFilter(
+        RateLimitProperties rateLimit, ClientIpResolver clientIps, RateLimitStore store
+    ) {
+        var r = new FilterRegistrationBean<>(new PerKeyRateLimitFilter(rateLimit, clientIps, store));
+        r.setOrder(22); // After OpenAccessFilter (20) grants, before InboundIdentityHeaderSanitizingFilter (25).
         r.addUrlPatterns("/*");
         return r;
     }
