@@ -3,13 +3,18 @@ package edu.harvard.hms.dbmi.avillach.commons.net;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
-import java.net.UnknownHostException;
+import java.util.regex.Pattern;
 
 /**
  * Strict IP-literal parsing that never touches DNS. {@link InetAddress#getByName} resolves anything that isn't a literal, so a hostile
  * {@code X-Forwarded-For} entry could trigger lookups; these methods only accept literals.
  */
 final class IpLiterals {
+
+    private static final String OCTET = "(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])";
+
+    /** Four plain decimal octets. {@link Inet4Address#ofLiteral} alone also takes {@code 10.1} and {@code 010.0.0.1}. */
+    private static final Pattern STRICT_IPV4 = Pattern.compile("(" + OCTET + "\\.){3}" + OCTET);
 
     private IpLiterals() {}
 
@@ -77,39 +82,10 @@ final class IpLiterals {
     }
 
     private static InetAddress parseIpv4(String text) {
-        byte[] bytes = new byte[4];
-        int octet = 0;
-        int value = -1;
-        int digits = 0;
-        for (int i = 0; i <= text.length(); i++) {
-            char c = i < text.length() ? text.charAt(i) : '.';
-            if (c == '.') {
-                if (digits == 0 || octet == 4) {
-                    throw new IllegalArgumentException("not an IPv4 address");
-                }
-                bytes[octet++] = (byte) value;
-                value = -1;
-                digits = 0;
-            } else if (c >= '0' && c <= '9') {
-                if (value == 0) {
-                    throw new IllegalArgumentException("leading zero in IPv4 octet");
-                }
-                value = (value < 0 ? 0 : value * 10) + (c - '0');
-                if (++digits > 3 || value > 255) {
-                    throw new IllegalArgumentException("IPv4 octet out of range");
-                }
-            } else {
-                throw new IllegalArgumentException("not an IPv4 address");
-            }
-        }
-        if (octet != 4) {
+        if (!STRICT_IPV4.matcher(text).matches()) {
             throw new IllegalArgumentException("not an IPv4 address");
         }
-        try {
-            return InetAddress.getByAddress(bytes);
-        } catch (UnknownHostException e) {
-            throw new IllegalStateException(e); // unreachable: four bytes is always a valid length
-        }
+        return Inet4Address.ofLiteral(text);
     }
 
     private static InetAddress parseIpv6(String text) {
