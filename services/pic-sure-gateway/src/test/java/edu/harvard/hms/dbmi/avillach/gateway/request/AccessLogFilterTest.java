@@ -32,8 +32,10 @@ class AccessLogFilterTest {
     }
 
     @Test
-    void logsOneLinePerRequestWithMethodPathStatusAndDuration() throws Exception {
+    void logsOneLinePerRequestWithMethodPathStatusDurationAndPeer() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.setRemoteAddr("10.89.0.5");
+        request.addHeader("X-Forwarded-For", "203.0.113.7");
         MockHttpServletResponse response = new MockHttpServletResponse();
         response.setStatus(200);
 
@@ -41,7 +43,8 @@ class AccessLogFilterTest {
 
         assertThat(appender.list).hasSize(1);
         String line = appender.list.get(0).getFormattedMessage();
-        assertThat(line).startsWith("POST /query/sync 200 ").endsWith("ms");
+        // the peer is the connection, never a header value
+        assertThat(line).matches("POST /query/sync 200 \\d+ms peer=10\\.89\\.0\\.5");
     }
 
     @Test

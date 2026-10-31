@@ -13,6 +13,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.junit.jupiter.api.Test;
 
@@ -245,24 +247,112 @@ class InMemoryRateLimitStoreTest {
     }
 
     @Test
-    void entriesExpireAtTheFirstMidnightUtcAfterCreation() {
+    void entriesExpireAtTheFirstMidnightUtcAfterTheirLastUse() {
         InMemoryRateLimitStore store = store(10, 10);
         store.tryConsume(USER);
-        clock.set("2026-10-29T23:59:00Z");
-        store.tryConsume(USER);
+        clock.set("2026-10-30T00:30:00Z");
+        store.tryConsume(USER); // used again after midnight: lives until the next midnight
 
-        clock.set("2026-10-29T23:59:59Z");
+        clock.set("2026-10-30T23:59:59Z");
         store.cleanUp();
         assertThat(store.size()).isEqualTo(1);
 
-        clock.set("2026-10-30T00:00:00Z");
+        clock.set("2026-10-31T00:00:00Z");
         store.cleanUp();
         assertThat(store.size()).isZero();
+    }
+
+    /**
+     * A request fetches yesterday's bucket just before midnight and is held before consuming from it, while another request arrives after
+     * midnight. They must not draw from two buckets, so the new day admits only one of them.
+     */
+    @Test
+    void requestHoldingYesterdaysBucketAcrossMidnightAndANewRequestAdmitOnlyOne() throws Exception {
+        GatedClock gated = new GatedClock(clock);
+        InMemoryRateLimitStore store = new InMemoryRateLimitStore(props(1, 1, 1, 1000), meters, gated);
+        clock.set("2026-10-29T23:00:00Z");
+        consume(store, USER, 1);
+
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            clock.set("2026-10-29T23:59:59.999Z");
+            Future<RateLimitDecision> held = pool.submit(() -> {
+                gated.gateThisThread();
+                return store.tryConsume(USER);
+            });
+            assertThat(gated.awaitHeld()).as("held request reached its bucket").isTrue();
+
+            clock.set("2026-10-30T00:00:00.001Z");
+            Future<RateLimitDecision> afterMidnight = pool.submit(() -> store.tryConsume(USER));
+            try {
+                afterMidnight.get(200, TimeUnit.MILLISECONDS); // a store that let it run in between would answer now
+            } catch (TimeoutException waitingForTheHeldRequest) {
+                // the store serialises the two requests on the subject's entry
+            }
+            gated.release();
+
+            List<Boolean> allowed = List.of(held.get(10, TimeUnit.SECONDS).allowed(), afterMidnight.get(10, TimeUnit.SECONDS).allowed());
+            assertThat(allowed).as("held, after midnight").containsOnlyOnce(true);
+        } finally {
+            gated.release();
+            pool.shutdownNow();
+        }
     }
 
     @Test
     void refusesANonWallClock() {
         assertThatThrownBy(() -> new InMemoryRateLimitStore(props(1, 1, 1, 1), meters, TimeMeter.SYSTEM_NANOTIME))
             .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    /**
+     * Wraps the fake clock so that one thread blocks the first time Bucket4j asks it for the time, which happens only after the store has
+     * fetched that thread's bucket from the cache. The test can then move time and send other requests between fetch and consume.
+     */
+    private static final class GatedClock implements TimeMeter {
+
+        private final FakeClock delegate;
+        private final CountDownLatch held = new CountDownLatch(1);
+        private final CountDownLatch released = new CountDownLatch(1);
+        private volatile Thread gated;
+
+        GatedClock(FakeClock delegate) {
+            this.delegate = delegate;
+        }
+
+        void gateThisThread() {
+            gated = Thread.currentThread();
+        }
+
+        boolean awaitHeld() throws InterruptedException {
+            return held.await(10, TimeUnit.SECONDS);
+        }
+
+        void release() {
+            released.countDown();
+        }
+
+        @Override
+        public long currentTimeNanos() {
+            if (Thread.currentThread() == gated && calledFromBucket4j()) {
+                gated = null;
+                held.countDown();
+                try {
+                    released.await(10, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            return delegate.currentTimeNanos();
+        }
+
+        @Override
+        public boolean isWallClockBased() {
+            return true;
+        }
+
+        private static boolean calledFromBucket4j() {
+            return StackWalker.getInstance().walk(frames -> frames.anyMatch(f -> f.getClassName().startsWith("io.github.bucket4j.")));
+        }
     }
 }

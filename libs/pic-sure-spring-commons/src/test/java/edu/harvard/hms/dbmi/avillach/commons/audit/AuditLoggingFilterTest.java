@@ -262,6 +262,23 @@ class AuditLoggingFilterTest {
     }
 
     @Test
+    void anXffWithATrailingCommaFallsBackToRemoteAddr() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of());
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.setRemoteAddr("192.0.2.44");
+        request.addHeader("X-Forwarded-For", "203.0.113.7,");
+
+        filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(client, times(1)).send(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getRequest().getSrcIp()).isEqualTo("192.0.2.44");
+    }
+
+    @Test
     void aRepeatedXffHeaderIsReadFromItsLastLineWhereTheProxyAppended() throws Exception {
         LoggingClient client = mock(LoggingClient.class);
         when(client.isEnabled()).thenReturn(true);

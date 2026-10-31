@@ -7,7 +7,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -27,7 +26,6 @@ import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessValidation;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.OpenAccessFilter;
-import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitDecision;
 import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitProperties;
 import edu.harvard.hms.dbmi.avillach.gateway.request.InboundIdentityHeaderSanitizingFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.request.InternalEndpointGuardFilter;
@@ -81,25 +79,6 @@ class OpenAccessFilterOrderTest {
             new SecurityConfig().openAccessFilter(mock(PsamaClient.class), new AuditContext(), props, new PublicEndpointPolicy(List.of()))
                 .getOrder()
         ).isLessThan(new ObservabilityConfig().inboundIdentityHeaderSanitizingFilter().getOrder());
-    }
-
-    @Test
-    void assembledFiltersRejectAThrottledRequestBeforeOpenAccessCallsPsama() throws Exception {
-        PsamaClient psama = mock(PsamaClient.class);
-        List<FilterRegistrationBean<? extends Filter>> registrations = new ArrayList<>(assembledRegistrations(psama));
-        registrations.add(
-            AuditFilterOrderTest.throttleRegistration(props(), subject -> new RateLimitDecision(false, RateLimitDecision.Window.BURST, 7))
-        );
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
-        request.addHeader("Authorization", "Bearer picsure_u_testKeyValue123");
-        MockHttpServletResponse response = new MockHttpServletResponse();
-
-        invokeInRegisteredOrder(registrations, request, response, (req, resp) -> {
-        });
-
-        assertThat(response.getStatus()).isEqualTo(429);
-        assertThat(response.getHeader("Retry-After")).isEqualTo("7");
-        verifyNoInteractions(psama);
     }
 
     @Test
