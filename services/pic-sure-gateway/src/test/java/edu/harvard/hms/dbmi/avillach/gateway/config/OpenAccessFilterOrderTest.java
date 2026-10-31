@@ -74,7 +74,8 @@ class OpenAccessFilterOrderTest {
             true, new RateLimitProperties.KeyLimits(60, 3000), new RateLimitProperties.KeyLimits(60, 3000),
             new RateLimitProperties.IpLimits(60, 3000, 300), new RateLimitProperties.Store(1000), List.of("192.0.2.10/32"), List.of()
         );
-        int perKey = new SecurityConfig().perKeyRateLimitFilter(rateLimit, new ClientIpResolver(List.of()), subject -> null).getOrder();
+        int perKey = new SecurityConfig()
+            .perKeyRateLimitFilter(rateLimit, new ClientIpResolver(List.of()), subject -> null, new AuditContext()).getOrder();
 
         assertThat(perKey).isGreaterThan(
             new SecurityConfig().openAccessFilter(mock(PsamaClient.class), new AuditContext(), props, new PublicEndpointPolicy(List.of()))

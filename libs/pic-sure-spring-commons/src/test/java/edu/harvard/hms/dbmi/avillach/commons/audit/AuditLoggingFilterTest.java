@@ -2,6 +2,8 @@ package edu.harvard.hms.dbmi.avillach.commons.audit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -36,31 +38,31 @@ class AuditLoggingFilterTest {
     }
 
     @Test
-    void shouldNotFilterIsTrueForOptionsRequests() {
+    void optionsRequestsSkipTheEvent() {
         LoggingClient client = mock(LoggingClient.class);
         when(client.isEnabled()).thenReturn(true);
         AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of());
 
-        assertThat(filter.shouldNotFilter(new MockHttpServletRequest("OPTIONS", "/query/sync"))).isTrue();
+        assertThat(filter.skipsEvent(new MockHttpServletRequest("OPTIONS", "/query/sync"))).isTrue();
     }
 
     @Test
-    void shouldNotFilterIsTrueForSystemStatusAndOpenapiPaths() {
+    void systemStatusAndOpenapiPathsSkipTheEvent() {
         LoggingClient client = mock(LoggingClient.class);
         when(client.isEnabled()).thenReturn(true);
         AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of());
 
-        assertThat(filter.shouldNotFilter(new MockHttpServletRequest("GET", "/system/status"))).isTrue();
-        assertThat(filter.shouldNotFilter(new MockHttpServletRequest("GET", "/openapi.json"))).isTrue();
+        assertThat(filter.skipsEvent(new MockHttpServletRequest("GET", "/system/status"))).isTrue();
+        assertThat(filter.skipsEvent(new MockHttpServletRequest("GET", "/openapi.json"))).isTrue();
     }
 
     @Test
-    void shouldNotFilterIsTrueWhenPathContainsASkipContainsEntry() {
+    void aPathContainingASkipContainsEntrySkipsTheEvent() {
         LoggingClient client = mock(LoggingClient.class);
         when(client.isEnabled()).thenReturn(true);
         AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of("/proxy/pic-sure-logging/"));
 
-        assertThat(filter.shouldNotFilter(new MockHttpServletRequest("GET", "/proxy/pic-sure-logging/audit"))).isTrue();
+        assertThat(filter.skipsEvent(new MockHttpServletRequest("GET", "/proxy/pic-sure-logging/audit"))).isTrue();
     }
 
     @Test
@@ -70,6 +72,30 @@ class AuditLoggingFilterTest {
         AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of());
 
         assertThat(filter.shouldNotFilter(new MockHttpServletRequest("POST", "/query/sync"))).isFalse();
+        assertThat(filter.skipsEvent(new MockHttpServletRequest("POST", "/query/sync"))).isFalse();
+    }
+
+    @Test
+    void aSkippedPathEmitsNothingUnlessTheChainMarksTheRequestAuditRequired() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of("/bin/continuous"));
+
+        filter.doFilter(new MockHttpServletRequest("POST", "/bin/continuous"), new MockHttpServletResponse(), new MockFilterChain());
+        verify(client, never()).send(any(LoggingEvent.class));
+
+        MockFilterChain marking = new MockFilterChain() {
+            @Override
+            public void doFilter(jakarta.servlet.ServletRequest request, jakarta.servlet.ServletResponse response) {
+                request.setAttribute(AuditLoggingFilter.AUDIT_REQUIRED_ATTRIBUTE, Boolean.TRUE);
+                ((jakarta.servlet.http.HttpServletResponse) response).setStatus(429);
+            }
+        };
+        filter.doFilter(new MockHttpServletRequest("POST", "/bin/continuous"), new MockHttpServletResponse(), marking);
+
+        ArgumentCaptor<LoggingEvent> event = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(client).send(event.capture());
+        assertThat(event.getValue().getRequest().getStatus()).isEqualTo(429);
     }
 
     /**
@@ -217,6 +243,59 @@ class AuditLoggingFilterTest {
     }
 
     @Test
+    void anXffOfOnlyCommasFallsBackToRemoteAddrInsteadOfDroppingTheEvent() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of());
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.setRemoteAddr("192.0.2.44");
+        request.addHeader("X-Forwarded-For", ",");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(429);
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(client, times(1)).send(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getRequest().getSrcIp()).isEqualTo("192.0.2.44");
+    }
+
+    @Test
+    void aRepeatedXffHeaderIsReadFromItsLastLineWhereTheProxyAppended() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of());
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("X-Forwarded-For", "6.6.6.6");
+        request.addHeader("X-Forwarded-For", "203.0.113.9");
+
+        filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(client, times(1)).send(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getRequest().getSrcIp()).isEqualTo("203.0.113.9");
+    }
+
+    @Test
+    void aSuppliedSourceIpFunctionReplacesTheXffRuleForSrcIp() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter =
+            new AuditLoggingFilter(client, routes, new AuditContext(), List.of(), authorization -> true, request -> "198.51.100.1");
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("X-Forwarded-For", "6.6.6.6, 203.0.113.9");
+
+        filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(client, times(1)).send(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getRequest().getSrcIp()).isEqualTo("198.51.100.1");
+    }
+
+    @Test
     void doesNotEmitWhenTheRequestIsSkipped() throws Exception {
         LoggingClient client = mock(LoggingClient.class);
         when(client.isEnabled()).thenReturn(true);
@@ -229,5 +308,36 @@ class AuditLoggingFilterTest {
 
         verify(client, never()).send(any(LoggingEvent.class));
         verify(client, never()).send(any(LoggingEvent.class), any(), any());
+    }
+
+    @Test
+    void forwardsTheAuthorizationHeaderByDefault() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of());
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("Authorization", "Bearer some.jwt.token");
+        request.addHeader("X-Request-Id", "req-1");
+
+        filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
+
+        verify(client).send(any(LoggingEvent.class), eq("Bearer some.jwt.token"), eq("req-1"));
+    }
+
+    @Test
+    void anAuthorizationTheForwardPredicateRejectsIsNotSentButTheRequestIdStillIs() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter =
+            new AuditLoggingFilter(client, routes, new AuditContext(), List.of(), authorization -> !authorization.contains("secret"));
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("Authorization", "Bearer secret-key");
+        request.addHeader("X-Request-Id", "req-1");
+
+        filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
+
+        verify(client).send(any(LoggingEvent.class), isNull(), eq("req-1"));
     }
 }
