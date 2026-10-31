@@ -94,6 +94,16 @@ class ClientIpResolverTest {
         assertResolved(aio.resolve(request), CLIENT);
     }
 
+    @Test
+    void emptyFirstHeaderLineIsStillAHop() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRemoteAddr(HTTPD);
+        request.addHeader("X-Forwarded-For", "");
+        request.addHeader("X-Forwarded-For", "172.18.0.9");
+
+        assertFailedToPeer(aio.resolve(request));
+    }
+
     @ParameterizedTest
     @ValueSource(
         strings = {"not-an-ip", CLIENT + ",", CLIENT + ", 172.18.0.9 , garbage", "garbage, 172.18.0.9", "unknown", "example.com",

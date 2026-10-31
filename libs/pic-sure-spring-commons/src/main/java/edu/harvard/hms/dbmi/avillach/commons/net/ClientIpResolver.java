@@ -101,15 +101,10 @@ public final class ClientIpResolver {
         if (values == null || !values.hasMoreElements()) {
             return null;
         }
-        StringBuilder joined = new StringBuilder();
-        while (values.hasMoreElements()) {
-            if (!joined.isEmpty()) {
-                joined.append(',');
-            }
-            joined.append(values.nextElement());
-            if (joined.length() > MAX_HEADER_LENGTH) {
-                break; // already over the cap; resolve rejects it without reading the rest
-            }
+        StringBuilder joined = new StringBuilder(values.nextElement());
+        // Once over the cap, resolve rejects it without reading the rest.
+        while (values.hasMoreElements() && joined.length() <= MAX_HEADER_LENGTH) {
+            joined.append(',').append(values.nextElement());
         }
         return joined.toString();
     }
