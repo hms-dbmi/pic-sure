@@ -29,6 +29,7 @@ import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.OpenAccessFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitDecision;
 import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitProperties;
+import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitSubject;
 import edu.harvard.hms.dbmi.avillach.gateway.request.InboundIdentityHeaderSanitizingFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.request.InternalEndpointGuardFilter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -56,12 +57,12 @@ class OpenAccessFilterOrderTest {
     }
 
     @Test
-    void assembledFiltersThrottleAfterBufferingAndBeforeTheInternalGuardAndOpenAccess() {
+    void assembledFiltersThrottleAfterBufferingAndTheInternalGuardAndBeforeOpenAccess() {
         GatewaySecurityProperties props = props();
         int throttle = AuditFilterOrderTest.throttleRegistration(props, subject -> null).getOrder();
 
         assertThat(throttle).isGreaterThan(new SecurityConfig().bufferingFilter(props, new SimpleMeterRegistry()).getOrder())
-            .isLessThan(new ObservabilityConfig().internalEndpointGuardFilter().getOrder()).isLessThan(
+            .isGreaterThan(new ObservabilityConfig().internalEndpointGuardFilter().getOrder()).isLessThan(
                 new SecurityConfig()
                     .openAccessFilter(mock(PsamaClient.class), new AuditContext(), props, new PublicEndpointPolicy(List.of())).getOrder()
             );
@@ -80,6 +81,27 @@ class OpenAccessFilterOrderTest {
             new SecurityConfig().openAccessFilter(mock(PsamaClient.class), new AuditContext(), props, new PublicEndpointPolicy(List.of()))
                 .getOrder()
         ).isLessThan(new ObservabilityConfig().inboundIdentityHeaderSanitizingFilter().getOrder());
+    }
+
+    @Test
+    void assembledFiltersRejectInternalRequestsWithoutChargingTheThrottle() throws Exception {
+        PsamaClient psama = mock(PsamaClient.class);
+        List<RateLimitSubject> charged = new ArrayList<>();
+        List<FilterRegistrationBean<? extends Filter>> registrations = new ArrayList<>(assembledRegistrations(psama));
+        registrations.add(AuditFilterOrderTest.throttleRegistration(props(), subject -> {
+            charged.add(subject);
+            return new RateLimitDecision(false, RateLimitDecision.Window.BURST, 7);
+        }));
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/operations/internal/queries/abc/dispatch");
+        request.addHeader("Authorization", "Bearer picsure_u_testKeyValue123");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        invokeInRegisteredOrder(registrations, request, response, (req, resp) -> {
+        });
+
+        assertThat(response.getStatus()).isEqualTo(404);
+        assertThat(charged).isEmpty();
+        verifyNoInteractions(psama);
     }
 
     @Test

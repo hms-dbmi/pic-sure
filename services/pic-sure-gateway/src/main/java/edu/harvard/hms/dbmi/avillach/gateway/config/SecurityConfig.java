@@ -33,7 +33,7 @@ import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitStore;
 import io.micrometer.core.instrument.MeterRegistry;
 
 /**
- * Wires the DB-free auth filter chain: {@code BufferingFilter}(10) -&gt; {@code PrevalidationThrottleFilter}(12) -&gt;
+ * Wires the DB-free auth filter chain: {@code BufferingFilter}(10) -&gt; {@code PrevalidationThrottleFilter}(16) -&gt;
  * {@code OpenAccessFilter}(20) -&gt; {@code PerKeyRateLimitFilter}(22) -&gt; {@code PsamaIntrospectionFilter}(30) -&gt;
  * {@code TokenRefreshResponseFilter}(40) -&gt; {@code IdentityPropagationFilter}(50). The audit filter is wired in
  * {@code AuditFilterConfig}, ahead of all of them. No datasource or JPA is used. {@link PsamaClient} talks to PSAMA over HTTP. <p> Spring
@@ -108,7 +108,9 @@ public class SecurityConfig {
     ) {
         var openAccessRequests = new OpenAccessRequests(props.openAccessEnabled(), publicEndpoints);
         var r = new FilterRegistrationBean<>(new PrevalidationThrottleFilter(rateLimit, openAccessRequests, clientIps, store));
-        r.setOrder(12); // Before InternalEndpointGuardFilter (15) and OpenAccessFilter (20), so a throttled request never reaches PSAMA.
+        // After InternalEndpointGuardFilter (15), which 404s without calling PSAMA, so internal-path probes spend no budget.
+        // Before OpenAccessFilter (20), so a throttled request never reaches PSAMA.
+        r.setOrder(16);
         r.addUrlPatterns("/*");
         return r;
     }
