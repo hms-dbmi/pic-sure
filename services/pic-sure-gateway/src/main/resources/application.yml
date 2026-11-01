@@ -149,6 +149,8 @@ picsure:
     # UTC day (sustained, reset at midnight UTC); every limit must be positive. trusted-proxies and
     # platform-allowlisted-source-cidrs are comma-separated CIDRs (a bare address is /32 or /128). Enabling with no
     # trusted proxies fails startup: the reverse proxy (httpd) must be listed, or every client shares one bucket.
+    # List only the proxies (httpd, plus the ALB subnet on BDC), never a range clients connect from: a caller inside
+    # a trusted range is skipped as a proxy, and the hop it wrote to its left is taken as the client.
     rate-limit:
       enabled: ${RATE_LIMIT_ENABLED:false}
       user:
