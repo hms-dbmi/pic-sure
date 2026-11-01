@@ -72,8 +72,8 @@ public final class CidrRange {
     }
 
     /**
-     * Whether any of {@code ranges} contains {@code address}. False for a null address. Package-private so allowlist checks go through
-     * {@link ClientIp#isIn}, which refuses failed resolutions.
+     * Whether any of {@code ranges} contains {@code address}. False for a null address. Allowlist checks must go through
+     * {@link ClientIp#isIn}, which refuses failed resolutions, not this or {@link #contains}.
      */
     static boolean anyContains(Collection<CidrRange> ranges, InetAddress address) {
         if (address == null) {
