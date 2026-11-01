@@ -214,6 +214,62 @@ class ClientIpResolverTest {
         assertThatThrownBy(() -> aio.resolve(null, null)).isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void bestEffortClientFindsTheCallerPastTheAlbWhenPaddingFailsResolution() {
+        ClientIpResolver bdc = resolver(BDC_ALB_SUBNET + "," + BDC_HTTPD_SUBNET);
+        MockHttpServletRequest request =
+            request("10.0.2.9", (FORGED + ", ").repeat(ClientIpResolver.MAX_HOPS + 1) + CLIENT + ", 10.0.1.17");
+
+        assertThat(bdc.resolve(request).resolutionFailed()).isTrue();
+        assertThat(bdc.bestEffortClient(request)).contains(ip(CLIENT));
+    }
+
+    @Test
+    void bestEffortClientIgnoresTheLengthCapAndReadsRepeatedLines() {
+        MockHttpServletRequest request = request(HTTPD, " ".repeat(ClientIpResolver.MAX_HEADER_LENGTH) + FORGED);
+        request.addHeader("X-Forwarded-For", CLIENT);
+
+        assertThat(aio.bestEffortClient(request)).contains(ip(CLIENT));
+    }
+
+    @Test
+    void bestEffortClientWalksOnlyTheRightmostMaxHops() {
+        ClientIpResolver resolver = resolver("10.0.0.0/8");
+        String trustedHops = "10.0.0.1, ".repeat(ClientIpResolver.MAX_HOPS - 1) + "10.0.0.1";
+
+        assertThat(resolver.bestEffortClient(request("10.0.0.2", CLIENT + ", " + trustedHops))).isEmpty();
+        assertThat(resolver.bestEffortClient(request("10.0.0.2", CLIENT + ", " + trustedHops.substring(10)))).contains(ip(CLIENT));
+    }
+
+    @Test
+    void bestEffortClientNeverParsesNonIpPaddingLeftOfTheCaller() {
+        MockHttpServletRequest request = request(HTTPD, "junk, ".repeat(ClientIpResolver.MAX_HOPS + 1) + "junk, " + CLIENT);
+
+        assertThat(aio.resolve(request).resolutionFailed()).isTrue();
+        assertThat(aio.bestEffortClient(request)).contains(ip(CLIENT));
+    }
+
+    @Test
+    void bestEffortClientStopsAtAMalformedHopInsteadOfReadingPastIt() {
+        assertThat(aio.bestEffortClient(request(HTTPD, CLIENT + ", not-an-ip"))).isEmpty();
+        assertThat(aio.bestEffortClient(request(HTTPD, CLIENT + ","))).isEmpty();
+    }
+
+    @Test
+    void bestEffortClientIsEmptyForAnUntrustedPeerOrNoHeader() {
+        assertThat(aio.bestEffortClient(request(CLIENT, FORGED))).isEmpty();
+        MockHttpServletRequest noHeader = new MockHttpServletRequest();
+        noHeader.setRemoteAddr(HTTPD);
+        assertThat(aio.bestEffortClient(noHeader)).isEmpty();
+    }
+
+    private static MockHttpServletRequest request(String peer, String forwardedFor) {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRemoteAddr(peer);
+        request.addHeader("X-Forwarded-For", forwardedFor);
+        return request;
+    }
+
     private static ClientIpResolver resolver(String trusted) {
         return new ClientIpResolver(CidrRange.parseList(trusted));
     }

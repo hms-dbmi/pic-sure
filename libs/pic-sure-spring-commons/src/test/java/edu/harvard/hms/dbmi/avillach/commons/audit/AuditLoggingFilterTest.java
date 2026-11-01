@@ -269,11 +269,9 @@ class AuditLoggingFilterTest {
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
         request.setRemoteAddr("192.0.2.44");
-        request.addHeader("X-Forwarded-For", "198.51.100.7,");
-        MockHttpServletResponse response = new MockHttpServletResponse();
-        response.setStatus(429);
+        request.addHeader("X-Forwarded-For", "203.0.113.7,");
 
-        filter.doFilter(request, response, new MockFilterChain());
+        filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
 
         ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
         verify(client, times(1)).send(eventCaptor.capture());

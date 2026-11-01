@@ -28,7 +28,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
-import edu.harvard.hms.dbmi.avillach.commons.net.CidrRange;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessRequests;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
@@ -106,7 +105,7 @@ class PrevalidationThrottleFilterTest {
             return real.tryConsume(subject);
         };
         PublicEndpointPolicy publicEndpoints = new PublicEndpointPolicy(ShippedPublicRoutes.routes());
-        ClientIpResolver resolver = new ClientIpResolver(props.trustedProxies().stream().map(CidrRange::parse).toList());
+        ClientIpResolver resolver = new ClientIpResolver(props.trustedProxyRanges());
         PsamaClient client = new PsamaClient(
             RestClient.builder().build(), "http://127.0.0.1:" + psama.port() + "/token/introspect",
             "http://127.0.0.1:" + psama.port() + "/open/validate", "service-token"

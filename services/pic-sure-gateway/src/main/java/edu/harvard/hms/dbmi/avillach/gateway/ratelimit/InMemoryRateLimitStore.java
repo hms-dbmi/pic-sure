@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.gateway.ratelimit;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
@@ -23,8 +24,12 @@ import io.micrometer.core.instrument.MeterRegistry;
  * consumes from a multi-limit bucket only when every limit has the token.
  *
  * <p>The cache is capped at {@code max-subjects}. At the cap Caffeine evicts by its size policy, even a live bucket, whose subject comes
- * back with a full allowance; nothing is rejected for capacity. An entry expires at the first midnight UTC after it was created, when both
- * its windows would be full again anyway, so a cached bucket never spans two UTC days. Counters reset on restart.
+ * back with a full allowance; nothing is rejected for capacity. An entry expires at the first midnight UTC after its last use, when both
+ * its windows would be full again anyway. Counters reset on restart.
+ *
+ * <p>Each request fetches and consumes inside one atomic {@code compute} on its subject's entry, so a bucket is never consumed from after
+ * the cache has replaced it. Otherwise a request that fetched a bucket just before it expired could consume from it afterwards while
+ * another request drew from its full replacement.
  */
 public final class InMemoryRateLimitStore implements RateLimitStore {
 
@@ -56,12 +61,18 @@ public final class InMemoryRateLimitStore implements RateLimitStore {
 
     @Override
     public RateLimitDecision tryConsume(RateLimitSubject subject) {
-        VerboseResult<ConsumptionProbe> result = buckets.get(subject, this::newBucket).asVerbose().tryConsumeAndReturnRemaining(1);
+        AtomicReference<VerboseResult<ConsumptionProbe>> consumed = new AtomicReference<>();
+        buckets.asMap().compute(subject, (key, bucket) -> {
+            Bucket current = bucket == null ? newBucket(key) : bucket;
+            consumed.set(current.asVerbose().tryConsumeAndReturnRemaining(1));
+            return current;
+        });
+        VerboseResult<ConsumptionProbe> result = consumed.get();
         ConsumptionProbe probe = result.getValue();
         if (probe.isConsumed()) {
             return RateLimitDecision.ALLOWED;
         }
-        // Indexes follow the order limits were added in newBucket: burst first, then sustained if present.
+        // Indexes follow the order limits were added in calendarBucket: burst first, then sustained if present.
         long[] available = result.getDiagnostics().getAvailableTokensPerEachBandwidth();
         boolean burst = available[0] < 1;
         boolean sustained = available.length > 1 && available[1] < 1;
@@ -121,12 +132,12 @@ public final class InMemoryRateLimitStore implements RateLimitStore {
 
         @Override
         public long expireAfterUpdate(RateLimitSubject subject, Bucket bucket, long currentTime, long currentDuration) {
-            return currentDuration;
+            return untilMidnight(currentTime);
         }
 
         @Override
         public long expireAfterRead(RateLimitSubject subject, Bucket bucket, long currentTime, long currentDuration) {
-            return currentDuration;
+            return untilMidnight(currentTime);
         }
 
         // The cache's ticker is the store's wall clock, so currentTime is nanoseconds since the epoch.

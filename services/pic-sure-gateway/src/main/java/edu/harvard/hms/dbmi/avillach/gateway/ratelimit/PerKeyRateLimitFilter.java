@@ -23,7 +23,9 @@ public class PerKeyRateLimitFilter extends RateLimitFilter {
         super(props, clientIps, store, audit);
     }
 
-    /** The bucket for a granted request, or null for an exempt one. Identity PSAMA reported incompletely falls back to the client IP. */
+    /**
+     * What a granted request is charged to, or null for an exempt one. Identity PSAMA reported incompletely falls back to the client IP.
+     */
     @Override
     protected Target target(HttpServletRequest req) {
         if (!Boolean.TRUE.equals(req.getAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_GRANTED))) {

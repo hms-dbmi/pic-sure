@@ -18,6 +18,7 @@ import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.dbmi.avillach.logging.RequestInfo;
 import edu.harvard.dbmi.avillach.logging.SessionIdResolver;
+import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -179,7 +180,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
      */
     public static String resolveSourceIp(HttpServletRequest request) {
         String forwardedFor = null;
-        Enumeration<String> lines = request.getHeaders("X-Forwarded-For");
+        Enumeration<String> lines = request.getHeaders(ClientIpResolver.HEADER_X_FORWARDED_FOR);
         while (lines != null && lines.hasMoreElements()) {
             forwardedFor = lines.nextElement();
         }

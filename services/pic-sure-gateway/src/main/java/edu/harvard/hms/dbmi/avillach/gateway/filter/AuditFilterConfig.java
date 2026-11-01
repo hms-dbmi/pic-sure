@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.gateway.filter;
 
+import java.net.InetAddress;
 import java.util.List;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
@@ -69,15 +70,19 @@ public class AuditFilterConfig {
         List<String> skipContains = List.of("/info/", "/bin/continuous", "/logging", "/actuator", "/openapi", "/swagger-ui");
         // An open-access key or session token is never sent to the logging service; a login token is, for its user claims.
         Predicate<String> forwardAuthorization = authorization -> ApiKeyBearer.extract(authorization) == null;
-        // srcIp is the client the rate limiter sees. With no trusted proxies configured that would always be the peer (httpd), so the
+        // srcIp is the client the rate limiter resolves. With no trusted proxies configured that would always be the peer (httpd), so the
         // base filter's rightmost-X-Forwarded-For rule stays, which is right for AIO's single httpd. A failed resolution (a padded or
-        // malformed header from a trusted peer) also falls back to that rule: the rightmost hop is the one the trusted proxy appended,
-        // so the caller can't push its own address out of the audit trail the way it pushes the limiter onto the peer.
+        // malformed header from a trusted peer) puts the limiter on the peer, but srcIp still names the caller: the resolver's walk over
+        // the hops nearest the peer finds it past BDC's ALB, and only when that walk can't does srcIp fall back to the rightmost hop.
         AuditLoggingFilter filter =
             rateLimit.trustedProxies().isEmpty() ? new AuditLoggingFilter(client, routes, audit, skipContains, forwardAuthorization)
                 : new AuditLoggingFilter(client, routes, audit, skipContains, forwardAuthorization, request -> {
                     ClientIp ip = clientIps.resolve(request);
-                    return ip.resolutionFailed() ? AuditLoggingFilter.resolveSourceIp(request) : ip.address().getHostAddress();
+                    if (!ip.resolutionFailed()) {
+                        return ip.address().getHostAddress();
+                    }
+                    return clientIps.bestEffortClient(request).map(InetAddress::getHostAddress)
+                        .orElseGet(() -> AuditLoggingFilter.resolveSourceIp(request));
                 });
         var registration = new FilterRegistrationBean<>(filter);
         registration.setOrder(AUDIT_FILTER_ORDER);
