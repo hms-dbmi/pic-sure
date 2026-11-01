@@ -313,6 +313,16 @@ class PerKeyRateLimitFilterTest {
     }
 
     @Test
+    void userKeysAreNeverExemptOrIpBucketedEvenFromAnAllowlistedSource() throws Exception {
+        Gateway gateway = gateway();
+        assertPassed(gateway, () -> withKey(ALICE, ALLOWLISTED), USER_BURST);
+
+        assertLimited(gateway, withKey(ALICE, ALLOWLISTED));
+
+        assertThat(consumed).containsOnly(RateLimitSubject.user(ALICE_ID));
+    }
+
+    @Test
     void twoUserKeysFromOneIpHaveIndependentBudgets() throws Exception {
         Gateway gateway = gateway();
         assertPassed(gateway, () -> withKey(ALICE, CLIENT_A), USER_BURST);
