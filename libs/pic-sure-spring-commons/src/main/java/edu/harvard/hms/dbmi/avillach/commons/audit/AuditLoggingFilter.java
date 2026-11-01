@@ -184,7 +184,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
             forwardedFor = lines.nextElement();
         }
         if (forwardedFor != null) {
-            String[] hops = forwardedFor.split(",");
+            String[] hops = forwardedFor.split(",", -1);
             if (hops.length > 0 && !hops[hops.length - 1].isBlank()) {
                 return hops[hops.length - 1].trim();
             }
