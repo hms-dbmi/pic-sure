@@ -72,6 +72,6 @@ class ModuleRegistryTest {
         assertEquals(Optional.of(ModuleScope.DOCUMENTED), registry.scopeOf("services/picsure-dictionary"));
         assertEquals(Optional.of(ModuleScope.INTERNAL), registry.scopeOf("services/pic-sure-hpds/service"));
         assertEquals(Optional.of(ModuleScope.INTERNAL), registry.scopeOf("services/picsure-dictionary/aggregate"));
-        assertEquals(5, registry.documentedModules().size());
+        assertEquals(6, registry.documentedModules().size());
     }
 }
