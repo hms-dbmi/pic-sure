@@ -1,23 +1,29 @@
-package edu.harvard.hms.dbmi.avillach.ai.config;
+package edu.harvard.hms.dbmi.avillach.commons.request;
 
 import java.io.IOException;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.web.filter.OncePerRequestFilter;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * One INFO line per request -- method, path, status, duration -- in the same format as {@code pic-sure-gateway}'s {@code AccessLogFilter},
- * so one parse rule covers both services' logs. Registered inside {@code RequestIdFilter}, so the line carries {@code MDC[requestId]}.
- * Actuator endpoints are skipped: health probes and Prometheus scrapes would otherwise dominate the stream.
+ * One INFO line per request -- method, path, status, duration -- in the same format on every service, so one parse rule covers all their
+ * logs. Registered inside {@link RequestIdFilter}, so the line carries {@code MDC[requestId]}. Actuator endpoints are skipped: health
+ * probes and Prometheus scrapes would otherwise dominate the stream.
  */
-class AccessLogFilter extends OncePerRequestFilter {
+public class AccessLogFilter extends OncePerRequestFilter {
 
-    private static final Logger LOG = LoggerFactory.getLogger("ai.access");
+    private final Logger log;
+
+    /** @param loggerName the logger the access lines go to, e.g. {@code gateway.access}, so a service's lines can be told apart */
+    public AccessLogFilter(String loggerName) {
+        this.log = LoggerFactory.getLogger(loggerName);
+    }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -36,7 +42,7 @@ class AccessLogFilter extends OncePerRequestFilter {
             long durationMs = (System.nanoTime() - start) / 1_000_000;
             // An exception escaping the chain has not set the status yet; the container answers it with a 500.
             int status = failed && response.getStatus() < 400 ? 500 : response.getStatus();
-            LOG.info("{} {} {} {}ms", request.getMethod(), request.getRequestURI(), status, durationMs);
+            log.info("{} {} {} {}ms", request.getMethod(), request.getRequestURI(), status, durationMs);
         }
     }
 }

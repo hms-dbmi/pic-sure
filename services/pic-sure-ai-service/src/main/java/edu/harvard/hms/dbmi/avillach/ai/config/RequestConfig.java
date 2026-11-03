@@ -3,8 +3,9 @@ package edu.harvard.hms.dbmi.avillach.ai.config;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.Ordered;
 
+import edu.harvard.hms.dbmi.avillach.commons.request.AccessLogFilter;
+import edu.harvard.hms.dbmi.avillach.commons.request.RequestFilterRegistrations;
 import edu.harvard.hms.dbmi.avillach.commons.request.RequestIdFilter;
 
 /**
@@ -17,15 +18,11 @@ public class RequestConfig {
 
     @Bean
     public FilterRegistrationBean<RequestIdFilter> requestIdFilter() {
-        FilterRegistrationBean<RequestIdFilter> registration = new FilterRegistrationBean<>(new RequestIdFilter());
-        registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
-        return registration;
+        return RequestFilterRegistrations.requestId();
     }
 
     @Bean
     public FilterRegistrationBean<AccessLogFilter> accessLogFilter() {
-        FilterRegistrationBean<AccessLogFilter> registration = new FilterRegistrationBean<>(new AccessLogFilter());
-        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
-        return registration;
+        return RequestFilterRegistrations.accessLog("ai.access");
     }
 }

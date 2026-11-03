@@ -1,4 +1,4 @@
-package edu.harvard.hms.dbmi.avillach.gateway.request;
+package edu.harvard.hms.dbmi.avillach.commons.request;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -16,9 +16,9 @@ import ch.qos.logback.core.read.ListAppender;
 
 class AccessLogFilterTest {
 
-    private final AccessLogFilter filter = new AccessLogFilter();
+    private final AccessLogFilter filter = new AccessLogFilter("test.access");
     private final ListAppender<ILoggingEvent> appender = new ListAppender<>();
-    private final Logger accessLogger = (Logger) LoggerFactory.getLogger("gateway.access");
+    private final Logger accessLogger = (Logger) LoggerFactory.getLogger("test.access");
 
     @BeforeEach
     void attachAppender() {
