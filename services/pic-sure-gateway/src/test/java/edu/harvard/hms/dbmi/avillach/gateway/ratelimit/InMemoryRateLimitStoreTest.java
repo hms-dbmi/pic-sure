@@ -307,7 +307,8 @@ class InMemoryRateLimitStoreTest {
             gated.release();
 
             assertThat(afterMidnight.allowed()).as("after midnight").isTrue();
-            assertThat(held.get(10, TimeUnit.SECONDS).allowed()).as("held").isFalse();
+            // Waits are measured from the held request's own time, so a day plus 1 ms rounds up to 86,401 s.
+            assertThat(held.get(10, TimeUnit.SECONDS)).as("held").isEqualTo(RateLimitDecision.rejected(Window.BOTH, 86_401));
         } finally {
             gated.release();
             pool.shutdownNow();
@@ -322,7 +323,8 @@ class InMemoryRateLimitStoreTest {
 
     /**
      * Wraps the fake clock so that one thread blocks when Bucket4j reads it to timestamp that thread's request, which happens before the
-     * proxy manager enters the subject's {@code compute}. The test can then move time and send other requests between the two.
+     * proxy manager enters the subject's {@code compute}, and its request keeps the time read before the block. The test can then move time
+     * and send other requests between the two.
      */
     private static final class GatedClock implements TimeMeter {
 
@@ -349,6 +351,7 @@ class InMemoryRateLimitStoreTest {
 
         @Override
         public long currentTimeNanos() {
+            long now = delegate.currentTimeNanos();
             if (Thread.currentThread() == gated && timestampingARequest()) {
                 gated = null;
                 held.countDown();
@@ -358,7 +361,7 @@ class InMemoryRateLimitStoreTest {
                     Thread.currentThread().interrupt();
                 }
             }
-            return delegate.currentTimeNanos();
+            return now; // read before the hold, so a held request carries the time it was gated at
         }
 
         @Override
@@ -366,6 +369,7 @@ class InMemoryRateLimitStoreTest {
             return true;
         }
 
+        // Bucket4j 8.14.0 timestamps each proxy request in AbstractProxyManager.getClientSideTime.
         private static boolean timestampingARequest() {
             return StackWalker.getInstance().walk(
                 frames -> frames.anyMatch(
