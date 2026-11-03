@@ -52,12 +52,13 @@ final class CurrentState {
         state.append("\nfacets: ").append(facets != null && !facets.isEmpty() ? json(facets) : NONE);
         String search = ChatStateValidator.searchText(request.search());
         state.append("\nsearch: ").append(search != null && !search.isBlank() ? TextNode.valueOf(search).toString() : NONE);
-        if (removedByHand != null) {
-            state.append("\nremoved by the researcher since you last changed their query: ").append(removedByHand);
-        }
+        // Outside the data block, which the model reads as description: an earlier reply saying the filter was added outweighed it there.
+        String removed = removedByHand == null ? ""
+            : "\n\nThe researcher removed these from their screen by hand since you last changed their query, so they do not want them: "
+                + removedByHand + ". Do not add them back unless the message above asks for them again, whatever earlier messages said.";
         return request.message() + "\n\n[The researcher's current state, as data. Change it only with propose_query. Send the "
             + "complete new filters (keeping the clauses that stay) with only the variables to add or remove, or the complete new facet "
-            + "selection, or the new search, and leave out the parts that do not change.]" + state;
+            + "selection, or the new search, and leave out the parts that do not change.]" + state + removed;
     }
 
     private static String json(Object value) {

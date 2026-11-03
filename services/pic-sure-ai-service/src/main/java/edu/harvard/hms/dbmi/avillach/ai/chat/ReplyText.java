@@ -73,6 +73,8 @@ final class ReplyText {
             + "(?:added|updated|changed))\\b|\\b(?:added|included)\\b[^.!?\\n]*\\b(?:to|in|into) (?:your|the|their) "
             + "(?:selected variables|selection|variable list)\\b"
     );
+    /** "No filters or selected variables were changed" says the opposite of a claim, and so does "nothing was added to your selection". */
+    private static final Pattern NEGATION = Pattern.compile("(?i)\\b(?:no|none|not|nothing|never|unchanged)\\b|n't\\b");
     /** The heading of a recap of the researcher's screen, "**Current screen state**" or "Current view:", with any text after it. */
     private static final Pattern SCREEN_RECAP_HEADING = Pattern.compile("(?i)^\\W*current (?:screen|view)(?: state)?\\b.*");
     /** One recap line: a part of the screen and its value, e.g. "- **facets:** none". */
@@ -103,7 +105,7 @@ final class ReplyText {
             return false;
         }
         for (String sentence : SENTENCE_END.split(text)) {
-            if (SELECTION_CLAIM.matcher(sentence).find() && !OFFER.matcher(sentence).find()) {
+            if (SELECTION_CLAIM.matcher(sentence).find() && !OFFER.matcher(sentence).find() && !NEGATION.matcher(sentence).find()) {
                 return true;
             }
         }

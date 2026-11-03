@@ -7,6 +7,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -19,11 +20,24 @@ final class ProposalRules {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    /** Refusal for a filterless query when there are no filters to keep and no search to show instead. */
+    /** Refusal for a filterless query the researcher did not ask for, when there is no search to show instead. */
     static final String NO_FILTERS_TO_KEEP =
-        "This proposal has no filters, and the researcher's query has no filters to keep. If the researcher only asked to see, find, "
-            + "select, or list variables, call propose_query again with only search, set to the search text that found them, and no "
-            + "query. To change their cohort, include at least one filter.";
+        "This proposal only selects variables, but the researcher did not ask to select, add, include, or export any. Their selected "
+            + "variables are what they export, so they change only when asked. To show variables, call propose_query again with only "
+            + "search, set to the search text that found them, and no query. To change their cohort, include at least one filter.";
+
+    /**
+     * The researcher asking for variables in their export. A select-only query is a real export (with no filters, of every participant
+     * they can access), but gpt-oss also wrote nearly every lookup as one, so it is taken as an export only when the researcher's own
+     * words ask for one.
+     */
+    private static final Pattern ASKS_TO_SELECT =
+        Pattern.compile("(?i)\\b(?:select(?:ed|ing)?|add(?:ed|ing)?|include|including|export(?:ed|ing)?|choose|pick)\\b");
+
+    /** @return whether the researcher's message asks to change their selected variables */
+    static boolean asksToSelect(String message) {
+        return message != null && ASKS_TO_SELECT.matcher(message).find();
+    }
 
     private ProposalRules() {
     }
@@ -40,6 +54,16 @@ final class ProposalRules {
         // An earlier proposal this turn is what the researcher will see, so a later one changes that.
         ProposeQueryInput before = state.query != null ? state.query : state.currentQuery;
         String searchBefore = state.search != null ? state.search : state.currentSearch;
+        List<String> broughtBack = proposal.query() == null || state.removedRepairAsked ? List.of() : removedPathsIn(proposal.query(), state);
+        if (!broughtBack.isEmpty()) {
+            // Once per turn: the model then decides, knowing the researcher did this on purpose, and a repeat is accepted as asked for.
+            state.removedRepairAsked = true;
+            return ToolResult.failure(
+                "The researcher removed " + names(broughtBack) + " from their screen by hand, and this proposal puts that back. Leave it out "
+                    + "unless the researcher's latest message asks for it again. If it does, send the same proposal again; if not, send "
+                    + "it without."
+            );
+        }
         if (proposal.query() != null && !hasFilters(proposal.query())) {
             proposal = keepingFilters(proposal, state, before);
             if (proposal == null) {
@@ -60,21 +84,37 @@ final class ProposalRules {
         return acceptDroppingUnmatchedTerms(withSearchFacets(proposal, state.searches), state, selectNote, searchBefore);
     }
 
+    /** @return the filters and added variables of a proposed query that the researcher had removed by hand, as proposed */
+    private static List<String> removedPathsIn(ProposeQueryInput query, TurnState state) {
+        if (state.removedByHand.isEmpty()) {
+            return List.of();
+        }
+        Set<String> proposed = new LinkedHashSet<>();
+        if (query.phenotypicClause() != null) {
+            query.phenotypicClause().addPathsTo(proposed);
+        }
+        if (query.select() != null) {
+            proposed.addAll(query.select());
+        }
+        return proposed.stream().filter(path -> state.removedByHand.contains(ConceptPaths.normalize(path))).toList();
+    }
+
     /**
      * Dropping the current filters would silently change the cohort; clearing them is the UI reset button's job.
      *
-     * @return the proposal with the current filters; as it is when there are none but it changes the researcher's selected variables; as
-     *         a search when it only names variables and the researcher has none selected; null when there is no search to fall back on
+     * @return the proposal with the current filters; as it is when there are none but it changes the researcher's selected variables, or
+     *         the researcher asked to select variables; as a search when it only names variables nobody asked to select; null when there is
+     *         no search to fall back on
      */
     private static Proposal keepingFilters(Proposal proposal, TurnState state, ProposeQueryInput before) {
         ProposeQueryInput keep = hasFilters(state.query) ? state.query : state.currentQuery;
         if (hasFilters(keep)) {
             return proposal.withQuery(new ProposeQueryInput(proposal.query().select(), keep.phenotypicClause(), keep.genomicFilters()));
         }
-        if (hasSelected(before) || !proposal.removeSelect().isEmpty()) {
+        if (hasSelected(before) || !proposal.removeSelect().isEmpty() || state.asksToSelect) {
             return proposal;
         }
-        // No filters and nothing selected: a lookup the model wrote as a query. Without a search this turn, the variables are most likely
+        // No filters, nothing selected, and no request to select: a lookup the model wrote as a query. Without a search this turn, the variables are most likely
         // from the search already on screen, which an earlier turn of the conversation proposed.
         String lookup = proposal.search() != null ? proposal.search() : state.searches.lastMatchedSearchWithoutMisses();
         lookup = lookup != null ? lookup : state.currentSearch;

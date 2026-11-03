@@ -113,7 +113,14 @@
       "name": "Select with no filters",
       "runs": 1,
       "message": "Select all race variables",
-      "pass": "search proposed (contains race); no query; prose names `\\Nhanes\\demographics\\RACE\\`. A select-only propose_query is read as the search that found the variables, so there should be NO refused propose_query (error=true) in the log; count any. A reply saying the variables are now selected/added to the selection is a FAIL (the propose_query result says nothing was selected)."
+      "pass": "query returned whose select has both race paths (`\\Nhanes\\demographics\\RACE\\` and `\\Synthea\\ACT Demographics\\Race\\`) and no filters: selected variables are what the researcher exports, and with no filters the export covers every participant they can access. No search needed; prose says the race variables are selected. A reply with no query is a FAIL, and so is a reply saying they were selected when the response carries no query.",
+      "selectChange": {
+        "add": [
+          "\\Nhanes\\demographics\\RACE\\",
+          "\\Synthea\\ACT Demographics\\Race\\"
+        ],
+        "remove": []
+      }
     },
     {
       "id": "T11",
@@ -142,7 +149,14 @@
         "search": "",
         "facets": []
       },
-      "pass": "same as T10; no 400."
+      "pass": "same as T10, starting from the UI's empty query; no 400.",
+      "selectChange": {
+        "add": [
+          "\\Nhanes\\demographics\\RACE\\",
+          "\\Synthea\\ACT Demographics\\Race\\"
+        ],
+        "remove": []
+      }
     },
     {
       "id": "T13",
@@ -274,6 +288,9 @@
         },
         {
           "message": "Add the four alcohol use questions to my selected variables",
+          "body": {
+            "query": "$fixture:t7Query"
+          },
           "selectChange": {
             "add": [
               "\\Nhanes\\questionnaire\\alcohol use\\days drink in year\\",
@@ -285,7 +302,7 @@
           }
         }
       ],
-      "pass": "Turn 1 as T18, on a screen that already has the T7 cohort; no query change. Turn 2: query returned keeping the SEX and AGE filters, select has BMI + SEX + AGE plus the four `\\Nhanes\\questionnaire\\alcohol use\\` paths from turn 1; no removeSelect. An \"Unknown concept path\" refusal (error=true) on a path turn 1 returned is a FAIL: the earlier turn's results did not carry over. A search_concepts call in turn 2 is allowed but note it: repeat searches for results turn 1 already showed are the signal to add result digests to the history."
+      "pass": "Turn 1 as T18, on a screen that already has the T7 cohort; no query change. Turn 2 is sent on the T7 cohort screen whatever turn 1 returned, so a turn 1 that proposed a query (the screen already carrying the alcohol paths) cannot make the add look unneeded; a turn 1 query is flagged by the query column, not here. Query returned keeping the SEX and AGE filters, select has BMI + SEX + AGE plus the four `\\Nhanes\\questionnaire\\alcohol use\\` paths from turn 1; no removeSelect. An \"Unknown concept path\" refusal (error=true) on a path turn 1 returned is a FAIL: the earlier turn's results did not carry over. A search_concepts call in turn 2 is allowed but note it: repeat searches for results turn 1 already showed are the signal to add result digests to the history."
     },
     {
       "id": "T25",
@@ -311,12 +328,12 @@
         },
         {
           "message": "also require a BMI over 30",
-          "body": {
-            "query": "$fixture:t7QueryWithoutSex"
+          "edit": {
+            "removeVariable": "sex"
           }
         }
       ],
-      "pass": "Turn 1 as T7. Before turn 2 the researcher removed the SEX filter and variable by hand, leaving AGE min 40 and BMI + AGE selected. Turn 2: query returned keeping AGE min 40 and adding BMI min 30; NO SEX filter and SEX not selected. Bringing SEX back from turn 1 is a FAIL: the screen state must win over the history."
+      "pass": "Turn 1 as T7. Before turn 2 the researcher removed the sex filter and variable by hand (whichever dataset turn 1 used), keeping the age filter and BMI. Turn 2: query returned keeping the age filter and adding BMI min 30; NO sex filter and sex not selected, from either dataset. Bringing sex back is a FAIL: the screen state must win over the history."
     },
     {
       "id": "T27",
@@ -355,10 +372,19 @@
           "message": "What alcohol variables do you have?"
         },
         {
-          "message": "Add the four alcohol use questions to my selected variables"
+          "message": "Add the four alcohol use questions to my selected variables",
+          "selectChange": {
+            "add": [
+              "\\Nhanes\\questionnaire\\alcohol use\\days drink in year\\",
+              "\\Nhanes\\questionnaire\\alcohol use\\drink 5 in a day\\",
+              "\\Nhanes\\questionnaire\\alcohol use\\drink per day\\",
+              "\\Nhanes\\questionnaire\\alcohol use\\days 5 drinks in year\\"
+            ],
+            "remove": []
+          }
         }
       ],
-      "pass": "Turn 1 as T18. Turn 2, with no query on screen, is read as a lookup (as T10): no query returned, no refusal loop (more than one error=true propose_query is a FAIL), and the reply says the variables are already listed in their results or offers to build a cohort with them. A reply claiming they were added to the selected variables is a FAIL."
+      "pass": "Turn 1 as T18. Turn 2, with no query on screen, adds the four `\\Nhanes\\questionnaire\\alcohol use\\` paths from turn 1 to the selected variables: query returned with those four in select and no filters (an export of every participant they can access). An \"Unknown concept path\" refusal on a turn-1 path is a FAIL, and so is a reply claiming they were added when no query was returned."
     }
   ]
 }

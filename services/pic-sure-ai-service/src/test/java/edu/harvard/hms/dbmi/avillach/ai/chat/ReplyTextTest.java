@@ -55,6 +55,10 @@ class ReplyTextTest {
         assertTrue(ReplyText.claimsSelectionChanged("Found them. Your selection has been updated with BMI."));
         assertFalse(ReplyText.claimsSelectionChanged("Let me know if you'd like to add them to your selected variables."));
         assertFalse(ReplyText.claimsSelectionChanged("Your table already lists the alcohol variables."));
+        // From T14 drafts: saying nothing changed is not a claim that something did.
+        assertFalse(ReplyText.claimsSelectionChanged("No filters were added or removed, and none of your previously selected variables changed."));
+        assertFalse(ReplyText.claimsSelectionChanged("Your table now shows those variables, and no filters or selected variables have been changed."));
+        assertFalse(ReplyText.claimsSelectionChanged("I wasn't able to add any new variables to your selection."));
         assertFalse(ReplyText.claimsSelectionChanged(null));
     }
 

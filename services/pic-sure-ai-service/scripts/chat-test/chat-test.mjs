@@ -28,7 +28,8 @@
 //
 // A test with "turns" instead of "message" is one conversation, one request per turn, with IDs like <label>-t24-r1-t2.
 // Each turn's screen (query, facets, search) is carried over from the previous reply as the UI would, unless the
-// turn gives its own "body", which stands in for the researcher editing the screen by hand.
+// turn gives its own "body", which stands in for the researcher editing the screen by hand. A turn's "edit"
+// instead changes the carried-over screen: {"removeVariable": "sex"} drops that variable's filters and selection.
 
 import { execSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
@@ -136,7 +137,7 @@ function planRuns(suite, args, label) {
         const requestId = `${runId}-t${i + 1}`;
         const screen = turn.body ? resolveBody(turn.body, suite.fixtures ?? {}) : null;
         runs.push({
-          test: test.id, run: r, turn: i + 1, requestId, selectChange: turn.selectChange, screen, priorRequestIds: [...priorRequestIds],
+          test: test.id, run: r, turn: i + 1, requestId, selectChange: turn.selectChange, screen, edit: turn.edit, priorRequestIds: [...priorRequestIds],
           body: { conversationId: `${runId}-conv`, requestId, message: turn.message, ...(screen ?? {}) },
         });
         priorRequestIds.push(requestId);
@@ -144,6 +145,21 @@ function planRuns(suite, args, label) {
     }
   }
   return { tests, runs };
+}
+
+/**
+ * A hand edit to a carried-over screen, so a test can remove "the sex variable" whichever dataset's path the previous reply used:
+ * {"removeVariable": "sex"} drops every filter and selected variable whose last path segment is that name, ignoring case.
+ */
+function editScreen(screen, edit) {
+  if (!edit?.removeVariable || !screen.query) return screen;
+  const named = (path) => typeof path === 'string' && path.split('\\').filter(Boolean).pop()?.toLowerCase() === edit.removeVariable.toLowerCase();
+  const query = structuredClone(screen.query);
+  if (Array.isArray(query.select)) query.select = query.select.filter((p) => !named(p));
+  const clause = query.phenotypicClause;
+  if (clause && named(clause.conceptPath)) query.phenotypicClause = null;
+  if (Array.isArray(clause?.phenotypicClauses)) clause.phenotypicClauses = clause.phenotypicClauses.filter((c) => !named(c.conceptPath));
+  return { ...screen, query };
 }
 
 /** The screen after a reply, as the UI keeps it: each part the reply carries replaces that part; a query's three fields go onto its own. */
@@ -322,6 +338,15 @@ function check(run, logLines, priorLines = []) {
     for (const p of sent('removeSelect')) if (!toRemove.has(samePathKey(p))) flags.push(`model removed \`${p}\` unasked`);
   }
 
+  // A variable the test removed by hand must stay off the screen: a reply query that filters on or selects it brought it back.
+  if (run.edit?.removeVariable && resp.query) {
+    const name = run.edit.removeVariable.toLowerCase();
+    const named = (path) => typeof path === 'string' && path.split('\\').filter(Boolean).pop()?.toLowerCase() === name;
+    const clauses = (clause) => (clause ? [clause, ...(clause.phenotypicClauses ?? []).flatMap(clauses)] : []);
+    const back = [...(resp.query.select ?? []).filter(named), ...clauses(resp.query.phenotypicClause).map((c) => c.conceptPath).filter(named)];
+    if (back.length) flags.push(`model brought back removed \`${run.edit.removeVariable}\``);
+  }
+
   return {
     flags,
     hasQuery: 'query' in resp && resp.query != null,
@@ -457,7 +482,7 @@ async function main() {
     const previous = run.turn > 1 ? runs[i - 1] : null;
     if (previous && !run.screen) {
       const { conversationId, requestId, message } = run.body;
-      run.body = { conversationId, requestId, message, ...screenAfter(previous.body, previous.result.json) };
+      run.body = { conversationId, requestId, message, ...editScreen(screenAfter(previous.body, previous.result.json), run.edit) };
     }
     run.result = await send(url, token, run.body, args.timeout);
     const resp = run.result.json ?? {};

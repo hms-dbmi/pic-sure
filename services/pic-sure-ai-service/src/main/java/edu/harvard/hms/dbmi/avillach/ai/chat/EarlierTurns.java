@@ -43,26 +43,45 @@ final class EarlierTurns {
      * @return e.g. {@code filters on `\a\`; selected variables `\a\`}, or null when nothing was removed or no query was ever sent
      */
     static String removedByHand(List<ConversationTurn> turns, ProposeQueryInput current) {
+        Removed removed = removed(turns, current);
+        List<String> parts = new ArrayList<>();
+        if (!removed.filters().isEmpty()) {
+            parts.add("filters on " + backticked(removed.filters()));
+        }
+        if (!removed.selected().isEmpty()) {
+            parts.add("selected variables " + backticked(removed.selected()));
+        }
+        return parts.isEmpty() ? null : String.join("; ", parts);
+    }
+
+    /**
+     * @param turns the conversation's earlier turns
+     * @param current the request's validated query, or null
+     * @return every path {@link #removedByHand} names, filters and selected variables together, normalized; empty when none
+     */
+    static Set<String> removedPathsByHand(List<ConversationTurn> turns, ProposeQueryInput current) {
+        Removed removed = removed(turns, current);
+        Set<String> paths = new LinkedHashSet<>(removed.filters());
+        paths.addAll(removed.selected());
+        return paths;
+    }
+
+    private record Removed(Set<String> filters, Set<String> selected) {}
+
+    private static Removed removed(List<ConversationTurn> turns, ProposeQueryInput current) {
         JsonNode sent = null;
         for (ConversationTurn turn : turns) {
             sent = turn.sentQuery() != null ? turn.sentQuery() : sent;
         }
         if (sent == null || (current != null && current.exceedsSizeLimit())) {
-            return null;
+            return new Removed(Set.of(), Set.of());
         }
         JsonNode now = current == null ? MissingNode.getInstance() : ChatStateValidator.toJson(current);
         Set<String> filters = filterPaths(sent.path("phenotypicClause"));
         filters.removeAll(filterPaths(now.path("phenotypicClause")));
         Set<String> selected = selectPaths(sent);
         selected.removeAll(selectPaths(now));
-        List<String> parts = new ArrayList<>();
-        if (!filters.isEmpty()) {
-            parts.add("filters on " + backticked(filters));
-        }
-        if (!selected.isEmpty()) {
-            parts.add("selected variables " + backticked(selected));
-        }
-        return parts.isEmpty() ? null : String.join("; ", parts);
+        return new Removed(filters, selected);
     }
 
     private static Set<String> filterPaths(JsonNode clause) {

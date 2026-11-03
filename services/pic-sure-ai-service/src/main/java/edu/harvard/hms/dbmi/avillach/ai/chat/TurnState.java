@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -21,6 +22,8 @@ final class TurnState {
     final ProposeQueryInput currentQuery;
     /** The search text the request arrived with, or null. */
     String currentSearch;
+    /** Whether the researcher's message asks to change their selected variables ({@link ProposalRules#asksToSelect}). */
+    boolean asksToSelect;
 
     /** Whether the researcher's query was too large to show the model, so it may not propose a query. */
     boolean queryLocked;
@@ -34,6 +37,10 @@ final class TurnState {
     boolean facetsListed;
     /** Set once a tool fails the same way too often; later tool calls are answered without running. */
     boolean toolsStopped;
+    /** Paths the researcher took off their screen by hand ({@link EarlierTurns#removedPathsByHand}); normalized. */
+    Set<String> removedByHand = Set.of();
+    /** Whether the model was already asked to confirm a proposal that brings back {@link #removedByHand} paths; asked at most once. */
+    boolean removedRepairAsked;
     /** Whether the model was already asked to fix unknown paths in its reply; asked at most once. */
     boolean pathRepairAsked;
     /** Whether the model was already asked to fix a reply claiming the selected variables changed; asked at most once. */

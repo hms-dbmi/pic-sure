@@ -27,6 +27,7 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -1042,7 +1043,7 @@ class ToolUseLoopServiceTest {
         assertNull(response.query(), "a select-only proposal is not surfaced");
         assertNull(response.search());
         ConversationEntry refusal = model.historySeenOnCall(3).get(model.historySeenOnCall(3).size() - 1);
-        assertTrue(((ConversationEntry.ToolResultEntry) refusal).content().contains("no filters"));
+        assertTrue(((ConversationEntry.ToolResultEntry) refusal).content().contains("did not ask to select"));
     }
 
     @Test
@@ -1658,11 +1659,11 @@ class ToolUseLoopServiceTest {
 
 
     @Test
-    void aSelectOnlyProposalWithNoSearchThisTurnIsReadAsTheSearchOnScreen() {
+    void aSelectOnlyLookupWithNoSearchThisTurnIsReadAsTheSearchOnScreen() {
         ConversationStore store = ToolUseLoopService.newConversationStore();
         firstTurn(store, DICTIONARY_RESULT, toolCallTurn("search_concepts", "{\"search\":\"age\"}"), doneTurn("Found it"));
-        // The first turn's search is what the table shows now, and the researcher has no query.
-        ChatRequest second = new ChatRequest("add that to my selected variables", "conv-1", "req-2", null, null, TextNode.valueOf("age"));
+        // The first turn's search is what the table shows now; the researcher has no query and asks to select nothing.
+        ChatRequest second = new ChatRequest("tell me more about that one", "conv-1", "req-2", null, null, TextNode.valueOf("age"));
         FakeModelClient model =
             FakeModelClient.returning(toolCallTurn("propose_query", "{\"query\":{\"addSelect\":[\"\\\\demo\\\\age\\\\\"]}}"), doneTurn("Done"));
 
@@ -1673,6 +1674,36 @@ class ToolUseLoopServiceTest {
         assertTrue(result.contains("already listed"), result);
         assertNull(response.query());
         assertNull(response.search(), "the search on screen is unchanged");
+    }
+
+    @Test
+    void aSelectOnlyQueryIsAnExportOfEveryoneWhenTheResearcherAsksToAddVariables() {
+        ConversationStore store = ToolUseLoopService.newConversationStore();
+        firstTurn(store, DICTIONARY_RESULT, toolCallTurn("search_concepts", "{\"search\":\"age\"}"), doneTurn("Found it"));
+        ChatRequest second = new ChatRequest("add that to my selected variables", "conv-1", "req-2", null, null, TextNode.valueOf("age"));
+        FakeModelClient model =
+            FakeModelClient.returning(toolCallTurn("propose_query", "{\"query\":{\"addSelect\":[\"\\\\demo\\\\age\\\\\"]}}"), doneTurn("Done"));
+
+        ChatResponse response = new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8, store).handle(second, CALLER);
+
+        assertNotNull(response.query(), lastToolResult(model, 2));
+        assertEquals("[\"\\\\demo\\\\age\\\\\"]", response.query().path("select").toString());
+        assertTrue(response.query().path("phenotypicClause").isMissingNode() || response.query().path("phenotypicClause").isNull());
+    }
+
+    @Test
+    void selectingVariablesInOneMessageNeedsNoFilters() {
+        ChatRequest select = new ChatRequest("Select all age variables", "c", "r", null, null, null);
+        FakeModelClient model = FakeModelClient.returning(
+            toolCallTurn("search_concepts", "{\"search\":\"age\"}"), toolCallTurn("propose_query", "{\"query\":{\"select\":[\"\\\\demo\\\\age\\\\\"]}}"),
+            doneTurn("Age is selected for your export.")
+        );
+
+        ChatResponse response =
+            new ToolUseLoopService(model, FakeToolGateway.returning(DICTIONARY_RESULT), PROPOSE_QUERY_TOOL, 8).handle(select, CALLER);
+
+        assertEquals("[\"\\\\demo\\\\age\\\\\"]", response.query().path("select").toString());
+        assertNull(response.search(), "an export selection is not also read as a lookup");
     }
 
     @Test
@@ -1722,7 +1753,31 @@ class ToolUseLoopServiceTest {
         new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8, store).handle(second, CALLER);
 
         String shown = ((ConversationEntry.UserEntry) model.historySeenOnCall(1).get(2)).text();
-        assertTrue(shown.contains("removed by the researcher since you last changed their query: filters on `\\demo\\sex\\`"), shown);
+        assertTrue(shown.contains("removed these from their screen by hand since you last changed their query, so they do not want them: filters on `\\demo\\sex\\`"), shown);
+    }
+
+    @Test
+    void aProposalBringingBackWhatTheResearcherRemovedIsRefusedOnceThenAccepted() throws Exception {
+        ConversationStore store = ToolUseLoopService.newConversationStore();
+        String sexFilter = "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demo\\\\sex\\\\\",\"values\":[\"female\"]}";
+        String ageFilter = "{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"\\\\demo\\\\age\\\\\"}";
+        String sexAndAge =
+            "{\"query\":{\"phenotypicClause\":{\"operator\":\"AND\",\"phenotypicClauses\":[" + sexFilter + "," + ageFilter + "]}}}";
+        String searchResult = "{\"concepts\":[{\"conceptPath\":\"\\\\demo\\\\age\\\\\"},{\"conceptPath\":\"\\\\demo\\\\sex\\\\\"}]}";
+        firstTurn(
+            store, searchResult, toolCallTurn("search_concepts", "{\"search\":\"age | sex\"}"), toolCallTurn("propose_query", sexAndAge),
+            doneTurn("Done")
+        );
+        // The researcher then removed the SEX filter by hand, and the model puts it back.
+        ChatRequest second = new ChatRequest("also require age over 50", "conv-1", "req-2", new ObjectMapper().readTree(AGE_QUERY), null, null);
+        FakeModelClient model = FakeModelClient.returning(
+            toolCallTurn("propose_query", sexAndAge), toolCallTurn("propose_query", sexAndAge), doneTurn("ok")
+        );
+
+        new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8, store).handle(second, CALLER);
+
+        assertTrue(lastToolResult(model, 2).contains("sex") && lastToolResult(model, 2).contains("from their screen by hand"), lastToolResult(model, 2));
+        assertTrue(lastToolResult(model, 3).contains("\"received\":true"), "asked once; the same proposal again is accepted");
     }
 
     private static String lastToolResult(FakeModelClient model, int callNumber) {
