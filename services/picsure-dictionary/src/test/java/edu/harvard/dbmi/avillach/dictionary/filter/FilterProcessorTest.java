@@ -58,9 +58,36 @@ class FilterProcessorTest {
     }
 
     @Test
+    void shouldKeepPipeAsTermSeparator() {
+        Assertions.assertEquals("creatinine|albumin", FilterProcessor.sanitizeSearch("creatinine|albumin"));
+        Assertions.assertEquals("creatinine|white blood cell", FilterProcessor.sanitizeSearch(" creatinine | white  blood-cell "));
+        Assertions.assertEquals("d dimer|sickle cell", FilterProcessor.sanitizeSearch("d-dimer|sickle cell"));
+    }
+
+    @Test
+    void shouldDropEmptyTerms() {
+        Assertions.assertEquals("asthma|copd", FilterProcessor.sanitizeSearch("|asthma||  |copd|"));
+        Assertions.assertEquals("asthma", FilterProcessor.sanitizeSearch("asthma | & | !"));
+        Assertions.assertEquals("", FilterProcessor.sanitizeSearch("| |"));
+    }
+
+    @Test
+    void shouldStripOperatorsInsideTerms() {
+        Assertions.assertEquals("a b|c", FilterProcessor.sanitizeSearch("a & b|c:*"));
+    }
+
+    @Test
     void shouldCapLongSearchStrings() {
         String longSearch = "a".repeat(300);
         String result = FilterProcessor.sanitizeSearch(longSearch);
         Assertions.assertEquals(200, result.length());
+    }
+
+    @Test
+    void shouldSplitASanitizedSearchIntoDistinctTermsInOrder() {
+        Assertions.assertEquals(java.util.List.of("sex", "white blood cell"), FilterProcessor.searchTerms("sex|white blood cell|sex"));
+        Assertions.assertEquals(java.util.List.of("asthma"), FilterProcessor.searchTerms("asthma"));
+        Assertions.assertEquals(java.util.List.of(), FilterProcessor.searchTerms(""));
+        Assertions.assertEquals(java.util.List.of(), FilterProcessor.searchTerms(null));
     }
 }

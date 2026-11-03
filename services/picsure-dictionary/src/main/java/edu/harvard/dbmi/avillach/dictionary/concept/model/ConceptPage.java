@@ -1,11 +1,13 @@
 package edu.harvard.dbmi.avillach.dictionary.concept.model;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.data.domain.Page;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * One page of concepts, carrying every key and value Jackson writes for a Spring Data {@code PageImpl}. {@link #from(Page)} copies each
@@ -29,10 +31,13 @@ import java.util.List;
  * @param size the requested page size
  * @param number the zero-based index of this page
  * @param empty whether this page holds no concepts
+ * @param termTotals for a term breakdown, how many concepts each term of the search matches on its own; omitted otherwise
+ * @param matches for a term breakdown, the terms that match each concept of {@code content}; omitted otherwise
  */
 @Schema(description = "One page of concepts, in the shape Spring Data's page has always had on this endpoint.")
 @JsonPropertyOrder(
-    {"content", "pageable", "totalElements", "totalPages", "last", "numberOfElements", "sort", "first", "size", "number", "empty"}
+    {"content", "pageable", "totalElements", "totalPages", "last", "numberOfElements", "sort", "first", "size", "number", "empty",
+        "termTotals", "matches"}
 )
 public record ConceptPage(
     @JsonSerialize(contentUsing = PageContentConceptSerializer.class) @Schema(
@@ -55,7 +60,15 @@ public record ConceptPage(
     ) ConceptSort sort, @Schema(description = "True when this is page 0.", requiredMode = Schema.RequiredMode.REQUIRED) boolean first,
     @Schema(description = "Requested number of concepts per page.", example = "10", requiredMode = Schema.RequiredMode.REQUIRED) int size,
     @Schema(description = "Zero-based index of this page.", example = "0", requiredMode = Schema.RequiredMode.REQUIRED) int number,
-    @Schema(description = "True when content is empty.", requiredMode = Schema.RequiredMode.REQUIRED) boolean empty
+    @Schema(description = "True when content is empty.", requiredMode = Schema.RequiredMode.REQUIRED) boolean empty,
+    @JsonInclude(JsonInclude.Include.NON_NULL) @Schema(
+        description = "Only with term_breakdown=true and a search: how many concepts each |-separated term matches on its own, across every page.",
+        requiredMode = Schema.RequiredMode.NOT_REQUIRED
+    ) Map<String, Long> termTotals,
+    @JsonInclude(JsonInclude.Include.NON_NULL) @Schema(
+        description = "Only with term_breakdown=true and a search: for each concept in content, in the same order, the terms that match it.",
+        requiredMode = Schema.RequiredMode.NOT_REQUIRED
+    ) List<ConceptMatch> matches
 ) {
 
     /**
@@ -67,7 +80,21 @@ public record ConceptPage(
     public static ConceptPage from(Page<Concept> page) {
         return new ConceptPage(
             page.getContent(), ConceptPageable.from(page.getPageable()), page.getTotalElements(), page.getTotalPages(), page.isLast(),
-            page.getNumberOfElements(), ConceptSort.from(page.getSort()), page.isFirst(), page.getSize(), page.getNumber(), page.isEmpty()
+            page.getNumberOfElements(), ConceptSort.from(page.getSort()), page.isFirst(), page.getSize(), page.getNumber(), page.isEmpty(),
+            null, null
+        );
+    }
+
+    /**
+     * Adds the term breakdown to this page.
+     *
+     * @param breakdown how the search's terms divide the results
+     * @return a copy of this page that carries the breakdown
+     */
+    public ConceptPage withBreakdown(TermBreakdown breakdown) {
+        return new ConceptPage(
+            content, pageable, totalElements, totalPages, last, numberOfElements, sort, first, size, number, empty, breakdown.termTotals(),
+            breakdown.matches()
         );
     }
 }
