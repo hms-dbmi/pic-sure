@@ -13,6 +13,8 @@ import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.springframework.boot.test.system.CapturedOutput;
@@ -110,6 +112,23 @@ class RateLimitAuditEventTest {
         assertThat(sent.requestId()).isNotBlank().doesNotContain(secret);
         // the access line proves the gateway logged into the capture; its layout depends on whether Spring configured logback first
         assertThat(output.getAll()).contains("gateway.access").doesNotContain(secret);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/query/sync", "/visualization/bin/continuous"})
+    void anUnparseablePeerIsRefusedAndAuditedWithTheRawPeer(String path, CapturedOutput output) throws Exception {
+        RateLimitStore store = mock(RateLimitStore.class);
+        MockHttpServletResponse response = send(store, request(path, "Bearer " + USER_KEY, "proxy.example", CLIENT));
+
+        assertThat(response.getStatus()).isEqualTo(500);
+        verifyNoInteractions(store, psama);
+        LoggingEvent event = emitted();
+        assertThat(event.getRequest().getStatus()).isEqualTo(500);
+        assertThat(event.getRequest().getSrcIp()).isEqualTo("proxy.example");
+        assertThat(output.getAll()).containsOnlyOnce("Cannot resolve connection peer").contains("ERROR", "proxy.example")
+            .contains("edu.harvard.hms.dbmi.avillach.gateway.ratelimit.PrevalidationThrottleFilter");
+        assertThat(event.getMetadata()).containsEntry("auth_result", "failure")
+            .containsEntry("auth_failure_reason", "client_ip_unresolvable");
     }
 
     @Test

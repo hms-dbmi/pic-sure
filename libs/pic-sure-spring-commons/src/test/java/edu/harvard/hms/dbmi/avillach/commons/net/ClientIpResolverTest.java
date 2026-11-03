@@ -4,11 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.net.InetAddress;
+import java.util.Collections;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.NullSource;
+
+import jakarta.servlet.http.HttpServletRequestWrapper;
 import org.springframework.mock.web.MockHttpServletRequest;
 
 class ClientIpResolverTest {
@@ -23,6 +27,51 @@ class ClientIpResolverTest {
     private static final String FORGED = "198.51.100.66";
 
     private final ClientIpResolver aio = resolver(COMPOSE_NET);
+
+    @Test
+    void servletResolutionIsReusedEvenAfterTheHeaderChanges() {
+        MockHttpServletRequest request = request(HTTPD, CLIENT);
+        ClientIp first = aio.resolve(request);
+
+        assertThat(aio.resolve(request)).isSameAs(first);
+        request.removeHeader("X-Forwarded-For");
+        request.addHeader("X-Forwarded-For", FORGED);
+        assertThat(aio.resolve(new HttpServletRequestWrapper(request))).isSameAs(first);
+        assertResolved(first, CLIENT);
+    }
+
+    @Test
+    void resolverInstancesWithDifferentTrustDoNotShareTheRequestMemo() {
+        MockHttpServletRequest request = request(HTTPD, CLIENT);
+        ClientIpResolver noProxies = new ClientIpResolver(List.of());
+        ClientIp trusted = aio.resolve(request);
+        ClientIp untrusted = noProxies.resolve(request);
+
+        assertResolved(trusted, CLIENT);
+        assertResolved(untrusted, HTTPD);
+        assertThat(aio.resolve(request)).isSameAs(trusted);
+        assertThat(noProxies.resolve(request)).isSameAs(untrusted);
+    }
+
+    @Test
+    void separateRequestsResolveIndependently() {
+        assertResolved(aio.resolve(request(HTTPD, CLIENT)), CLIENT);
+        assertResolved(aio.resolve(request(HTTPD, FORGED)), FORGED);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"example.com", ""})
+    @NullSource
+    void anUnparseablePeerThrowsEveryTimeWithoutMemoizing(String peer) {
+        MockHttpServletRequest request = request(peer, CLIENT);
+
+        for (int attempt = 0; attempt < 2; attempt++) {
+            assertThatThrownBy(() -> aio.resolve(request)).isInstanceOf(UnresolvablePeerException.class);
+            assertThat(Collections.list(request.getAttributeNames())).isEmpty();
+        }
+        request.setRemoteAddr(HTTPD);
+        assertResolved(aio.resolve(request), CLIENT);
+    }
 
     @Test
     void directTrafficWithoutHeaderResolvesToPeer() {

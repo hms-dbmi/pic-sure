@@ -6,6 +6,7 @@ import java.util.Collections;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -36,6 +37,8 @@ public final class ClientIpResolver {
     /** Most {@code X-Forwarded-For} hops accepted. Real chains here are two or three. */
     public static final int MAX_HOPS = 16;
 
+    // Resolvers with different proxy trust must never reuse each other's answer on the same request.
+    private final String requestAttribute = ClientIpResolver.class.getName() + "@" + UUID.randomUUID();
     private final List<CidrRange> trustedProxies;
 
     public ClientIpResolver(Collection<CidrRange> trustedProxies) {
@@ -43,12 +46,18 @@ public final class ClientIpResolver {
     }
 
     /**
-     * Resolves the client of {@code request}, joining repeated {@code X-Forwarded-For} lines in order.
+     * Resolves the client once per request per resolver instance, joining repeated {@code X-Forwarded-For} lines in order. Later calls
+     * return the same value even if the header changes.
      *
      * @throws IllegalArgumentException if {@link HttpServletRequest#getRemoteAddr()} is not an IP literal
      */
     public ClientIp resolve(HttpServletRequest request) {
-        return resolve(request.getRemoteAddr(), joinHeaders(request.getHeaders(HEADER_X_FORWARDED_FOR)));
+        if (request.getAttribute(requestAttribute) instanceof ClientIp client) {
+            return client;
+        }
+        ClientIp client = resolve(request.getRemoteAddr(), joinHeaders(request.getHeaders(HEADER_X_FORWARDED_FOR)));
+        request.setAttribute(requestAttribute, client);
+        return client;
     }
 
     /**
@@ -121,7 +130,7 @@ public final class ClientIpResolver {
 
     private static InetAddress parsePeer(String remoteAddr) {
         if (remoteAddr == null) {
-            throw new IllegalArgumentException("Connection peer address is missing");
+            throw new UnresolvablePeerException("Connection peer address is missing");
         }
         // Containers may report a link-local IPv6 peer with its zone id (fe80::1%eth0); the zone doesn't identify the client.
         int zone = remoteAddr.indexOf('%');
@@ -129,7 +138,7 @@ public final class ClientIpResolver {
         try {
             return IpLiterals.parse(literal);
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Connection peer is not an IP literal: '" + remoteAddr + "'", e);
+            throw new UnresolvablePeerException("Connection peer is not an IP literal: '" + remoteAddr + "'", e);
         }
     }
 
