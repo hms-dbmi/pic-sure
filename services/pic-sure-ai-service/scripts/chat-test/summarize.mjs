@@ -4,7 +4,7 @@
 // With a second file, prints the first file's table and a per-test delta against the second (e.g. the previous round).
 import { readFileSync } from 'node:fs';
 
-const CLAIM = /\b(now|currently)\s+(displayed|shown|selected|visible)|\bin your (results )?(table|view)|\b(shown|displayed|listed) in (the|your) (results )?(table|view)|\bon your screen\b|\b(?:in|on) the (?:results )?(?:table|screen|view)\b|\btable of results\b|\bresults table\b/i;
+const CLAIM = /\b(now|currently)\s+(displayed|shown|selected|visible)|\bin your (results )?(table|view)|\b(shown|displayed|listed) in (the|your) (results )?(table|view)|\bon your screen\b|\b(?:in|on) the (?:results )?(?:table|screen|view)\b|\btable of results\b|\bresults table\b|\b(?:table|view|results|screen) now (?:shows?|lists?|displays?|includes?)\b/i;
 
 function load(path) {
   const data = JSON.parse(readFileSync(path, 'utf8'));
@@ -25,7 +25,8 @@ function digest(run) {
   const search = json.search ?? null;
   const facets = Array.isArray(json.facets) && json.facets.length ? json.facets.map((f) => `${f.category}:${f.name}`).join(',') : null;
   return {
-    test: run.test,
+    // A multi-turn test gets a row per turn: each turn has its own pass criteria.
+    test: run.turn ? `${run.test} T${run.turn}` : run.test,
     id: run.requestId,
     status: run.result?.status ?? 0,
     ms: run.result?.ms ?? 0,

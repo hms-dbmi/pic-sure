@@ -1,6 +1,6 @@
 # chat-test: regression suite for model and prompt tuning
 
-Sends a fixed set of single-turn messages to `POST /ai/chat`, captures the service's container log, and writes a
+Sends a fixed set of messages, most of them single turns, to `POST /ai/chat`, captures the service's container log, and writes a
 report you score by hand. Use it whenever you change the model, the system prompt, tool descriptions, or a guard in
 `ToolUseLoopService`: run the suite before and after, then compare.
 
@@ -110,4 +110,26 @@ Each test in `suite.json`:
 - Paths in `pass` and fixtures match the NHANES + Synthea dev dictionary. Another environment may need different
   expected paths.
 
-Every test is a single turn with its own conversation id, so this suite does not test multi-turn memory.
+### Multi-turn tests
+
+A test with `turns` in place of `message` is one conversation, one request per turn (request ids like
+`chat-10151430-t24-r1-t2`):
+
+```json
+{
+  "id": "T26",
+  "turns": [
+    { "message": "Show me female participants over 40 and include their BMI" },
+    { "message": "narrow that to people over 50", "body": { "query": "$fixture:uiEmptyQuery" } }
+  ],
+  "pass": "Turn 1 as T7. Turn 2 ..."
+}
+```
+
+- Each turn's screen (`query`, `facets`, `search`) is carried over from the previous reply, as the UI would apply it.
+  A turn's own `body` replaces the screen instead, standing in for the researcher editing it by hand between turns.
+- `selectChange` goes on the turn it applies to. `pass` stays on the test and covers every turn.
+- The report and `summarize.mjs` show one row per turn. The path check for a later turn counts paths an earlier turn's
+  tools returned, since the service lets the model reuse them.
+- Every other test is a single turn with its own conversation id. They are the baseline: a drop there means
+  conversation memory changed single-turn behavior.

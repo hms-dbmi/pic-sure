@@ -39,6 +39,7 @@ final class ProposalRules {
     static ToolResult apply(Proposal proposal, TurnState state) {
         // An earlier proposal this turn is what the researcher will see, so a later one changes that.
         ProposeQueryInput before = state.query != null ? state.query : state.currentQuery;
+        String searchBefore = state.search != null ? state.search : state.currentSearch;
         if (proposal.query() != null && !hasFilters(proposal.query())) {
             proposal = keepingFilters(proposal, state, before);
             if (proposal == null) {
@@ -56,7 +57,7 @@ final class ProposalRules {
             }
             selectNote = selectNote(proposal.query(), before, proposal.removeSelect());
         }
-        return acceptDroppingUnmatchedTerms(withSearchFacets(proposal, state.searches), state, selectNote);
+        return acceptDroppingUnmatchedTerms(withSearchFacets(proposal, state.searches), state, selectNote, searchBefore);
     }
 
     /**
@@ -73,8 +74,10 @@ final class ProposalRules {
         if (hasSelected(before) || !proposal.removeSelect().isEmpty()) {
             return proposal;
         }
-        // No filters and nothing selected: a lookup the model wrote as a query.
+        // No filters and nothing selected: a lookup the model wrote as a query. Without a search this turn, the variables are most likely
+        // from the search already on screen, which an earlier turn of the conversation proposed.
         String lookup = proposal.search() != null ? proposal.search() : state.searches.lastMatchedSearchWithoutMisses();
+        lookup = lookup != null ? lookup : state.currentSearch;
         return lookup == null || lookup.isBlank() ? null : proposal.withQuery(null).withSearch(lookup);
     }
 
@@ -140,11 +143,11 @@ final class ProposalRules {
         return narrowing == null ? proposal : proposal.withFacets(narrowing);
     }
 
-    private static ToolResult acceptDroppingUnmatchedTerms(Proposal proposal, TurnState state, String selectNote) {
+    private static ToolResult acceptDroppingUnmatchedTerms(Proposal proposal, TurnState state, String selectNote, String searchBefore) {
         SearchHistory.TermSplit split = state.searches.splitUnmatched(proposal.search());
         if (split.dropped().isEmpty()) {
             state.accept(proposal);
-            return accepted(proposal, null, selectNote);
+            return accepted(proposal, null, selectNote, searchBefore);
         }
         if (split.kept().isEmpty()) {
             return ToolResult.failure(
@@ -157,11 +160,15 @@ final class ProposalRules {
         state.accept(trimmed);
         String note = "Dropped " + String.join(", ", split.dropped()) + " from the search because nothing matched. The researcher's "
             + "table shows only: " + keptSearch + ".";
-        return accepted(trimmed, note, selectNote);
+        return accepted(trimmed, note, selectNote, searchBefore);
     }
 
-    /** Says what actually changed: given a bare {@code received}, the model claimed changes that weren't made. */
-    private static ToolResult accepted(Proposal proposal, String note, String selectNote) {
+    /**
+     * Says what actually changed: given a bare {@code received}, the model claimed changes that weren't made.
+     *
+     * @param searchBefore the search on the researcher's screen before this proposal, or null
+     */
+    private static ToolResult accepted(Proposal proposal, String note, String selectNote, String searchBefore) {
         ObjectNode result = JSON.createObjectNode().put("received", true);
         if (note != null) {
             result.put("note", note);
@@ -170,7 +177,10 @@ final class ProposalRules {
         if (proposal.query() != null) {
             applied.add("Their query is updated. " + selectNote);
         }
-        if (proposal.search() != null) {
+        if (proposal.search() != null && proposal.search().equals(searchBefore)) {
+            // Told "now lists", the model described an unchanged search as a new filter on the table.
+            applied.add("Their table already listed the variables matching the search \"" + proposal.search() + "\": that did not change.");
+        } else if (proposal.search() != null) {
             applied.add(proposal.search().isBlank() ? "Their search is cleared."
                 : "Their table now lists the variables matching the search \"" + proposal.search() + "\".");
         }

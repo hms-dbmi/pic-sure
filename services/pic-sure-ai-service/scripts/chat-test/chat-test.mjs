@@ -25,6 +25,10 @@
 //   --dry-run          print the request bodies and exit
 //   --timeout <s>      per-request timeout in seconds (default 300)
 //   --insecure, -k     skip TLS certificate checks (for a local stack with a self-signed or expired cert)
+//
+// A test with "turns" instead of "message" is one conversation, one request per turn, with IDs like <label>-t24-r1-t2.
+// Each turn's screen (query, facets, search) is carried over from the previous reply as the UI would, unless the
+// turn gives its own "body", which stands in for the researcher editing the screen by hand.
 
 import { execSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
@@ -116,15 +120,40 @@ function planRuns(suite, args, label) {
   for (const test of tests) {
     const count = args.runs ?? test.runs ?? 3;
     for (let r = 1; r <= count; r++) {
-      const requestId = `${label}-${test.id.toLowerCase()}-r${r}`;
-      const extra = resolveBody(test.body ?? {}, suite.fixtures ?? {});
-      runs.push({
-        test: test.id, run: r, requestId, selectChange: test.selectChange,
-        body: { conversationId: `${requestId}-conv`, requestId, message: test.message, ...extra },
+      const runId = `${label}-${test.id.toLowerCase()}-r${r}`;
+      if (!test.turns) {
+        const extra = resolveBody(test.body ?? {}, suite.fixtures ?? {});
+        runs.push({
+          test: test.id, run: r, requestId: runId, selectChange: test.selectChange,
+          body: { conversationId: `${runId}-conv`, requestId: runId, message: test.message, ...extra },
+        });
+        continue;
+      }
+      // One conversation per run, one request per turn. A turn's body is its screen, set by hand; without one the screen is carried
+      // over from the previous reply when the turn is sent (see screenAfter).
+      const priorRequestIds = [];
+      test.turns.forEach((turn, i) => {
+        const requestId = `${runId}-t${i + 1}`;
+        const screen = turn.body ? resolveBody(turn.body, suite.fixtures ?? {}) : null;
+        runs.push({
+          test: test.id, run: r, turn: i + 1, requestId, selectChange: turn.selectChange, screen, priorRequestIds: [...priorRequestIds],
+          body: { conversationId: `${runId}-conv`, requestId, message: turn.message, ...(screen ?? {}) },
+        });
+        priorRequestIds.push(requestId);
       });
     }
   }
   return { tests, runs };
+}
+
+/** The screen after a reply, as the UI keeps it: each part the reply carries replaces that part; a query's three fields go onto its own. */
+function screenAfter(body, resp) {
+  const screen = {};
+  for (const key of ['query', 'facets', 'search']) if (body[key] !== undefined) screen[key] = body[key];
+  if (resp?.query) screen.query = { ...(screen.query ?? {}), ...resp.query };
+  if (resp?.facets) screen.facets = resp.facets;
+  if (typeof resp?.search === 'string') screen.search = resp.search;
+  return screen;
 }
 
 /** Replaces "$fixture:name" string values with the named fixture from the suite. */
@@ -203,7 +232,7 @@ function samePathKey(path) {
 }
 
 /** Mechanical checks for one run. These are hints for scoring, not verdicts. */
-function check(run, logLines) {
+function check(run, logLines, priorLines = []) {
   const flags = [];
   const resp = run.result.json ?? {};
   const prose = typeof resp.response === 'string' ? resp.response : '';
@@ -212,6 +241,10 @@ function check(run, logLines) {
   if (run.result.status !== 200) flags.push(`HTTP ${run.result.status || 'error'}${run.result.error ? `: ${run.result.error}` : ''}`);
   if (!('response' in resp)) flags.push('no response field');
   if (prose.includes(FALLBACK)) flags.push('fallback text');
+  // The service ends every message with the screen state; the researcher already sees it, so a reply must not repeat it.
+  if (/^\W*current (?:screen|view)(?: state)?\W*:?\W*$|\bcurrent (?:screen|view)(?: state)?\**\s*:|\b(?:query|facets|search)\W{0,4}:\W{0,4}(?:none|``)/im.test(prose)) {
+    flags.push('reply repeats the screen state');
+  }
   const answered = turnEnd?.includes('outcome=answered');
   if (turnEnd?.includes('stop=iteration_cap')) flags.push(answered ? 'hitCap (answered after cap)' : 'hitCap');
   if (turnEnd?.includes('stop=repeated_failure')) {
@@ -219,9 +252,9 @@ function check(run, logLines) {
   }
   if (!turnEnd && logLines.length) flags.push('no "Chat turn:" line');
 
-  // Paths the run was allowed to use: everything a tool returned, plus whatever the request itself carried.
+  // Paths the run was allowed to use: everything a tool returned, this turn or an earlier one, plus whatever the request itself carried.
   const known = new Set(pathsIn(run.body.query ?? null));
-  for (const line of logLines) {
+  for (const line of [...priorLines, ...logLines]) {
     if (!line.includes('Tool result content:')) continue;
     for (const m of line.matchAll(/"conceptPath":"((?:[^"\\]|\\.)*)"/g)) {
       try { known.add(JSON.parse(`"${m[1]}"`)); } catch { /* ignore malformed */ }
@@ -313,7 +346,7 @@ function writeOutputs(args, suite, tests, runs, log, meta) {
 
   for (const run of runs) {
     const lines = linesFor(log, run.requestId);
-    run.check = check(run, lines);
+    run.check = check(run, lines, (run.priorRequestIds ?? []).flatMap((id) => linesFor(log, id)));
     run.summaryLines = lines.filter((l) => SUMMARY_RE.test(l)).map((l) => l.replace(/^.*?(ToolUseLoopService|BedrockProxyChatModel)\s+:\s/, ''));
   }
 
@@ -327,19 +360,26 @@ function writeOutputs(args, suite, tests, runs, log, meta) {
   md.push('| Test | Run | HTTP | Time | query | search | facets | propose_query | Flags |', '|---|---|---|---|---|---|---|---|---|');
   for (const run of runs) {
     const c = run.check;
-    md.push(`| ${run.test} | R${run.run} | ${run.result.status || 'err'} | ${(run.result.ms / 1000).toFixed(1)}s | ${c.hasQuery ? 'yes' : 'no'} | ${c.search == null ? '' : `\`${c.search.replaceAll('|', '\\|')}\``} | ${c.facets ? c.facets.map((f) => `${f.category}:${f.name}`).join(', ').replaceAll('|', '\\|') : ''} | ${c.proposeCalls} | ${c.flags.length ? c.flags.length + ' (see below)' : ''} |`);
+    md.push(`| ${run.test} | R${run.run}${run.turn ? ` T${run.turn}` : ''} | ${run.result.status || 'err'} | ${(run.result.ms / 1000).toFixed(1)}s | ${c.hasQuery ? 'yes' : 'no'} | ${c.search == null ? '' : `\`${c.search.replaceAll('|', '\\|')}\``} | ${c.facets ? c.facets.map((f) => `${f.category}:${f.name}`).join(', ').replaceAll('|', '\\|') : ''} | ${c.proposeCalls} | ${c.flags.length ? c.flags.length + ' (see below)' : ''} |`);
   }
   md.push('');
   for (const test of tests) {
-    md.push(`## ${test.id} ${test.name ?? ''}`, '', `- **Message:** \`${test.message}\``);
+    md.push(`## ${test.id} ${test.name ?? ''}`, '');
+    if (test.turns) {
+      test.turns.forEach((turn, i) => md.push(`- **Turn ${i + 1}:** \`${turn.message}\`${turn.body ? ' (screen set by hand)' : ''}`));
+    } else {
+      md.push(`- **Message:** \`${test.message}\``);
+    }
     if (test.pass) md.push(`- **Pass:** ${test.pass}`);
     md.push('');
     for (const run of runs.filter((r) => r.test === test.id)) {
       const c = run.check;
-      md.push(`### ${test.id} R${run.run} (\`${run.requestId}\`)`, '', 'Result:', '');
+      md.push(`### ${test.id} R${run.run}${run.turn ? ` T${run.turn}` : ''} (\`${run.requestId}\`)`, '');
+      if (run.turn) md.push(`Message: \`${run.body.message}\``, '');
+      md.push('Result:', '');
       if (c.flags.length) md.push(...c.flags.map((f) => `- ⚠ ${f}`), '');
       if (c.searches.length) md.push(`Searches: ${c.searches.map((s) => `\`${s}\``).join(', ')}`, '');
-      if (test.body) md.push('Request body:', '```json', JSON.stringify(run.body, null, 2), '```');
+      if (test.body || run.turn > 1 || run.screen) md.push('Request body:', '```json', JSON.stringify(run.body, null, 2), '```');
       md.push('Response:', '```json', run.result.json ? JSON.stringify(run.result.json, null, 2) : (run.result.raw ?? run.result.error ?? ''), '```');
       if (run.summaryLines.length) md.push('Log summary:', '```log', ...run.summaryLines, '```');
       md.push('');
@@ -378,7 +418,10 @@ async function main() {
   const { tests, runs } = planRuns(suite, args, label);
 
   if (args.dryRun) {
-    runs.forEach((r) => console.log(`--- ${r.test} R${r.run}\n${JSON.stringify(r.body, null, 2)}`));
+    runs.forEach((r) => {
+      const carried = r.turn > 1 && !r.screen ? ' (screen carried over from the previous reply)' : '';
+      console.log(`--- ${r.test} R${r.run}${r.turn ? ` T${r.turn}` : ''}${carried}\n${JSON.stringify(r.body, null, 2)}`);
+    });
     console.log(`\n${runs.length} requests to ${url}`);
     return;
   }
@@ -410,7 +453,12 @@ async function main() {
   console.log(`ok (${(pre.ms / 1000).toFixed(1)}s)\n`);
 
   for (const [i, run] of runs.entries()) {
-    process.stdout.write(`[${String(i + 1).padStart(2)}/${runs.length}] ${run.test.padEnd(4)} R${run.run}  `);
+    process.stdout.write(`[${String(i + 1).padStart(2)}/${runs.length}] ${run.test.padEnd(4)} R${run.run}${run.turn ? ` T${run.turn}` : ''}  `);
+    const previous = run.turn > 1 ? runs[i - 1] : null;
+    if (previous && !run.screen) {
+      const { conversationId, requestId, message } = run.body;
+      run.body = { conversationId, requestId, message, ...screenAfter(previous.body, previous.result.json) };
+    }
     run.result = await send(url, token, run.body, args.timeout);
     const resp = run.result.json ?? {};
     const notes = [];

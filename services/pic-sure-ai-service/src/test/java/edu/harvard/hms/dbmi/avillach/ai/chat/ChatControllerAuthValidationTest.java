@@ -22,7 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * verified here by a {@link ChatOrchestrator} test double that fails the test if it is ever called.
  */
 @WebMvcTest(ChatController.class)
-@Import({ValidationExceptionAdvice.class, WebSecurityConfig.class, ChatControllerAuthValidationTest.OrchestratorConfig.class})
+@Import({ValidationExceptionAdvice.class, WebSecurityConfig.class, InMemoryTurnResultStore.class, ChatControllerAuthValidationTest.OrchestratorConfig.class})
 class ChatControllerAuthValidationTest {
 
     @Autowired

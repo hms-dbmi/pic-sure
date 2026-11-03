@@ -3,7 +3,9 @@ package edu.harvard.hms.dbmi.avillach.ai.chat;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ReplyTextTest {
 
@@ -11,6 +13,49 @@ class ReplyTextTest {
     void plainProseIsUntouched() {
         assertEquals("Found 3 variables {see below}.", ReplyText.withoutQueryJson("Found 3 variables {see below}."));
         assertNull(ReplyText.withoutQueryJson(null));
+    }
+
+    @Test
+    void aTrailingRecapOfTheScreenIsRemoved() {
+        // As gpt-oss wrote them once every message ended with the screen state.
+        assertEquals(
+            "These variables are now shown in your table.",
+            ReplyText.withoutScreenRecap("These variables are now shown in your table.\n\n**Current view**\n- query: none\n- facets: none\n"
+                + "- search: none")
+        );
+        assertEquals(
+            "D-dimer is not available.",
+            ReplyText.withoutScreenRecap("D-dimer is not available.\n\n---\n\nCurrent screen state:\n\n*query*: none\n*facets*: none\n"
+                + "*search*: none")
+        );
+        assertEquals(
+            "About 1,200 participants.",
+            ReplyText.withoutScreenRecap("About 1,200 participants.\n\nCurrent view: no filters, facets, or variable selections.")
+        );
+        assertEquals(
+            "Your cohort is set.",
+            ReplyText.withoutScreenRecap("Your cohort is set.\n\nCurrent screen:\n\n- **Selected variables:** BMI, SEX\n- **Facets:** none")
+        );
+    }
+
+    @Test
+    void aCurrentScreenHeadingFollowedByAnAnswerIsKept() {
+        String answer = "**Current screen**\nThe table lists 12 laboratory variables, for example `\\a\\`.";
+        String summary = "Done.\n\nYour current view now includes:\n- **Sex** filtered to Female";
+
+        assertEquals(answer, ReplyText.withoutScreenRecap(answer));
+        assertEquals(summary, ReplyText.withoutScreenRecap(summary));
+        assertNull(ReplyText.withoutScreenRecap(null));
+    }
+
+    @Test
+    void aClaimThatTheSelectedVariablesChangedIsToldApartFromAnOffer() {
+        assertTrue(ReplyText.claimsSelectionChanged("Your selected variables now include the four alcohol-use questions you requested."));
+        assertTrue(ReplyText.claimsSelectionChanged("I added the four questions to your selected variables."));
+        assertTrue(ReplyText.claimsSelectionChanged("Found them. Your selection has been updated with BMI."));
+        assertFalse(ReplyText.claimsSelectionChanged("Let me know if you'd like to add them to your selected variables."));
+        assertFalse(ReplyText.claimsSelectionChanged("Your table already lists the alcohol variables."));
+        assertFalse(ReplyText.claimsSelectionChanged(null));
     }
 
     @Test

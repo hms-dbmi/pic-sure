@@ -53,6 +53,19 @@ picsure:
       # Without a read timeout the HTTP client waits forever, so a stuck dictionary call would hang the whole chat turn.
       connect-timeout: ${AI_MCP_CONNECT_TIMEOUT:5s}
       read-timeout: ${AI_MCP_READ_TIMEOUT:20s}
+    conversation:
+      # memory (default, and the only implementation): conversations and turn results live in this instance's memory, so they are
+      # lost on restart and not shared between instances. Run one instance, or sticky sessions, until a shared store exists.
+      store: ${AI_CONVERSATION_STORE:memory}
+      # A conversation idle this long is dropped. Also bounds how stale a replayed lookup can be if the caller's access changes.
+      idle-timeout: ${AI_CONVERSATION_IDLE_TIMEOUT:60m}
+      # Turns kept per conversation; the oldest go first.
+      max-turns: ${AI_CONVERSATION_MAX_TURNS:50}
+      # Bound on what all conversations hold together, in characters; the least recently used go first.
+      max-total-chars: ${AI_CONVERSATION_MAX_TOTAL_CHARS:50000000}
+      # How long a turn's response stays retrievable by requestId. Keep it at least idle-timeout, or a late retry runs the turn twice.
+      result-ttl: ${AI_CONVERSATION_RESULT_TTL:60m}
+      max-results: ${AI_CONVERSATION_MAX_RESULTS:10000}
   # The shared X-Application-Token gate for THIS service's own /actuator/** endpoints (see
   # ActuatorSecurityConfig / the shared ActuatorSecurityHelper in pic-sure-spring-commons).
   actuator:

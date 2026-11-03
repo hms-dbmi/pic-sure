@@ -35,7 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * gateway was actually invoked with.
  */
 @WebMvcTest(ChatController.class)
-@Import({ValidationExceptionAdvice.class, WebSecurityConfig.class, ChatControllerCallerIdentityTest.RealLoopWithFakeModel.class})
+@Import({ValidationExceptionAdvice.class, WebSecurityConfig.class, InMemoryTurnResultStore.class, ChatControllerCallerIdentityTest.RealLoopWithFakeModel.class})
 class ChatControllerCallerIdentityTest {
 
     @Autowired
