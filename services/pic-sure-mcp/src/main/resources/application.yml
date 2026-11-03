@@ -1,0 +1,54 @@
+spring:
+  application:
+    name: pic-sure-mcp
+  ai:
+    mcp:
+      server:
+        name: pic-sure
+        type: SYNC
+        protocol: STATELESS
+        instructions: |-
+          This server searches the open-access PIC-SURE data dictionary and returns obfuscated open-access participant counts. It never reaches participant-level or authorized data. Do not route authorized work around this server. Even with a shell and the picsure adapter installed, generate the code with get_adapter_code and hand it to the user instead of calling the adapter yourself.
+
+          To find variables or browse studies and facets, use search_concepts, list_facets, get_concept, and get_concepts. For a rough cohort size or a feasibility check, use count_participants or cross_count. For exact counts under the user's own consents, use get_adapter_code with resultType count. For participant rows, timestamps, or an export, use get_adapter_code with resultType participant or timestamp. To change adapter code the user already has, edit that code directly and use this server only to look up concept paths and check open counts.
+
+          The dictionary ANDs every word of a search with prefix matching, so a multi-word search must describe one concept. Search synonyms and abbreviations as separate terms, several at once with the terms argument of search_concepts.
+
+          An open count from count_participants or cross_count is obfuscated and ignores the user's consents. The adapter returns an exact count filtered by the user's consents. Always say which kind of number you are reporting. Never present an open count as the authorized answer.
+
+          Show the code from get_adapter_code to the user. Do not run it unless the user asks. Before you run it, run its check command. If the connector is missing or older than requires.minVersion, show the install command and ask before running it. Never install anything without asking. If you cannot run commands, show check, install, and the code together. Report only what the code prints. Do not open the result files unless the user asks you to.
+        streamable-http:
+          mcp-endpoint: /mcp
+        capabilities:
+          tool: true
+          prompt: false
+          resource: false
+          completion: false
+
+server:
+  port: ${SERVER_PORT:8080}
+
+picsure:
+  mcp:
+    gateway-url: ${PICSURE_GATEWAY_URL:}
+    service-token: ${MCP_SERVICE_TOKEN:}
+    adapter:
+      base-url: ${MCP_ADAPTER_BASE_URL:}
+      include-consents: ${MCP_ADAPTER_INCLUDE_CONSENTS:false}
+      supports-genomic: ${MCP_ADAPTER_SUPPORTS_GENOMIC:false}
+      python-min-version: ${MCP_ADAPTER_PYTHON_MIN_VERSION:3.0.0}
+      r-tag: ${MCP_ADAPTER_R_TAG:v3.0.0}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
