@@ -33,6 +33,10 @@ class InMemoryRateLimitStoreTest {
 
     private static final RateLimitSubject USER = RateLimitSubject.user(UUID.fromString("00000000-0000-0000-0000-000000000001"));
 
+    /** GatedClock holds a request where Bucket4j 8.14.0 stamps it; a Bucket4j upgrade that moves that step fails here. */
+    private static final String HELD_AT_YESTERDAYS_TIME =
+        "held request read yesterday's time; if not, check that Bucket4j still stamps requests in AbstractProxyManager.getClientSideTime";
+
     private final FakeClock clock = new FakeClock("2026-10-29T10:00:30Z");
     private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
 
@@ -282,6 +286,23 @@ class InMemoryRateLimitStoreTest {
     }
 
     /**
+     * Bucket4j truncates an entry's time to live to whole milliseconds. Without a margin, a subject last seen at a sub-millisecond time
+     * would get a fresh bucket in the last fraction of a millisecond before its boundary.
+     */
+    @Test
+    void anExhaustedSubjectGetsNoFreshBucketJustBeforeMidnight() {
+        InMemoryRateLimitStore store = store(1, 1);
+        clock.set("2026-10-29T23:00:00.000500Z");
+        consume(store, USER, 1);
+
+        clock.set("2026-10-29T23:59:59.999900Z");
+        assertThat(store.tryConsume(USER).allowed()).as("0.1 ms before midnight").isFalse();
+
+        clock.set("2026-10-30T00:00:00Z");
+        assertThat(store.tryConsume(USER).allowed()).as("at midnight").isTrue();
+    }
+
+    /**
      * A request reads the time just before midnight and is held before it reaches its exhausted bucket, while another request arrives after
      * midnight and finds the entry expired. They must not draw from two buckets, and the held request's stale time must not earn it the new
      * day's refill, so the new day admits only the later request.
@@ -300,7 +321,7 @@ class InMemoryRateLimitStoreTest {
                 gated.gateThisThread();
                 return store.tryConsume(USER);
             });
-            assertThat(gated.awaitHeld()).as("held request read yesterday's time").isTrue();
+            assertThat(gated.awaitHeld()).as(HELD_AT_YESTERDAYS_TIME).isTrue();
 
             clock.set("2026-10-30T00:00:00.001Z");
             RateLimitDecision afterMidnight = pool.submit(() -> store.tryConsume(USER)).get(10, TimeUnit.SECONDS);
@@ -331,7 +352,7 @@ class InMemoryRateLimitStoreTest {
                 gated.gateThisThread();
                 return store.tryConsume(USER);
             });
-            assertThat(gated.awaitHeld()).as("held request read yesterday's time").isTrue();
+            assertThat(gated.awaitHeld()).as(HELD_AT_YESTERDAYS_TIME).isTrue();
 
             clock.set("2026-10-30T00:00:00.001Z");
             gated.release();

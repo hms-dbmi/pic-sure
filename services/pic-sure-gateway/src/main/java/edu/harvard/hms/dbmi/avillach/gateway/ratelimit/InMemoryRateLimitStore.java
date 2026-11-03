@@ -56,10 +56,11 @@ public final class InMemoryRateLimitStore implements RateLimitStore {
         }
         this.props = props;
         this.clock = clock;
-        // The add-on computes each entry's time to live from the client clock, but Caffeine counts it down with its own ticker.
+        // The add-on computes each entry's time to live from the client clock, but Caffeine counts it down with its own ticker. That time
+        // is truncated to whole milliseconds, so keep each entry 1 ms past its refill, or an exhausted subject gets a fresh bucket early.
         Caffeine<Object, Object> cache = Caffeine.newBuilder().maximumSize(props.store().maxSubjects()).ticker(clock::currentTimeNanos);
         this.buckets = Bucket4jCaffeine.<RateLimitSubject>builderFor(cache).clientClock(clock)
-            .expirationAfterWrite(ExpirationAfterWriteStrategy.basedOnTimeForRefillingBucketUpToMax(Duration.ZERO)).build();
+            .expirationAfterWrite(ExpirationAfterWriteStrategy.basedOnTimeForRefillingBucketUpToMax(Duration.ofMillis(1))).build();
         Gauge.builder(SIZE_METRIC, buckets.getCache(), Cache::estimatedSize)
             .description("Rate-limit subjects currently held in the in-memory store").register(meterRegistry);
     }
