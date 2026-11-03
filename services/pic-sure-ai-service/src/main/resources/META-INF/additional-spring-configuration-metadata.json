@@ -23,6 +23,18 @@
       "type": "java.lang.String",
       "description": "Model id ConverseHttpModelClient puts in the request path. Required when picsure.ai.model.provider=http; startup fails when blank.",
       "defaultValue": ""
+    },
+    {
+      "name": "picsure.ai.mcp.gateway-url",
+      "type": "java.lang.String",
+      "description": "Base URL of the gateway whose /mcp route GatewayMcpToolGateway connects to. Required when picsure.ai.mcp.mode=gateway (the default). Maps from the PICSURE_GATEWAY_URL environment variable.",
+      "defaultValue": ""
+    },
+    {
+      "name": "picsure.ai.mcp.excluded-tools",
+      "type": "java.lang.String",
+      "description": "Comma-separated gateway tool names withheld from the model and refused if it requests them anyway. Set blank to offer every tool. Maps from the AI_MCP_EXCLUDED_TOOLS environment variable.",
+      "defaultValue": "get_adapter_code"
     }
   ]
 }

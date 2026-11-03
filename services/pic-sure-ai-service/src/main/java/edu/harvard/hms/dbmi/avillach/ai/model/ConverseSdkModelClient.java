@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.ai.model;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.springframework.ai.bedrock.converse.BedrockChatOptions;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -13,7 +14,6 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -51,17 +51,25 @@ class ConverseSdkModelClient implements ConverseModelClient {
             throw new ModelUnavailableException("Bedrock Converse call failed: " + e.getMessage(), e);
         }
 
-        Generation result = response.getResult();
-        AssistantMessage output = result.getOutput();
         Usage usage = response.getMetadata() == null ? null : response.getMetadata().getUsage();
 
-        List<RequestedToolCall> toolCalls = output.hasToolCalls()
-            ? output.getToolCalls().stream().map(tc -> new RequestedToolCall(tc.id(), tc.name(), tc.arguments())).toList()
-            : List.of();
+        // Spring AI emits one Generation per Converse content block, with tool calls in their own Generation -- often not the first
+        // (a reasoning or empty text block can precede them). Reading only getResult() silently drops the tool call.
+        List<RequestedToolCall> toolCalls = new ArrayList<>();
+        StringBuilder text = new StringBuilder();
+        for (Generation generation : response.getResults()) {
+            AssistantMessage output = generation.getOutput();
+            if (output.hasToolCalls()) {
+                output.getToolCalls().forEach(tc -> toolCalls.add(new RequestedToolCall(tc.id(), tc.name(), tc.arguments())));
+            }
+            if (output.getText() != null && !output.getText().isEmpty()) {
+                text.append(output.getText());
+            }
+        }
 
         return new ModelTurnResult(
-            !output.hasToolCalls(), output.getText(), toolCalls, tokenCount(usage == null ? null : usage.getPromptTokens()),
-            tokenCount(usage == null ? null : usage.getCompletionTokens())
+            toolCalls.isEmpty(), text.isEmpty() ? null : text.toString(), List.copyOf(toolCalls),
+            tokenCount(usage == null ? null : usage.getPromptTokens()), tokenCount(usage == null ? null : usage.getCompletionTokens())
         );
     }
 
@@ -104,8 +112,13 @@ class ConverseSdkModelClient implements ConverseModelClient {
         }
     }
 
+    /**
+     * Built as {@link BedrockChatOptions} rather than the generic {@code ToolCallingChatOptions}: {@code BedrockProxyChatModel} runs a
+     * generic one through {@code ModelOptionsUtils.copyToTarget}, which is suspected of dropping the tool callbacks -- the request then
+     * goes out with no {@code toolConfig} and no error.
+     */
     private static ChatOptions toOptions(List<ToolDefinition> tools) {
         List<ToolCallback> callbacks = tools.stream().<ToolCallback>map(DefinitionToolCallback::new).toList();
-        return ToolCallingChatOptions.builder().toolCallbacks(callbacks).internalToolExecutionEnabled(false).build();
+        return BedrockChatOptions.builder().toolCallbacks(callbacks).internalToolExecutionEnabled(false).build();
     }
 }
