@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -40,6 +41,7 @@ import edu.harvard.hms.dbmi.avillach.ai.model.ModelTurnResult;
 import edu.harvard.hms.dbmi.avillach.ai.model.ModelUnavailableException;
 import edu.harvard.hms.dbmi.avillach.ai.model.RequestedToolCall;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 
 /**
  * Runs one chat turn's tool-use loop. The dictionary/count lookups are dispatched to {@link McpToolGateway}; the query/facets/search
@@ -56,19 +58,42 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
  * {@code authorizationFilters}, ...), and runs the result. So nothing that failed a check is ever held: a rejected proposal exists only as
  * a tool error the model can repair, and what the model wrote is never echoed -- the response is rebuilt from the validated fields. If the
  * iteration cap is hit, whatever was already accepted still counts; a proposal still being repaired simply never was.
+ *
+ * <p>A turn starts from its conversation's earlier turns ({@link EarlierTurns}) and, once it has a response, is added to them. A turn that
+ * fails, or ends in the fallback reply, is not added, so its retry starts from the same place.
  */
 @Service
 class ToolUseLoopService implements ChatOrchestrator {
 
     private static final Logger log = LoggerFactory.getLogger(ToolUseLoopService.class);
 
-    static final String SYSTEM_PROMPT = loadPrompt("/prompts/system-prompt.txt");
+    private static final String PROMPT_TEMPLATE = loadPrompt("/prompts/system-prompt.txt");
+
+    /** Open-access callers get obfuscated counts: the only counts the MCP gateway can run. */
+    static final String OPEN_PROMPT = PROMPT_TEMPLATE
+        .replace("{{capabilities}}", "You can search the data dictionary, list facets, and run obfuscated open-access counts,").replace(
+            "{{counts}}",
+            "Counts are obfuscated open-access counts that ignore the researcher's consents: say so, and never present one as an exact or authorized number."
+        );
+
+    /**
+     * A logged-in researcher has exact, consent-filtered counts in their results panel, and the only counts this service can run are the
+     * obfuscated open ones, so those tools are withheld and the prompt says the assistant cannot count.
+     */
+    static final String AUTHORIZED_PROMPT = PROMPT_TEMPLATE.replace("{{capabilities}}", "You can search the data dictionary and list facets,")
+        .replace(
+            "{{counts}}",
+            "You cannot count participants: the researcher's own results panel shows their exact counts, so when they ask how many participants match, say that and point them to it; never give or estimate a count."
+        );
+
+    /** Tools that run on the obfuscated open channel, which an authorized caller's own results panel supersedes. */
+    static final Set<String> OPEN_ONLY_TOOLS = Set.of("count_participants", "cross_count");
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    private static final String LIST_FACETS = "list_facets";
+    static final String LIST_FACETS = "list_facets";
     private static final String COUNT_PARTICIPANTS = "count_participants";
-    private static final String SEARCH_CONCEPTS = "search_concepts";
+    static final String SEARCH_CONCEPTS = "search_concepts";
 
     private static final int MAX_EMPTY_RETRIES = 2;
 
@@ -98,9 +123,21 @@ class ToolUseLoopService implements ChatOrchestrator {
     private final ProposeQueryTool proposeQueryTool;
     private final int maxIterations;
     private final Set<String> excludedTools;
+    private final ConversationStore conversations;
 
     ToolUseLoopService(ConverseModelClient modelClient, McpToolGateway toolGateway, ProposeQueryTool proposeQueryTool, int maxIterations) {
-        this(modelClient, toolGateway, proposeQueryTool, maxIterations, Set.of());
+        this(modelClient, toolGateway, proposeQueryTool, maxIterations, newConversationStore());
+    }
+
+    ToolUseLoopService(
+        ConverseModelClient modelClient, McpToolGateway toolGateway, ProposeQueryTool proposeQueryTool, int maxIterations,
+        ConversationStore conversations
+    ) {
+        this(modelClient, toolGateway, proposeQueryTool, maxIterations, Set.of(), conversations);
+    }
+
+    static ConversationStore newConversationStore() {
+        return new InMemoryConversationStore(Duration.ofHours(1), 50, 50_000_000L);
     }
 
     /**
@@ -111,13 +148,14 @@ class ToolUseLoopService implements ChatOrchestrator {
     ToolUseLoopService(
         ConverseModelClient modelClient, McpToolGateway toolGateway, ProposeQueryTool proposeQueryTool,
         @Value("${picsure.ai.max-tool-iterations:8}") int maxIterations,
-        @Value("${picsure.ai.mcp.excluded-tools:get_adapter_code}") Set<String> excludedTools
+        @Value("${picsure.ai.mcp.excluded-tools:get_adapter_code}") Set<String> excludedTools, ConversationStore conversations
     ) {
         this.modelClient = modelClient;
         this.toolGateway = toolGateway;
         this.proposeQueryTool = proposeQueryTool;
         this.maxIterations = maxIterations;
         this.excludedTools = Set.copyOf(excludedTools);
+        this.conversations = conversations;
     }
 
     @Override
@@ -158,15 +196,35 @@ class ToolUseLoopService implements ChatOrchestrator {
         NONE, ITERATION_CAP, REPEATED_FAILURE
     }
 
+    private static boolean isAuthorized(CallerContext caller) {
+        return GatewayUserResolver.ACCESS_TYPE_AUTHORIZED.equals(caller.accessType());
+    }
+
+    private boolean isExcluded(String tool, CallerContext caller) {
+        return excludedTools.contains(tool) || isAuthorized(caller) && OPEN_ONLY_TOOLS.contains(tool);
+    }
+
     private ChatResponse handleTurn(ChatRequest request, CallerContext caller, TurnStats stats, ProposeQueryInput currentQuery) {
         List<ToolDefinition> tools =
-            new ArrayList<>(listTools(caller).stream().filter(tool -> !excludedTools.contains(tool.name())).toList());
+            new ArrayList<>(listTools(caller).stream().filter(tool -> !isExcluded(tool.name(), caller)).toList());
+        String systemPrompt = isAuthorized(caller) ? AUTHORIZED_PROMPT : OPEN_PROMPT;
         tools.add(proposeQueryTool.definition());
-        List<ConversationEntry> history = new ArrayList<>();
-        history.add(new UserEntry(CurrentState.appendedTo(request, currentQuery)));
+        ConversationStore.Key conversation = new ConversationStore.Key(caller.owner(), request.conversationId());
+        List<ConversationTurn> earlier = conversations.turns(conversation);
+        List<ConversationEntry> history = new ArrayList<>(EarlierTurns.entries(earlier));
+        int maxFilters = proposeQueryTool.maxFilters();
+        String message = CurrentState.appendedTo(request, currentQuery, EarlierTurns.removedByHand(earlier, currentQuery, maxFilters), maxFilters);
+        log.debug("Message as the model sees it (earlierTurns={}): {}", earlier.size(), message);
+        history.add(new UserEntry(message));
         TurnState state = new TurnState(currentQuery);
+        state.removedByHand = EarlierTurns.removedPathsByHand(earlier, currentQuery, maxFilters);
+        state.maxFilters = maxFilters;
+        state.currentSearch = ChatStateValidator.searchText(request.search());
+        state.asksToSelect = ProposalRules.asksToSelect(request.message());
+        // Before the request's own state, as the provenance follow-up in TRACKER.md's conversation-history entry has it.
+        EarlierTurns.learnInto(state, earlier);
         // Only the modeled fields, the ones CurrentState shows the model: a path in authorizationFilters was never shown to it.
-        state.queryLocked = currentQuery != null && currentQuery.exceedsSizeLimit();
+        state.queryLocked = currentQuery != null && currentQuery.exceedsSizeLimit(maxFilters);
         if (currentQuery != null && !state.queryLocked) {
             state.conceptPaths.learnFrom(ChatStateValidator.toJson(currentQuery));
         }
@@ -174,7 +232,7 @@ class ToolUseLoopService implements ChatOrchestrator {
 
         log.debug("Chat turn start: tools={} maxIterations={}", tools.stream().map(ToolDefinition::name).toList(), maxIterations);
 
-        ModelTurnResult turn = callModel(history, tools, stats);
+        ModelTurnResult turn = callModel(systemPrompt, history, tools, stats);
         int emptyRetries = 0;
         while (stats.modelCalls < maxIterations && !state.toolsStopped) {
             List<String> unknownPaths = turn.hasToolCalls() || state.pathRepairAsked ? List.of() : unknownPathsIn(turn.text(), state);
@@ -196,10 +254,17 @@ class ToolUseLoopService implements ChatOrchestrator {
                 );
                 history.add(new AssistantToolCallEntry(turn.text(), List.of()));
                 history.add(new UserEntry(pathRepairMessage(unknownPaths, state.conceptPaths)));
+            } else if (claimsUnmadeSelectionChange(turn, state)) {
+                // Told plainly that nothing was added, gpt-oss still wrote that it was, because that is what the researcher asked for.
+                state.selectionRepairAsked = true;
+                stats.corrections.add("selectionRepair");
+                log.debug("Reply says the selected variables changed but no query was accepted; asking the model to correct it");
+                history.add(new AssistantToolCallEntry(turn.text(), List.of()));
+                history.add(new UserEntry(SELECTION_REPAIR_MESSAGE));
             } else {
                 break;
             }
-            turn = callModel(history, tools, stats);
+            turn = callModel(systemPrompt, history, tools, stats);
         }
         // toolsStopped usually ends the loop on a reply in words, so it is checked first: the model answered after tool use was cut short.
         Stop stop = state.toolsStopped ? Stop.REPEATED_FAILURE : turn.hasToolCalls() ? Stop.ITERATION_CAP : Stop.NONE;
@@ -207,7 +272,7 @@ class ToolUseLoopService implements ChatOrchestrator {
             // One last call so the model can answer from the results it has; the total stays bounded at maxIterations + 1.
             history.add(new AssistantToolCallEntry(turn.text(), turn.toolCalls()));
             turn.toolCalls().forEach(call -> history.add(new ToolResultEntry(call.id(), call.name(), CAP_REACHED_RESULT)));
-            turn = callModel(history, tools, stats);
+            turn = callModel(systemPrompt, history, tools, stats);
         }
         if (!turn.hasToolCalls() && !state.hasProposal()) {
             proposeFromReply(turn.text(), history, caller, state, stats);
@@ -227,9 +292,15 @@ class ToolUseLoopService implements ChatOrchestrator {
         if (response.search() != null) {
             proposed.add("search");
         }
+        boolean fallback = FALLBACK_TEXT.equals(response.response());
+        // A fallback is no answer to replay: the model would read it as its own earlier reply.
+        if (!fallback) {
+            conversations.append(conversation, new ConversationTurn(request.message(), response.response(), state.toolOutputs, response.query()));
+        }
         log.info(
-            "Chat turn: outcome={} stop={} proposed=[{}] userId={} {}", FALLBACK_TEXT.equals(response.response()) ? "fallback" : "answered",
-            stop.name().toLowerCase(Locale.ROOT), String.join(", ", proposed), caller.userId(), stats.summary()
+            "Chat turn: outcome={} stop={} proposed=[{}] earlierTurns={} userId={} {}",
+            fallback ? "fallback" : "answered", stop.name().toLowerCase(Locale.ROOT),
+            String.join(", ", proposed), earlier.size(), caller.userId(), stats.summary()
         );
         return response;
     }
@@ -284,6 +355,17 @@ class ToolUseLoopService implements ChatOrchestrator {
 
     private static List<String> unknownPathsIn(String text, TurnState state) {
         return ReplyText.unknownPaths(ReplyText.cleaned(text, state.conceptPaths), state.conceptPaths);
+    }
+
+    static final String SELECTION_REPAIR_MESSAGE =
+        "Your reply says the researcher's selected variables changed, but no proposal this message changed them: the propose_query "
+            + "results say what their query, facets, and search are now. Write your whole reply to the researcher again, saying only what actually changed. "
+            + "If you could not do what they asked, say so and what they can do instead. Do not mention this correction.";
+
+    /** A counted query the reply says it applied is proposed after the loop instead, so that claim is left to it. */
+    private static boolean claimsUnmadeSelectionChange(ModelTurnResult turn, TurnState state) {
+        return !turn.hasToolCalls() && !state.selectionRepairAsked && state.query == null && ReplyText.claimsSelectionChanged(turn.text())
+            && !(state.lastCountedQuery != null && ReplyText.claimsQueryChanged(turn.text()));
     }
 
     static String pathRepairMessage(List<String> unknownPaths, ConceptPaths paths) {
@@ -347,11 +429,11 @@ class ToolUseLoopService implements ChatOrchestrator {
         return ReplyText.claimsScreenChanged(reply) || state.searches.lastSearchWasNarrowed() || namesOneSearchsPaths;
     }
 
-    private ModelTurnResult callModel(List<ConversationEntry> history, List<ToolDefinition> tools, TurnStats stats) {
+    private ModelTurnResult callModel(String systemPrompt, List<ConversationEntry> history, List<ToolDefinition> tools, TurnStats stats) {
         long start = System.nanoTime();
         ModelTurnResult result;
         try {
-            result = modelClient.send(SYSTEM_PROMPT, history, tools);
+            result = modelClient.send(systemPrompt, history, tools);
         } catch (ModelUnavailableException e) {
             // Distinct from a tool/MCP failure (see dispatchToolCalls), which is folded back into the
             // conversation and never reaches the HTTP layer -- the two must stay distinguishable.
@@ -386,6 +468,9 @@ class ToolUseLoopService implements ChatOrchestrator {
                 : withRepeatedFailureCheck(call, callToolSafely(call, arguments, caller, state), state);
             if (!result.error()) {
                 state.conceptPaths.learnFrom(result.content());
+                if (!ProposeQueryTool.NAME.equals(call.name())) {
+                    state.toolOutputs.add(new ConversationTurn.ToolOutput(call.name(), call.argumentsJson(), result.content()));
+                }
                 if (SEARCH_CONCEPTS.equals(call.name())) {
                     state.searches.learn(arguments, readJson(result.content()));
                 }
@@ -438,6 +523,7 @@ class ToolUseLoopService implements ChatOrchestrator {
             ToolResult result = toolGateway.callTool(LIST_FACETS, lookup, caller);
             if (!result.error()) {
                 state.knownFacets.learnFromListFacets(result.content());
+                state.toolOutputs.add(new ConversationTurn.ToolOutput(LIST_FACETS, lookup, result.content()));
             }
         } catch (RuntimeException e) {
             // The model didn't make this call, so its failure isn't reported as the model's; unknown facets are then refused as usual.
@@ -456,7 +542,7 @@ class ToolUseLoopService implements ChatOrchestrator {
         return unknown == null ? null : ToolResult.failure(ProposeQueryTool.unknownFacetMessage(unknown, state.knownFacets));
     }
 
-    private static JsonNode readJson(String json) {
+    static JsonNode readJson(String json) {
         try {
             return json == null ? MissingNode.getInstance() : JSON.readTree(json);
         } catch (JsonProcessingException e) {
@@ -486,7 +572,7 @@ class ToolUseLoopService implements ChatOrchestrator {
     /** A tool/MCP failure never crashes the turn -- it becomes a normal, model-visible error result. */
     private ToolResult callToolSafely(RequestedToolCall call, JsonNode arguments, CallerContext caller, TurnState state) {
         try {
-            if (excludedTools.contains(call.name())) {
+            if (isExcluded(call.name(), caller)) {
                 return ToolResult.failure("Unknown tool: " + call.name());
             }
             // A concept path the model was never shown is invented (small models copy the placeholder paths in tool examples), and
