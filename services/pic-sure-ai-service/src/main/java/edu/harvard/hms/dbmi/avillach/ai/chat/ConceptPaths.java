@@ -35,8 +35,11 @@ final class ConceptPaths {
     /** Normalized path to the form it was first seen in, so output can carry the path exactly as a tool returned it. */
     private final Map<String, String> seen = new HashMap<>();
 
-    /** The arguments holding lists of concept paths: a query's {@code select}, and {@code propose_query}'s changes to it. */
-    private static final Set<String> PATH_LISTS = Set.of("select", "addSelect", "removeSelect");
+    /**
+     * The arguments holding lists of concept paths: a query's {@code select}, {@code propose_query}'s changes to it, and
+     * {@code get_concepts}'s batch.
+     */
+    private static final Set<String> PATH_LISTS = Set.of("select", "addSelect", "removeSelect", "conceptPaths");
 
     /** Categorical value to the concept path it was listed under. */
     private final Map<String, String> valueOwners = new HashMap<>();

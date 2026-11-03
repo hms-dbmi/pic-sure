@@ -270,6 +270,29 @@ class ConceptPathsTest {
     }
 
     @Test
+    void firstUnseenInChecksEveryPathInAGetConceptsBatch() {
+        ConceptPaths paths = new ConceptPaths();
+        paths.learnFrom(TOOL_RESULT);
+        String batch = "{\"conceptPaths\":[\"\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\\","
+            + "\"\\\\phs999999\\\\sex\\\\\"]}";
+
+        assertEquals("\\phs999999\\sex\\", paths.firstUnseenIn(batch));
+    }
+
+    @Test
+    void canonicalizeRewritesASeenVariantInAGetConceptsBatch() {
+        ConceptPaths paths = new ConceptPaths();
+        paths.learnFrom(TOOL_RESULT);
+        // get_concepts looks paths up by exact match, so a missing trailing backslash would land the concept in notFound.
+        String batch = "{\"conceptPaths\":[\"\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\"]}";
+
+        assertEquals(
+            "{\"conceptPaths\":[\"\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\\"]}",
+            paths.canonicalize(batch)
+        );
+    }
+
+    @Test
     void firstUnseenInIgnoresBlankPathsUnreadableArgumentsAndNoArguments() {
         ConceptPaths paths = new ConceptPaths();
 
