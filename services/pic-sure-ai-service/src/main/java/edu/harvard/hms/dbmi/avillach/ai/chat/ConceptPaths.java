@@ -25,7 +25,7 @@ final class ConceptPaths {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Pattern BACKSLASH_RUN = Pattern.compile("\\\\+");
 
-    /** Normalized path to the path exactly as first seen. */
+    /** Normalized path to the form it was first seen in, so output can carry the path exactly as a tool returned it. */
     private final Map<String, String> seen = new HashMap<>();
 
     /**
@@ -110,6 +110,15 @@ final class ConceptPaths {
     }
 
     /**
+     * @param path a concept path in any variant
+     * @return the path as a tool result or the researcher's query first showed it, or the input unchanged if it hasn't been seen
+     */
+    String canonical(String path) {
+        String normalized = normalize(path);
+        return normalized == null ? path : seen.getOrDefault(normalized, path);
+    }
+
+    /**
      * Rewrites every seen {@code conceptPath} value and {@code select} entry in a tool call's arguments, at any depth, to the path exactly
      * as this turn first saw it, so a backslash variant the model wrote still matches when the tool looks it up. Unseen paths are left as
      * written.
@@ -163,8 +172,8 @@ final class ConceptPaths {
 
     /** The path as first seen, or null if it's unseen or already written that way. */
     private String canonicalOrNull(String path) {
-        String canonical = seen.get(normalize(path));
-        return canonical == null || canonical.equals(path) ? null : canonical;
+        String canonical = canonical(path);
+        return canonical.equals(path) ? null : canonical;
     }
 
     /**

@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.ai.chat;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
@@ -12,7 +13,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
  */
 @Schema(description = "One active facet in the researcher's selection.")
 public record FacetSelection(
-    @Schema(description = "The facet category name.", example = "study") String category,
-    @Schema(description = "The facet's name within its category.", example = "phs000001") String name
+    @Schema(description = "The facet category name.", example = "study") @JsonDeserialize(using = StrictStringDeserializer.class) String category,
+    @Schema(description = "The facet's name within its category.", example = "phs000001") @JsonDeserialize(using = StrictStringDeserializer.class) String name
 ) {
 }
