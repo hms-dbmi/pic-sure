@@ -307,9 +307,38 @@ class InMemoryRateLimitStoreTest {
             gated.release();
 
             assertThat(afterMidnight.allowed()).as("after midnight").isTrue();
-            // With one token the held request is rejected either way; this wait is what proves its stale time earned no refill.
+            // In this order the held request is rejected either way; this wait is what proves its stale time earned no refill.
             // It is measured from the held request's own time, so a day plus 1 ms rounds up to 86,401 s (a fresh read gives 86,400).
             assertThat(held.get(10, TimeUnit.SECONDS)).as("held").isEqualTo(RateLimitDecision.rejected(Window.BOTH, 86_401));
+        } finally {
+            gated.release();
+            pool.shutdownNow();
+        }
+    }
+
+    /** The same race with the held request reaching the store first, after its entry has expired: still only one of the two is admitted. */
+    @Test
+    void heldRequestReachingTheExpiredEntryFirstStillAdmitsOnlyOne() throws Exception {
+        GatedClock gated = new GatedClock(clock);
+        InMemoryRateLimitStore store = new InMemoryRateLimitStore(props(1, 1, 1, 1000), meters, gated);
+        clock.set("2026-10-29T23:00:00Z");
+        consume(store, USER, 1);
+
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            clock.set("2026-10-29T23:59:59.999Z");
+            Future<RateLimitDecision> held = pool.submit(() -> {
+                gated.gateThisThread();
+                return store.tryConsume(USER);
+            });
+            assertThat(gated.awaitHeld()).as("held request read yesterday's time").isTrue();
+
+            clock.set("2026-10-30T00:00:00.001Z");
+            gated.release();
+            RateLimitDecision heldDecision = held.get(10, TimeUnit.SECONDS);
+            RateLimitDecision afterMidnight = store.tryConsume(USER);
+
+            assertThat(List.of(heldDecision.allowed(), afterMidnight.allowed())).as("held, then after midnight").containsOnlyOnce(true);
         } finally {
             gated.release();
             pool.shutdownNow();
