@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import edu.harvard.hms.dbmi.avillach.ai.mcp.ToolResult;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -282,6 +283,23 @@ class ProposeQueryToolTest {
     }
 
     @Test
+    void theFilterLimitIsConfigurableAndNamedInTheRefusal() {
+        ProposeQueryTool small = new ProposeQueryTool(new ObjectMapper(), 3);
+
+        assertEquals(3, small.maxFilters());
+        assertFalse(small.propose(manyFilters(2), knownFacets).result().error());
+        ProposeQueryTool.Outcome outcome = small.propose(manyFilters(3), knownFacets);
+        assertTrue(outcome.result().error());
+        assertTrue(outcome.result().content().contains("at most 3 filters"), outcome.result().content());
+    }
+
+    @Test
+    void theFilterLimitDefaultsTo100AndMustBeAtLeastOne() {
+        assertEquals(100, tool.maxFilters());
+        assertThrows(IllegalArgumentException.class, () -> new ProposeQueryTool(new ObjectMapper(), 0));
+    }
+
+    @Test
     void aNonFiniteBoundIsRefused() {
         ProposeQueryTool.Outcome outcome = tool.propose("""
             {"query":{"phenotypicClause":{"phenotypicFilterType":"FILTER","conceptPath":"\\\\demo\\\\age\\\\","min":"NaN","max":"Infinity"}}}""",
@@ -293,13 +311,15 @@ class ProposeQueryToolTest {
     }
 
     @Test
-    void aQueryWithMoreThanTenFiltersIsRefusedWithAMessageForTheModel() {
-        ProposeQueryTool.Outcome outcome = tool.propose(manyFilters(10), knownFacets);
+    void aQueryOverTheFilterLimitIsRefusedWithAMessageForTheModel() {
+        // The subquery holding the filters counts too, so this many filters makes one more than the limit.
+        ProposeQueryTool.Outcome outcome = tool.propose(manyFilters(tool.maxFilters()), knownFacets);
 
         assertTrue(outcome.result().error());
         assertTrue(outcome.result().content().contains("too large"), outcome.result().content());
+        assertTrue(outcome.result().content().contains("not the researcher's"), "the limit is the model's own: " + outcome.result().content());
         assertNull(outcome.proposal());
-        assertFalse(tool.propose(manyFilters(9), knownFacets).result().error());
+        assertFalse(tool.propose(manyFilters(tool.maxFilters() - 1), knownFacets).result().error());
     }
 
     @Test

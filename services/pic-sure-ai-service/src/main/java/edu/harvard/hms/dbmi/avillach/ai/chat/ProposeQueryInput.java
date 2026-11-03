@@ -47,10 +47,11 @@ public record ProposeQueryInput(
     public static final int MAX_CLAUSE_DEPTH = 20;
 
     /**
-     * Most filters and subqueries (at any depth) plus genomic filters a query may hold and still be read or proposed by the model. A bigger
-     * query is the researcher's to edit in the UI; it also bounds what {@link CurrentState} sends to the model on every call.
+     * Default for the most filters and subqueries (at any depth) plus genomic filters a query may hold and still be read or proposed by the
+     * model; see {@code picsure.ai.max-filters}. The UI puts no cap on filters, so this is only a sanity bound on what {@link CurrentState}
+     * sends on every call, set well above what a researcher builds by hand; a bigger query is theirs to edit in the UI.
      */
-    public static final int MAX_FILTERS = 10;
+    public static final int DEFAULT_MAX_FILTERS = 100;
 
     /** Most {@code select} paths a query may hold and still be read or proposed by the model. */
     public static final int MAX_SELECT = 100;
@@ -86,9 +87,12 @@ public record ProposeQueryInput(
         return (phenotypicClause == null ? 0 : phenotypicClause.count()) + (genomicFilters == null ? 0 : genomicFilters.size());
     }
 
-    /** @return whether this query is too big for the model to read or propose, by {@link #MAX_FILTERS} or {@link #MAX_SELECT} */
-    public boolean exceedsSizeLimit() {
-        return filterCount() > MAX_FILTERS || (select != null && select.size() > MAX_SELECT);
+    /**
+     * @param maxFilters the most filters the model may read or propose ({@link ProposeQueryTool#maxFilters})
+     * @return whether this query is too big for the model to read or propose, by {@code maxFilters} or {@link #MAX_SELECT}
+     */
+    public boolean exceedsSizeLimit(int maxFilters) {
+        return filterCount() > maxFilters || (select != null && select.size() > MAX_SELECT);
     }
 
     @JsonIgnore // otherwise serialized as an "empty" query field
