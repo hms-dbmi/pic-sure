@@ -6,7 +6,7 @@
 
 | Tool | Does |
 |---|---|
-| `search_concepts` | Searches the dictionary by free text. The dictionary ANDs every word with prefix matching, so `search` must describe one concept; `terms` runs up to 5 separate searches, such as synonyms and abbreviations, in one call and merges the results. |
+| `search_concepts` | Searches the dictionary by free text. The dictionary ANDs every word with prefix matching, so `search` must describe one concept; `terms` searches for any of up to 5 alternatives, such as synonyms and abbreviations, in one dictionary request (joined with `\|`, with `term_breakdown=true`) and reports which terms match each concept and how many concepts each matches alone. |
 | `list_facets` | Lists facet categories, such as study, with concept counts for an optional search. |
 | `get_concept` | Gets one concept by dataset and concept path. |
 | `get_concepts` | Gets up to 25 concepts by concept path in one call, listing the paths the dictionary does not know in `notFound`. |
@@ -17,6 +17,9 @@
 ## The open-only rule
 
 The service only ever reads the open, obfuscated view of the data. Query calls go to `/hpds/open/query/sync` and nowhere else: no client method exists for `/hpds/auth` or for the async query endpoints, and no setting or tool argument can select another channel. Only the four result types the open channel obfuscates are allowed (COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT). The dictionary search and facet calls send an empty consent list, the same view the open UI gets, and the concept detail lookups carry no consents field.
+
+`search_concepts` takes an optional `facets` list of `{category, name}` pairs, copied from `list_facets`, and sends them to the dictionary with the search; the dictionary needs only those two fields per facet (the UI sends more). With facets and neither `search` nor `terms` it browses everything in those facets (the dictionary takes an empty search); without facets one of them is required. Each facet narrows every term of a `terms` search. At most 10 facets, each part at most 200 characters.
+
 
 ## Adapter code
 
