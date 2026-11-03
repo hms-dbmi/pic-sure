@@ -28,6 +28,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
+import edu.harvard.hms.dbmi.avillach.commons.net.CidrRange;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessRequests;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
@@ -97,7 +98,7 @@ class PrevalidationThrottleFilterTest {
     private Gateway gateway(boolean rateLimitEnabled, boolean openAccessEnabled) {
         RateLimitProperties props = new RateLimitProperties(
             rateLimitEnabled, new KeyLimits(60, 3000), new KeyLimits(60, 3000), new IpLimits(60, 3000, LIMIT), new Store(1000),
-            List.of(PROXY + "/32"), List.of(ALLOWLISTED + "/32", PROXY + "/32")
+            List.of(CidrRange.parse(PROXY + "/32")), List.of(CidrRange.parse(ALLOWLISTED + "/32"), CidrRange.parse(PROXY + "/32"))
         );
         InMemoryRateLimitStore real = new InMemoryRateLimitStore(props, new SimpleMeterRegistry(), clock);
         RateLimitStore recording = subject -> {
@@ -105,7 +106,7 @@ class PrevalidationThrottleFilterTest {
             return real.tryConsume(subject);
         };
         PublicEndpointPolicy publicEndpoints = new PublicEndpointPolicy(ShippedPublicRoutes.routes());
-        ClientIpResolver resolver = new ClientIpResolver(props.trustedProxyRanges());
+        ClientIpResolver resolver = new ClientIpResolver(props.trustedProxies());
         PsamaClient client = new PsamaClient(
             RestClient.builder().build(), "http://127.0.0.1:" + psama.port() + "/token/introspect",
             "http://127.0.0.1:" + psama.port() + "/open/validate", "service-token"

@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditLoggingFilter;
+import edu.harvard.hms.dbmi.avillach.commons.net.CidrRange;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIp;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
 import jakarta.servlet.http.HttpServletRequest;
@@ -41,7 +42,8 @@ class RateLimitFilterTest {
     private static RateLimitProperties properties(boolean enabled) {
         return new RateLimitProperties(
             enabled, new RateLimitProperties.KeyLimits(60, 3000), new RateLimitProperties.KeyLimits(60, 3000),
-            new RateLimitProperties.IpLimits(60, 3000, 300), new RateLimitProperties.Store(1000), List.of("192.0.2.10"), List.of()
+            new RateLimitProperties.IpLimits(60, 3000, 300), new RateLimitProperties.Store(1000), List.of(CidrRange.parse("192.0.2.10")),
+            List.of()
         );
     }
 

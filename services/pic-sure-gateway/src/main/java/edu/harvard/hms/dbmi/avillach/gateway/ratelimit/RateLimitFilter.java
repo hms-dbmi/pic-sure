@@ -42,7 +42,7 @@ abstract class RateLimitFilter extends OncePerRequestFilter {
     RateLimitFilter(RateLimitProperties props, ClientIpResolver clientIps, RateLimitStore store, AuditContext audit) {
         this.enabled = props.enabled();
         this.clientIps = clientIps;
-        this.allowlist = props.platformAllowlist();
+        this.allowlist = props.platformAllowlistedSourceCidrs();
         this.store = store;
         this.audit = audit;
     }

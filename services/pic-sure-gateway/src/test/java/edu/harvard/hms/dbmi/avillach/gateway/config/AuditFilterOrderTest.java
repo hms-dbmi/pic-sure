@@ -78,7 +78,8 @@ class AuditFilterOrderTest {
     private static RateLimitProperties rateLimit() {
         return new RateLimitProperties(
             true, new RateLimitProperties.KeyLimits(60, 3000), new RateLimitProperties.KeyLimits(60, 3000),
-            new RateLimitProperties.IpLimits(60, 3000, 300), new RateLimitProperties.Store(1000), List.of("192.0.2.10/32"), List.of()
+            new RateLimitProperties.IpLimits(60, 3000, 300), new RateLimitProperties.Store(1000), List.of(CidrRange.parse("192.0.2.10/32")),
+            List.of()
         );
     }
 
@@ -91,10 +92,8 @@ class AuditFilterOrderTest {
     private static FilterRegistrationBean<?> auditRegistration(LoggingClient client, AuditContext audit) {
         AuditFilterConfig config = new AuditFilterConfig();
         RateLimitProperties rateLimit = rateLimit();
-        return config.auditLoggingFilter(
-            client, config.auditRouteTable(), audit, rateLimit,
-            new ClientIpResolver(rateLimit.trustedProxies().stream().map(CidrRange::parse).toList())
-        );
+        return config
+            .auditLoggingFilter(client, config.auditRouteTable(), audit, rateLimit, new ClientIpResolver(rateLimit.trustedProxies()));
     }
 
     @Test

@@ -52,12 +52,13 @@ final class AuditFilterChain {
         AuditContext audit = new AuditContext();
         GatewaySecurityProperties props =
             new GatewaySecurityProperties(List.of(), true, 1024, "http://psama.local/introspect", "http://psama.local/open-access", "svc");
+        List<CidrRange> proxies = trustedProxies.stream().map(CidrRange::parse).toList();
         RateLimitProperties rateLimit = new RateLimitProperties(
-            !trustedProxies.isEmpty(), new RateLimitProperties.KeyLimits(60, 3000), new RateLimitProperties.KeyLimits(60, 3000),
-            new RateLimitProperties.IpLimits(60, 3000, 300), new RateLimitProperties.Store(1000), trustedProxies, List.of()
+            !proxies.isEmpty(), new RateLimitProperties.KeyLimits(60, 3000), new RateLimitProperties.KeyLimits(60, 3000),
+            new RateLimitProperties.IpLimits(60, 3000, 300), new RateLimitProperties.Store(1000), proxies, List.of()
         );
         PublicEndpointPolicy publicEndpoints = new PublicEndpointPolicy(List.of());
-        ClientIpResolver clientIps = new ClientIpResolver(trustedProxies.stream().map(CidrRange::parse).toList());
+        ClientIpResolver clientIps = new ClientIpResolver(proxies);
         SecurityConfig security = new SecurityConfig();
         OpenAccessRequests openAccessRequests = security.openAccessRequests(props, publicEndpoints);
         ObservabilityConfig observability = new ObservabilityConfig();
