@@ -50,11 +50,17 @@
             <groupId>edu.harvard.dbmi.avillach</groupId>
             <artifactId>pic-sure-logging-client</artifactId>
         </dependency>
-        <!-- rate limiting: Bucket4j buckets held in one bounded Caffeine cache. Pinned to the Bucket4j version
-             Spring Cloud Gateway 4.3.0 was built against; Caffeine's version comes from the Spring Boot BOM. -->
+        <!-- rate limiting: Bucket4j buckets held in one bounded Caffeine cache through Bucket4j's Caffeine proxy manager.
+             Both Bucket4j artifacts are pinned to the version Spring Cloud Gateway 4.3.0 was built against. The add-on
+             declares Caffeine as provided, so Caffeine is declared here and its version comes from the Spring Boot BOM. -->
         <dependency>
             <groupId>com.bucket4j</groupId>
             <artifactId>bucket4j_jdk17-core</artifactId>
+            <version>8.14.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.bucket4j</groupId>
+            <artifactId>bucket4j_jdk17-caffeine</artifactId>
             <version>8.14.0</version>
         </dependency>
         <dependency>

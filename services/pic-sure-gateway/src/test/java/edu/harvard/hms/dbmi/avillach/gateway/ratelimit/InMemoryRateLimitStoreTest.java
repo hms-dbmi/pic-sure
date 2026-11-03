@@ -14,7 +14,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 import org.junit.jupiter.api.Test;
 
@@ -23,6 +22,7 @@ import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitProperties.IpLim
 import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitProperties.KeyLimits;
 import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitProperties.Store;
 import io.github.bucket4j.TimeMeter;
+import io.github.bucket4j.distributed.proxy.AbstractProxyManager;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 /**
@@ -246,25 +246,45 @@ class InMemoryRateLimitStoreTest {
         assertThat(meters.get(InMemoryRateLimitStore.SIZE_METRIC).gauge().value()).isEqualTo(store.size());
     }
 
+    // Caffeine drops an expired entry on its timer wheel's next tick, about a second after it expires, so these check a moment later.
+
     @Test
-    void entriesExpireAtTheFirstMidnightUtcAfterTheirLastUse() {
+    void entriesExpireAtTheFirstMidnightUtcAfterTheirLastUse() throws Exception {
         InMemoryRateLimitStore store = store(10, 10);
+        RateLimitSubject ip = RateLimitSubject.ip(InetAddress.getByName("203.0.113.7"));
         store.tryConsume(USER);
+        store.tryConsume(ip);
         clock.set("2026-10-30T00:30:00Z");
         store.tryConsume(USER); // used again after midnight: lives until the next midnight
+        store.tryConsume(ip);
 
-        clock.set("2026-10-30T23:59:59Z");
+        clock.set("2026-10-30T23:59:59.999Z");
+        store.cleanUp();
+        assertThat(store.size()).isEqualTo(2);
+
+        clock.set("2026-10-31T00:00:02Z");
+        store.cleanUp();
+        assertThat(store.size()).isZero();
+    }
+
+    @Test
+    void prevalidationEntriesExpireAtTheNextMinuteBoundaryAfterTheirLastUse() throws Exception {
+        InMemoryRateLimitStore store = store(10, 10);
+        store.tryConsume(RateLimitSubject.prevalidationIp(InetAddress.getByName("203.0.113.7")));
+
+        clock.set("2026-10-29T10:00:59.999Z");
         store.cleanUp();
         assertThat(store.size()).isEqualTo(1);
 
-        clock.set("2026-10-31T00:00:00Z");
+        clock.set("2026-10-29T10:01:02Z");
         store.cleanUp();
         assertThat(store.size()).isZero();
     }
 
     /**
-     * A request fetches yesterday's bucket just before midnight and is held before consuming from it, while another request arrives after
-     * midnight. They must not draw from two buckets, so the new day admits only one of them.
+     * A request reads the time just before midnight and is held before it reaches its exhausted bucket, while another request arrives after
+     * midnight and finds the entry expired. They must not draw from two buckets, and the held request's stale time must not earn it the new
+     * day's refill, so the new day admits only the later request.
      */
     @Test
     void requestHoldingYesterdaysBucketAcrossMidnightAndANewRequestAdmitOnlyOne() throws Exception {
@@ -280,19 +300,14 @@ class InMemoryRateLimitStoreTest {
                 gated.gateThisThread();
                 return store.tryConsume(USER);
             });
-            assertThat(gated.awaitHeld()).as("held request reached its bucket").isTrue();
+            assertThat(gated.awaitHeld()).as("held request read yesterday's time").isTrue();
 
             clock.set("2026-10-30T00:00:00.001Z");
-            Future<RateLimitDecision> afterMidnight = pool.submit(() -> store.tryConsume(USER));
-            try {
-                afterMidnight.get(200, TimeUnit.MILLISECONDS); // a store that let it run in between would answer now
-            } catch (TimeoutException waitingForTheHeldRequest) {
-                // the store serialises the two requests on the subject's entry
-            }
+            RateLimitDecision afterMidnight = pool.submit(() -> store.tryConsume(USER)).get(10, TimeUnit.SECONDS);
             gated.release();
 
-            List<Boolean> allowed = List.of(held.get(10, TimeUnit.SECONDS).allowed(), afterMidnight.get(10, TimeUnit.SECONDS).allowed());
-            assertThat(allowed).as("held, after midnight").containsOnlyOnce(true);
+            assertThat(afterMidnight.allowed()).as("after midnight").isTrue();
+            assertThat(held.get(10, TimeUnit.SECONDS).allowed()).as("held").isFalse();
         } finally {
             gated.release();
             pool.shutdownNow();
@@ -306,8 +321,8 @@ class InMemoryRateLimitStoreTest {
     }
 
     /**
-     * Wraps the fake clock so that one thread blocks the first time Bucket4j asks it for the time, which happens only after the store has
-     * fetched that thread's bucket from the cache. The test can then move time and send other requests between fetch and consume.
+     * Wraps the fake clock so that one thread blocks when Bucket4j reads it to timestamp that thread's request, which happens before the
+     * proxy manager enters the subject's {@code compute}. The test can then move time and send other requests between the two.
      */
     private static final class GatedClock implements TimeMeter {
 
@@ -334,7 +349,7 @@ class InMemoryRateLimitStoreTest {
 
         @Override
         public long currentTimeNanos() {
-            if (Thread.currentThread() == gated && calledFromBucket4j()) {
+            if (Thread.currentThread() == gated && timestampingARequest()) {
                 gated = null;
                 held.countDown();
                 try {
@@ -351,8 +366,12 @@ class InMemoryRateLimitStoreTest {
             return true;
         }
 
-        private static boolean calledFromBucket4j() {
-            return StackWalker.getInstance().walk(frames -> frames.anyMatch(f -> f.getClassName().startsWith("io.github.bucket4j.")));
+        private static boolean timestampingARequest() {
+            return StackWalker.getInstance().walk(
+                frames -> frames.anyMatch(
+                    f -> f.getClassName().equals(AbstractProxyManager.class.getName()) && f.getMethodName().equals("getClientSideTime")
+                )
+            );
         }
     }
 }
