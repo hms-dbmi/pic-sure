@@ -1,11 +1,13 @@
 package edu.harvard.hms.dbmi.avillach.ai.chat;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.UnaryOperator;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.GenomicFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Operator;
@@ -27,7 +29,10 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
  * @param phenotypicClause a single filter, or a subquery that combines nested clauses with AND or OR
  * @param genomicFilters genomic filters
  */
-public record ProposeQueryInput(List<String> select, Clause phenotypicClause, List<GenomicFilter> genomicFilters) {
+public record ProposeQueryInput(
+    @JsonDeserialize(contentUsing = StrictStringDeserializer.class) List<String> select, Clause phenotypicClause,
+    List<GenomicFilter> genomicFilters
+) {
 
     /** Longest concept path accepted in a filter or in {@code select}, in characters. Same bound as {@code pic-sure-mcp}. */
     public static final int MAX_CONCEPT_PATH_LENGTH = 2000;
@@ -137,8 +142,10 @@ public record ProposeQueryInput(List<String> select, Clause phenotypicClause, Li
      * @param min numeric lower bound
      * @param max numeric upper bound
      */
-    public record Filter(PhenotypicFilterType phenotypicFilterType, String conceptPath, Set<String> values, Double min, Double max)
-        implements Clause {
+    public record Filter(
+        PhenotypicFilterType phenotypicFilterType, @JsonDeserialize(using = StrictStringDeserializer.class) String conceptPath,
+        @JsonDeserialize(contentUsing = StrictStringDeserializer.class) Set<String> values, Double min, Double max
+    ) implements Clause {
 
         @Override
         public void validate(int depth) {
@@ -149,6 +156,9 @@ public record ProposeQueryInput(List<String> select, Clause phenotypicClause, Li
                 throw new IllegalArgumentException("Field 'conceptPath' is required on every filter.");
             }
             requirePath("conceptPath", conceptPath);
+            if (values != null && values.stream().anyMatch(Objects::isNull)) {
+                throw new IllegalArgumentException("Field 'values' must not hold null.");
+            }
             boolean hasValues = values != null && !values.isEmpty();
             boolean hasRange = min != null || max != null;
             if (hasValues && hasRange) {

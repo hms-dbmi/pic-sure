@@ -222,6 +222,19 @@ class ProposeQueryToolTest {
         assertEquals("bmi", search.proposal().search());
     }
 
+    @Test
+    void aNumberOrBooleanWhereTheProposalWantsTextIsRefusedNotCoercedToText() {
+        for (String arguments : List.of(
+            "{\"query\":{\"select\":[42]}}", "{\"query\":{\"select\":[true]}}",
+            "{\"facets\":[{\"category\":12,\"name\":\"demo\"}]}", "{\"facets\":[{\"category\":\"study\",\"name\":false}]}"
+        )) {
+            ProposeQueryTool.Outcome outcome = tool.propose(arguments, knownFacets);
+
+            assertTrue(outcome.result().error(), arguments);
+            assertNull(outcome.proposal(), arguments);
+        }
+    }
+
     private static String manyFilters(int count) {
         String filters = String.join(",", java.util.Collections.nCopies(count,
             "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demo\\\\age\\\\\",\"values\":[\"x\"]}"));

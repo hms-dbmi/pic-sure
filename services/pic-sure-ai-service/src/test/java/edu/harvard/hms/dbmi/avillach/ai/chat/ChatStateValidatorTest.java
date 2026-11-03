@@ -150,4 +150,38 @@ class ChatStateValidatorTest {
         assertEquals(31, query.filterCount());
         assertTrue(query.exceedsSizeLimit());
     }
+
+    @Test
+    void aNumberOrBooleanWhereTheQueryWantsTextIsRefusedNotCoercedToText() {
+        String filter = "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":%s,\"values\":%s}";
+        for (String query : List.of(
+            "{\"select\":[42]}", "{\"select\":[true]}", "{\"select\":[\"\\\\demo\\\\age\\\\\",1.5]}",
+            "{\"phenotypicClause\":" + filter.formatted("12", "[\"x\"]") + "}",
+            "{\"phenotypicClause\":" + filter.formatted("\"\\\\demo\\\\age\\\\\"", "[1]") + "}",
+            "{\"phenotypicClause\":" + filter.formatted("\"\\\\demo\\\\age\\\\\"", "[false]") + "}"
+        )) {
+            assertThrows(IllegalArgumentException.class, () -> ChatStateValidator.query(json(query)), query);
+        }
+    }
+
+    @Test
+    void aNullInsideValuesIsRefused() {
+        String query = "{\"phenotypicClause\":{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demo\\\\sex\\\\\",\"values\":[\"f\",null]}}";
+
+        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class, () -> ChatStateValidator.query(json(query)));
+        assertTrue(refused.getMessage().contains("values"), refused.getMessage());
+    }
+
+    @Test
+    void aNumberOrBooleanFacetCategoryOrNameIsRefusedWhenTheRequestIsBound() {
+        for (String facet : List.of("{\"category\":12,\"name\":\"demo\"}", "{\"category\":\"study\",\"name\":true}")) {
+            assertThrows(
+                com.fasterxml.jackson.databind.exc.MismatchedInputException.class,
+                () -> MAPPER.readValue("{\"message\":\"hi\",\"facets\":[" + facet + "]}", ChatRequest.class), facet
+            );
+        }
+        assertDoesNotThrow(
+            () -> MAPPER.readValue("{\"message\":\"hi\",\"facets\":[{\"category\":\"study\",\"name\":\"12\"}]}", ChatRequest.class)
+        );
+    }
 }
