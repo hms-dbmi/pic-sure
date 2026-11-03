@@ -105,7 +105,8 @@ class ToolUseLoopService implements ChatOrchestrator {
         history.add(new UserEntry(CurrentState.appendedTo(request)));
         TurnState state = new TurnState();
         // Only the modeled fields, the ones CurrentState shows the model: a path in authorizationFilters was never shown to it.
-        if (currentQuery != null) {
+        state.queryLocked = currentQuery != null && currentQuery.exceedsSizeLimit();
+        if (currentQuery != null && !state.queryLocked) {
             state.conceptPaths.learnFrom(ChatStateValidator.toJson(currentQuery));
         }
         state.knownFacets.learnFrom(request.facets());
@@ -154,7 +155,8 @@ class ToolUseLoopService implements ChatOrchestrator {
             Set<FacetSelection> current = request.facets() == null ? Set.of() : Set.copyOf(request.facets());
             facets = Set.copyOf(state.facets).equals(current) ? null : List.copyOf(state.facets);
         }
-        String search = state.search == null || state.search.equals(request.search() == null ? "" : request.search()) ? null : state.search;
+        String requestSearch = ChatStateValidator.searchText(request.search());
+        String search = state.search == null || state.search.equals(requestSearch == null ? "" : requestSearch) ? null : state.search;
         return new ChatResponse(text, query, facets, search);
     }
 
@@ -237,7 +239,7 @@ class ToolUseLoopService implements ChatOrchestrator {
             // HPDS matches paths by exact key, so a backslash variant the guard accepted goes out as the path the search returned.
             String arguments = state.conceptPaths.canonicalize(call.argumentsJson());
             if (ProposeQueryTool.NAME.equals(call.name())) {
-                ProposeQueryTool.Outcome outcome = proposeQueryTool.propose(arguments, state.knownFacets);
+                ProposeQueryTool.Outcome outcome = proposeQueryTool.propose(arguments, state.knownFacets, state.queryLocked);
                 if (outcome.proposal() != null) {
                     state.accept(outcome.proposal());
                 }
@@ -254,6 +256,8 @@ class ToolUseLoopService implements ChatOrchestrator {
 
         final ConceptPaths conceptPaths = new ConceptPaths();
         final KnownFacets knownFacets = new KnownFacets();
+        /** Whether the researcher's query was too large to show the model, so it may not propose a query. */
+        boolean queryLocked;
         ProposeQueryInput query;
         List<FacetSelection> facets;
         String search;

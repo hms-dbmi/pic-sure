@@ -91,11 +91,37 @@ public class ProposeQueryTool {
      * @return a success result carrying the accepted proposal once every check passes, or a failure naming what's wrong
      */
     Outcome propose(String argumentsJson, KnownFacets knownFacets) {
+        return propose(argumentsJson, knownFacets, false);
+    }
+
+    /**
+     * As {@link #propose(String, KnownFacets)}, optionally refusing any {@code query} -- for a turn whose researcher query was too large to
+     * show the model, which therefore could not build on it and would replace it with something smaller.
+     *
+     * @param queryLocked whether the researcher's own query was withheld from the model as too large
+     */
+    Outcome propose(String argumentsJson, KnownFacets knownFacets, boolean queryLocked) {
         try {
             Map<String, Object> arguments = parseArguments(argumentsJson);
+            // The binder's mapper turns a JSON number or boolean into text, so check the type the schema promises first.
+            if (arguments.get("search") != null && !(arguments.get("search") instanceof String)) {
+                throw new IllegalArgumentException("Field 'search' must be a string.");
+            }
             Arguments bound = ProposeQueryBinder.bind(arguments, Arguments.class);
+            if (bound.query() != null && queryLocked) {
+                return Outcome.rejected(
+                    "The researcher's query is too large for you to change. Propose only facets and search, and tell the researcher to "
+                        + "make the query smaller in the screen first."
+                );
+            }
             if (bound.query() != null) {
                 bound.query().validate();
+                if (bound.query().exceedsSizeLimit()) {
+                    return Outcome.rejected(
+                        "The query is too large: at most " + ProposeQueryInput.MAX_FILTERS + " filters and " + ProposeQueryInput.MAX_SELECT
+                            + " selected variables. Propose a smaller query; the researcher can add the rest in the screen."
+                    );
+                }
             }
             ChatStateValidator.requireValidFacets(bound.facets());
             ChatStateValidator.requireValidSearch(bound.search());

@@ -19,6 +19,11 @@ final class CurrentState {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /** Stands in for a query too large to send; {@link ProposeQueryTool} refuses query proposals while this is what the model was shown. */
+    static final String TOO_LARGE = "[too large to show. The researcher built it in the screen and can edit it there. Do not propose a "
+        + "query: propose only facets and search, and tell the researcher to make the query smaller (at most " + ProposeQueryInput.MAX_FILTERS
+        + " filters) before you can change it.]";
+
     private CurrentState() {}
 
     /**
@@ -28,15 +33,18 @@ final class CurrentState {
     static String appendedTo(ChatRequest request) {
         StringBuilder state = new StringBuilder();
         ProposeQueryInput query = ChatStateValidator.query(request.query());
-        if (query != null) {
+        if (query != null && query.exceedsSizeLimit()) {
+            state.append("\nquery: ").append(TOO_LARGE);
+        } else if (query != null) {
             state.append("\nquery: ").append(ChatStateValidator.toJson(query));
         }
         List<FacetSelection> facets = request.facets();
         if (facets != null && !facets.isEmpty()) {
             state.append("\nfacets: ").append(json(facets));
         }
-        if (request.search() != null && !request.search().isBlank()) {
-            state.append("\nsearch: ").append(TextNode.valueOf(request.search()));
+        String search = ChatStateValidator.searchText(request.search());
+        if (search != null && !search.isBlank()) {
+            state.append("\nsearch: ").append(TextNode.valueOf(search));
         }
         if (state.isEmpty()) {
             return request.message();

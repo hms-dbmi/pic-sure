@@ -51,7 +51,7 @@ final class ChatStateValidator {
             throw invalid("facets", e);
         }
         try {
-            requireValidSearch(request.search());
+            requireValidSearch(searchText(request.search()));
         } catch (IllegalArgumentException e) {
             throw invalid("search", e);
         }
@@ -98,6 +98,21 @@ final class ChatStateValidator {
             requireCleanText(facet.category());
             requireCleanText(facet.name());
         }
+    }
+
+    /**
+     * @param search a request's {@code search} field, possibly missing or JSON null
+     * @return its text, or null if absent
+     * @throws IllegalArgumentException if it is present but not a JSON string -- a number or boolean would otherwise read as search text
+     */
+    static String searchText(JsonNode search) {
+        if (isAbsent(search)) {
+            return null;
+        }
+        if (!search.isTextual()) {
+            throw new IllegalArgumentException("It must be a JSON string.");
+        }
+        return search.textValue();
     }
 
     /**

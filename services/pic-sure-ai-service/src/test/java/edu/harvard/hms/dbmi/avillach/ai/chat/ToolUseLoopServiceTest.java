@@ -6,6 +6,11 @@ import java.util.Deque;
 import java.util.List;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.BooleanNode;
+import com.fasterxml.jackson.databind.node.DoubleNode;
+import com.fasterxml.jackson.databind.node.IntNode;
+import com.fasterxml.jackson.databind.node.TextNode;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClientException;
 
@@ -190,9 +195,60 @@ class ToolUseLoopServiceTest {
     }
 
     @Test
+    void aSearchThatIsNotAStringOnTheRequestIsRefused() {
+        for (JsonNode search : List.of(IntNode.valueOf(42), DoubleNode.valueOf(4.5), BooleanNode.TRUE, BooleanNode.FALSE)) {
+            ChatRequest request = new ChatRequest("hi", "c", "r", null, null, search);
+            FakeModelClient model = FakeModelClient.returning(doneTurn("unreachable"));
+            ToolUseLoopService service = new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8);
+
+            PicsureException refused = assertThrows(PicsureException.class, () -> service.handle(request, CALLER), search.toString());
+            assertTrue(refused.getMessage().contains("search"), refused.getMessage());
+            assertEquals(0, model.callCount, search.toString());
+        }
+    }
+
+    /** A valid query with twelve filters under one subquery: over {@link ProposeQueryInput#MAX_FILTERS}. */
+    private static ChatRequest oversizedQueryRequest() throws Exception {
+        String clauses = String.join(",", java.util.Collections.nCopies(12,
+            "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demo\\\\age\\\\\",\"values\":[\"x\"]}"));
+        String big = "{\"phenotypicClause\":{\"operator\":\"AND\",\"phenotypicClauses\":[" + clauses + "]}}";
+        return new ChatRequest("narrow it", "c", "r", new ObjectMapper().readTree(big), null, null);
+    }
+
+    @Test
+    void anOversizedResearcherQueryIsWithheldFromTheModelAndQueryProposalsAreRefused() throws Exception {
+        FakeModelClient model = FakeModelClient.returning(toolCallTurn("propose_query", "{\"query\":{}}"), doneTurn("Make it smaller"));
+
+        ChatResponse response =
+            new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(oversizedQueryRequest(), CALLER);
+
+        String shown = ((ConversationEntry.UserEntry) model.historySeenOnCall(1).get(0)).text();
+        assertTrue(shown.contains("too large to show"), shown);
+        assertFalse(shown.contains("phenotypicClauses"), shown);
+        ConversationEntry.ToolResultEntry fedBack =
+            (ConversationEntry.ToolResultEntry) model.historySeenOnCall(2).get(model.historySeenOnCall(2).size() - 1);
+        assertTrue(fedBack.content().contains("too large"), "the refusal reaches the model: " + fedBack.content());
+        assertNull(response.query());
+    }
+
+    @Test
+    void aPathFromAnOversizedQueryTheModelWasNeverShownIsNotAllowedThrough() throws Exception {
+        String countWithThatPath = "{\"query\":{\"select\":[\"\\\\demo\\\\age\\\\\"]}}";
+        FakeModelClient model = FakeModelClient.returning(toolCallTurn("count_participants", countWithThatPath), doneTurn("Done"));
+        FakeToolGateway tools = new FakeToolGateway();
+
+        new ToolUseLoopService(model, tools, PROPOSE_QUERY_TOOL, 8).handle(oversizedQueryRequest(), CALLER);
+
+        assertTrue(tools.calls.isEmpty(), "a path only in the withheld query must not reach the gateway");
+        ConversationEntry.ToolResultEntry fedBack =
+            (ConversationEntry.ToolResultEntry) model.historySeenOnCall(2).get(model.historySeenOnCall(2).size() - 1);
+        assertTrue(fedBack.content().contains("Unknown concept path"), fedBack.content());
+    }
+
+    @Test
     void aMalformedFacetOrSearchOnTheRequestIsRefusedToo() throws Exception {
         ChatRequest badFacet = new ChatRequest("hi", "c", "r", null, List.of(new FacetSelection("study", " ")), null);
-        ChatRequest badSearch = new ChatRequest("hi", "c", "r", null, null, "bad\nsearch");
+        ChatRequest badSearch = new ChatRequest("hi", "c", "r", null, null, TextNode.valueOf("bad\nsearch"));
         FakeModelClient model = FakeModelClient.returning(doneTurn("unreachable"));
         ToolUseLoopService service = new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8);
 
@@ -270,7 +326,7 @@ class ToolUseLoopServiceTest {
 
     @Test
     void aSearchProposalSurfacesOnlyWhenItDiffersFromTheRequests() throws Exception {
-        ChatRequest same = new ChatRequest("hi", "c", "r", null, null, "bmi");
+        ChatRequest same = new ChatRequest("hi", "c", "r", null, null, TextNode.valueOf("bmi"));
         String proposal = "{\"search\":\"bmi\"}";
 
         ChatResponse unchanged = new ToolUseLoopService(
@@ -313,7 +369,7 @@ class ToolUseLoopServiceTest {
         String uiQuery = "{\"authorizationFilters\":[\"secret\"],\"expectedResultType\":\"COUNT\"," + "\"phenotypicClause\":"
             + new ObjectMapper().readTree(AGE_QUERY).get("phenotypicClause") + "}";
         ChatRequest request = new ChatRequest(
-            "narrow it", "c", "r", new ObjectMapper().readTree(uiQuery), List.of(new FacetSelection("study", "demo")), "age"
+            "narrow it", "c", "r", new ObjectMapper().readTree(uiQuery), List.of(new FacetSelection("study", "demo")), TextNode.valueOf("age")
         );
         FakeModelClient model = FakeModelClient.returning(doneTurn("ok"));
 

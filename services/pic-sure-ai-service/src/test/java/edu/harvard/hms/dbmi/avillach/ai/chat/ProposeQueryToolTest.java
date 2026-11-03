@@ -178,4 +178,53 @@ class ProposeQueryToolTest {
 
         assertTrue(result.error());
     }
+
+    @Test
+    void aSearchThatIsNotAStringIsRefusedNotCoercedToText() {
+        for (String search : List.of("42", "true", "[\"a\"]", "{\"a\":1}")) {
+            ProposeQueryTool.Outcome outcome = tool.propose("{\"search\":" + search + "}", knownFacets);
+
+            assertTrue(outcome.result().error(), search);
+            assertTrue(outcome.result().content().contains("search"), outcome.result().content());
+            assertNull(outcome.proposal(), search);
+        }
+    }
+
+    @Test
+    void aNonFiniteBoundIsRefused() {
+        ProposeQueryTool.Outcome outcome = tool.propose("""
+            {"query":{"phenotypicClause":{"phenotypicFilterType":"FILTER","conceptPath":"\\\\demo\\\\age\\\\","min":"NaN","max":"Infinity"}}}""",
+            knownFacets);
+
+        assertTrue(outcome.result().error());
+        assertTrue(outcome.result().content().contains("finite"), outcome.result().content());
+        assertNull(outcome.proposal());
+    }
+
+    @Test
+    void aQueryWithMoreThanTenFiltersIsRefusedWithAMessageForTheModel() {
+        ProposeQueryTool.Outcome outcome = tool.propose(manyFilters(10), knownFacets);
+
+        assertTrue(outcome.result().error());
+        assertTrue(outcome.result().content().contains("too large"), outcome.result().content());
+        assertNull(outcome.proposal());
+        assertFalse(tool.propose(manyFilters(9), knownFacets).result().error());
+    }
+
+    @Test
+    void aQueryIsRefusedWhileTheResearchersOwnIsLockedButFacetsAndSearchStillWork() {
+        ProposeQueryTool.Outcome query = tool.propose(manyFilters(1), knownFacets, true);
+        ProposeQueryTool.Outcome search = tool.propose("{\"search\":\"bmi\"}", knownFacets, true);
+
+        assertTrue(query.result().error());
+        assertNull(query.proposal());
+        assertFalse(search.result().error(), search.result().content());
+        assertEquals("bmi", search.proposal().search());
+    }
+
+    private static String manyFilters(int count) {
+        String filters = String.join(",", java.util.Collections.nCopies(count,
+            "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demo\\\\age\\\\\",\"values\":[\"x\"]}"));
+        return "{\"query\":{\"phenotypicClause\":{\"operator\":\"AND\",\"phenotypicClauses\":[" + filters + "]}}}";
+    }
 }

@@ -6,7 +6,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -108,5 +111,43 @@ class ChatStateValidatorTest {
     @Test
     void anOverlongSearchIsRefused() {
         assertThrows(IllegalArgumentException.class, () -> ChatStateValidator.requireValidSearch("x".repeat(ChatStateValidator.MAX_SEARCH_LENGTH + 1)));
+    }
+
+    @Test
+    void searchMustBeAStringWhenPresent() throws Exception {
+        assertDoesNotThrow(() -> ChatStateValidator.searchText(null));
+        assertDoesNotThrow(() -> ChatStateValidator.searchText(json("null")));
+        assertEquals("bmi", ChatStateValidator.searchText(json("\"bmi\"")));
+        for (String bad : List.of("42", "true", "[]", "{}")) {
+            assertThrows(IllegalArgumentException.class, () -> ChatStateValidator.searchText(json(bad)), bad);
+        }
+    }
+
+    @Test
+    void aNumberOrBooleanSearchOnTheWireIsRefusedAfterRealJsonBinding() throws Exception {
+        for (String search : List.of("42", "4.5", "0", "true", "false")) {
+            ChatRequest request = MAPPER.readValue("{\"message\":\"hi\",\"search\":" + search + "}", ChatRequest.class);
+
+            PicsureException refused = assertThrows(PicsureException.class, () -> ChatStateValidator.requireValid(request), search);
+            assertTrue(refused.getMessage().contains("search"), refused.getMessage());
+        }
+        ChatRequest text = MAPPER.readValue("{\"message\":\"hi\",\"search\":\"42\"}", ChatRequest.class);
+        assertDoesNotThrow(() -> ChatStateValidator.requireValid(text));
+    }
+
+    @Test
+    void aQueryFifteenLevelsDeepWithAFilterAtEachLevelIsValidButTooLargeForTheModel() throws Exception {
+        String filter = "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demo\\\\age\\\\\",\"values\":[\"x\"]}";
+        String clause = filter;
+        for (int level = 0; level < 15; level++) {
+            String operator = level % 2 == 0 ? "AND" : "OR";
+            clause = "{\"operator\":\"" + operator + "\",\"phenotypicClauses\":[" + filter + "," + clause + "]}";
+        }
+
+        ProposeQueryInput query = ChatStateValidator.query(json("{\"phenotypicClause\":" + clause + "}"));
+
+        // 15 nested subqueries, each holding a filter, around one innermost filter.
+        assertEquals(31, query.filterCount());
+        assertTrue(query.exceedsSizeLimit());
     }
 }

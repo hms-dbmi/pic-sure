@@ -39,6 +39,15 @@ public record ProposeQueryInput(List<String> select, Clause phenotypicClause, Li
     public static final int MAX_CLAUSE_DEPTH = 20;
 
     /**
+     * Most filters and subqueries (at any depth) plus genomic filters a query may hold and still be read or proposed by the model. A bigger
+     * query is the researcher's to edit in the UI; it also bounds what {@link CurrentState} sends to the model on every call.
+     */
+    public static final int MAX_FILTERS = 10;
+
+    /** Most {@code select} paths a query may hold and still be read or proposed by the model. */
+    public static final int MAX_SELECT = 100;
+
+    /**
      * Checks this input and every nested clause and genomic filter for completeness.
      *
      * @throws IllegalArgumentException naming the first incomplete field found
@@ -62,6 +71,16 @@ public record ProposeQueryInput(List<String> select, Clause phenotypicClause, Li
                 }
             }
         }
+    }
+
+    /** @return how many filters and subqueries (at any depth) and genomic filters this query holds */
+    public int filterCount() {
+        return (phenotypicClause == null ? 0 : phenotypicClause.count()) + (genomicFilters == null ? 0 : genomicFilters.size());
+    }
+
+    /** @return whether this query is too big for the model to read or propose, by {@link #MAX_FILTERS} or {@link #MAX_SELECT} */
+    public boolean exceedsSizeLimit() {
+        return filterCount() > MAX_FILTERS || (select != null && select.size() > MAX_SELECT);
     }
 
     /**
@@ -98,6 +117,9 @@ public record ProposeQueryInput(List<String> select, Clause phenotypicClause, Li
          * @throws IllegalArgumentException naming the first incomplete field found
          */
         void validate(int depth);
+
+        /** @return this clause plus every clause nested in it */
+        int count();
 
         /**
          * @param rewrite maps a concept path to the form to emit
@@ -140,9 +162,17 @@ public record ProposeQueryInput(List<String> select, Clause phenotypicClause, Li
                     "A " + phenotypicFilterType + " filter takes neither 'values' nor 'min' and 'max'; use FILTER to match on them."
                 );
             }
+            if (min != null && !Double.isFinite(min) || max != null && !Double.isFinite(max)) {
+                throw new IllegalArgumentException("Fields 'min' and 'max' must be finite numbers.");
+            }
             if (min != null && max != null && min > max) {
                 throw new IllegalArgumentException("Field 'min' must not be greater than 'max'.");
             }
+        }
+
+        @Override
+        public int count() {
+            return 1;
         }
 
         @Override
@@ -176,6 +206,11 @@ public record ProposeQueryInput(List<String> select, Clause phenotypicClause, Li
                 }
                 clause.validate(depth + 1);
             }
+        }
+
+        @Override
+        public int count() {
+            return 1 + phenotypicClauses.stream().mapToInt(Clause::count).sum();
         }
 
         @Override
