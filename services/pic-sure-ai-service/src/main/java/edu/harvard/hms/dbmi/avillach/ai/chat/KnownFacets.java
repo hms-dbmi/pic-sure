@@ -1,7 +1,10 @@
 package edu.harvard.hms.dbmi.avillach.ai.chat;
 
-import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -11,15 +14,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 /**
  * The facets seen during one chat turn, used to refuse a proposed facet selection naming a facet the model was never shown -- the facet
  * counterpart of {@link ConceptPaths}. A facet counts as seen if a {@code list_facets} result this turn listed it (a category's
- * {@code name} plus one of its facets' {@code name}) or the researcher's current selection already had it. Since the dictionary answers
- * {@code list_facets} for the caller's own JWT, a facet that came back is both real and visible to this caller. One instance per chat turn;
- * not thread-safe.
+ * {@code name} plus one of its facets' {@code name}; nested facets are listed flat, so they count too) or the researcher's current
+ * selection already had it. Since the dictionary answers {@code list_facets} for the caller's own JWT, a facet that came back is both real
+ * and visible to this caller. One instance per chat turn; not thread-safe.
  */
 final class KnownFacets {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private final Set<FacetSelection> seen = new HashSet<>();
+    private final Set<FacetSelection> seen = new LinkedHashSet<>();
 
     /**
      * Records the researcher's current selection.
@@ -33,8 +36,8 @@ final class KnownFacets {
     }
 
     /**
-     * Records every facet in a {@code list_facets} result: {@code {categories:[{name, facets:[{name}]}]}}. Content that isn't JSON, or isn't
-     * that shape, is ignored.
+     * Records every facet in a {@code list_facets} result: {@code {categories:[{name, facets:[{name}]}]}}. Content that isn't JSON, or
+     * isn't that shape, is ignored.
      *
      * @param json a {@code list_facets} tool result
      */
@@ -76,5 +79,19 @@ final class KnownFacets {
             }
         }
         return null;
+    }
+
+    /**
+     * Lists every seen facet by category, in the order seen, so a refusal can name the real ones: told only to call {@code list_facets},
+     * gpt-oss spent a model call fetching facets the service had already looked up.
+     *
+     * @return e.g. {@code dataset_id: Nhanes, Synthea; data_type: categorical, continuous}, or null when none have been seen
+     */
+    String listing() {
+        Map<String, List<String>> byCategory = new LinkedHashMap<>();
+        seen.forEach(facet -> byCategory.computeIfAbsent(facet.category(), category -> new ArrayList<>()).add(facet.name()));
+        List<String> categories = new ArrayList<>();
+        byCategory.forEach((category, names) -> categories.add(category + ": " + String.join(", ", names)));
+        return categories.isEmpty() ? null : String.join("; ", categories);
     }
 }

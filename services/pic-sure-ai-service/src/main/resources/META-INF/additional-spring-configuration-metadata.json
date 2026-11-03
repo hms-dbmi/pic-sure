@@ -35,6 +35,18 @@
       "type": "java.lang.String",
       "description": "Comma-separated gateway tool names withheld from the model and refused if it requests them anyway. Set blank to offer every tool. Maps from the AI_MCP_EXCLUDED_TOOLS environment variable.",
       "defaultValue": "get_adapter_code"
+    },
+    {
+      "name": "picsure.ai.mcp.connect-timeout",
+      "type": "java.time.Duration",
+      "description": "How long GatewayMcpToolGateway waits to open a connection to the gateway's /mcp route.",
+      "defaultValue": "5s"
+    },
+    {
+      "name": "picsure.ai.mcp.read-timeout",
+      "type": "java.time.Duration",
+      "description": "How long GatewayMcpToolGateway waits for a response from the gateway's /mcp route.",
+      "defaultValue": "20s"
     }
   ]
 }

@@ -5,8 +5,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 
+import edu.harvard.hms.dbmi.avillach.commons.request.AccessLogFilter;
+import edu.harvard.hms.dbmi.avillach.commons.request.RequestFilterRegistrations;
 import edu.harvard.hms.dbmi.avillach.commons.request.RequestIdFilter;
-import edu.harvard.hms.dbmi.avillach.gateway.request.AccessLogFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.request.InboundIdentityHeaderSanitizingFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.request.InternalEndpointGuardFilter;
 
@@ -15,17 +16,12 @@ public class ObservabilityConfig {
 
     @Bean
     public FilterRegistrationBean<RequestIdFilter> requestIdFilter() {
-        FilterRegistrationBean<RequestIdFilter> registration = new FilterRegistrationBean<>(new RequestIdFilter());
-        registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
-        return registration;
+        return RequestFilterRegistrations.requestId();
     }
 
     @Bean
     public FilterRegistrationBean<AccessLogFilter> accessLogFilter() {
-        // One order below RequestIdFilter so every access line carries MDC[requestId].
-        FilterRegistrationBean<AccessLogFilter> registration = new FilterRegistrationBean<>(new AccessLogFilter());
-        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
-        return registration;
+        return RequestFilterRegistrations.accessLog("gateway.access");
     }
 
     /**

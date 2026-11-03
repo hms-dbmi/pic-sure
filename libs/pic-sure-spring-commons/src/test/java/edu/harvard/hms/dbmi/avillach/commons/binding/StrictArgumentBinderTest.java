@@ -115,4 +115,12 @@ class StrictArgumentBinderTest {
         assertThatThrownBy(() -> strict.bindIgnoringUnknown(Map.of("not", true, "name", Map.of("a", 1)), Input.class))
             .isInstanceOf(Failure.class).hasMessage("Field 'name' has the wrong type.");
     }
+
+    @Test
+    void aClauseHintIsAppendedToTheClauseShapeMessageOnly() {
+        StrictArgumentBinder hinted = new StrictArgumentBinder(Clause.class, true, Failure::new, " Leave it out if unused.");
+
+        assertThatThrownBy(() -> hinted.bind(Map.of("clause", Map.of("neither", 1)), Input.class)).hasMessageEndingWith(" Leave it out if unused.");
+        assertThatThrownBy(() -> strict.bind(Map.of("clause", Map.of("neither", 1)), Input.class)).hasMessageEndingWith("phenotypicClauses).");
+    }
 }

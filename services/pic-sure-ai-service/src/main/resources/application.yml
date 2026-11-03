@@ -8,6 +8,8 @@ spring:
         # access-key/secret-key left unset on purpose: the default AWS SDK credential chain
         # (the IAM role bedrock-infra/ provisions) is the credential path. Never set a long-term
         # key here outside local dev.
+        # A stalled Bedrock call otherwise waits the SDK's 90s default before its own retry; normal calls take a few seconds.
+        socket-timeout: ${BEDROCK_SOCKET_TIMEOUT:30s}
       converse:
         chat:
           options:
@@ -48,12 +50,22 @@ picsure:
       # adapter-code tool, which the connected UI has no use for -- its long definition is resent on every model call. Set
       # AI_MCP_EXCLUDED_TOOLS to blank to offer every tool.
       excluded-tools: ${AI_MCP_EXCLUDED_TOOLS:get_adapter_code}
+      # Without a read timeout the HTTP client waits forever, so a stuck dictionary call would hang the whole chat turn.
+      connect-timeout: ${AI_MCP_CONNECT_TIMEOUT:5s}
+      read-timeout: ${AI_MCP_READ_TIMEOUT:20s}
   # The shared X-Application-Token gate for THIS service's own /actuator/** endpoints (see
   # ActuatorSecurityConfig / the shared ActuatorSecurityHelper in pic-sure-spring-commons).
   actuator:
     require-token: ${PICSURE_ACTUATOR_REQUIRE_TOKEN:true}
     token: ${PICSURE_APPLICATION_TOKEN:}
     header-name: X-Application-Token
+
+logging:
+  pattern:
+    # Boot's default level pattern plus the HTTP X-Request-Id (RequestIdFilter, also on the ai.access line) and the chat turn's
+    # ids (MDC set in ToolUseLoopService.handle, blank outside a turn).
+    # Pull one turn out of a full log with: rg '<chatRequestId>' <logfile>
+    level: "%5p [%X{requestId:-}|%X{conversationId:-}|%X{chatRequestId:-}]"
 
 server:
   port: ${SERVER_PORT:8080}
