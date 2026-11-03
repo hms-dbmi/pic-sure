@@ -120,7 +120,7 @@ class ToolAuditAspectTest {
     void listFacetsSendsAFacetSearchEvent() {
         when(dictionary.listFacets(any(), any())).thenReturn(List.of());
 
-        facets.listFacets(context, "sex");
+        facets.listFacets(context, "sex", null, null);
 
         LoggingEvent event = onlyEvent();
         assertThat(event.getEventType()).isEqualTo("SEARCH");
@@ -156,7 +156,7 @@ class ToolAuditAspectTest {
     void anUnexpectedExceptionIsAnInternalFailureEventAndRethrows() {
         when(dictionary.listFacets(any(), any())).thenThrow(new IllegalStateException("boom"));
 
-        assertThatThrownBy(() -> facets.listFacets(context, null)).isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> facets.listFacets(context, null, null, null)).isInstanceOf(RuntimeException.class);
 
         LoggingEvent event = onlyEvent();
         assertThat(event.getMetadata()).containsEntry("outcome", "failure");
@@ -252,7 +252,7 @@ class ToolAuditAspectTest {
         McpTransportContext anonymous =
             McpTransportContext.create(Map.of(CallerHeaders.KEY, new CallerHeaders(null, null, "req-42", null)));
 
-        facets.listFacets(anonymous, null);
+        facets.listFacets(anonymous, null, null, null);
 
         assertThat(onlyEvent().getMetadata()).doesNotContainKey("user_id");
     }
@@ -262,7 +262,7 @@ class ToolAuditAspectTest {
         doThrow(new IllegalStateException("logging is down")).when(client).send(any(), any(), any());
         when(dictionary.listFacets(any(), any())).thenReturn(List.of());
 
-        assertThat(facets.listFacets(context, "sex")).isNotNull();
+        assertThat(facets.listFacets(context, "sex", null, null)).isNotNull();
         assertThatThrownBy(() -> search.searchConcepts(context, " ", null, null, null, null)).isInstanceOf(ToolFailure.class)
             .hasMessage("Give 'search', 'terms', or 'facets'.");
     }
@@ -273,7 +273,7 @@ class ToolAuditAspectTest {
         FacetTool quiet = proxy(new FacetTool(dictionary), new ToolAuditAspect(disabled));
         when(dictionary.listFacets(any(), any())).thenReturn(List.of());
 
-        assertThat(quiet.listFacets(context, null)).isNotNull();
+        assertThat(quiet.listFacets(context, null, null, null)).isNotNull();
     }
 
     @Test
@@ -285,7 +285,7 @@ class ToolAuditAspectTest {
         });
         assertThat(MDC.get(CallerHeaders.MDC_KEY)).isNull();
 
-        facets.listFacets(context, null);
+        facets.listFacets(context, null, null, null);
 
         assertThat(seen.get()).isEqualTo("req-42");
         assertThat(MDC.get(CallerHeaders.MDC_KEY)).isNull();
@@ -302,7 +302,7 @@ class ToolAuditAspectTest {
     void longSearchTextIsTruncatedAndControlCharactersAreReplaced() {
         when(dictionary.listFacets(any(), any())).thenReturn(List.of());
 
-        assertThatThrownBy(() -> facets.listFacets(context, "a\nb" + "x".repeat(600))).isInstanceOf(ToolFailure.class);
+        assertThatThrownBy(() -> facets.listFacets(context, "a\nb" + "x".repeat(600), null, null)).isInstanceOf(ToolFailure.class);
 
         assertThat(String.valueOf(onlyEvent().getMetadata().get("search"))).hasSize(ToolAuditAspect.MAX_FIELD_LENGTH).startsWith("a b");
     }
