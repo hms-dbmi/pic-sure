@@ -11,7 +11,7 @@ import edu.harvard.hms.dbmi.avillach.commons.net.CidrRange;
  * Open-access rate-limit configuration, bound from {@code picsure.gateway.rate-limit.*}. The defaults and the {@code RATE_LIMIT_*} env var
  * names deployments set live in {@code application.yml}. A zero or negative limit, a malformed CIDR in either list, or {@code enabled=true}
  * with no trusted proxies throws during binding and stops the context. The CIDR lists bind straight to {@link CidrRange} through
- * {@code RateLimitConfig}'s converter, which parses each entry once and skips blank ones.
+ * {@code RateLimitConfig}'s converter, which parses each entry once and turns a blank one into null, which this record drops.
  */
 @ConfigurationProperties(prefix = "picsure.gateway.rate-limit")
 public record RateLimitProperties(

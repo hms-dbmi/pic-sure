@@ -307,7 +307,8 @@ class InMemoryRateLimitStoreTest {
             gated.release();
 
             assertThat(afterMidnight.allowed()).as("after midnight").isTrue();
-            // Waits are measured from the held request's own time, so a day plus 1 ms rounds up to 86,401 s.
+            // With one token the held request is rejected either way; this wait is what proves its stale time earned no refill.
+            // It is measured from the held request's own time, so a day plus 1 ms rounds up to 86,401 s (a fresh read gives 86,400).
             assertThat(held.get(10, TimeUnit.SECONDS)).as("held").isEqualTo(RateLimitDecision.rejected(Window.BOTH, 86_401));
         } finally {
             gated.release();
