@@ -49,7 +49,7 @@ public final class ClientIpResolver {
      * Resolves the client once per request per resolver instance, joining repeated {@code X-Forwarded-For} lines in order. Later calls
      * return the same value even if the header changes.
      *
-     * @throws IllegalArgumentException if {@link HttpServletRequest#getRemoteAddr()} is not an IP literal
+     * @throws UnresolvablePeerException if {@link HttpServletRequest#getRemoteAddr()} is not an IP literal
      */
     public ClientIp resolve(HttpServletRequest request) {
         if (request.getAttribute(requestAttribute) instanceof ClientIp client) {
