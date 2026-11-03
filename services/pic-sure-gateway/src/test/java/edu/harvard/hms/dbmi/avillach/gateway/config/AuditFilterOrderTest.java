@@ -63,9 +63,16 @@ class AuditFilterOrderTest {
     }
 
     static FilterRegistrationBean<?> throttleRegistration(GatewaySecurityProperties props, RateLimitStore store, AuditContext audit) {
-        return new SecurityConfig().prevalidationThrottleFilter(
-            props, new PublicEndpointPolicy(List.of()), rateLimit(), new ClientIpResolver(List.of()), store, audit
+        SecurityConfig security = new SecurityConfig();
+        return security.prevalidationThrottleFilter(
+            security.openAccessRequests(props, new PublicEndpointPolicy(List.of())), rateLimit(), new ClientIpResolver(List.of()), store,
+            audit
         );
+    }
+
+    static FilterRegistrationBean<?> openAccessRegistration(PsamaClient psama, AuditContext audit, GatewaySecurityProperties props) {
+        SecurityConfig security = new SecurityConfig();
+        return security.openAccessFilter(psama, audit, security.openAccessRequests(props, new PublicEndpointPolicy(List.of())));
     }
 
     private static RateLimitProperties rateLimit() {
@@ -97,8 +104,7 @@ class AuditFilterOrderTest {
         when(psama.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(false)); // PSAMA denies the no-bearer request
         AuditContext audit = new AuditContext();
 
-        FilterRegistrationBean<?> openAccess =
-            new SecurityConfig().openAccessFilter(psama, audit, props(true), new PublicEndpointPolicy(List.of()));
+        FilterRegistrationBean<?> openAccess = openAccessRegistration(psama, audit, props(true));
 
         MockHttpServletResponse response = new MockHttpServletResponse();
         containerOrderedChain(List.of(auditRegistration(logging, audit), openAccess))
@@ -119,8 +125,7 @@ class AuditFilterOrderTest {
         LoggingClient logging = enabledLoggingClient();
         PsamaClient psama = mock(PsamaClient.class);
         AuditContext audit = new AuditContext();
-        FilterRegistrationBean<?> openAccess =
-            new SecurityConfig().openAccessFilter(psama, audit, props(true), new PublicEndpointPolicy(List.of()));
+        FilterRegistrationBean<?> openAccess = openAccessRegistration(psama, audit, props(true));
 
         MockHttpServletResponse response = new MockHttpServletResponse();
         containerOrderedChain(
@@ -141,8 +146,7 @@ class AuditFilterOrderTest {
 
         // Open access disabled, so the no-bearer request reaches introspection and denies as missing_token.
         SecurityConfig security = new SecurityConfig();
-        FilterRegistrationBean<?> openAccess =
-            security.openAccessFilter(mock(PsamaClient.class), audit, props(false), new PublicEndpointPolicy(List.of()));
+        FilterRegistrationBean<?> openAccess = openAccessRegistration(mock(PsamaClient.class), audit, props(false));
         FilterRegistrationBean<?> introspection =
             security.introspectionFilter(mock(PsamaClient.class), audit, new PublicEndpointPolicy(List.of()));
 
@@ -166,9 +170,8 @@ class AuditFilterOrderTest {
 
         assertThat(auditOrder).isLessThan(security.bufferingFilter(props(true), new SimpleMeterRegistry()).getOrder())
             .isLessThan(throttleRegistration(props(true), ALWAYS_BREACHED).getOrder())
-            .isLessThan(
-                security.openAccessFilter(mock(PsamaClient.class), audit, props(true), new PublicEndpointPolicy(List.of())).getOrder()
-            ).isLessThan(security.introspectionFilter(mock(PsamaClient.class), audit, new PublicEndpointPolicy(List.of())).getOrder())
+            .isLessThan(openAccessRegistration(mock(PsamaClient.class), audit, props(true)).getOrder())
+            .isLessThan(security.introspectionFilter(mock(PsamaClient.class), audit, new PublicEndpointPolicy(List.of())).getOrder())
             .isLessThan(new ObservabilityConfig().internalEndpointGuardFilter().getOrder())
             .isLessThan(security.perKeyRateLimitFilter(rateLimit(), new ClientIpResolver(List.of()), ALWAYS_BREACHED, audit).getOrder());
 

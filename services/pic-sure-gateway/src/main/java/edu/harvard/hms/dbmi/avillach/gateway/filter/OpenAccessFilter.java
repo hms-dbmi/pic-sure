@@ -75,10 +75,10 @@ public class OpenAccessFilter extends OncePerRequestFilter {
     private final AuditContext audit;
     private final OpenAccessRequests openAccessRequests;
 
-    public OpenAccessFilter(PsamaClient psama, AuditContext audit, boolean openAccessEnabled, PublicEndpointPolicy publicEndpoints) {
+    public OpenAccessFilter(PsamaClient psama, AuditContext audit, OpenAccessRequests openAccessRequests) {
         this.psama = psama;
         this.audit = audit;
-        this.openAccessRequests = new OpenAccessRequests(openAccessEnabled, publicEndpoints);
+        this.openAccessRequests = openAccessRequests;
     }
 
     /**

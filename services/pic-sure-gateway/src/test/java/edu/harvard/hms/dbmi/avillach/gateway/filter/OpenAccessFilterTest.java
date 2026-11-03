@@ -29,6 +29,7 @@ import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionTokenRejectedException;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessRequests;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessValidation;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
@@ -40,7 +41,7 @@ import jakarta.servlet.http.HttpServletResponse;
 class OpenAccessFilterTest {
 
     private OpenAccessFilter filter(PsamaClient client, AuditContext ctx, boolean enabled) {
-        return new OpenAccessFilter(client, ctx, enabled, new PublicEndpointPolicy(ShippedPublicRoutes.routes()));
+        return new OpenAccessFilter(client, ctx, new OpenAccessRequests(enabled, new PublicEndpointPolicy(ShippedPublicRoutes.routes())));
     }
 
     @Test

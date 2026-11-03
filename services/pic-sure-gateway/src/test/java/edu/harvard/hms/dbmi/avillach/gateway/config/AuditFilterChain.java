@@ -14,6 +14,7 @@ import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.net.CidrRange;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessRequests;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.AuditFilterConfig;
@@ -58,14 +59,15 @@ final class AuditFilterChain {
         PublicEndpointPolicy publicEndpoints = new PublicEndpointPolicy(List.of());
         ClientIpResolver clientIps = new ClientIpResolver(trustedProxies.stream().map(CidrRange::parse).toList());
         SecurityConfig security = new SecurityConfig();
+        OpenAccessRequests openAccessRequests = security.openAccessRequests(props, publicEndpoints);
         ObservabilityConfig observability = new ObservabilityConfig();
         AuditFilterConfig auditConfig = new AuditFilterConfig();
         List<FilterRegistrationBean<?>> registrations = List.of(
             observability.requestIdFilter(), observability.accessLogFilter(),
             auditConfig.auditLoggingFilter(logging, auditConfig.auditRouteTable(), audit, rateLimit, clientIps),
             security.bufferingFilter(props, new SimpleMeterRegistry()),
-            security.prevalidationThrottleFilter(props, publicEndpoints, rateLimit, clientIps, store, audit),
-            observability.internalEndpointGuardFilter(), security.openAccessFilter(psama, audit, props, publicEndpoints),
+            security.prevalidationThrottleFilter(openAccessRequests, rateLimit, clientIps, store, audit),
+            observability.internalEndpointGuardFilter(), security.openAccessFilter(psama, audit, openAccessRequests),
             security.perKeyRateLimitFilter(rateLimit, clientIps, store, audit), observability.inboundIdentityHeaderSanitizingFilter()
         );
         Filter[] filters = registrations.stream().sorted(Comparator.comparingInt(FilterRegistrationBean::getOrder))

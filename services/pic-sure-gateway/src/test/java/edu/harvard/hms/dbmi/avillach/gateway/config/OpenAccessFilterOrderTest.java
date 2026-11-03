@@ -25,7 +25,6 @@ import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessValidation;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.OpenAccessFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitDecision;
 import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitProperties;
@@ -62,10 +61,8 @@ class OpenAccessFilterOrderTest {
         int throttle = AuditFilterOrderTest.throttleRegistration(props, subject -> null).getOrder();
 
         assertThat(throttle).isGreaterThan(new SecurityConfig().bufferingFilter(props, new SimpleMeterRegistry()).getOrder())
-            .isGreaterThan(new ObservabilityConfig().internalEndpointGuardFilter().getOrder()).isLessThan(
-                new SecurityConfig()
-                    .openAccessFilter(mock(PsamaClient.class), new AuditContext(), props, new PublicEndpointPolicy(List.of())).getOrder()
-            );
+            .isGreaterThan(new ObservabilityConfig().internalEndpointGuardFilter().getOrder())
+            .isLessThan(AuditFilterOrderTest.openAccessRegistration(mock(PsamaClient.class), new AuditContext(), props).getOrder());
     }
 
     @Test
@@ -78,10 +75,9 @@ class OpenAccessFilterOrderTest {
         int perKey = new SecurityConfig()
             .perKeyRateLimitFilter(rateLimit, new ClientIpResolver(List.of()), subject -> null, new AuditContext()).getOrder();
 
-        assertThat(perKey).isGreaterThan(
-            new SecurityConfig().openAccessFilter(mock(PsamaClient.class), new AuditContext(), props, new PublicEndpointPolicy(List.of()))
-                .getOrder()
-        ).isLessThan(new ObservabilityConfig().inboundIdentityHeaderSanitizingFilter().getOrder());
+        assertThat(perKey)
+            .isGreaterThan(AuditFilterOrderTest.openAccessRegistration(mock(PsamaClient.class), new AuditContext(), props).getOrder())
+            .isLessThan(new ObservabilityConfig().inboundIdentityHeaderSanitizingFilter().getOrder());
     }
 
     @Test
@@ -174,11 +170,10 @@ class OpenAccessFilterOrderTest {
 
     private static List<FilterRegistrationBean<? extends Filter>> assembledRegistrations(PsamaClient psama) {
         GatewaySecurityProperties props = props();
-        SecurityConfig securityConfig = new SecurityConfig();
         ObservabilityConfig observabilityConfig = new ObservabilityConfig();
         return List.of(
             observabilityConfig.internalEndpointGuardFilter(),
-            securityConfig.openAccessFilter(psama, new AuditContext(), props, new PublicEndpointPolicy(List.of())),
+            AuditFilterOrderTest.openAccessRegistration(psama, new AuditContext(), props),
             observabilityConfig.inboundIdentityHeaderSanitizingFilter()
         );
     }

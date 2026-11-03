@@ -29,6 +29,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessRequests;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.ShippedPublicRoutes;
@@ -160,7 +161,7 @@ class PerKeyRateLimitFilterTest {
             "http://127.0.0.1:" + psama.port() + "/open/validate", "service-token"
         );
         return new Gateway(
-            new OpenAccessFilter(client, new AuditContext(), true, publicEndpoints),
+            new OpenAccessFilter(client, new AuditContext(), new OpenAccessRequests(true, publicEndpoints)),
             new PerKeyRateLimitFilter(props, resolver, recording, new AuditContext())
         );
     }

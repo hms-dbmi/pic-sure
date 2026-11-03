@@ -110,10 +110,10 @@ class PrevalidationThrottleFilterTest {
             RestClient.builder().build(), "http://127.0.0.1:" + psama.port() + "/token/introspect",
             "http://127.0.0.1:" + psama.port() + "/open/validate", "service-token"
         );
+        OpenAccessRequests openAccessRequests = new OpenAccessRequests(openAccessEnabled, publicEndpoints);
         return new Gateway(
-            new PrevalidationThrottleFilter(
-                props, new OpenAccessRequests(openAccessEnabled, publicEndpoints), resolver, recording, new AuditContext()
-            ), new OpenAccessFilter(client, new AuditContext(), openAccessEnabled, publicEndpoints)
+            new PrevalidationThrottleFilter(props, openAccessRequests, resolver, recording, new AuditContext()),
+            new OpenAccessFilter(client, new AuditContext(), openAccessRequests)
         );
     }
 

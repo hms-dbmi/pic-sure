@@ -93,6 +93,12 @@ public class SecurityConfig {
         return new PublicEndpointPolicy(props.publicRoutes());
     }
 
+    /** The one open-access classifier, shared so the stage-1 throttle counts exactly the requests {@code OpenAccessFilter} validates. */
+    @Bean
+    OpenAccessRequests openAccessRequests(GatewaySecurityProperties props, PublicEndpointPolicy publicEndpoints) {
+        return new OpenAccessRequests(props.openAccessEnabled(), publicEndpoints);
+    }
+
     @Bean
     FilterRegistrationBean<BufferingFilter> bufferingFilter(GatewaySecurityProperties props, MeterRegistry meterRegistry) {
         var r = new FilterRegistrationBean<>(new BufferingFilter(props.maxBodyBytes(), meterRegistry));
@@ -103,10 +109,9 @@ public class SecurityConfig {
 
     @Bean
     FilterRegistrationBean<PrevalidationThrottleFilter> prevalidationThrottleFilter(
-        GatewaySecurityProperties props, PublicEndpointPolicy publicEndpoints, RateLimitProperties rateLimit, ClientIpResolver clientIps,
-        RateLimitStore store, AuditContext audit
+        OpenAccessRequests openAccessRequests, RateLimitProperties rateLimit, ClientIpResolver clientIps, RateLimitStore store,
+        AuditContext audit
     ) {
-        var openAccessRequests = new OpenAccessRequests(props.openAccessEnabled(), publicEndpoints);
         var r = new FilterRegistrationBean<>(new PrevalidationThrottleFilter(rateLimit, openAccessRequests, clientIps, store, audit));
         // After InternalEndpointGuardFilter (15), which 404s without calling PSAMA, so internal-path probes spend no budget.
         // Before OpenAccessFilter (20), so a throttled request never reaches PSAMA.
@@ -117,9 +122,9 @@ public class SecurityConfig {
 
     @Bean
     FilterRegistrationBean<OpenAccessFilter> openAccessFilter(
-        PsamaClient client, AuditContext audit, GatewaySecurityProperties props, PublicEndpointPolicy publicEndpoints
+        PsamaClient client, AuditContext audit, OpenAccessRequests openAccessRequests
     ) {
-        var r = new FilterRegistrationBean<>(new OpenAccessFilter(client, audit, props.openAccessEnabled(), publicEndpoints));
+        var r = new FilterRegistrationBean<>(new OpenAccessFilter(client, audit, openAccessRequests));
         r.setOrder(20);
         r.addUrlPatterns("/*");
         return r;
