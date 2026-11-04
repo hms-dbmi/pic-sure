@@ -5,6 +5,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Value;
+
+import edu.harvard.hms.dbmi.avillach.commons.audit.ClientTypeAllowlist;
 import edu.harvard.hms.dbmi.avillach.commons.request.RequestIdFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.request.AccessLogFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.request.InboundIdentityHeaderSanitizingFilter;
@@ -12,6 +17,15 @@ import edu.harvard.hms.dbmi.avillach.gateway.request.InternalEndpointGuardFilter
 
 @Configuration
 public class ObservabilityConfig {
+
+    /**
+     * The {@code X-Client-Type} values clients may present, from {@code picsure.gateway.allowed-client-types}. Both the audit filter and
+     * the header sanitizer read it, so an unlisted value is neither audited as a caller nor forwarded downstream.
+     */
+    @Bean
+    public ClientTypeAllowlist clientTypeAllowlist(@Value("${picsure.gateway.allowed-client-types}") List<String> allowed) {
+        return new ClientTypeAllowlist(allowed);
+    }
 
     @Bean
     public FilterRegistrationBean<RequestIdFilter> requestIdFilter() {
@@ -30,15 +44,18 @@ public class ObservabilityConfig {
 
     /**
      * Registered UNCONDITIONALLY, as an independent trust boundary alongside the always-on DB-free auth chain in {@code SecurityConfig}: a
-     * client must never be able to inject the gateway-owned {@code X-User-*} identity headers. An {@code Authorization} header carrying a PSAMA
-     * API key is removed from every request except one to the MCP endpoint, {@code /mcp}, where it is kept because {@code pic-sure-mcp}
-     * forwards it on its loop-back calls. It runs after {@code OpenAccessFilter} so that filter can consume the key for PSAMA before it is removed from the
-     * downstream-facing request. See {@link InboundIdentityHeaderSanitizingFilter}'s Javadoc for the trust-boundary rationale.
+     * client must never be able to inject the gateway-owned {@code X-User-*} identity headers. An {@code Authorization} header carrying a
+     * PSAMA API key is removed from every request except one to the MCP endpoint, {@code /mcp}, where it is kept because
+     * {@code pic-sure-mcp} forwards it on its loop-back calls. It runs after {@code OpenAccessFilter} so that filter can consume the key
+     * for PSAMA before it is removed from the downstream-facing request. See {@link InboundIdentityHeaderSanitizingFilter}'s Javadoc for
+     * the trust-boundary rationale.
      */
     @Bean
-    public FilterRegistrationBean<InboundIdentityHeaderSanitizingFilter> inboundIdentityHeaderSanitizingFilter() {
+    public FilterRegistrationBean<InboundIdentityHeaderSanitizingFilter> inboundIdentityHeaderSanitizingFilter(
+        ClientTypeAllowlist clientTypes
+    ) {
         FilterRegistrationBean<InboundIdentityHeaderSanitizingFilter> registration =
-            new FilterRegistrationBean<>(new InboundIdentityHeaderSanitizingFilter());
+            new FilterRegistrationBean<>(new InboundIdentityHeaderSanitizingFilter(clientTypes));
         registration.setOrder(25);
         return registration;
     }

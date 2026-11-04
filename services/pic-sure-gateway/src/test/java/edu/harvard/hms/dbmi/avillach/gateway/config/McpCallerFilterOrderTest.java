@@ -21,6 +21,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import edu.harvard.hms.dbmi.avillach.commons.audit.ClientTypeAllowlist;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
@@ -60,7 +61,8 @@ class McpCallerFilterOrderTest {
     private List<FilterRegistrationBean<?>> gatewayChain(PsamaClient psama, boolean openAccessEnabled) {
         PublicEndpointPolicy noPublicRoutes = new PublicEndpointPolicy(List.of());
         return List.of(
-            observability.inboundIdentityHeaderSanitizingFilter(), security.introspectionFilter(psama, audit, noPublicRoutes),
+            observability.inboundIdentityHeaderSanitizingFilter(ClientTypeAllowlist.DEFAULT),
+            security.introspectionFilter(psama, audit, noPublicRoutes),
             security.openAccessFilter(psama, audit, props(openAccessEnabled), noPublicRoutes), mcpRegistration(),
             observability.internalEndpointGuardFilter()
         );
@@ -88,7 +90,7 @@ class McpCallerFilterOrderTest {
         assertThat(order).isGreaterThan(observability.internalEndpointGuardFilter().getOrder())
             .isLessThan(
                 security.openAccessFilter(mock(PsamaClient.class), audit, props(true), new PublicEndpointPolicy(List.of())).getOrder()
-            ).isLessThan(observability.inboundIdentityHeaderSanitizingFilter().getOrder())
+            ).isLessThan(observability.inboundIdentityHeaderSanitizingFilter(ClientTypeAllowlist.DEFAULT).getOrder())
             .isLessThan(security.introspectionFilter(mock(PsamaClient.class), audit, new PublicEndpointPolicy(List.of())).getOrder());
     }
 
@@ -158,7 +160,8 @@ class McpCallerFilterOrderTest {
         LoggingClient logging = mock(LoggingClient.class);
         when(logging.isEnabled()).thenReturn(true);
         AuditFilterConfig auditConfig = new AuditFilterConfig();
-        FilterRegistrationBean<?> auditRegistration = auditConfig.auditLoggingFilter(logging, auditConfig.auditRouteTable(), audit);
+        FilterRegistrationBean<?> auditRegistration =
+            auditConfig.auditLoggingFilter(logging, auditConfig.auditRouteTable(), audit, ClientTypeAllowlist.DEFAULT);
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/mcp");
         request.addHeader("X-Client-Type", "PYTHON_ADAPTER");
 
@@ -172,11 +175,30 @@ class McpCallerFilterOrderTest {
     }
 
     @Test
+    void unverifiedAdapterRequestIsAuditedWithItsClaimedClientTypeAsCaller() throws Exception {
+        LoggingClient logging = mock(LoggingClient.class);
+        when(logging.isEnabled()).thenReturn(true);
+        AuditFilterConfig auditConfig = new AuditFilterConfig();
+        FilterRegistrationBean<?> auditRegistration =
+            auditConfig.auditLoggingFilter(logging, auditConfig.auditRouteTable(), audit, ClientTypeAllowlist.DEFAULT);
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
+        request.addHeader("X-Client-Type", "PYTHON_ADAPTER");
+
+        containerOrderedChain(List.of(auditRegistration, mcpRegistration()), capturing(new AtomicReference<>()))
+            .doFilter(request, new MockHttpServletResponse());
+
+        ArgumentCaptor<LoggingEvent> emitted = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(logging).send(emitted.capture());
+        assertThat(emitted.getValue().getCaller()).isEqualTo("PYTHON_ADAPTER");
+    }
+
+    @Test
     void rejectedCredentialIsAuditedAsAFailureWithoutTheTokenValue() throws Exception {
         LoggingClient logging = mock(LoggingClient.class);
         when(logging.isEnabled()).thenReturn(true);
         AuditFilterConfig auditConfig = new AuditFilterConfig();
-        FilterRegistrationBean<?> auditRegistration = auditConfig.auditLoggingFilter(logging, auditConfig.auditRouteTable(), audit);
+        FilterRegistrationBean<?> auditRegistration =
+            auditConfig.auditLoggingFilter(logging, auditConfig.auditRouteTable(), audit, ClientTypeAllowlist.DEFAULT);
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
         request.addHeader(McpCallerFilter.TOKEN_HEADER, "leaked-looking-value");
 
@@ -185,7 +207,7 @@ class McpCallerFilterOrderTest {
 
         ArgumentCaptor<LoggingEvent> emitted = ArgumentCaptor.forClass(LoggingEvent.class);
         verify(logging).send(emitted.capture());
-        assertThat(emitted.getValue().getCaller()).isNull();
+        assertThat(emitted.getValue().getCaller()).isEqualTo("UNKNOWN");
         assertThat(emitted.getValue().getMetadata()).containsEntry("auth_result", "failure")
             .containsEntry("auth_failure_reason", "invalid_service_credential");
         String serializedEvent = new ObjectMapper().writeValueAsString(emitted.getValue());

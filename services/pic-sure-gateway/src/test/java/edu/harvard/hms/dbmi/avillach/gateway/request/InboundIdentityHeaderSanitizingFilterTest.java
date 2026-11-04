@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
+import edu.harvard.hms.dbmi.avillach.commons.audit.VerifiedCaller;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.McpCallerFilter;
 import jakarta.servlet.http.HttpServletRequest;
@@ -91,18 +92,77 @@ class InboundIdentityHeaderSanitizingFilterTest {
     }
 
     @Test
-    void stripsReservedServiceClientTypeFromExternalRequests() throws Exception {
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/auth/user/me/consents");
-        request.addHeader("x-client-type", "SERVICE");
+    void rejectsEveryClientTypeThatIsNotOnTheAllowlistWith400() throws Exception {
+        List<String> unexpected =
+            List.of("curl-script", "SERVICE", "mcp", "MCP", "PYTHON_ADAPTER, curl-script", "PYTHON_ADAPTER,service", " Service ,R_ADAPTER");
+        for (String value : unexpected) {
+            MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
+            request.addHeader("X-Client-Type", value);
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            AtomicReference<HttpServletRequest> captured = new AtomicReference<>();
+
+            filter.doFilter(request, response, (req, resp) -> captured.set((HttpServletRequest) req));
+
+            assertThat(response.getStatus()).as(value).isEqualTo(400);
+            assertThat(response.getContentAsString()).as(value).contains("unexpected_caller_type");
+            assertThat(captured.get()).as(value).isNull();
+        }
+    }
+
+    @Test
+    void rejectsARequestWhenAnyOfSeveralHeaderValuesIsUnexpected() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
+        request.addHeader("X-Client-Type", "PYTHON_ADAPTER");
+        request.addHeader("X-Client-Type", "mcp");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
-        AtomicReference<HttpServletRequest> captured = new AtomicReference<>();
-        filter.doFilter(request, response, (req, resp) -> captured.set((HttpServletRequest) req));
+        filter.doFilter(request, response, (req, resp) -> {
+        });
 
-        HttpServletRequest wrapped = captured.get();
-        assertThat(wrapped.getHeader("X-Client-Type")).isNull();
-        assertThat(wrapped.getHeaders("x-client-type").hasMoreElements()).isFalse();
-        assertThat(Collections.list(wrapped.getHeaderNames())).doesNotContain("x-client-type");
+        assertThat(response.getStatus()).isEqualTo(400);
+    }
+
+    @Test
+    void passesARequestWithAnAbsentOrBlankClientType() throws Exception {
+        MockHttpServletRequest absent = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
+        MockHttpServletRequest blank = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
+        blank.addHeader("X-Client-Type", "  ");
+
+        assertThat(sanitize(absent)).isNotNull();
+        assertThat(sanitize(blank)).isNotNull();
+    }
+
+    @Test
+    void aVerifiedMcpCallerMayPresentMcpButItIsHiddenFromTheWrappedRequest() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
+        request.addHeader("X-Client-Type", "mcp");
+        VerifiedCaller.set(request, McpCallerFilter.CALLER);
+
+        HttpServletRequest downstream = sanitize(request);
+
+        assertThat(downstream).isNotNull();
+        assertThat(downstream.getHeader("X-Client-Type")).isNull();
+    }
+
+    @Test
+    void keepsEveryClientTypeOnTheAllowlist() throws Exception {
+        for (String value : new String[] {"PYTHON_ADAPTER", "r_adapter", "FRONTEND"}) {
+            MockHttpServletRequest request = new MockHttpServletRequest("GET", "/query/sync");
+            request.addHeader("X-Client-Type", value);
+            AtomicReference<HttpServletRequest> captured = new AtomicReference<>();
+
+            filter.doFilter(request, new MockHttpServletResponse(), (req, resp) -> captured.set((HttpServletRequest) req));
+
+            assertThat(captured.get().getHeader("X-Client-Type")).isEqualToIgnoringCase(value);
+        }
+    }
+
+    @Test
+    void rewritesAnAcceptedClientTypeToItsListedSpelling() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/query/sync");
+        request.addHeader("X-Client-Type", "r_adapter");
+
+        assertThat(sanitize(request).getHeader("X-Client-Type")).isEqualTo("R_ADAPTER");
     }
 
     @Test
@@ -240,50 +300,12 @@ class InboundIdentityHeaderSanitizingFilterTest {
     }
 
     @Test
-    void stripsClientSuppliedMcpClientTypeRegardlessOfCase() throws Exception {
-        for (String path : List.of(McpCallerFilter.MCP_PATH, "/hpds/auth/query/sync")) {
-            MockHttpServletRequest request = new MockHttpServletRequest("POST", path);
-            request.addHeader("x-client-type", "MCP");
-
-            HttpServletRequest downstream = sanitize(request);
-
-            assertThat(downstream.getHeader("X-Client-Type")).as(path).isNull();
-            assertThat(downstream.getHeaders("x-client-type").hasMoreElements()).as(path).isFalse();
-            assertThat(Collections.list(downstream.getHeaderNames())).as(path).doesNotContain("x-client-type");
-        }
-    }
-
-    @Test
-    void stripsClientTypeWhenAnyOfSeveralValuesIsMcp() throws Exception {
+    void keepsACommaJoinedClientTypeWhoseEntriesAreAllListed() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
-        request.addHeader("X-Client-Type", "PYTHON_ADAPTER");
-        request.addHeader("X-Client-Type", "mcp");
+        request.addHeader("X-Client-Type", "PYTHON_ADAPTER, FRONTEND");
 
         HttpServletRequest downstream = sanitize(request);
 
-        assertThat(downstream.getHeader("X-Client-Type")).isNull();
-        assertThat(downstream.getHeaders("X-Client-Type").hasMoreElements()).isFalse();
-        assertThat(Collections.list(downstream.getHeaderNames())).doesNotContain("X-Client-Type");
-
-        for (String joined : List.of("PYTHON_ADAPTER, mcp", "PYTHON_ADAPTER,service", " Service ,R_ADAPTER", "R_ADAPTER, MCP")) {
-            MockHttpServletRequest single = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
-            single.addHeader("X-Client-Type", joined);
-
-            HttpServletRequest sanitized = sanitize(single);
-
-            assertThat(sanitized.getHeader("X-Client-Type")).as(joined).isNull();
-            assertThat(sanitized.getHeaders("X-Client-Type").hasMoreElements()).as(joined).isFalse();
-            assertThat(Collections.list(sanitized.getHeaderNames())).as(joined).doesNotContain("X-Client-Type");
-        }
-    }
-
-    @Test
-    void keepsACommaJoinedClientTypeWithNoReservedEntry() throws Exception {
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
-        request.addHeader("X-Client-Type", "PYTHON_ADAPTER, mcp-client, services");
-
-        HttpServletRequest downstream = sanitize(request);
-
-        assertThat(downstream.getHeader("X-Client-Type")).isEqualTo("PYTHON_ADAPTER, mcp-client, services");
+        assertThat(downstream.getHeader("X-Client-Type")).isEqualTo("PYTHON_ADAPTER, FRONTEND");
     }
 }

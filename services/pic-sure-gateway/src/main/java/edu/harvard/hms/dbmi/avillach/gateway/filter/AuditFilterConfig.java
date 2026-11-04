@@ -11,14 +11,16 @@ import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditLoggingFilter;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditRoute;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditRouteTable;
+import edu.harvard.hms.dbmi.avillach.commons.audit.ClientTypeAllowlist;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingClientFactory;
 
 /**
  * Wires the audit-emission filter: {@link LoggingClient} (env-driven, no-op when unconfigured), the verified route table, and the
  * {@link AuditLoggingFilter} registration itself at {@link #AUDIT_FILTER_ORDER}, ahead of every filter that can short-circuit the chain.
- * The filter records an event's {@code caller} only from the {@code VerifiedCaller} attribute a credential-checking filter sets, such as
- * {@code McpCallerFilter}; a client-sent {@code X-Client-Type} is kept as metadata {@code client_type_claimed}.
+ * The filter records an event's {@code caller} from the {@code VerifiedCaller} attribute a credential-checking filter sets, such as
+ * {@code McpCallerFilter}, and otherwise from the client-sent {@code X-Client-Type} (for example {@code PYTHON_ADAPTER}) when that value is
+ * on the {@link ClientTypeAllowlist}. The raw header is also kept as metadata {@code client_type_claimed}.
  */
 @Configuration
 public class AuditFilterConfig {
@@ -59,11 +61,13 @@ public class AuditFilterConfig {
     }
 
     @Bean
-    public FilterRegistrationBean<AuditLoggingFilter> auditLoggingFilter(LoggingClient client, AuditRouteTable routes, AuditContext audit) {
+    public FilterRegistrationBean<AuditLoggingFilter> auditLoggingFilter(
+        LoggingClient client, AuditRouteTable routes, AuditContext audit, ClientTypeAllowlist clientTypes
+    ) {
         // The base filter skips paths ending in /system/status or /openapi.json and paths containing /info/,
         // /bin/continuous, or /logging. Gateway-local actuator and API-documentation paths are also skipped.
         AuditLoggingFilter filter = new AuditLoggingFilter(
-            client, routes, audit, List.of("/info/", "/bin/continuous", "/logging", "/actuator", "/openapi", "/swagger-ui"), true
+            client, routes, audit, List.of("/info/", "/bin/continuous", "/logging", "/actuator", "/openapi", "/swagger-ui"), clientTypes
         );
         var registration = new FilterRegistrationBean<>(filter);
         registration.setOrder(AUDIT_FILTER_ORDER);

@@ -6,8 +6,9 @@ import jakarta.servlet.ServletRequest;
 
 /**
  * Request attribute holding a caller type that a credential-checking filter has verified. Only a filter that has proven where the request
- * came from should call {@link #set(ServletRequest, String)}. An {@link AuditLoggingFilter} built with {@code verifiedCallerOnly} records
- * this value as the audit event's {@code caller} and never trusts the client-supplied {@code X-Client-Type} header for it.
+ * came from should call {@link #set(ServletRequest, String)}. An {@link AuditLoggingFilter} built with a {@link ClientTypeAllowlist}
+ * records this value as the audit event's {@code caller} and never accepts a reserved value such as {@code mcp} from the client-supplied
+ * {@code X-Client-Type} header.
  */
 public final class VerifiedCaller {
 
