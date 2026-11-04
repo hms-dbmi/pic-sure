@@ -42,6 +42,7 @@ public class AuditController {
     }
 
     /** Bind as String so valid JSON remains accepted without Content-Type and the dedicated audit mapper controls parsing constraints. */
+    @edu.harvard.dbmi.avillach.logging.AuditEvent(type = "OTHER", action = "logging.audit")
     @PostMapping("/audit")
     public ResponseEntity<Map<String, String>> audit(
         @RequestBody String body, @RequestHeader(value = "Authorization", required = false) String authorizationHeader,

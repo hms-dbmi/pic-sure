@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.logging.web;
 
+import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.dbmi.avillach.logging.service.ReadinessState;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +18,7 @@ public class HealthController {
         this.readinessState = readinessState;
     }
 
+    @AuditEvent(type = "OTHER", action = "logging.health")
     @GetMapping("/health")
     public ResponseEntity<Map<String, String>> health() {
         if (readinessState.isReady()) {
