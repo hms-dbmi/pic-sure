@@ -22,17 +22,21 @@ final class ProposalRules {
 
     /** Refusal for a filterless query the researcher did not ask for, when there is no search to show instead. */
     static final String NO_FILTERS_TO_KEEP =
-        "This proposal only selects variables, but the researcher did not ask to select, add, include, or export any. Their selected "
-            + "variables are what they export, so they change only when asked. To show variables, call propose_query again with only "
-            + "search, set to the search text that found them, and no query. To change their cohort, include at least one filter.";
+        "This proposal has no filters, so it would export the selected variables for every participant the researcher can access, and "
+            + "nothing in their message asks to select or export variables. To show variables, call propose_query again with only search, "
+            + "set to the search text that found them, and no query. To select variables, the researcher must ask for that. To change "
+            + "their cohort, include at least one filter.";
 
     /**
      * The researcher asking for variables in their export. A select-only query is a real export (with no filters, of every participant
      * they can access), but gpt-oss also wrote nearly every lookup as one, so it is taken as an export only when the researcher's own
-     * words ask for one.
+     * words ask for one. "select", "export", "choose" and "pick" ask on their own; "add" and "include" also start filters ("add a filter",
+     * "include only women"), so they count only when followed by what a selection holds.
      */
-    private static final Pattern ASKS_TO_SELECT =
-        Pattern.compile("(?i)\\b(?:select(?:ed|ing)?|add(?:ed|ing)?|include|including|export(?:ed|ing)?|choose|pick)\\b");
+    private static final Pattern ASKS_TO_SELECT = Pattern.compile(
+        "(?i)\\b(?:select(?:ed|ing)?|export(?:ed|ing)?|choose|pick)\\b"
+            + "|\\b(?:add(?:ed|ing)?|includ(?:e|ing))\\b[^.!?\\n]{0,60}?\\b(?:variables?|columns?|fields?|data|selection|export)\\b"
+    );
 
     /** @return whether the researcher's message asks to change their selected variables */
     static boolean asksToSelect(String message) {

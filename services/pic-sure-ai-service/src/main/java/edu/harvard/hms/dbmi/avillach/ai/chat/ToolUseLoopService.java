@@ -58,7 +58,7 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
  * iteration cap is hit, whatever was already accepted still counts; a proposal still being repaired simply never was.
  *
  * <p>A turn starts from its conversation's earlier turns ({@link EarlierTurns}) and, once it has a response, is added to them. A turn that
- * fails is not added, so its retry starts from the same place.
+ * fails, or ends in the fallback reply, is not added, so its retry starts from the same place.
  */
 @Service
 class ToolUseLoopService implements ChatOrchestrator {
@@ -254,10 +254,14 @@ class ToolUseLoopService implements ChatOrchestrator {
         if (response.search() != null) {
             proposed.add("search");
         }
-        conversations.append(conversation, new ConversationTurn(request.message(), response.response(), state.toolOutputs, response.query()));
+        boolean fallback = FALLBACK_TEXT.equals(response.response());
+        // A fallback is no answer to replay: the model would read it as its own earlier reply.
+        if (!fallback) {
+            conversations.append(conversation, new ConversationTurn(request.message(), response.response(), state.toolOutputs, response.query()));
+        }
         log.info(
             "Chat turn: outcome={} stop={} proposed=[{}] earlierTurns={} userId={} {}",
-            FALLBACK_TEXT.equals(response.response()) ? "fallback" : "answered", stop.name().toLowerCase(Locale.ROOT),
+            fallback ? "fallback" : "answered", stop.name().toLowerCase(Locale.ROOT),
             String.join(", ", proposed), earlier.size(), caller.userId(), stats.summary()
         );
         return response;

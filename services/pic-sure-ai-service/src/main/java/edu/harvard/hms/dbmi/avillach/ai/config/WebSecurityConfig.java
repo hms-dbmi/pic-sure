@@ -16,7 +16,8 @@ import org.springframework.security.web.SecurityFilterChain;
  * {@link ActuatorSecurityConfig}'s separate {@code @Order(0)} chain to gate {@code /actuator/**}.
  *
  * <p>CSRF is disabled and sessions are stateless: every request carries its own trust via headers and there is no browser session to
- * protect. The conversation history kept between requests is keyed by the caller's token, not by a session.
+ * protect. The conversation history kept between requests is keyed by who the caller is ({@code CallerContext#owner()}: their user id,
+ * their open-access session id, or a hash of their token), not by a server-side session.
  */
 @Configuration
 public class WebSecurityConfig {

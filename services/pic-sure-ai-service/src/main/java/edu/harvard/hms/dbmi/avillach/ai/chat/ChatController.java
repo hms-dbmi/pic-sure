@@ -26,7 +26,8 @@ import jakarta.validation.Valid;
  * {@link ChatOrchestrator#handle} is ever called, so neither Bedrock nor the MCP gateway is touched on a rejected request.
  *
  * <p>Each {@code requestId} runs at most once per caller ({@link TurnResultStore}): sending it again returns the stored response without
- * calling the model, and {@code GET /ai/chat/{requestId}} fetches it. Both find only the caller's own turns, keyed by
+ * calling the model, and {@code GET /ai/chat/{requestId}} fetches it. A requestId reused for a different message is refused, and so is the same message
+ * sent under a new requestId while the first is still being answered. Both find only the caller's own turns, keyed by
  * {@link CallerContext#owner()}.
  */
 @Tag(name = "AI chat", description = "AI-assisted dictionary search")
@@ -45,27 +46,44 @@ public class ChatController {
     @ApiResponse(responseCode = "200", description = "The model's reply and any query, facet or search state the turn changed")
     @ApiResponse(responseCode = "400", description = "A required field is missing or blank")
     @ApiResponse(responseCode = "401", description = "The Authorization header is missing or is not a bearer token")
-    @ApiResponse(responseCode = "409", description = "A message with this requestId is still being answered; fetch it with GET")
+    @ApiResponse(responseCode = "409", description = "This message is still being answered, under this requestId or another; fetch it with GET")
+    @ApiResponse(responseCode = "422", description = "This requestId was already used for a different message or state")
     @AuditEvent(type = "SEARCH", action = "ai.chat")
     @PostMapping("/chat")
     public ChatResponse chat(@Valid @RequestBody ChatRequest request, CallerContext caller) {
         TurnResultStore.Key key = new TurnResultStore.Key(caller.owner(), request.requestId());
-        Optional<TurnResult> earlier = results.claim(key);
-        if (earlier.isPresent()) {
-            if (earlier.get().running()) {
-                throw new PicsureException(
-                    HttpStatus.CONFLICT, "turn_in_progress",
-                    "This message is still being answered. Fetch the reply with GET /chat/{requestId}."
-                );
+        String fingerprint = RequestFingerprint.of(request);
+        switch (results.claim(key, fingerprint)) {
+            case TurnResultStore.Claim.Existing(TurnResult earlier) -> {
+                if (!fingerprint.equals(earlier.fingerprint())) {
+                    throw new PicsureException(
+                        HttpStatus.UNPROCESSABLE_ENTITY, "request_id_reused",
+                        "This requestId was already used for a different message or state. Use a new requestId for a new message."
+                    );
+                }
+                if (earlier.running()) {
+                    throw new PicsureException(
+                        HttpStatus.CONFLICT, "turn_in_progress",
+                        "This message is still being answered. Fetch the reply with GET /chat/{requestId}."
+                    );
+                }
+                return earlier.response();
             }
-            return earlier.get().response();
+            case TurnResultStore.Claim.Duplicate(String firstRequestId) -> throw new PicsureException(
+                HttpStatus.CONFLICT, "duplicate_in_progress",
+                "This same message is already being answered as request " + firstRequestId + ". Fetch the reply with GET /chat/"
+                    + firstRequestId + "."
+            );
+            case TurnResultStore.Claim.Granted granted -> {
+            }
         }
         try {
             ChatResponse response = orchestrator.handle(request, caller);
-            results.complete(key, response);
+            results.complete(key, fingerprint, response);
             return response;
-        } catch (RuntimeException e) {
-            results.release(key);
+        } catch (Throwable e) {
+            // Not only RuntimeException: an Error would otherwise leave the claim "running" until it expires, refusing every retry.
+            results.release(key, fingerprint);
             throw e;
         }
     }

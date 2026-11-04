@@ -16,27 +16,45 @@ public interface TurnResultStore {
     record Key(String owner, String requestId) {
     }
 
-    /** @param response the turn's response, or null while it is still running */
-    record TurnResult(ChatResponse response) {
-
-        static final TurnResult RUNNING = new TurnResult(null);
+    /**
+     * @param response the turn's response, or null while it is still running
+     * @param fingerprint {@link RequestFingerprint#of} of the request that claimed the turn
+     */
+    record TurnResult(ChatResponse response, String fingerprint) {
 
         boolean running() {
             return response == null;
         }
     }
 
-    /**
-     * Marks the turn as running unless it already is or has finished.
-     *
-     * @return empty when this call claimed it, and the caller must then {@link #complete} or {@link #release} it; otherwise what is stored
-     */
-    Optional<TurnResult> claim(Key key);
+    /** What {@link #claim} found. */
+    sealed interface Claim {
 
-    void complete(Key key, ChatResponse response);
+        /** Nothing was stored: the caller runs the turn, and must then {@link #complete} or {@link #release} it. */
+        record Granted() implements Claim {
+        }
+
+        /** The {@code requestId} already has a turn, running or finished. */
+        record Existing(TurnResult result) implements Claim {
+        }
+
+        /** Another {@code requestId} from the same caller is still answering this same message. */
+        record Duplicate(String requestId) implements Claim {
+        }
+    }
+
+    /**
+     * Marks the turn as running unless its {@code requestId} already has one, or the same caller is already answering the same message
+     * under another {@code requestId}.
+     *
+     * @param fingerprint {@link RequestFingerprint#of} of the request
+     */
+    Claim claim(Key key, String fingerprint);
+
+    void complete(Key key, String fingerprint, ChatResponse response);
 
     /** Forgets a claimed turn that failed, so a retry runs it again. */
-    void release(Key key);
+    void release(Key key, String fingerprint);
 
     /** @return what is stored for the turn; empty when it never ran here, failed, or has expired */
     Optional<TurnResult> find(Key key);

@@ -27,9 +27,9 @@ class InMemoryConversationStore implements ConversationStore {
 
     @Autowired
     InMemoryConversationStore(
-        @Value("${picsure.ai.conversation.idle-timeout:60m}") Duration idleTimeout,
-        @Value("${picsure.ai.conversation.max-turns:50}") int maxTurns,
-        @Value("${picsure.ai.conversation.max-total-chars:50000000}") long maxTotalChars
+        @Value("${picsure.ai.conversation.idle-timeout}") Duration idleTimeout,
+        @Value("${picsure.ai.conversation.max-turns}") int maxTurns,
+        @Value("${picsure.ai.conversation.max-total-chars}") long maxTotalChars
     ) {
         this(idleTimeout, maxTurns, maxTotalChars, Ticker.systemTicker());
     }

@@ -1043,7 +1043,7 @@ class ToolUseLoopServiceTest {
         assertNull(response.query(), "a select-only proposal is not surfaced");
         assertNull(response.search());
         ConversationEntry refusal = model.historySeenOnCall(3).get(model.historySeenOnCall(3).size() - 1);
-        assertTrue(((ConversationEntry.ToolResultEntry) refusal).content().contains("did not ask to select"));
+        assertTrue(((ConversationEntry.ToolResultEntry) refusal).content().contains("would export the selected variables for every participant"));
     }
 
     @Test
@@ -1542,6 +1542,17 @@ class ToolUseLoopServiceTest {
     private static void firstTurn(ConversationStore store, String gatewayResult, ModelTurnResult... turns) {
         new ToolUseLoopService(FakeModelClient.returning(turns), FakeToolGateway.returning(gatewayResult), PROPOSE_QUERY_TOOL, 8, store)
             .handle(REQUEST, CALLER);
+    }
+
+    @Test
+    void aTurnThatEndsInTheFallbackReplyIsNotKeptInTheConversation() {
+        ConversationStore store = ToolUseLoopService.newConversationStore();
+        ChatResponse first = new ToolUseLoopService(
+            FakeModelClient.returning(toolCallTurn("search_concepts", "{}")), new FakeToolGateway(), PROPOSE_QUERY_TOOL, 3, store
+        ).handle(REQUEST, CALLER);
+        assertEquals(ToolUseLoopService.FALLBACK_TEXT, first.response());
+
+        assertTrue(store.turns(CONVERSATION).isEmpty());
     }
 
     @Test

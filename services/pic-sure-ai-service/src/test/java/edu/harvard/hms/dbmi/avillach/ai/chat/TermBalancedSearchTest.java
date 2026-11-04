@@ -111,6 +111,25 @@ class TermBalancedSearchTest {
     }
 
     @Test
+    void aResultThatHoldsOnlyTheBestMatchesSaysSoAndOneThatHoldsAllDoesNot() throws Exception {
+        String[] firstPage = new String[50];
+        for (int i = 0; i < firstPage.length; i++) {
+            firstPage[i] = concept("\\\\s\\\\smoking " + i + "\\\\", "smoking");
+        }
+        String arguments = "{\"search\":\"smoking | alcohol use\",\"pageSize\":10}";
+
+        JsonNode truncated = JSON.readTree(
+            TermBalancedSearch.search(arguments, pages(newCalls(), page(5000, "{\"smoking\":4990,\"alcohol use\":10}", firstPage))).content()
+        );
+        JsonNode whole = JSON.readTree(
+            TermBalancedSearch.search(arguments, pages(newCalls(), page(50, "{\"smoking\":40,\"alcohol use\":10}", firstPage))).content()
+        );
+
+        assertEquals(TermBalancedSearch.TRUNCATED_NOTE.formatted(300, 5000), truncated.path("note").asText());
+        assertTrue(whole.path("note").isMissingNode());
+    }
+
+    @Test
     void theRestOfTheMatchesAreFetchedAPageAtATimeSoALaterPageCanSurfaceATerm() throws Exception {
         String[] firstPage = new String[50];
         for (int i = 0; i < firstPage.length; i++) {

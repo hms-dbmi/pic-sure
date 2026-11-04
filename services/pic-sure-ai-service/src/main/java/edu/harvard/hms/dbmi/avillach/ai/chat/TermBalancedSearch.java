@@ -45,6 +45,11 @@ final class TermBalancedSearch {
     /** Pages fetched after the first, so one search takes at most 1 + this many dictionary calls and sees at most that many pages of matches. */
     static final int MAX_EXTRA_PAGES = 5;
 
+    /** Added to a result that holds only the best-ranked matches, so the model does not report a term it could not see as sparse. */
+    static final String TRUNCATED_NOTE = "Only the best %d of the %d matches were examined, so a term may have more matches than concepts "
+        + "listed for it. Do not say a term has few or no matches because of this list. Tell the researcher the search is very broad and "
+        + "ask them to narrow it, or suggest more specific terms.";
+
     private TermBalancedSearch() {
     }
 
@@ -186,6 +191,10 @@ final class TermBalancedSearch {
         out.put("total", total);
         out.set("concepts", merged);
         out.set("termTotals", first.path("termTotals"));
+        long examined = (long) pages * MAX_PAGE_SIZE;
+        if (total > examined) {
+            out.put("note", TRUNCATED_NOTE.formatted(examined, total));
+        }
         return ToolResult.success(out.toString());
     }
 

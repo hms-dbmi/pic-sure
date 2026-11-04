@@ -41,6 +41,8 @@ class ChatControllerTurnResultTest {
     private static final String TOKEN = "Bearer jwt-a";
     private static final String BODY = "{\"message\":\"hi\",\"conversationId\":\"c1\",\"requestId\":\"r1\"}";
 
+    private static final String BODY_FINGERPRINT = RequestFingerprint.of(new ChatRequest("hi", "c1", "r1", null, null, null));
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -115,7 +117,7 @@ class ChatControllerTurnResultTest {
 
     @Test
     void aTurnStillRunningIsReportedAsSuchRatherThanRunTwice() throws Exception {
-        results.claim(new TurnResultStore.Key(new CallerContext(TOKEN, null, null).owner(), "r1"));
+        results.claim(new TurnResultStore.Key(new CallerContext(TOKEN, null, null).owner(), "r1"), BODY_FINGERPRINT);
 
         fetch(TOKEN, "r1").andExpect(status().isAccepted());
         send(TOKEN).andExpect(status().isConflict()).andExpect(jsonPath("$.errorType").value("turn_in_progress"));
@@ -132,15 +134,55 @@ class ChatControllerTurnResultTest {
         assertEquals(2, orchestrator.calls.get());
     }
 
+    @Test
+    void aRequestIdReusedForADifferentMessageIsRefusedNotAnswered() throws Exception {
+        send(TOKEN).andExpect(status().isOk());
+
+        mockMvc.perform(
+            post("/chat").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"message\":\"something else\",\"conversationId\":\"c1\",\"requestId\":\"r1\"}").header("Authorization", TOKEN)
+        ).andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.errorType").value("request_id_reused"));
+        assertEquals(1, orchestrator.calls.get());
+    }
+
+    @Test
+    void theSameMessageUnderANewRequestIdIsRefusedWhileTheFirstIsRunning() throws Exception {
+        results.claim(new TurnResultStore.Key(new CallerContext(TOKEN, null, null).owner(), "r1"), BODY_FINGERPRINT);
+
+        mockMvc.perform(
+            post("/chat").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"message\":\"hi\",\"conversationId\":\"c1\",\"requestId\":\"r2\"}").header("Authorization", TOKEN)
+        ).andExpect(status().isConflict()).andExpect(jsonPath("$.errorType").value("duplicate_in_progress"));
+        assertEquals(0, orchestrator.calls.get());
+    }
+
+    @Test
+    void aTurnThatThrowsAnErrorIsReleasedSoTheRetryRuns() throws Exception {
+        orchestrator.errorNext = true;
+        try {
+            send(TOKEN);
+        } catch (Exception | Error expected) {
+            // the servlet container wraps or rethrows it; only the stored state matters here
+        }
+        fetch(TOKEN, "r1").andExpect(status().isNotFound());
+
+        send(TOKEN).andExpect(status().isOk());
+    }
+
     /** Answers each call with a reply numbering it, so a reply that was not run again is visible. */
     static final class CountingOrchestrator implements ChatOrchestrator {
 
         final AtomicInteger calls = new AtomicInteger();
         volatile boolean failNext;
+        volatile boolean errorNext;
 
         @Override
         public ChatResponse handle(ChatRequest request, CallerContext caller) {
             int call = calls.incrementAndGet();
+            if (errorNext) {
+                errorNext = false;
+                throw new StackOverflowError("simulated");
+            }
             if (failNext) {
                 failNext = false;
                 throw new PicsureException(HttpStatus.SERVICE_UNAVAILABLE, "model_unavailable", "The AI model is currently unavailable.");
