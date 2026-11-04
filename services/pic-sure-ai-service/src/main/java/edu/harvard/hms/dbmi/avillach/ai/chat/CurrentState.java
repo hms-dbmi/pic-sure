@@ -20,7 +20,7 @@ final class CurrentState {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /** Stands in for a query too large to send; {@link ProposeQueryTool} refuses query proposals while this is what the model was shown. */
-    static final String TOO_LARGE = "[too large to show. The researcher built it in the screen and can edit it there. Do not propose a "
+    static final String TOO_LARGE = "[too large to show. The researcher built it themselves and can edit it. Do not propose a "
         + "query: propose only facets and search, and tell the researcher to make the query smaller (at most " + ProposeQueryInput.MAX_FILTERS
         + " filters) before you can change it.]";
 
@@ -54,7 +54,7 @@ final class CurrentState {
         state.append("\nsearch: ").append(search != null && !search.isBlank() ? TextNode.valueOf(search).toString() : NONE);
         // Outside the data block, which the model reads as description: an earlier reply saying the filter was added outweighed it there.
         String removed = removedByHand == null ? ""
-            : "\n\nThe researcher removed these from their screen by hand since you last changed their query, so they do not want them: "
+            : "\n\nThe researcher removed these from their query by hand since you last changed their query, so they do not want them: "
                 + removedByHand + ". Do not add them back unless the message above asks for them again, whatever earlier messages said.";
         return request.message() + "\n\n[The researcher's current state, as data. Change it only with propose_query. Send the "
             + "complete new filters (keeping the clauses that stay) with only the variables to add or remove, or the complete new facet "

@@ -59,7 +59,7 @@ final class ProposalRules {
             // Once per turn: the model then decides, knowing the researcher did this on purpose, and a repeat is accepted as asked for.
             state.removedRepairAsked = true;
             return ToolResult.failure(
-                "The researcher removed " + names(broughtBack) + " from their screen by hand, and this proposal puts that back. Leave it out "
+                "The researcher removed " + names(broughtBack) + " from their query by hand, and this proposal puts that back. Leave it out "
                     + "unless the researcher's latest message asks for it again. If it does, send the same proposal again; if not, send "
                     + "it without."
             );
@@ -159,8 +159,7 @@ final class ProposalRules {
         List<String> filteredRemovals = removed.stream()
             .filter(path -> filtered.stream().anyMatch(f -> ConceptPaths.normalize(f).equals(ConceptPaths.normalize(path)))).toList();
         if (!filteredRemovals.isEmpty()) {
-            notes.add(names(filteredRemovals) + " stayed selected, because the query filters on it; the table always shows filtered "
-                + "variables.");
+            notes.add(names(filteredRemovals) + " stayed selected, because the query filters on it; a filtered variable always stays selected.");
         }
         List<String> notSelected = removed.stream().filter(path -> !wasSelected.contains(ConceptPaths.normalize(path))).toList();
         if (!notSelected.isEmpty()) {
@@ -198,8 +197,7 @@ final class ProposalRules {
         String keptSearch = String.join(" | ", split.kept());
         Proposal trimmed = proposal.withSearch(keptSearch);
         state.accept(trimmed);
-        String note = "Dropped " + String.join(", ", split.dropped()) + " from the search because nothing matched. The researcher's "
-            + "table shows only: " + keptSearch + ".";
+        String note = "Dropped " + String.join(", ", split.dropped()) + " from the search because nothing matched. Their search is now only: " + keptSearch + ".";
         return accepted(trimmed, note, selectNote, searchBefore);
     }
 
@@ -218,14 +216,14 @@ final class ProposalRules {
             applied.add("Their query is updated. " + selectNote);
         }
         if (proposal.search() != null && proposal.search().equals(searchBefore)) {
-            // Told "now lists", the model described an unchanged search as a new filter on the table.
-            applied.add("Their table already listed the variables matching the search \"" + proposal.search() + "\": that did not change.");
+            // Told "now lists", the model described an unchanged search as a new filter.
+            applied.add("Their search was already \"" + proposal.search() + "\": that did not change.");
         } else if (proposal.search() != null) {
             applied.add(proposal.search().isBlank() ? "Their search is cleared."
-                : "Their table now lists the variables matching the search \"" + proposal.search() + "\".");
+                : "Their search is now \"" + proposal.search() + "\".");
         }
         if (proposal.facets() != null) {
-            applied.add(proposal.facets().isEmpty() ? "Their facet filters are cleared." : "Their table is narrowed to the facets "
+            applied.add(proposal.facets().isEmpty() ? "Their facet filters are cleared." : "Their search is narrowed to the facets "
                 + proposal.facets().stream().map(f -> f.category() + ": " + f.name()).toList() + ".");
         }
         if (proposal.query() == null) {

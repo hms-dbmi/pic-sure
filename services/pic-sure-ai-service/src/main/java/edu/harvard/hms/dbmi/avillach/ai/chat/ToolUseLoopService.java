@@ -313,7 +313,7 @@ class ToolUseLoopService implements ChatOrchestrator {
 
     static final String SELECTION_REPAIR_MESSAGE =
         "Your reply says the researcher's selected variables changed, but no proposal this message changed them: the propose_query "
-            + "results say what their screen shows now. Write your whole reply to the researcher again, saying only what actually changed. "
+            + "results say what their query, facets, and search are now. Write your whole reply to the researcher again, saying only what actually changed. "
             + "If you could not do what they asked, say so and what they can do instead. Do not mention this correction.";
 
     /** A counted query the reply says it applied is proposed after the loop instead, so that claim is left to it. */

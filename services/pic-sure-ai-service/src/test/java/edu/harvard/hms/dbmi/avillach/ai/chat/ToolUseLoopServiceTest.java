@@ -778,7 +778,7 @@ class ToolUseLoopServiceTest {
 
         ChatResponse response = new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(onScreen, CALLER);
 
-        assertTrue(lastToolResult(model, 2).contains("already listed"), lastToolResult(model, 2));
+        assertTrue(lastToolResult(model, 2).contains("that did not change"), lastToolResult(model, 2));
         assertNull(response.search());
     }
 
@@ -1317,7 +1317,7 @@ class ToolUseLoopServiceTest {
         new ToolUseLoopService(model, FakeToolGateway.returning(RACE_RESULT), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
 
         String result = lastToolResult(model, 3);
-        assertTrue(result.contains("matching the search \\\"race\\\""), result);
+        assertTrue(result.contains("Their search is now \\\"race\\\""), result);
         assertTrue(result.contains("nothing was added"), result);
     }
 
@@ -1671,7 +1671,7 @@ class ToolUseLoopServiceTest {
 
         String result = lastToolResult(model, 2);
         assertFalse(result.contains(ProposalRules.NO_FILTERS_TO_KEEP), result);
-        assertTrue(result.contains("already listed"), result);
+        assertTrue(result.contains("that did not change"), result);
         assertNull(response.query());
         assertNull(response.search(), "the search on screen is unchanged");
     }
@@ -1753,7 +1753,7 @@ class ToolUseLoopServiceTest {
         new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8, store).handle(second, CALLER);
 
         String shown = ((ConversationEntry.UserEntry) model.historySeenOnCall(1).get(2)).text();
-        assertTrue(shown.contains("removed these from their screen by hand since you last changed their query, so they do not want them: filters on `\\demo\\sex\\`"), shown);
+        assertTrue(shown.contains("removed these from their query by hand since you last changed their query, so they do not want them: filters on `\\demo\\sex\\`"), shown);
     }
 
     @Test
@@ -1776,7 +1776,7 @@ class ToolUseLoopServiceTest {
 
         new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8, store).handle(second, CALLER);
 
-        assertTrue(lastToolResult(model, 2).contains("sex") && lastToolResult(model, 2).contains("from their screen by hand"), lastToolResult(model, 2));
+        assertTrue(lastToolResult(model, 2).contains("sex") && lastToolResult(model, 2).contains("from their query by hand"), lastToolResult(model, 2));
         assertTrue(lastToolResult(model, 3).contains("\"received\":true"), "asked once; the same proposal again is accepted");
     }
 

@@ -30,7 +30,7 @@ public class ProposeQueryTool {
 
     private static final String DESCRIPTION = """
         Propose an updated query, facet selection, or search for the researcher to review -- call this when the conversation should \
-        update what the user sees, not just answer in prose. This is the only way to hand over a query; never write query JSON in a \
+        change their query, facets, or search, not just answer in prose. This is the only way to hand over a query; never write query JSON in a \
         reply. All three fields are optional: leave out any that does not change. query changes the researcher's query: its \
         phenotypicClause and genomicFilters replace theirs, so send the complete new filters (to narrow theirs, keep its clauses \
         and add to them), while their selected variables change only as you say: addSelect lists concept paths to add, removeSelect \
@@ -40,9 +40,8 @@ public class ProposeQueryTool {
         neither. A subquery has operator (AND or OR) and phenotypicClauses, each a filter or another subquery. A filter with not \
         set to true excludes the participants it matches; keep not exactly as it is on every filter you carry over from the \
         researcher's query. Build every conceptPath from search_concepts results, exactly as returned. facets is a list of \
-        {category, name} pairs taken from list_facets; it narrows the researcher's table of variables to those facets. search is \
-        the dictionary search text, a plain string, and the researcher's screen shows the variables it matches as a table they can \
-        page through: send the text that found the variables in search_concepts (several terms joined by |), or an empty string to \
+        {category, name} pairs taken from list_facets; it narrows the variables searched to those facets. search is \
+        the dictionary search text, a plain string: send the text that found the variables in search_concepts (several terms joined by |), or an empty string to \
         clear it. For a lookup (show, find, or list variables), send only search, never a query. Example arguments (the phs999999 \
         paths are placeholders only; never use them, use real conceptPath values from search_concepts): \
         {"query":{"addSelect":["\\\\phs999999\\\\bmi\\\\"],"phenotypicClause":{"operator":"AND","phenotypicClauses":[\
@@ -126,7 +125,7 @@ public class ProposeQueryTool {
 
     /** Refusal for a query over {@link ProposeQueryInput#MAX_FILTERS}/{@link ProposeQueryInput#MAX_SELECT}, as proposed or once applied. */
     static final String QUERY_TOO_LARGE = "The query is too large: at most " + ProposeQueryInput.MAX_FILTERS + " filters and "
-        + ProposeQueryInput.MAX_SELECT + " selected variables. Propose a smaller query; the researcher can add the rest in the screen.";
+        + ProposeQueryInput.MAX_SELECT + " selected variables. Propose a smaller query; the researcher can add the rest themselves.";
 
     /**
      * As {@link #propose(String, KnownFacets)}, optionally refusing any {@code query} -- for a turn whose researcher query was too large to
@@ -147,7 +146,7 @@ public class ProposeQueryTool {
             if (bound.query() != null && queryLocked) {
                 return Outcome.rejected(
                     "The researcher's query is too large for you to change. Propose only facets and search, and tell the researcher to "
-                        + "make the query smaller in the screen first."
+                        + "make the query smaller themselves first."
                 );
             }
             if (bound.query() == null && bound.facets() == null && bound.search() == null) {
