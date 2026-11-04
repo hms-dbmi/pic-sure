@@ -75,8 +75,9 @@ final class ReplyText {
     );
     /** "No filters or selected variables were changed" says the opposite of a claim, and so does "nothing was added to your selection". */
     private static final Pattern NEGATION = Pattern.compile("(?i)\\b(?:no|none|not|nothing|never|unchanged)\\b|n't\\b");
-    /** The heading of a recap of the researcher's screen, "**Current screen state**" or "Current view:", with any text after it. */
-    private static final Pattern SCREEN_RECAP_HEADING = Pattern.compile("(?i)^\\W*current (?:screen|view)(?: state)?\\b.*");
+    /** The heading of a recap of the current state, "**Current state**", "Current screen state:" or "Current view:", with any text after it. */
+    private static final Pattern SCREEN_RECAP_HEADING =
+        Pattern.compile("(?i)^\\W*current (?:(?:screen|view)(?: state)?\\b.*|state(?:\\s*\\([^)\\n]*\\))?\\W*)");
     /** One recap line: a part of the screen and its value, e.g. "- **facets:** none". */
     private static final Pattern SCREEN_RECAP_LINE =
         Pattern.compile("(?i)^\\W*(?:query|facets|search|filters|selected variables|variables)\\W*:.*");

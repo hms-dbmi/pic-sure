@@ -104,6 +104,26 @@ class ReplyTextTest {
     }
 
     @Test
+    void aCurrentStateRecapInAnyOfTheModelsLayoutsIsRemoved() {
+        assertEquals(
+            "Here are the two variables.",
+            ReplyText.withoutScreenRecap("Here are the two variables.\n\n---  \n\nCurrent state (unchanged):  \n**query:** none  \n**facets:** none  \n**search:** none")
+        );
+        assertEquals(
+            "Alcohol variables are listed.",
+            ReplyText.withoutScreenRecap("Alcohol variables are listed.\n\n---  \n**Current state**  \nquery: none  \nfacets: none  \nsearch: **alcohol** (updated)")
+        );
+        assertEquals(
+            "Current state of the cohort: 1,200 participants.\nMore text.",
+            ReplyText.withoutScreenRecap("Current state of the cohort: 1,200 participants.\nMore text.")
+        );
+        assertEquals(
+            "Done.\n\nCurrent state of the cohort is 1,200 participants.",
+            ReplyText.withoutScreenRecap("Done.\n\nCurrent state of the cohort is 1,200 participants.")
+        );
+    }
+
+    @Test
     void bulletedUndefinedFieldEchoesAndTheHeadingAboveThemAreRemoved() {
         String reply = "There are no variables returned for waist-hip ratio.\n\n**Current state of the interface**  \n- query: {}  \n- facets: undefined  \n- search: undefined";
 

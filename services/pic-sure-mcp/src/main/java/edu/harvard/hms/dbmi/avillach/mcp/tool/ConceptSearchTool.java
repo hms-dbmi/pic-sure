@@ -26,7 +26,7 @@ public class ConceptSearchTool {
     public static final int MAX_PAGE_SIZE = 50;
 
     /** Most terms one call may search. */
-    public static final int MAX_TERMS = 5;
+    public static final int MAX_TERMS = 10;
 
     /** Most facets one search can be narrowed by. */
     static final int MAX_FACETS = 10;
@@ -67,7 +67,7 @@ public class ConceptSearchTool {
             "systolic blood pressure" or "sex". Every word of a search must match, so a multi-word search must describe one \
             concept: "blood pressure hypertension" finds nothing, and "blood pressure" misses concepts named "BP". Matching is \
             on the text, so an abbreviation such as "BMI" can return no results while "body mass index" matches. Search synonyms \
-            and abbreviations as separate terms, which the terms argument does in one call. Give either search or terms (up to 5), \
+            and abbreviations as separate terms, which the terms argument does in one call. Give either search or terms (up to 10), \
             not both. With terms, each concept lists the matchedTerms that returned it, total counts the concepts that match any term, \
             and termTotals gives how many concepts each term matches alone: a term at 0 matched nothing, so retry it at most once \
             with synonyms and otherwise report it as not found. Paging applies to the merged results. Returns \
@@ -85,7 +85,7 @@ public class ConceptSearchTool {
         McpTransportContext context, @McpToolParam(
             description = "Free-text search; every word must match. Give search or terms, not both. May be left out only when facets are given", required = false
         ) String search, @McpToolParam(
-            description = "Up to 5 separate searches, such as synonyms and abbreviations, run in one call. Give search or terms, not both",
+            description = "Up to 10 separate searches, such as synonyms and abbreviations, run in one call. Give search or terms, not both",
             required = false
         ) List<String> terms, @McpToolParam(description = "Zero-based page number, default 0", required = false) Integer page,
         @McpToolParam(description = "Results per page, default 10, max 50; use 25", required = false) Integer pageSize,
