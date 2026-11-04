@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.github.mustachejava.Mustache;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import jakarta.mail.MessagingException;
+import jakarta.mail.Session;
 import jakarta.mail.internet.MimeMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,11 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.context.ContextConfiguration;
 
+import java.io.StringWriter;
+import java.io.Writer;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -31,6 +37,9 @@ public class BasicMailServiceTest {
 
     @Autowired
     private BasicMailService basicMailService;
+
+    @Autowired
+    private BasicMailService injectedMailService;
 
     @Value("${application.template.path}")
     private String templatePath = "src/test/resources/templates/";
@@ -82,6 +91,21 @@ public class BasicMailServiceTest {
 
         basicMailService.sendDeniedAccessEmail(userInfo);
         verify(mailSender, never()).send(any(MimeMessage.class));
+    }
+
+    @Test
+    public void testSendUsersAccessEmail_UsesResolvedGrantSubject() throws MessagingException {
+        MimeMessage message = new MimeMessage((Session) null);
+        when(mailSender.createMimeMessage()).thenReturn(message);
+        when(accessTemplate.execute(any(Writer.class), any(Object.class))).thenReturn(new StringWriter());
+        injectedMailService.setAccessTemplate(accessTemplate);
+        User user = new User();
+        user.setEmail("test@test.com");
+
+        injectedMailService.sendUsersAccessEmail(user);
+
+        assertFalse(message.getSubject().startsWith("${"), message.getSubject());
+        assertEquals(accessGrantEmailSubject, message.getSubject());
     }
 
     @Test

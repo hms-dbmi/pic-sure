@@ -13,7 +13,7 @@ public class WeightUpdateApplier {
 
     @Autowired
     JdbcTemplate template;
-    
+
     public void applyUpdate(String query) {
         LOG.info("Applying query to DB");
         template.update(query);

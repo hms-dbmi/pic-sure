@@ -48,7 +48,6 @@ public class QueryService {
     private final ExecutorService smallTaskExecutor;
 
     private final AbstractProcessor abstractProcessor;
-    private final QueryProcessor queryProcessor;
     private final TimeseriesProcessor timeseriesProcessor;
     private final CountProcessor countProcessor;
     private final MultiValueQueryProcessor multiValueQueryProcessor;
@@ -63,14 +62,13 @@ public class QueryService {
 
     @Autowired
     public QueryService(
-        AbstractProcessor abstractProcessor, QueryProcessor queryProcessor, TimeseriesProcessor timeseriesProcessor,
-        CountProcessor countProcessor, MultiValueQueryProcessor multiValueQueryProcessor,
-        @Autowired(required = false) DictionaryService dictionaryService, @Value("${SMALL_JOB_LIMIT}") Integer smallJobLimit,
-        @Value("${SMALL_TASK_THREADS}") Integer smallTaskThreads, @Value("${LARGE_TASK_THREADS}") Integer largeTaskThreads,
-        PatientProcessor patientProcessor, @Autowired(required = false) LoggingClient loggingClient
+        AbstractProcessor abstractProcessor, TimeseriesProcessor timeseriesProcessor, CountProcessor countProcessor,
+        MultiValueQueryProcessor multiValueQueryProcessor, @Autowired(required = false) DictionaryService dictionaryService,
+        @Value("${SMALL_JOB_LIMIT}") Integer smallJobLimit, @Value("${SMALL_TASK_THREADS}") Integer smallTaskThreads,
+        @Value("${LARGE_TASK_THREADS}") Integer largeTaskThreads, PatientProcessor patientProcessor,
+        @Autowired(required = false) LoggingClient loggingClient
     ) {
         this.abstractProcessor = abstractProcessor;
-        this.queryProcessor = queryProcessor;
         this.timeseriesProcessor = timeseriesProcessor;
         this.countProcessor = countProcessor;
         this.multiValueQueryProcessor = multiValueQueryProcessor;
@@ -140,9 +138,6 @@ public class QueryService {
         switch (query.getExpectedResultType()) {
             case PATIENTS:
                 p = patientProcessor;
-                break;
-            case SECRET_ADMIN_DATAFRAME:
-                p = queryProcessor;
                 break;
             case DATAFRAME_TIMESERIES:
                 p = timeseriesProcessor;

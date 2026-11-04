@@ -15,25 +15,34 @@ import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingClientFactory;
 
 /**
- * Wires the audit-emission filter: {@link LoggingClient} (env-driven, no-op when unconfigured), the verified route table (mirrors the
- * legacy WAR {@code AuditLoggingFilter.java:55-65}, minus the removed {@code PROXY} row -- there is no {@code /proxy} prefix in the new
- * per-service scheme), and the {@link AuditLoggingFilter} registration itself at order 60, the outermost emitter on the way out of the
- * chain (after {@code IdentityPropagationFilter} at 50 in {@code SecurityConfig}).
+ * Wires the audit-emission filter: {@link LoggingClient} (env-driven, no-op when unconfigured), the verified route table, and the
+ * {@link AuditLoggingFilter} registration itself at {@link #AUDIT_FILTER_ORDER}, ahead of every filter that can short-circuit the chain.
+ * The filter records an event's {@code caller} only from the {@code VerifiedCaller} attribute a credential-checking filter sets, such as
+ * {@code McpCallerFilter}; a client-sent {@code X-Client-Type} is kept as metadata {@code client_type_claimed}.
  */
 @Configuration
 public class AuditFilterConfig {
 
-    // Leading service prefix(es) + optional /v3, e.g. "/query", "/hpds/auth/v3/query".
-    private static final String PFX = "^(?:/[a-z0-9-]+)+?(?:/v3)?";
+    /**
+     * Bounded on both sides, so not a roundable number. Below {@code OrderedRequestContextFilter} (-105), {@code emit()}'s read of the
+     * {@code @RequestScope} {@link AuditContext} -- which happens after the chain unwinds, once {@code RequestContextFilter} has cleared
+     * the holder -- throws {@code IllegalStateException: No thread-bound request found} into {@code AuditLoggingFilter}'s catch-and-warn,
+     * silently ending all audit emission. Above {@code SecurityProperties.DEFAULT_FILTER_ORDER} (-100), Spring Security rejections are not
+     * wrapped. A rate limiter registered at -100 or above has its 429s audited.
+     */
+    static final int AUDIT_FILTER_ORDER = -101;
+
+    // Leading service prefix(es), e.g. "/query", "/hpds/auth/query".
+    private static final String PFX = "^(?:/[a-z0-9-]+)+?";
 
     @Bean
     public LoggingClient loggingClient() {
-        return LoggingClientFactory.create("gateway");
+        return LoggingClientFactory.create("api");
     }
 
     @Bean
     public AuditRouteTable auditRouteTable() {
-        // First match wins (query/sync before query). Mirrors WAR AuditLoggingFilter.java:55-65 minus PROXY.
+        // First match wins, so query/sync must precede query.
         return new AuditRouteTable(
             List.of(
                 new AuditRoute(Pattern.compile(PFX + "/query/sync/?$"), "POST", "QUERY", "query.sync"),
@@ -43,21 +52,21 @@ public class AuditFilterConfig {
                 new AuditRoute(Pattern.compile(PFX + "/query/[^/]+/signed-url/?$"), null, "DATA_ACCESS", "query.signed_url"),
                 new AuditRoute(Pattern.compile(PFX + "/query/[^/]+/metadata/?$"), null, "QUERY", "query.metadata"),
                 new AuditRoute(Pattern.compile(PFX + "/search/[^/]+/?$"), "POST", "SEARCH", "search.execute"),
-                new AuditRoute(Pattern.compile(PFX + "/search/[^/]+/values/"), null, "SEARCH", "search.values", true)
+                new AuditRoute(Pattern.compile(PFX + "/search/[^/]+/values/"), null, "SEARCH", "search.values", true),
+                new AuditRoute(Pattern.compile("^" + Pattern.quote(McpCallerFilter.MCP_PATH) + "$"), "POST", "OTHER", "mcp.request")
             )
         );
     }
 
     @Bean
     public FilterRegistrationBean<AuditLoggingFilter> auditLoggingFilter(LoggingClient client, AuditRouteTable routes, AuditContext audit) {
-        // VERIFIED skip-list (AuditLoggingFilter.java:122-127): ends-with /system/status, /openapi.json (base
-        // class); contains /info/, /bin/continuous, /logging (was /proxy/pic-sure-logging/ -- no /proxy prefix in
-        // the new scheme). Gateway-local /actuator, /openapi, /swagger-ui added on top (net-new concerns).
+        // The base filter skips paths ending in /system/status or /openapi.json and paths containing /info/,
+        // /bin/continuous, or /logging. Gateway-local actuator and API-documentation paths are also skipped.
         AuditLoggingFilter filter = new AuditLoggingFilter(
-            client, routes, audit, List.of("/info/", "/bin/continuous", "/logging", "/actuator", "/openapi", "/swagger-ui")
+            client, routes, audit, List.of("/info/", "/bin/continuous", "/logging", "/actuator", "/openapi", "/swagger-ui"), true
         );
         var registration = new FilterRegistrationBean<>(filter);
-        registration.setOrder(60); // outermost emitter on the way out
+        registration.setOrder(AUDIT_FILTER_ORDER);
         registration.addUrlPatterns("/*");
         return registration;
     }

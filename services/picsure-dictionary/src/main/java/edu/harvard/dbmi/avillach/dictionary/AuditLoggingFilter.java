@@ -53,7 +53,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
 
                 String eventType = (String) request.getAttribute(AuditAttributes.EVENT_TYPE);
                 String action = (String) request.getAttribute(AuditAttributes.ACTION);
-                if (eventType == null) eventType = "OTHER";
+                if (eventType == null) eventType = "UNLABELED";
                 if (action == null) action = method.toLowerCase();
 
                 String srcIp = extractSourceIp(request);
@@ -83,6 +83,10 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
 
                 LoggingEvent.Builder eventBuilder =
                     LoggingEvent.builder(eventType).action(action).sessionId(sessionId).request(requestInfo).metadata(metadata);
+
+                String caller = request.getHeader("X-Client-Type");
+                if (caller != null && !caller.isEmpty()) eventBuilder.caller(caller);
+
                 if (errorMap != null) eventBuilder.error(errorMap);
                 LoggingEvent event = eventBuilder.build();
 

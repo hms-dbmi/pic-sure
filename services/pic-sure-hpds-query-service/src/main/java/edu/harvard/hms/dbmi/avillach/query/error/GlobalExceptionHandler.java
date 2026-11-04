@@ -1,71 +1,52 @@
 package edu.harvard.hms.dbmi.avillach.query.error;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.MDC;
+import org.springdoc.api.OpenApiResourceNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.web.servlet.resource.NoResourceFoundException;
 
-import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureErrorBodyAdvice;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 
 /**
- * This service's own exception-to-HTTP mapping. {@code pic-sure-spring-commons}' {@code GatewayExceptionAdvice} already maps
- * {@link PicsureException} to its carried status with the {@code {errorType,message,requestId}} body shape -- that handler is duplicated
- * here (identical behavior) rather than relied upon exclusively, because Spring's {@code ExceptionHandlerExceptionResolver} picks the FIRST
- * {@code @ControllerAdvice} bean (in an unspecified-by-us order) that has ANY matching handler for a given exception, not the most-specific
- * match across all beans. Keeping a self-contained {@link PicsureException} handler in this same class guarantees this advice always
- * resolves the most specific handler for its own {@link #unknown} catch-all, regardless of whichever advice bean Spring happens to consult
- * first -- {@code GatewayExceptionAdvice}'s equivalent handler (if consulted first) produces the identical response.
- *
- * <p>Adds three mappings the commons base does not have: {@link HpdsCommunicationException} -&gt; 502 (HPDS is upstream infrastructure; the
- * legacy WAR returned 500 for this case, which was never an honest status), {@link NoResourceFoundException} -&gt; 404 (route absence for
- * removed v1 generic ingress), and any other unmapped exception -&gt; 500, all sharing the same commons error body shape.
+ * This service's exception-to-HTTP mapping and its only advice bean. Inherits the {@code {errorType, message, requestId}} body, the
+ * {@code PicsureException} mapping and the client-error and catch-all handling from {@link PicsureErrorBodyAdvice}, and adds
+ * {@link HpdsCommunicationException} as a 502 because HPDS is upstream infrastructure, and an unknown OpenAPI group as a 404, which is how
+ * a deployment without open access answers a request for the open access document.
  */
 @RestControllerAdvice
-public class GlobalExceptionHandler {
+public class GlobalExceptionHandler extends PicsureErrorBodyAdvice {
 
     private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-    @ExceptionHandler(PicsureException.class)
-    public ResponseEntity<Map<String, Object>> handlePicsureException(PicsureException e) {
-        return body(e.getStatus(), e.getErrorType(), e.getMessage());
-    }
-
+    /**
+     * Answers a failed HPDS call with a 502 and logs its cause.
+     *
+     * @param e the failure
+     * @return the 502 response
+     */
     @ExceptionHandler(HpdsCommunicationException.class)
     public ResponseEntity<Map<String, Object>> hpdsUnavailable(HpdsCommunicationException e) {
-        // The cause is a RestClientException whose message carries the HPDS status and response body (e.g. "403 ...
-        // Resource is locked") -- without logging it here, the 502 is undiagnosable from this service's logs.
+        // The cause is a RestClientException whose message carries the HPDS status and response body. Without logging it
+        // here, the 502 is undiagnosable from this service's logs.
         logger.error("HPDS call failed, returning 502", e);
-        return body(HttpStatus.BAD_GATEWAY, "upstream_unavailable", e.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(body("upstream_unavailable", e.getMessage()));
     }
 
     /**
-     * Route absence must surface as an honest 404, not fall into the {@link #unknown} 500 catch-all. This matters since the legacy v1 query
-     * ingress ({@code /hpds/{backend}/query/**}) was removed: callers still submitting to those routes must see "gone", not "server error".
+     * Answers a request for an OpenAPI group this deployment does not publish, such as the open access document when no open backend is
+     * configured, with a 404.
+     *
+     * @param e the missing group
+     * @return the 404 response
      */
-    @ExceptionHandler(NoResourceFoundException.class)
-    public ResponseEntity<Map<String, Object>> noRoute(NoResourceFoundException e) {
-        return body(HttpStatus.NOT_FOUND, "not_found", "No such resource: " + e.getResourcePath());
-    }
-
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, Object>> unknown(Exception e) {
-        logger.error("Unhandled exception", e);
-        return body(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error", "An unexpected error occurred");
-    }
-
-    private static ResponseEntity<Map<String, Object>> body(HttpStatus status, String errorType, String message) {
-        Map<String, Object> b = new LinkedHashMap<>();
-        b.put("errorType", errorType);
-        b.put("message", message);
-        b.put("requestId", MDC.get("requestId"));
-        return ResponseEntity.status(status).body(b);
+    @ExceptionHandler(OpenApiResourceNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> unknownApiDocument(OpenApiResourceNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body("not_found", e.getMessage()));
     }
 }

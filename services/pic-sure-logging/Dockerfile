@@ -1,5 +1,5 @@
-# Digest-pinned Corretto 25 multi-architecture runtime image.
-FROM amazoncorretto:25@sha256:397edfaaa0fdfc95001d4c4a4ab82174073277a5d630fd9375c94dca25b5991d
+# Digest-pinned Corretto 25 Alpine runtime image.
+FROM amazoncorretto:25-alpine@sha256:027310590da693629c2cf704d2f87e9359c33ee2f02bcaa777680b2f4b94f4c7
 WORKDIR /app
 # spring-boot-maven-plugin:repackage also emits *.jar.original, which this glob excludes.
 COPY target/pic-sure-logging-*.jar app.jar

@@ -13,16 +13,16 @@ import java.util.Map;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class QueryFormat {
 
-    @Schema(description = "The name of the query format.")
+    @Schema(description = "The name of the query format.", example = "PIC-SURE Visualization Distributions")
     private String name;
 
-    @Schema(description = "A description of the query format.")
+    @Schema(description = "A description of the query format.", example = "Request format for POST /{backend}/distributions")
     private String description;
 
-    @Schema(description = "A specification of the query format.")
+    @Schema(description = "A specification of the query format, keyed by the name of each field a request carries.")
     private Map<String, Object> specification;
 
-    @Schema(description = "A list of examples of the query format.")
+    @Schema(description = "Example requests in this format, each keyed by request field name.")
     private List<Map<String, Object>> examples;
 
     public String getName() {

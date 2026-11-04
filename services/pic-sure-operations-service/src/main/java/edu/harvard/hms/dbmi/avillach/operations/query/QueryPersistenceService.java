@@ -1,6 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.operations.query;
 
-import java.sql.Date;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.UUID;
 
@@ -16,12 +16,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
+import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
+import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
 /**
- * The sole read/write path onto the {@code query} table for the internal query API ({@link InternalQueryController}).
- * Persists/loads/updates {@link Query} rows and produces the gateway-only dispatch payload -- the stored query JSON with
- * {@code resourceCredentials} stripped, per the fixed {@code QueryAuthFetcher} contract ({@code {queryJson: "<string>"}}).
+ * The sole read/write path onto the {@code query} table for the internal query API ({@link InternalQueryController}). Persists, loads and
+ * updates {@link Query} rows and produces the dispatch payload: the stored query JSON with any legacy {@code resourceCredentials} stripped,
+ * answered as {@code {queryJson: "<string>"}}.
  *
  * <p>{@code status} travels on the wire as the {@link PicSureStatus} enum NAME, never its ordinal, so callers never need the enum type; an
  * unrecognized name is a caller error (400), not a 500. {@code metadata} travels as base64-encoded bytes, matching the entity's raw
@@ -47,7 +50,7 @@ public class QueryPersistenceService {
         entity.setStatus(parseStatus(req.status()));
         entity.setVersion(req.version());
         entity.setMetadata(decodeMetadata(req.metadata()));
-        entity.setStartTime(new Date(System.currentTimeMillis())); // server-owned, like the legacy WAR's create path
+        entity.setStartTime(Instant.now()); // server-owned creation time
         return repo.save(entity).getUuid();
     }
 
@@ -62,7 +65,7 @@ public class QueryPersistenceService {
         if (req.status() != null) {
             PicSureStatus newStatus = parseStatus(req.status());
             if (newStatus == PicSureStatus.AVAILABLE && entity.getReadyTime() == null) {
-                entity.setReadyTime(new Date(System.currentTimeMillis())); // first AVAILABLE transition, like the legacy WAR
+                entity.setReadyTime(Instant.now()); // first AVAILABLE transition only
             }
             entity.setStatus(newStatus);
         }
@@ -72,13 +75,19 @@ public class QueryPersistenceService {
         if (req.metadata() != null) {
             entity.setMetadata(decodeMetadata(req.metadata()));
         }
+        if (req.query() != null) {
+            entity.setQuery(stripResourceCredentials(req.query()));
+        }
+        if (req.version() != null) {
+            entity.setVersion(req.version());
+        }
         repo.save(entity);
     }
 
     /**
-     * Gateway-only auth-fetch payload: the stored query JSON, re-serialized as a STRING with {@code resourceCredentials} removed. 404 when
-     * the row is absent (the gateway's {@code QueryAuthFetcher} fails closed on that). A blank/absent stored query body yields {@code null}
-     * (never a 500) -- malformed JSON is logged and also yields {@code null} rather than leaking the raw unparsed body.
+     * Dispatch payload: the stored query JSON, re-serialized as a STRING with any legacy {@code resourceCredentials} removed. 404 when the
+     * row is absent. A blank or absent stored query body yields {@code null}, never a 500. Malformed JSON is logged and also yields
+     * {@code null} rather than leaking the raw unparsed body.
      */
     @Transactional(readOnly = true)
     public String dispatchQueryJson(UUID picsureId) {
@@ -111,14 +120,15 @@ public class QueryPersistenceService {
         );
     }
 
-    private static Long toEpochMillis(Date date) {
-        return date == null ? null : date.getTime();
+    private static Long toEpochMillis(Instant instant) {
+        return instant == null ? null : instant.toEpochMilli();
     }
 
     /**
-     * SECURITY: {@code resourceCredentials} must never be persisted (writers now strip before sending) nor returned to any internal reader
-     * -- this covers rows stored before writers stripped. Bodies without the field pass through byte-identical; malformed JSON passes
-     * through unchanged (it cannot carry a parseable credentials field, and dispatch already nulls it).
+     * SECURITY: {@code resourceCredentials} must never be persisted nor returned to any internal reader. {@code QueryRequest} dropped the
+     * field, so current writers cannot produce one; this remains for rows stored while they could. Bodies without the field pass through
+     * byte-identical; malformed JSON passes through unchanged (it cannot carry a parseable credentials field, and dispatch already nulls
+     * it).
      */
     private static String stripResourceCredentials(String json) {
         if (json == null || json.isBlank()) {

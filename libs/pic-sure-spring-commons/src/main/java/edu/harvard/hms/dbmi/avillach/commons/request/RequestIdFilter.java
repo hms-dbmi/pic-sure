@@ -13,7 +13,7 @@ import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * Assigns or propagates {@code X-Request-Id}: echoed on the response and bound to {@code MDC[requestId]} so every log line of the request
- * carries it, and so {@link edu.harvard.hms.dbmi.avillach.commons.error.GatewayExceptionAdvice} can surface it in error bodies.
+ * carries it, and so {@link edu.harvard.hms.dbmi.avillach.commons.error.PicsureErrorBodyAdvice} can surface it in error bodies.
  */
 public class RequestIdFilter extends OncePerRequestFilter {
 

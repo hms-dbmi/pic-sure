@@ -21,7 +21,7 @@
     </dependency>
     <dependency>
       <groupId>io.swagger.core.v3</groupId>
-      <artifactId>swagger-annotations</artifactId>
+      <artifactId>swagger-annotations-jakarta</artifactId>
     </dependency>
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
@@ -37,10 +37,8 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <!-- Version matches the assertj.version managed by spring-boot-dependencies ${spring-boot.version}, used elsewhere in this reactor. -->
       <groupId>org.assertj</groupId>
       <artifactId>assertj-core</artifactId>
-      <version>3.27.6</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

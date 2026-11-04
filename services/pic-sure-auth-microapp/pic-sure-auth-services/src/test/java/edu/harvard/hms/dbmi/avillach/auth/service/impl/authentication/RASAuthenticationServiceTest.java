@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl.authentication;
 
+import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -21,6 +22,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
+import org.springframework.context.annotation.Bean;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.ApplicationContext;
 import org.springframework.http.HttpHeaders;
@@ -35,8 +39,16 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @SpringBootTest
-@ContextConfiguration(classes = {RASPassPortService.class, RASAuthenticationService.class, ApplicationContext.class})
+@ContextConfiguration(classes = {RASAuthenticationServiceTest.SessionConfiguration.class, RASPassPortService.class, RASAuthenticationService.class, ApplicationContext.class})
 public class RASAuthenticationServiceTest {
+
+    @TestConfiguration
+    static class SessionConfiguration {
+        @Bean
+        SessionService sessionService() {
+            return new SessionService(8 * 60 * 60 * 1000, new ConcurrentMapCacheManager("sessions"), null);
+        }
+    }
 
     @MockBean
     private UserService userService;
@@ -56,10 +68,12 @@ public class RASAuthenticationServiceTest {
     private RASPassPortService rasPassPortService;
     private RASAuthenticationService rasAuthenticationService;
     private ch.qos.logback.classic.Logger rasAuthenticationLogger;
+    private Level originalLogLevel;
     private ListAppender<ILoggingEvent> logAppender;
 
     private final String testAccessToken = "someRandomAccessToken";
     private final String code = "123123123";
+    private static final String TEST_SUBJECT = "okta-ras|accepted-subject";
     private final String testDomain = "https://testdomain.com";
     private Map<String, String> authRequest;
     private final String exampleRasPassport =
@@ -73,7 +87,7 @@ public class RASAuthenticationServiceTest {
 
         rasAuthenticationService = new RASAuthenticationService(
             userService, restClientUtil, true, "test.com", "", "", "", "https://stsstg.nih.gov", rasPassPortService, connectionService,
-            cacheEvictionService
+            cacheEvictionService, new SessionService(8 * 60 * 60 * 1000, new ConcurrentMapCacheManager("sessions"), null)
         );
 
         Connection rasConnection = new Connection();
@@ -88,6 +102,7 @@ public class RASAuthenticationServiceTest {
         authRequest.put("redirectURI", testDomain);
 
         rasAuthenticationLogger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(RASAuthenticationService.class);
+        originalLogLevel = rasAuthenticationLogger.getLevel();
         logAppender = new ListAppender<>();
         logAppender.start();
         rasAuthenticationLogger.addAppender(logAppender);
@@ -96,6 +111,7 @@ public class RASAuthenticationServiceTest {
     @AfterEach
     public void tearDown() {
         rasAuthenticationLogger.detachAppender(logAppender);
+        rasAuthenticationLogger.setLevel(originalLogLevel);
     }
 
     @Test
@@ -190,6 +206,188 @@ public class RASAuthenticationServiceTest {
 
         // We are verifying that we attempt to update a users roles even if no dbgap roles are present.
         verify(userService, times(1)).ensureBaselineRoles(user);
+    }
+
+    /**
+     * The OAuth authorization code is a single-use bearer secret and the logged passport carries its subject, token ID and transaction ID.
+     * Production runs at INFO, where neither may appear. Development runs at DEBUG, where both are wanted for tracing a login, appended to
+     * the same line rather than written as a second one.
+     */
+    @Test
+    public void passportAcceptanceAtInfoLogsNeitherTheAuthorizationCodeNorThePassport() throws JsonProcessingException {
+        rasAuthenticationLogger.setLevel(Level.INFO);
+        Passport passport = acceptPassport();
+
+        assertEquals(1, countLogMessages("RAS PASSPORT FOUND ___ USER: " + TEST_SUBJECT));
+        assertNoLogContains(code);
+        assertNoLogContains(passport.getJti());
+        assertNoLogContains(passport.getTxn());
+        assertNoLogContains("Passport{");
+    }
+
+    @Test
+    public void passportAcceptanceAtDebugLogsTheAuthorizationCodeAndPassportOnce() throws JsonProcessingException {
+        rasAuthenticationLogger.setLevel(Level.DEBUG);
+        Passport passport = acceptPassport();
+
+        List<ILoggingEvent> passportFound = logAppender.list.stream()
+            .filter(event -> event.getFormattedMessage().contains("RAS PASSPORT FOUND ___ USER: " + TEST_SUBJECT)).toList();
+        assertEquals(1, passportFound.size(), "one line, not an INFO and a DEBUG copy");
+        String message = passportFound.get(0).getFormattedMessage();
+        assertTrue(message.startsWith("RAS PASSPORT FOUND ___ USER: " + TEST_SUBJECT + " ___ PASSPORT: Passport{"), message);
+        assertTrue(message.contains(passport.getJti()), message);
+        assertTrue(message.endsWith("___ CODE " + code), message);
+    }
+
+    @Test
+    public void passportIssuerMismatchAtInfoLogsTheSubjectButNotTheAuthorizationCode() {
+        rasAuthenticationLogger.setLevel(Level.INFO);
+        rejectPassportIssuer();
+
+        assertEquals(1, countLogMessages("PASSPORT ISSUER IS NOT CORRECT ___ USER: okta-ras|mismatch-subject"));
+        assertNoLogContains(code);
+    }
+
+    @Test
+    public void passportIssuerMismatchAtDebugKeepsTheErrorLevelAndAppendsTheCode() {
+        rasAuthenticationLogger.setLevel(Level.DEBUG);
+        rejectPassportIssuer();
+
+        List<ILoggingEvent> rejections =
+            logAppender.list.stream().filter(event -> event.getFormattedMessage().contains("PASSPORT ISSUER IS NOT CORRECT")).toList();
+        assertEquals(1, rejections.size(), "one line, not an ERROR and a DEBUG copy");
+        assertEquals(Level.ERROR, rejections.get(0).getLevel());
+        assertTrue(rejections.get(0).getFormattedMessage().endsWith("___ CODE " + code));
+    }
+
+    /**
+     * A successful login writes the stored user metadata, which carries the user's email, and the passport. At INFO each event is one line
+     * naming the user by subject only.
+     */
+    @Test
+    public void successfulLoginAtInfoLogsOneLinePerEventWithoutTheCodeOrEmail() {
+        rasAuthenticationLogger.setLevel(Level.INFO);
+        User user = loginSuccessfully();
+
+        assertEquals(1, countLogMessages("RAS OKTA LOGIN ATTEMPT"));
+        assertEquals(1, countLogMessages("USER METADATA SUCCESSFULLY ADDED ___ USER okta-ras|success-subject"));
+        assertEquals(1, countLogMessages("LOGIN SUCCESS ___ USER okta-ras|success-subject"));
+        assertNoLogContains(code);
+        assertNoLogContains(user.getEmail());
+        assertNoLogContains("Passport{");
+    }
+
+    @Test
+    public void successfulLoginAtDebugLogsEachEventOnceWithTheCode() {
+        rasAuthenticationLogger.setLevel(Level.DEBUG);
+        User user = loginSuccessfully();
+
+        assertEquals(
+            1,
+            logAppender.list.stream().map(ILoggingEvent::getFormattedMessage)
+                .filter(message -> message.startsWith("RAS OKTA LOGIN ATTEMPT") && !message.contains("INTROSPECTION RESPONSE")).count(),
+            "one line, not an INFO and a DEBUG copy"
+        );
+        assertEquals(1, countLogMessages("USER METADATA SUCCESSFULLY ADDED"), "one line, not an INFO and a DEBUG copy");
+        assertEquals(1, countLogMessages("LOGIN SUCCESS ___ USER okta-ras|success-subject"), "one line, not an INFO and a DEBUG copy");
+        assertTrue(hasLogMessage("RAS OKTA LOGIN ATTEMPT ___ CODE " + code));
+        assertTrue(hasLogMessage(user.getEmail()));
+    }
+
+    @Test
+    public void inactiveTokenRejectionAtInfoOmitsTheAuthorizationCode() {
+        rasAuthenticationLogger.setLevel(Level.INFO);
+        mockTokenAndIntrospectionResponses("{\"active\":false}");
+
+        assertNull(rasAuthenticationService.authenticate(authRequest, testDomain));
+
+        assertEquals(1, countLogMessages("LOGIN FAILED ___ OKTA ACCESS TOKEN IS INACTIVE"));
+        assertNoLogContains(code);
+    }
+
+    @Test
+    public void inactiveTokenRejectionAtDebugAppendsTheCodeToTheSameLine() {
+        rasAuthenticationLogger.setLevel(Level.DEBUG);
+        mockTokenAndIntrospectionResponses("{\"active\":false}");
+
+        assertNull(rasAuthenticationService.authenticate(authRequest, testDomain));
+
+        List<ILoggingEvent> rejections =
+            logAppender.list.stream().filter(event -> event.getFormattedMessage().contains("OKTA ACCESS TOKEN IS INACTIVE")).toList();
+        assertEquals(1, rejections.size(), "one line, not an INFO and a DEBUG copy");
+        assertEquals(Level.INFO, rejections.get(0).getLevel());
+        assertTrue(rejections.get(0).getFormattedMessage().endsWith("___ CODE " + code));
+    }
+
+    private Passport acceptPassport() throws JsonProcessingException {
+        String introspectionResponse =
+            "{\"active\":true,\"sub\":\"example_email@test.com\",\"client_id\":\"test_client_id\",\"passport_jwt_v11\":\""
+                + exampleRasPassport + "\"}";
+        JsonNode parsed = new ObjectMapper().readTree(introspectionResponse);
+        Passport passport = this.rasPassPortService.extractPassport(parsed).orElseThrow();
+        User user = createTestUser();
+        user.setSubject(TEST_SUBJECT);
+        when(rasPassPortService.ga4ghPassportToRasDbgapPermissions(any())).thenReturn(new HashSet<>());
+        when(userService.ensureBaselineRoles(any(User.class))).thenReturn(user);
+        when(userService.updateUserConsents(any(), any())).thenReturn(user);
+
+        this.rasAuthenticationService.updateRasUserRoles(code, user, passport);
+        return passport;
+    }
+
+    private void rejectPassportIssuer() {
+        String introspectionResponse = "{\"active\":true,\"sub\":\"example_email@test.com\",\"client_id\":\"test_client_id\","
+            + "\"userid\":\"test_userid\",\"preferred_username\":\"testuser\",\"passport_jwt_v11\":\"" + exampleRasPassport + "\"}";
+        mockTokenAndIntrospectionResponses(introspectionResponse);
+        User user = createTestUser();
+        user.setSubject("okta-ras|mismatch-subject");
+        when(userService.createRasUser(any(), any())).thenReturn(Optional.of(user));
+        RASAuthenticationService serviceWithWrongIssuer = new RASAuthenticationService(
+            userService, restClientUtil, true, "test.com", "", "", "", "https://an-issuer-the-passport-does-not-carry", rasPassPortService,
+            connectionService, cacheEvictionService, new SessionService(8 * 60 * 60 * 1000, new ConcurrentMapCacheManager("sessions"), null)
+        );
+        serviceWithWrongIssuer.setRasConnection(rasConnectionForTest());
+
+        assertNull(serviceWithWrongIssuer.authenticate(authRequest, testDomain));
+    }
+
+    private User loginSuccessfully() {
+        String introspectionResponse = "{\"active\":true,\"sub\":\"example_email@test.com\",\"client_id\":\"test_client_id\","
+            + "\"userid\":\"test_userid\",\"preferred_username\":\"testuser\",\"passport_jwt_v11\":\"" + exampleRasPassport + "\"}";
+        mockTokenAndIntrospectionResponses(introspectionResponse);
+        User user = createTestUser();
+        user.setSubject("okta-ras|success-subject");
+        when(userService.createRasUser(any(), any())).thenReturn(Optional.of(user));
+        when(userService.ensureBaselineRoles(any(User.class))).thenReturn(user);
+        when(userService.updateUserConsents(any(), any())).thenReturn(user);
+        when(userService.getUserProfileResponse(any())).thenReturn(new HashMap<>());
+
+        assertNotNull(rasAuthenticationService.authenticate(authRequest, testDomain));
+        return user;
+    }
+
+    private long countLogMessages(String expectedMessage) {
+        return logAppender.list.stream().map(ILoggingEvent::getFormattedMessage).filter(message -> message.contains(expectedMessage))
+            .count();
+    }
+
+    private void assertNoLogContains(String secret) {
+        assertNotNull(secret);
+        for (ILoggingEvent event : logAppender.list) {
+            assertFalse(
+                event.getFormattedMessage().contains(secret),
+                "a log line carries a value that belongs at DEBUG only: " + event.getFormattedMessage()
+            );
+        }
+    }
+
+    private Connection rasConnectionForTest() {
+        Connection rasConnection = new Connection();
+        rasConnection.setSubPrefix("okta-ras|");
+        rasConnection.setUuid(UUID.randomUUID());
+        rasConnection.setId("okta-ras");
+        rasConnection.setLabel("RAS");
+        return rasConnection;
     }
 
     private void mockTokenAndIntrospectionResponses(String introspectionResponse) {

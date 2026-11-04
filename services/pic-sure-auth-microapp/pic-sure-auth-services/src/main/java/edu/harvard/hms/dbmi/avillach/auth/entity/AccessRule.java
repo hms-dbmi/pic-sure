@@ -15,35 +15,26 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * <p>
- * <h3>Thoughts on design:</h3> the AccessRule is designed to fulfilled the requirements
- * of complicated scenarios that includes AND/OR or nested AND/OR cases of jsonPath authorization
- *</p>
- * <br>
- * <br>
- * <b>Attribute Explanations</b>:
- *     <li><b>checkMapNode</b> - after retrieving the value by jsonPath rule, if the value is a map,
- *     this flag will let the evaluation go through all the map nodes and their children nodes</li>
- *     <li><b>checkMapKeyOnly</b> - only take effective when checkMapNode flag is turned on. This flag will
- *     let the evaluation only check the key of current map node, it will stop the evaluation to go into
- *     the children nodes</li>
- *     <li><b>gateAnyRelation</b> - true: gates are evaluated as ANY relationship, false: gates are evaluated as AND relationship</li>
- *     <li><b>evaluateOnlyByGates</b> - this flag means no matter what rules and values are set,
- *     the evaluation will based on whether the gates are passed or not, which means if gates are passed,
- *     then evaluation result is true, not passed, return false. The use case for this flag is sometimes, we
- *     need to meet the requirements of some nested AND/OR gates like gateA && gateB && (gateC || gateD),
- *     in this example, (gateC || gateD) has to be together in a gate and not evaluate by the values and rules</li>
+ * <p> <h3>Thoughts on design:</h3> the AccessRule is designed to fulfilled the requirements of complicated scenarios that includes AND/OR
+ * or nested AND/OR cases of jsonPath authorization </p> <br> <br> <b>Attribute Explanations</b>: <li><b>checkMapNode</b> - after retrieving
+ * the value by jsonPath rule, if the value is a map, this flag will let the evaluation go through all the map nodes and their children
+ * nodes</li> <li><b>checkMapKeyOnly</b> - only take effective when checkMapNode flag is turned on. This flag will let the evaluation only
+ * check the key of current map node, it will stop the evaluation to go into the children nodes</li> <li><b>gateAnyRelation</b> - true:
+ * gates are evaluated as ANY relationship, false: gates are evaluated as AND relationship</li> <li><b>evaluateOnlyByGates</b> - this flag
+ * means no matter what rules and values are set, the evaluation will based on whether the gates are passed or not, which means if gates are
+ * passed, then evaluation result is true, not passed, return false. The use case for this flag is sometimes, we need to meet the
+ * requirements of some nested AND/OR gates like gateA && gateB && (gateC || gateD), in this example, (gateC || gateD) has to be together in
+ * a gate and not evaluate by the values and rules</li>
  *
  */
 @Entity(name = "access_rule")
 public class AccessRule extends BaseEntity {
     /**
-     * please do not modify the existing values, in case the value has
-     * already saved in the database. But you can add more constant values, or
-     * update the keys.
+     * please do not modify the existing values, in case the value has already saved in the database. But you can add more constant values,
+     * or update the keys.
      */
     public static class TypeNaming {
-//        public static final int CONTAINS = 0;
+        // public static final int CONTAINS = 0;
         public static final int NOT_CONTAINS = 1;
         public static final int NOT_CONTAINS_IGNORE_CASE = 2;
         public static final int NOT_EQUALS = 3;
@@ -60,15 +51,14 @@ public class AccessRule extends BaseEntity {
         public static final int IS_NOT_EMPTY = 14;
         public static final int ALL_CONTAINS_OR_EMPTY = 15;
         public static final int ALL_CONTAINS_OR_EMPTY_IGNORE_CASE = 16;
-        public static final int USER_CONSENT_ACCESS = 17;
 
-        public static Map<String, Integer> getTypeNameMap(){
+        public static Map<String, Integer> getTypeNameMap() {
             Map<String, Integer> map = new LinkedHashMap<>();
-            for (Field f : AccessRule.TypeNaming.class.getDeclaredFields()){
+            for (Field f : AccessRule.TypeNaming.class.getDeclaredFields()) {
                 f.setAccessible(true);
                 try {
-                    map.put(f.getName(), (Integer)f.get(null));
-                } catch (IllegalAccessException e){
+                    map.put(f.getName(), (Integer) f.get(null));
+                } catch (IllegalAccessException e) {
                     continue;
                 }
             }
@@ -84,9 +74,7 @@ public class AccessRule extends BaseEntity {
      * for check how to do with the retrieved value
      *
      *
-     *    NOTICE: please don't change this back to int
-     *    we need to support a null input,
-     *    otherwise, the update mechanism will be broken
+     * NOTICE: please don't change this back to int we need to support a null input, otherwise, the update mechanism will be broken
      *
      *
      * @see TypeNaming
@@ -94,8 +82,7 @@ public class AccessRule extends BaseEntity {
     private Integer type;
 
     /**
-     * The jsonpath rule to retrieve values, kind of the route to the data.
-     * The possible value will be String, JSONObject, JSONArray, etc.
+     * The jsonpath rule to retrieve values, kind of the route to the data. The possible value will be String, JSONObject, JSONArray, etc.
      */
     private String rule;
 
@@ -105,52 +92,42 @@ public class AccessRule extends BaseEntity {
     private String value;
 
     /**
-     * only inner use for merge accessRule
-     * This field should neither be saved to database
-     * nor seen by a user
+     * only inner use for merge accessRule This field should neither be saved to database nor seen by a user
      */
     @Transient
     private Set<String> mergedValues = new HashSet<>();
 
     /**
-     * This attribute will not be seen by either endpoint users or database.
-     * It is a intermediate product that generated on the fly for supporting
-     * auto-merging functionality of accessRules when doing authorization.
+     * This attribute will not be seen by either endpoint users or database. It is a intermediate product that generated on the fly for
+     * supporting auto-merging functionality of accessRules when doing authorization.
      */
     @Transient
     private String mergedName = "";
 
     /**
-     * Guideline of using gates: if null or empty, will skip checking gate
-     * to pass gate settings, every gate in the set needs to be passed,
-     * which means if only part of the gate set is passed, the gate still
-     * not passed
+     * Guideline of using gates: if null or empty, will skip checking gate to pass gate settings, every gate in the set needs to be passed,
+     * which means if only part of the gate set is passed, the gate still not passed
      */
     @ManyToMany(fetch = FetchType.EAGER)
-    @JoinTable(name = "accessRule_gate",
-            joinColumns = {@JoinColumn(name = "accessRule_id", nullable = false)},
-            inverseJoinColumns = {@JoinColumn(name = "gate_id", nullable = false)})
+    @JoinTable(
+        name = "accessRule_gate", joinColumns = {@JoinColumn(name = "accessRule_id", nullable = false)},
+        inverseJoinColumns = {@JoinColumn(name = "gate_id", nullable = false)}
+    )
     private Set<AccessRule> gates;
 
     /**
-     * this attribute is for determining the relationship between gates
-     * the default value is false, means gates are AND relationship,
+     * this attribute is for determining the relationship between gates the default value is false, means gates are AND relationship,
      * meaning all gates need to be passed to check the actual rules
      *
-     * NOTICE: please don't change this back to boolean
-     * we need to support a null input,
-     * otherwise, the update mechanism will be broken
+     * NOTICE: please don't change this back to boolean we need to support a null input, otherwise, the update mechanism will be broken
      */
     @Column(name = "isGateAnyRelation")
     private Boolean gateAnyRelation;
 
     /**
-     * this attribute is to tell if the accessRule passes only based on
-     * the gates passes or not
+     * this attribute is to tell if the accessRule passes only based on the gates passes or not
      *
-     * NOTICE: please don't change this back to boolean
-     * we need to support a null input,
-     * otherwise, the update mechanism will be broken
+     * NOTICE: please don't change this back to boolean we need to support a null input, otherwise, the update mechanism will be broken
      */
     @Column(name = "isEvaluateOnlyByGates")
     private Boolean evaluateOnlyByGates;
@@ -159,22 +136,19 @@ public class AccessRule extends BaseEntity {
      * introduce sub-accessRule to enable the ability of more complex problem, essentially it is an AND relationship.
      */
     @ManyToMany(fetch = FetchType.EAGER)
-    @JoinTable(name = "accessRule_subRule",
-            joinColumns = {@JoinColumn(name = "accessRule_id", nullable = false)},
-            inverseJoinColumns = {@JoinColumn(name = "subRule_id", nullable = false)})
+    @JoinTable(
+        name = "accessRule_subRule", joinColumns = {@JoinColumn(name = "accessRule_id", nullable = false)},
+        inverseJoinColumns = {@JoinColumn(name = "subRule_id", nullable = false)}
+    )
     private Set<AccessRule> subAccessRule;
 
     /**
-     * NOTICE: please don't change this back to boolean
-     * we need to support a null input,
-     * otherwise, the auto update mechanism will be broken
+     * NOTICE: please don't change this back to boolean we need to support a null input, otherwise, the auto update mechanism will be broken
      */
     private Boolean checkMapNode;
 
     /**
-     * NOTICE: please don't change this back to boolean
-     * we need to support a null input,
-     * otherwise, the auto update mechanism will be broken
+     * NOTICE: please don't change this back to boolean we need to support a null input, otherwise, the auto update mechanism will be broken
      */
     private Boolean checkMapKeyOnly;
 
@@ -283,6 +257,6 @@ public class AccessRule extends BaseEntity {
     }
 
     public String toString() {
-    		return uuid.toString() + " ___ " + name + " ___ " + description + " ___ " + rule + " ___ " + type + " ___ " + value;
+        return uuid.toString() + " ___ " + name + " ___ " + description + " ___ " + rule + " ___ " + type + " ___ " + value;
     }
 }

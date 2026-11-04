@@ -7,6 +7,7 @@ import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomApplicationDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.CustomUserDetailService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.TOSService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
@@ -32,6 +33,8 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Date;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -49,22 +52,31 @@ public class JWTFilter extends OncePerRequestFilter {
 
     private final static Logger logger = LoggerFactory.getLogger(JWTFilter.class);
 
+    /**
+     * Response header naming why PSAMA refused an application token on {@code token/inspect} or {@code open/validate}:
+     * {@code application_token_expired}, {@code token_mismatch} or {@code application_not_found}. The gateway's {@code PsamaClient} reads
+     * it under the same name, so a rename has to change both.
+     */
+    public static final String APPLICATION_TOKEN_REJECTED_HEADER = "X-Application-Token-Rejected";
+
     private final TOSService tosService;
 
     private final String userClaimId;
 
     private final JWTUtil jwtUtil;
     private final CustomUserDetailService customUserDetailService;
+    private final SessionService sessionService;
 
     @Autowired
     public JWTFilter(
         TOSService tosService, @Value("${application.user.id.claim}") String userClaimId, JWTUtil jwtUtil,
-        CustomUserDetailService customUserDetailService
+        CustomUserDetailService customUserDetailService, SessionService sessionService
     ) {
         this.tosService = tosService;
         this.userClaimId = userClaimId;
         this.jwtUtil = jwtUtil;
         this.customUserDetailService = customUserDetailService;
+        this.sessionService = sessionService;
     }
 
     /**
@@ -94,6 +106,13 @@ public class JWTFilter extends OncePerRequestFilter {
             try {
                 jws = this.jwtUtil.parseToken(token);
             } catch (Exception e) {
+                if (isIntrospectionEndpoint(request)) {
+                    Optional<Claims> expiredApplicationClaims = expiredApplicationTokenClaims(token);
+                    if (expiredApplicationClaims.isPresent()) {
+                        rejectExpiredApplicationToken(request, response, expiredApplicationClaims.get());
+                        return;
+                    }
+                }
                 logger.error("Failed to parse JWT token.", e);
                 sendAuthFailure(request, "invalid_token", e.getMessage());
                 response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid token.");
@@ -106,21 +125,27 @@ public class JWTFilter extends OncePerRequestFilter {
                 if (request.getRequestURI().startsWith("/auth/user/me")) {
                     String realClaimsSubject = jws.getPayload().getSubject().substring(AuthNaming.LONG_TERM_TOKEN_PREFIX.length() + 1);
 
-                    setSecurityContextForUser(request, response, realClaimsSubject);
+                    if (!setSecurityContextForUser(request, response, realClaimsSubject)) {
+                        return;
+                    }
                 } else {
                     logger.error("the long term token with subject, {}, cannot access to PSAMA.", userId);
                     sendAuthFailure(request, "long_term_token_rejected", "Long term token on non-/me endpoint");
                     response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Long term tokens cannot be used to access to PSAMA.");
+                    return;
                 }
-            } else if (userId.startsWith(AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX)) {
+            } else if (JWTUtil.isApplicationToken(userId)) {
                 logger.info("User Authentication Starts with {}", AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX);
 
                 // Check if the user is attempting to access the correct introspection endpoint. If not reject the request,
                 // log an error indicating the user's token may be being used by a malicious actor.
-                if (!request.getRequestURI().endsWith("token/inspect") && !request.getRequestURI().endsWith("open/validate")) {
+                if (!isIntrospectionEndpoint(request)) {
                     logger.error("{} attempted to perform request {} token may be compromised.", userId, request.getRequestURI());
                     sendAuthFailure(request, "compromised_token", "App token on wrong endpoint");
-                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "User is deactivated");
+                    // Deliberately generic: naming the endpoints an application token does work on would map them
+                    // out for whoever is probing with it. The log line above carries the detail for operators.
+                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized");
+                    return;
                 }
 
                 String applicationId = userId.split("\\|")[1];
@@ -131,9 +156,9 @@ public class JWTFilter extends OncePerRequestFilter {
                     (CustomApplicationDetails) this.customUserDetailService.loadUserByUsername("application:" + applicationId);
                 if (customApplicationDetails.getApplication() == null) {
                     logger.error("Cannot find an application by userId: {}", applicationId);
-                    sendAuthFailure(request, "application_not_found", "No application for ID: " + applicationId);
-                    response.sendError(
-                        HttpServletResponse.SC_UNAUTHORIZED, "Your token doesn't contain valid identical information, please contact admin."
+                    rejectApplicationToken(
+                        request, response, "application_not_found", "No application for ID: " + applicationId,
+                        "Your token doesn't contain valid identical information, please contact admin."
                     );
                     return;
                 }
@@ -145,11 +170,11 @@ public class JWTFilter extends OncePerRequestFilter {
                         "filter() incoming application token - {} - is not the same as record, might because the token has been refreshed. Subject: {}",
                         token, userId
                     );
-                    sendAuthFailure(request, "token_mismatch", "Application token does not match record");
-                    response.sendError(
-                        HttpServletResponse.SC_UNAUTHORIZED,
+                    rejectApplicationToken(
+                        request, response, "token_mismatch", "Application token does not match record",
                         "Your token has been inactivated, please contact admin to grab you the latest one."
                     );
+                    return;
                 }
 
                 // This is the application token that is being used to authenticate the user by other applications
@@ -157,12 +182,97 @@ public class JWTFilter extends OncePerRequestFilter {
                 setSecurityContextForApplication(request, customApplicationDetails);
             } else {
                 logger.info("UserID: {} is not a long term token and not a PSAMA application token.", userId);
+                String realClaimsSubject = jws.getPayload().getSubject();
+
+                Object sessionId = jws.getPayload().get("sid");
+                if (!this.sessionService.isTokenValidForCurrentSession(realClaimsSubject, sessionId)) {
+                    String reason;
+                    String message;
+                    if (sessionId == null) {
+                        reason = "missing_session_id";
+                        message = "Token has no session ID claim";
+                    } else if (!(sessionId instanceof String id) || id.isBlank()) {
+                        reason = "invalid_session_id";
+                        message = "Token has an invalid session ID claim";
+                    } else {
+                        reason = "session_ended";
+                        message = "Token is not valid for the current session";
+                    }
+                    logger.warn("Rejecting a token for subject {}: {}.", realClaimsSubject, message);
+                    sendAuthFailure(request, reason, message + " for subject: " + realClaimsSubject);
+                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Your session has expired. Please log in again.");
+                    return;
+                }
+
                 // Authenticate as User
-                setSecurityContextForUser(request, response, jws.getPayload().getSubject());
+                if (!setSecurityContextForUser(request, response, realClaimsSubject)) {
+                    return;
+                }
             }
 
             filterChain.doFilter(request, response);
         }
+    }
+
+    private static boolean isIntrospectionEndpoint(HttpServletRequest request) {
+        return request.getRequestURI().endsWith("token/inspect") || request.getRequestURI().endsWith("open/validate");
+    }
+
+    /**
+     * Returns the claims of {@code token} if it is a PSAMA application token whose signature checks out but whose expiration has passed.
+     * JJWT verifies the signature before it checks the expiration, so these claims are trustworthy enough to name the application.
+     *
+     * @param token a token that {@link JWTUtil#parseToken} has already rejected
+     * @return the expired application token's claims, or empty for any other token
+     */
+    private Optional<Claims> expiredApplicationTokenClaims(String token) {
+        Date now = new Date();
+        return this.jwtUtil.parseTokenAllowingExpiration(token)
+            .filter(claims -> JWTUtil.isApplicationToken(claims.get(this.userClaimId, String.class)))
+            .filter(claims -> claims.getExpiration() != null && claims.getExpiration().before(now));
+    }
+
+    /**
+     * Rejects an expired PSAMA application token and logs how to replace it. The gateway sends its token introspection token to this
+     * endpoint on every request, so if that is the token that expired, no user request can be authenticated until it is replaced.
+     *
+     * @param request the rejected request, which receives the audit failure attributes
+     * @param response the response the 401 is sent on
+     * @param claims the verified claims of the expired token
+     * @throws IOException if sending the error response fails
+     */
+    private void rejectExpiredApplicationToken(HttpServletRequest request, HttpServletResponse response, Claims claims) throws IOException {
+        String userId = claims.get(this.userClaimId, String.class);
+        logger.error(
+            "The PSAMA application token for {} expired at {}. If this is the gateway's TOKEN_INTROSPECTION_TOKEN, users cannot log in or "
+                + "query until it is replaced. To fix it, run the 'Configure PIC-SURE Token Introspection Token' Jenkins job, which issues "
+                + "a new token valid for one year and saves it to auth.application and to TOKEN_INTROSPECTION_TOKEN in the gateway's "
+                + "environment. Then start PIC-SURE again so the gateway picks up the new token.",
+            userId, claims.getExpiration()
+        );
+        rejectApplicationToken(
+            request, response, "application_token_expired", "Application token expired at " + claims.getExpiration(), "Invalid token."
+        );
+    }
+
+    /**
+     * Sends a 401 for an application token presented on an introspection endpoint, naming the reason in
+     * {@link #APPLICATION_TOKEN_REJECTED_HEADER}. The gateway relies on that header to tell its own token being refused apart from any
+     * other 401, so every rejection of a well-formed application token on these endpoints must go through here.
+     *
+     * @param request the rejected request, which receives the audit failure attributes
+     * @param response the response the 401 is sent on
+     * @param reason the audit failure reason, also sent as the header value
+     * @param auditMessage the audit failure message
+     * @param errorMessage the error message sent to the caller
+     * @throws IOException if sending the error response fails
+     */
+    private void rejectApplicationToken(
+        HttpServletRequest request, HttpServletResponse response, String reason, String auditMessage, String errorMessage
+    ) throws IOException {
+        sendAuthFailure(request, reason, auditMessage);
+        response.setHeader(APPLICATION_TOKEN_REJECTED_HEADER, reason);
+        response.sendError(HttpServletResponse.SC_UNAUTHORIZED, errorMessage);
     }
 
     private void setSecurityContextForApplication(HttpServletRequest request, CustomApplicationDetails authenticatedApplication) {
@@ -184,8 +294,12 @@ public class JWTFilter extends OncePerRequestFilter {
      * @param request the HttpServletRequest object
      * @param response the HttpServletResponse object
      * @param realClaimsSubject the subject of the user's claims in the JWT token
+     * @return true when the user was authenticated. False means an error response has already been sent and the caller must not continue
+     *         the filter chain. Note this is not the only rejection signal: an unknown or deactivated subject still propagates an exception
+     *         out of the filter rather than returning false.
      */
-    private void setSecurityContextForUser(HttpServletRequest request, HttpServletResponse response, String realClaimsSubject) {
+    private boolean setSecurityContextForUser(HttpServletRequest request, HttpServletResponse response, String realClaimsSubject)
+        throws IOException {
         logger.debug("Setting security context for user: {}", realClaimsSubject);
 
         CustomUserDetails authenticatedUser = (CustomUserDetails) this.customUserDetailService.loadUserByUsername(realClaimsSubject);
@@ -214,13 +328,8 @@ public class JWTFilter extends OncePerRequestFilter {
             sendAuthFailure(request, "tos_not_accepted", "User must accept terms of service");
             // If user has not accepted terms of service and is attempted to get information other than the terms of service, don't
             // authenticate
-            try {
-                response.sendError(HttpServletResponse.SC_FORBIDDEN, "User must accept terms of service");
-                // Return early to prevent setting up security context
-                return;
-            } catch (IOException e) {
-                logger.error("Failed to send response.", e);
-            }
+            response.sendError(HttpServletResponse.SC_FORBIDDEN, "User must accept terms of service");
+            return false;
         }
 
         Set<Role> userRoles = authenticatedUser.getUser().getRoles();
@@ -229,13 +338,8 @@ public class JWTFilter extends OncePerRequestFilter {
         ) {
             logger.error("User doesn't have any roles or privileges.");
             sendAuthFailure(request, "no_roles_or_privileges", "User has no roles or privileges");
-            try {
-                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "User doesn't have any roles or privileges.");
-                // Return early to prevent setting up security context
-                return;
-            } catch (IOException e) {
-                logger.error("Failed to send response.", e);
-            }
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "User doesn't have any roles or privileges.");
+            return false;
         }
 
         logger.debug(
@@ -250,6 +354,7 @@ public class JWTFilter extends OncePerRequestFilter {
         // Populate AuditAttributes for the AuditLoggingFilter to include in its event.
         // user_id and user_email are read from SecurityContext by the filter directly.
         AuditAttributes.putMetadata(request, "auth_result", "success");
+        return true;
     }
 
     private void sendAuthFailure(HttpServletRequest request, String reason, String message) {

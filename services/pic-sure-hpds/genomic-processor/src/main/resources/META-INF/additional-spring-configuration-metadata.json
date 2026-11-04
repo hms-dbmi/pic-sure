@@ -1,0 +1,19 @@
+{
+  "properties": [
+    {
+      "name": "DEST_IP",
+      "type": "java.lang.String",
+      "description": "IP address recorded as the destination IP on audit log events sent by AuditLoggingFilter. When unset (the default), the filter falls back to the current request's local address (HttpServletRequest#getLocalAddr())."
+    },
+    {
+      "name": "DEST_PORT",
+      "type": "java.lang.Integer",
+      "description": "Port number recorded as the destination port on audit log events sent by AuditLoggingFilter. When unset (the default), the filter falls back to the current request's local port (HttpServletRequest#getLocalPort())."
+    },
+    {
+      "name": "hpds.genomicDataDirectory",
+      "type": "java.lang.String",
+      "description": "Filesystem directory containing the genomic variant data partition this standalone genomic-processor instance serves, passed to GenomicProcessorNodeImpl at startup."
+    }
+  ]
+}

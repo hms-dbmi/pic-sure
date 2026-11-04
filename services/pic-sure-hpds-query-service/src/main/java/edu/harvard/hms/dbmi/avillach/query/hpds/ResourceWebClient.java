@@ -1,71 +1,117 @@
 package edu.harvard.hms.dbmi.avillach.query.hpds;
 
+import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpRequest;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.PaginatedSearchResult;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
+import edu.harvard.dbmi.avillach.domain.SignedUrlResponse;
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
 
 /**
- * RestClient port of the legacy {@code ResourceWebClient} (pic-sure-resource-api). Query-lifecycle calls ({@link #query},
- * {@link #queryStatus}, {@link #queryResult}, {@link #queryResultSignedUrl}, {@link #querySync}) inject
- * {@code Authorization: Bearer <backend service token>} -- parity with the WAR's {@code createHeaders(...BEARER_TOKEN...)} after
- * {@code PicsureQueryService} put {@code resource.getToken()} into the credentials. {@link #search} and {@link #searchConceptValues} inject
- * NO service token -- parity with {@code PicsureSearchService}, which never set {@code BEARER_TOKEN}. HPDS non-2xx / IO errors surface as
- * {@link HpdsCommunicationException} (mapped to 502 upstream).
+ * HTTP client for HPDS. Query-lifecycle calls ({@link #query}, {@link #queryStatus}, {@link #queryResult}, {@link #queryResultSignedUrl},
+ * and {@link #querySync}) inject {@code Authorization: Bearer <backend service token>}. {@link #search} and {@link #searchConceptValues}
+ * send no service token. {@link #queryStatus}, {@link #queryResult} and {@link #queryResultSignedUrl} POST an empty envelope, because HPDS
+ * requires a body on those calls and does not read it. An HPDS 4xx surfaces as a {@link PicsureException} carrying HPDS's status and body,
+ * so the caller learns why HPDS refused the request. HPDS 5xx and I/O errors surface as {@link HpdsCommunicationException}, which maps to
+ * 502 upstream.
  */
 @Component
 public class ResourceWebClient {
 
-    /** Verified field name on the legacy ResourceWebClient (ResourceWebClient.java:43). */
+    /** HPDS response header containing query metadata. */
     public static final String QUERY_METADATA_FIELD = "queryMetadata";
+    private static final ParameterizedTypeReference<PaginatedSearchResult<String>> VALUES_PAGE = new ParameterizedTypeReference<>() {};
 
     private final RestClient http;
 
     public ResourceWebClient(@Qualifier("hpdsClient") RestClient hpdsClient) {
-        this.http = hpdsClient;
+        this.http = hpdsClient.mutate().defaultStatusHandler(HttpStatusCode::is4xxClientError, ResourceWebClient::rejectedByHpds).build();
+    }
+
+    /**
+     * Rethrows an HPDS 4xx as a {@link PicsureException} with HPDS's status, an error type derived from that status (for example
+     * {@code bad_request}), and HPDS's response body as the message, falling back to the status reason phrase when the body is empty.
+     *
+     * @throws PicsureException always
+     */
+    private static void rejectedByHpds(HttpRequest request, ClientHttpResponse response) throws IOException {
+        HttpStatus status = Optional.ofNullable(HttpStatus.resolve(response.getStatusCode().value())).orElse(HttpStatus.BAD_REQUEST);
+        String body = new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8).trim();
+        throw new PicsureException(status, status.name().toLowerCase(Locale.ENGLISH), body.isEmpty() ? status.getReasonPhrase() : body);
     }
 
     public record QuerySyncResult(byte[] body, String queryMetadata) {
     }
 
-    // --- query lifecycle: inject the per-backend service token (parity with the WAR's resource.getToken()) ---
+    // --- query lifecycle: inject the per-backend service token ---
 
     public QueryStatus query(HpdsTarget target, QueryRequest req) {
         return postJson(target, target.baseUrl() + "/query", req, QueryStatus.class);
     }
 
-    public QueryStatus queryStatus(HpdsTarget target, String resourceResultId, QueryRequest req) {
-        return postJson(target, target.baseUrl() + "/query/" + resourceResultId + "/status", req, QueryStatus.class);
+    /**
+     * Asks HPDS for the status of a submitted query.
+     *
+     * @param target the backend's API base URL and service token
+     * @param resourceResultId the id HPDS assigned to the result
+     * @return the status HPDS answered with, or null when HPDS answered with no body
+     * @throws HpdsCommunicationException when HPDS answers 5xx or cannot be reached
+     */
+    public QueryStatus queryStatus(HpdsTarget target, String resourceResultId) {
+        return postJson(target, target.baseUrl() + "/query/" + resourceResultId + "/status", new GeneralQueryRequest(), QueryStatus.class);
     }
 
-    /** Octet-stream, FULLY BUFFERED -- parity with ResourceWebClient.queryResult/readBytesFromResponse. */
-    public ResponseEntity<byte[]> queryResult(HpdsTarget target, String resourceResultId, QueryRequest req) {
+    /**
+     * Fetches the result bytes of a completed query.
+     *
+     * @param target the backend's API base URL and service token
+     * @param resourceResultId the id HPDS assigned to the result
+     * @return the fully buffered response, with the content type HPDS gave it
+     * @throws HpdsCommunicationException when HPDS answers 5xx or cannot be reached
+     */
+    public ResponseEntity<byte[]> queryResult(HpdsTarget target, String resourceResultId) {
         try {
             return http.post().uri(target.baseUrl() + "/query/" + resourceResultId + "/result").headers(h -> authorize(h, target))
-                .contentType(MediaType.APPLICATION_JSON).body(req).retrieve().toEntity(byte[].class);
+                .contentType(MediaType.APPLICATION_JSON).body(new GeneralQueryRequest()).retrieve().toEntity(byte[].class);
         } catch (RestClientException e) {
             throw new HpdsCommunicationException("HPDS result call failed: " + target.baseUrl(), e);
         }
     }
 
-    /** JSON string, FULLY BUFFERED -- parity with ResourceWebClient.queryResultSignedUrl. */
-    public ResponseEntity<String> queryResultSignedUrl(HpdsTarget target, String resourceResultId, QueryRequest req) {
+    /**
+     * Asks HPDS for a signed URL to a completed result.
+     *
+     * @param target the backend's API base URL and service token
+     * @param resourceResultId the id HPDS assigned to the result
+     * @return the signed URL HPDS answered with, or null when HPDS answered with no body
+     * @throws HpdsCommunicationException when HPDS answers 5xx, answers a body that is not a signed URL object, or cannot be reached
+     */
+    public SignedUrlResponse queryResultSignedUrl(HpdsTarget target, String resourceResultId) {
         try {
             return http.post().uri(target.baseUrl() + "/query/" + resourceResultId + "/signed-url").headers(h -> authorize(h, target))
-                .contentType(MediaType.APPLICATION_JSON).body(req).retrieve().toEntity(String.class);
+                .contentType(MediaType.APPLICATION_JSON).body(new GeneralQueryRequest()).retrieve().body(SignedUrlResponse.class);
         } catch (RestClientException e) {
             throw new HpdsCommunicationException("HPDS signed-url call failed: " + target.baseUrl(), e);
         }
@@ -87,7 +133,7 @@ public class ResourceWebClient {
         }
     }
 
-    // --- search: NO service token (parity with PicsureSearchService, which never set BEARER_TOKEN) ---
+    // --- search: no service token ---
 
     public SearchResults search(String base, QueryRequest req) {
         try {
@@ -97,14 +143,23 @@ public class ResourceWebClient {
         }
     }
 
-    public PaginatedSearchResult<?> searchConceptValues(
-        String base, QueryRequest req, String conceptPath, String query, Integer page, Integer size
-    ) {
+    /**
+     * Pages through the values of a genomic concept on HPDS.
+     *
+     * @param base the backend's API base URL
+     * @param conceptPath the genomic concept whose values are listed
+     * @param query text the values must contain
+     * @param page the one-based page number, or null to leave it off the downstream call
+     * @param size the page size, or null to leave it off the downstream call
+     * @return one page of matching values, or null when HPDS answered with no body
+     * @throws HpdsCommunicationException when HPDS answers 5xx or cannot be reached
+     */
+    public PaginatedSearchResult<String> searchConceptValues(String base, String conceptPath, String query, Integer page, Integer size) {
         try {
             URI uri = UriComponentsBuilder.fromUriString(base + "/search/values/").queryParam("genomicConceptPath", conceptPath)
                 .queryParam("query", query).queryParamIfPresent("page", Optional.ofNullable(page))
                 .queryParamIfPresent("size", Optional.ofNullable(size)).encode().build().toUri();
-            return http.get().uri(uri).retrieve().body(PaginatedSearchResult.class);
+            return http.get().uri(uri).retrieve().body(VALUES_PAGE);
         } catch (RestClientException e) {
             throw new HpdsCommunicationException("HPDS search/values call failed: " + base, e);
         }

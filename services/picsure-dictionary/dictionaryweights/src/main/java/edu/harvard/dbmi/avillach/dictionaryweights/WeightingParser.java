@@ -16,9 +16,7 @@ public class WeightingParser {
     private static final Map<String, String> NUMERIC_TIER_MAP = Map.of("1", "A", "2", "B", "3", "C", "4", "D");
 
     public List<Weight> parseWeights(List<String> weights) {
-        return weights.stream()
-            .flatMap(this::parseWeight)
-            .toList();
+        return weights.stream().flatMap(this::parseWeight).toList();
     }
 
     private Stream<Weight> parseWeight(String line) {

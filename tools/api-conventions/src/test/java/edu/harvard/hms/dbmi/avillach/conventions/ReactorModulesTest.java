@@ -1,0 +1,93 @@
+package edu.harvard.hms.dbmi.avillach.conventions;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Map;
+import java.util.Set;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaClasses;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class ReactorModulesTest {
+
+    @Test
+    void findsNestedModulesSeparately(@TempDir Path root) throws IOException {
+        makeModule(root, "services/parent");
+        makeModule(root, "services/parent/child");
+        makeModule(root, "libs/lib-one");
+        Files.createDirectories(root.resolve("services/no-pom/target/classes"));
+
+        Map<String, JavaClasses> modules = ReactorModules.discover(root);
+
+        assertEquals(Set.of("services/parent", "services/parent/child", "libs/lib-one"), modules.keySet());
+    }
+
+    @Test
+    void skipsAModuleThatWasNeverCompiled(@TempDir Path root) throws IOException {
+        Files.createDirectories(root.resolve("services/uncompiled"));
+        Files.writeString(root.resolve("services/uncompiled/pom.xml"), "<project/>");
+
+        assertTrue(ReactorModules.discover(root).isEmpty());
+    }
+
+    @Test
+    void findsTestClassesAndLeavesToolsOut(@TempDir Path root) throws IOException {
+        makeModule(root, "services/tested");
+        Files.createDirectories(root.resolve("services/tested/target/test-classes"));
+        makeModule(root, "services/untested");
+        makeModule(root, "tools/api-conventions");
+        Files.createDirectories(root.resolve("tools/api-conventions/target/test-classes"));
+
+        Map<String, JavaClasses> modules = ReactorModules.discoverTests(root);
+
+        assertEquals(Set.of("services/tested"), modules.keySet());
+    }
+
+    @Test
+    void importsRealTestClassesFromTheReactor() {
+        Path root = Path.of(System.getProperty("reactor.root"));
+
+        Map<String, JavaClasses> modules = ReactorModules.discoverTests(root);
+
+        assertTrue(modules.containsKey("services/pic-sure-hpds/processing"), modules.keySet().toString());
+        assertTrue(
+            modules.get("services/pic-sure-hpds/processing").stream()
+                .anyMatch(type -> type.getSimpleName().equals("CountProcessorTest"))
+        );
+    }
+
+    @Test
+    void importsRealClassesFromTheReactor() {
+        Path root = Path.of(System.getProperty("reactor.root"));
+
+        Map<String, JavaClasses> modules = ReactorModules.discover(root);
+
+        assertTrue(modules.containsKey("services/pic-sure-visualization-service"), modules.keySet().toString());
+        assertTrue(
+            modules.get("services/pic-sure-visualization-service").stream()
+                .anyMatch(type -> type.getSimpleName().equals("DistributionController"))
+        );
+    }
+
+    @Test
+    void resolvesASupertypeDeclaredInAnotherModule() {
+        Path root = Path.of(System.getProperty("reactor.root"));
+
+        JavaClass handler = ReactorModules.discover(root).get("services/pic-sure-auth-microapp/pic-sure-auth-services")
+            .get("edu.harvard.hms.dbmi.avillach.auth.exceptions.GlobalExceptionHandler");
+
+        assertTrue(handler.isAssignableTo(ExceptionAdviceRules.RESPONSE_ENTITY_EXCEPTION_HANDLER));
+    }
+
+    private static void makeModule(Path root, String modulePath) throws IOException {
+        Files.createDirectories(root.resolve(modulePath).resolve("target/classes"));
+        Files.writeString(root.resolve(modulePath).resolve("pom.xml"), "<project/>");
+    }
+}

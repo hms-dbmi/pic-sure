@@ -73,7 +73,22 @@
 			<groupId>edu.harvard.dbmi.avillach</groupId>
 			<artifactId>pic-sure-logging-client</artifactId>
 		</dependency>
+		<dependency>
+			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+			<artifactId>pic-sure-openapi</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+			<artifactId>pic-sure-openapi</artifactId>
+			<type>test-jar</type>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
+
+	<properties>
+		<!-- Empty default so @{argLine} below resolves when JaCoCo is not attached. -->
+		<argLine></argLine>
+	</properties>
 
 	<build>
 		<plugins>
@@ -85,7 +100,8 @@
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
 				<configuration>
-					<argLine>-Dnet.bytebuddy.experimental=true</argLine>
+					<!-- @{argLine} keeps the JaCoCo agent from the Diff coverage job. -->
+					<argLine>@{argLine} -Dnet.bytebuddy.experimental=true</argLine>
 				</configuration>
 			</plugin>
 		</plugins>

@@ -4,7 +4,7 @@ import java.util.Set;
 
 /**
  * Immutable holder for the identity the gateway has already resolved (via header injection or introspection) and forwards downstream.
- * {@code privileges} are the real {@code @RolesAllowed} signal; {@code roles} is carried through as an opaque, comma-joined string for
+ * {@code privileges} are the real {@code @PreAuthorize} signal; {@code roles} is carried through as an opaque, comma-joined string for
  * logging/back-compat.
  */
 public final class GatewayUser {

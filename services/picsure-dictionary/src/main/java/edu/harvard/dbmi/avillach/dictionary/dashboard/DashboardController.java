@@ -1,12 +1,17 @@
 package edu.harvard.dbmi.avillach.dictionary.dashboard;
 
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
+import io.swagger.v3.oas.annotations.Hidden;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 
+/**
+ * Serves the study dashboard table the PIC-SURE frontend renders. Hidden from the OpenAPI document.
+ */
 @Controller
+@Hidden
 public class DashboardController {
     private final DashboardService dashboardService;
 

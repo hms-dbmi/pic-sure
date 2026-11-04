@@ -47,7 +47,7 @@ public class ApplicationServiceTest {
         app.setUuid(id);
         when(applicationRepo.findById(id)).thenReturn(Optional.of(app));
 
-        Optional<Application> result = applicationService.getApplicationByID(id.toString());
+        Optional<Application> result = applicationService.getApplicationByID(id);
         assertTrue(result.isPresent());
         assertSame(app, result.get());
     }
@@ -57,7 +57,7 @@ public class ApplicationServiceTest {
         UUID id = UUID.randomUUID();
         when(applicationRepo.findById(id)).thenReturn(Optional.empty());
 
-        Optional<Application> result = applicationService.getApplicationByID(id.toString());
+        Optional<Application> result = applicationService.getApplicationByID(id);
         assertFalse(result.isPresent());
     }
 
@@ -100,26 +100,12 @@ public class ApplicationServiceTest {
     }
 
     @Test
-    public void testAddNewApplications_successfulWithToken() {
-        Application application = new Application();
-        application.setUuid(UUID.randomUUID());
-        List<Application> applications = Collections.singletonList(application);
-        when(applicationRepo.saveAll(applications)).thenReturn(applications);
-        when(jwtUtil.createJwtToken(any(), any(), any(), anyString(), anyLong())).thenReturn("token");
-
-        List<Application> savedApps = applicationService.addNewApplications(applications);
-        assertNotNull(savedApps);
-        assertFalse(savedApps.isEmpty());
-        assertEquals("token", savedApps.getFirst().getToken());
-    }
-
-    @Test
     public void testDeleteApplicationById_existing() {
         UUID id = UUID.randomUUID();
         Application application = new Application();
         when(applicationRepo.findById(id)).thenReturn(Optional.of(application));
 
-        List<Application> remainingApps = applicationService.deleteApplicationById(id.toString());
+        List<Application> remainingApps = applicationService.deleteApplicationById(id);
         verify(applicationRepo, times(1)).delete(application);
         assertNotNull(remainingApps);
     }
@@ -130,20 +116,8 @@ public class ApplicationServiceTest {
         when(applicationRepo.findById(id)).thenReturn(Optional.empty());
 
         assertThrows(IllegalArgumentException.class, () -> {
-            applicationService.deleteApplicationById(id.toString());
+            applicationService.deleteApplicationById(id);
         });
-    }
-
-    @Test
-    public void testUpdateApplications() {
-        Application application = new Application();
-        application.setUuid(UUID.randomUUID());
-        List<Application> applications = Collections.singletonList(application);
-        when(applicationRepo.saveAll(anyList())).thenReturn(applications);
-
-        List<Application> updatedApps = applicationService.updateApplications(applications);
-        Assertions.assertNotNull(updatedApps);
-        Assertions.assertEquals(applications.size(), updatedApps.size());
     }
 
     @Test
@@ -155,7 +129,7 @@ public class ApplicationServiceTest {
         when(applicationRepo.findById(id)).thenReturn(Optional.of(application));
         when(jwtUtil.createJwtToken(any(), any(), any(), anyString(), anyLong())).thenReturn("newToken");
 
-        String token = applicationService.refreshApplicationToken(id.toString());
+        String token = applicationService.refreshApplicationToken(id);
         assertEquals("newToken", token);
     }
 
@@ -165,7 +139,7 @@ public class ApplicationServiceTest {
         when(applicationRepo.findById(id)).thenReturn(Optional.empty());
 
         assertThrows(IllegalArgumentException.class, () -> {
-            applicationService.refreshApplicationToken(id.toString());
+            applicationService.refreshApplicationToken(id);
         });
     }
 
@@ -179,7 +153,7 @@ public class ApplicationServiceTest {
 
 
         assertThrows(NullPointerException.class, () -> {
-            applicationService.refreshApplicationToken(id.toString());
+            applicationService.refreshApplicationToken(id);
         });
     }
 }

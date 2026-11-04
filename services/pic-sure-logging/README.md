@@ -103,14 +103,6 @@ Only `event_type` is required. All other fields are optional. Unknown fields are
 | `413 Content Too Large` | Request body exceeds 1 MiB (1,048,576 bytes) |
 | `500 Internal Server Error` | Unexpected failure |
 
-### POST /info
-
-No authentication required. Returns the stable PIC-SURE resource descriptor with `200 OK`:
-
-```json
-{"id":"50585be4-e315-3a71-8874-c590d2ba12ec","name":"Logging Service","queryFormats":[]}
-```
-
 ### GET /health
 
 No authentication required. Returns `200 OK`:
@@ -262,9 +254,8 @@ PIC-SURE-Logging/
     ├── web/
     │   ├── AuditController.java        # POST /audit -> 202
     │   ├── HealthController.java       # GET /health -> 200/503
-    │   ├── InfoController.java         # POST /info -> 200
     │   └── ApiExceptionHandler.java    # 400 / 500
-    ├── model/                          # AuditEvent, RequestInfo, InfoResponse
+    ├── model/                          # AuditEvent, RequestInfo
     └── service/
         ├── AuditLogService.java        # Core logic: assemble fields, submit to Logback
         ├── AuditAppenderFailureMonitor.java # Logback appender error telemetry
@@ -384,7 +375,7 @@ mvn test
 
 The test suite includes:
 - **Unit tests** -- Configuration, service, and filter tests (`LoggingPropertiesTest`, `JwtDecodeServiceTest`, `AuditLogServiceTest`, `ApiKeyAuthFilterTest`, `RequestSizeLimitFilterTest`)
-- **Integration tests** -- Controller tests and application startup (`AuditControllerTest`, `HealthControllerTest`, `InfoControllerTest`, `LoggingServiceApplicationTest`)
+- **Integration tests** -- Controller tests and application startup (`AuditControllerTest`, `HealthControllerTest`, `LoggingServiceApplicationTest`)
 
 Tests use a `ListAppender` on the `AUDIT` logger to capture and assert on structured log output, and a `TestJwtBuilder` helper to create JWTs signed with a test secret.
 
@@ -436,7 +427,7 @@ The `docker-compose.yml` binds the port to `127.0.0.1` by default, which is appr
 
 ## Security Considerations
 
-- **API key auth** -- All `/audit` requests require a valid `X-API-Key` header. `/health`, `/info`, and any opted-in Actuator endpoints are unauthenticated.
+- **API key auth** -- All `/audit` requests require a valid `X-API-Key` header. `/health` and any opted-in Actuator endpoints are unauthenticated.
 - **Constant-time comparison** -- API key validation uses `MessageDigest.isEqual()` to prevent timing-based attacks.
 - **No JWT verification** -- This service does not verify JWT signatures. It is designed to run on an internal network where tokens have already been validated by an upstream service or API gateway.
 - **Container user** -- The image runs as numeric UID/GID `10001:10001`. Any host

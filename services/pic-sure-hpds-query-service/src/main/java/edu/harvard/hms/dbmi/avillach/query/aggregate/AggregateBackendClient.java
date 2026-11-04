@@ -1,6 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.query.aggregate;
 
-import java.util.UUID;
+import edu.harvard.dbmi.avillach.domain.ContinuousBinningRequest;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpHeaders;
@@ -14,23 +14,22 @@ import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.hms.dbmi.avillach.query.config.AggregateProperties;
+import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
 
 /**
- * Pooled client to the open HPDS backend (+ visualization service) that the aggregate/obfuscation surface talks to. Direct port of
- * {@code AggregateDataSharingResourceRS}'s {@code postRequest}/{@code getHttpResponse} plumbing: every downstream call carries
- * {@code Authorization: Bearer <HPDS_OPEN_TOKEN>} (the WAR's {@code Bearer <getTargetPicsureToken()>} -- no regression), and every call
- * builds a fresh chained request body that carries the inbound query/credentials/resourceUUID but overrides the resourceUUID with the
- * configured {@code targetResourceId} when one is set (WAR's {@code createChainRequest}/info-request inline chaining).
+ * Pooled client for the open HPDS backend and visualization service used by the aggregate and obfuscation surface. Every downstream call
+ * carries {@code Authorization: Bearer <HPDS_OPEN_TOKEN>} and builds a fresh request body that carries only the inbound query. Neither the
+ * caller's resource UUID nor a configured target resource id reaches the downstream body, because no downstream endpoint reads that field.
  *
- * <p>Only the calls the obfuscation surface actually makes are exposed here: {@link #search} (used to fetch the study-consents allow-list),
- * {@link #querySync} (the obfuscated sync path + the internal CROSS_COUNT lookup) and {@link #binContinuous} (visualization binning). The
- * async query-lifecycle calls ({@code /query}, {@code /query/{id}/status}, {@code /query/{id}/result}, {@code /query/format},
- * {@code /info}) are NOT proxied through this client: the open async submit is routed through {@code QueryService} (DB-free persistence +
- * dispatch, see {@link AggregateService#query}), and every subsequent read op is served by the v3 read ingress
- * ({@code /hpds/{backend}/v3/...}, {@link edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryV3Controller}) off the stored (already
- * consent-scoped) query.
+ * <p>Only the calls the obfuscation surface actually makes are exposed here: {@link #search} (used to fetch the study-consents allow-list)
+ * and {@link #querySync} (the obfuscated sync path + the internal CROSS_COUNT lookup), both under HPDS's configured API path
+ * ({@code HPDS_API_PATH}, {@code /v3} by default), and {@link #binContinuous} (visualization binning). The async query-lifecycle calls
+ * ({@code /query}, {@code /query/{id}/status}, {@code /query/{id}/result}, {@code /query/format}, {@code /info}) are NOT proxied through
+ * this client: the open async submit is routed through {@code QueryService} (DB-free persistence + dispatch, see
+ * {@link AggregateService#query}), and every subsequent read op is served by the read ingress ({@code /hpds/{backend}/...},
+ * {@link edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryController}) off the stored (already consent-scoped) query.
  *
  * <p>Non-2xx responses and I/O failures surface as {@link HpdsCommunicationException} (mapped to 502 by
  * {@code edu.harvard.hms.dbmi.avillach.query.error.GlobalExceptionHandler}), mirroring {@code ResourceWebClient}'s error-handling
@@ -40,28 +39,29 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
 public class AggregateBackendClient {
 
     /**
-     * The HPDS response header carrying the query/result metadata (e.g. the result id). Sourced from the module's own
-     * {@link ResourceWebClient#QUERY_METADATA_FIELD} so the aggregate sync path reads AND re-emits the SAME header name
-     * ({@code "queryMetadata"}) that the legacy WAR's {@code ResourceWebClient} and both aggregate resources
-     * ({@code AggregateDataSharingResourceRS}/{@code RSV3}) used -- never a divergent literal that would silently drop the header.
+     * The HPDS response header carrying query and result metadata, such as the result id. Referencing
+     * {@link ResourceWebClient#QUERY_METADATA_FIELD} ensures the aggregate sync path reads and re-emits the same header name.
      */
     public static final String QUERY_METADATA_FIELD = ResourceWebClient.QUERY_METADATA_FIELD;
 
     private final RestClient http;
     private final AggregateProperties props;
+    private final HpdsProperties hpdsProps;
 
-    public AggregateBackendClient(@Qualifier("aggregateRestClient") RestClient http, AggregateProperties props) {
+    /** Reads only {@link HpdsProperties#getApiPath()} from {@code hpdsProps}, so the aggregate and query calls share one HPDS_API_PATH. */
+    public AggregateBackendClient(@Qualifier("aggregateRestClient") RestClient http, AggregateProperties props, HpdsProperties hpdsProps) {
         this.http = http;
         this.props = props;
+        this.hpdsProps = hpdsProps;
     }
 
     public SearchResults search(QueryRequest req) {
         return postJson(openUrl("/search"), chain(req), SearchResults.class);
     }
 
-    /** Raw body + propagated queryMetadata header. The chained body carries the FULL request (resourceUUID injected). */
-    public ResponseEntity<String> querySync(QueryRequest req, AggregateVariant variant) {
-        String uri = openUrl(variant.downstreamVersionPrefix + "/query/sync");
+    /** HPDS {@code {api path}/query/sync}: raw body + propagated queryMetadata header. */
+    public ResponseEntity<String> querySync(QueryRequest req) {
+        String uri = openUrl("/query/sync");
         try {
             return post(uri, chain(req)).retrieve().toEntity(String.class);
         } catch (RestClientException e) {
@@ -69,9 +69,9 @@ public class AggregateBackendClient {
         }
     }
 
-    /** Visualization /bin/continuous (v3 prepends /v3). vizRequest already carries the viz resourceUUID. */
-    public String binContinuous(QueryRequest vizRequest, AggregateVariant variant) {
-        String uri = props.getVisualizationUrl() + variant.downstreamVersionPrefix + "/bin/continuous";
+    /** Visualization {@code /bin/continuous}. */
+    public String binContinuous(ContinuousBinningRequest vizRequest) {
+        String uri = props.getVisualizationUrl() + "/bin/continuous";
         try {
             return withAuth(http.post().uri(uri).contentType(MediaType.APPLICATION_JSON)).body(vizRequest).retrieve().body(String.class);
         } catch (RestClientException e) {
@@ -81,23 +81,17 @@ public class AggregateBackendClient {
 
     // ---- internals ----
 
-    /** Inject the configured resourceUUID (was target.resource.id) + carry inbound query/credentials. */
+    /** Carries the inbound query into a fresh downstream body. */
     private QueryRequest chain(QueryRequest in) {
         QueryRequest out = new GeneralQueryRequest();
         if (in != null) {
             out.setQuery(in.getQuery());
-            out.setResourceCredentials(in.getResourceCredentials());
-            out.setResourceUUID(in.getResourceUUID());
-        }
-        String targetId = props.getTargetResourceId();
-        if (targetId != null && !targetId.isEmpty()) {
-            out.setResourceUUID(UUID.fromString(targetId));
         }
         return out;
     }
 
     private String openUrl(String path) {
-        return props.getHpdsOpenUrl() + path;
+        return props.getHpdsOpenUrl() + hpdsProps.getApiPath() + path;
     }
 
     private RestClient.RequestBodySpec post(String absoluteUrl, QueryRequest body) {

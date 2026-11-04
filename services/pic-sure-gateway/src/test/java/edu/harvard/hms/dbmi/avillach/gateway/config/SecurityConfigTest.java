@@ -8,11 +8,9 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.QueryAuthFetcher;
 
 /**
- * Pins FIX 2: the auth-boundary RestClients ({@link PsamaClient}, {@link QueryAuthFetcher}) must never be built with unbounded connect/read
- * timeouts -- a hung PSAMA or query-service response must not stall the synchronous auth filter chain / a Tomcat worker indefinitely.
+ * Pins the auth-boundary PSAMA client timeouts.
  */
 class SecurityConfigTest {
 
@@ -26,14 +24,12 @@ class SecurityConfigTest {
     }
 
     @Test
-    void psamaClientAndQueryAuthFetcherBeansBuildSuccessfullyWithTimeoutBoundedClients() {
+    void psamaClientBuildsSuccessfullyWithTimeoutBoundedClient() {
         SecurityConfig config = new SecurityConfig();
         GatewaySecurityProperties props = new GatewaySecurityProperties(
-            List.of(), false, 1024, "http://psama.local/introspect", "http://psama.local/open-access", "svc-token",
-            "http://operations.local", "internal-token"
+            List.of(), false, 1024, "http://psama.local/introspect", "http://psama.local/open-access", "svc-token"
         );
 
         assertThat(config.psamaClient(props)).isNotNull();
-        assertThat(config.queryAuthFetcher(props)).isNotNull();
     }
 }

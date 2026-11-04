@@ -8,15 +8,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.filter.OncePerRequestFilter;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.springframework.web.util.UrlPathHelper;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.ApiKeyBearer;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionTokenRejectedException;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessValidation;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import edu.harvard.hms.dbmi.avillach.gateway.error.GatewayErrors;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -24,14 +24,23 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * Handles no-bearer requests when open access is enabled, short-circuiting before {@code PsamaIntrospectionFilter} runs. Triggers when open
- * access is enabled AND {@code Authorization} is blank or ≤ 7 chars ({@code JWTFilter.java:154-157}). The open-access payload is a
- * different shape than introspection ({@code JWTFilter.java:389-394}): {@code { "request": { "Target Service": "<real path>", "query":
- * <body minus resourceCredentials> }, "ipAddress": "OPEN_ACCESS:<host>" }} — no {@code token} field, adds {@code ipAddress}. PSAMA returns
- * a bare boolean: {@code true} grants with username {@code OPEN_ACCESS:<host>}; {@code false} denies with a 401. A real bearer token, or
- * open access disabled, passes through untouched.
+ * Handles open-access requests, short-circuiting before {@code PsamaIntrospectionFilter} runs. Triggers when open access is enabled and
+ * {@code Authorization} is blank, at most 7 characters, or a bearer PSAMA key ({@link ApiKeyBearer}). The open-access payload contains the
+ * decoded path Spring resolved as {@code "Target Service"}, {@code ipAddress}, and the key as {@code apiKey} when one was presented; it
+ * does not contain a login token or request body. A key presented while open access is disabled is denied here rather than introspected,
+ * since PSAMA could only reject it as a login token. A denial whose reason is the API key gets its own 401 error type
+ * ({@code api_key_missing} / {@code api_key_invalid}); every other denial is {@code unauthorized}. On a grant the
+ * {@link OpenAccessValidation} is stored as {@link #ATTR_OPEN_ACCESS_VALIDATION}, and a refreshed open-access session token is returned in
+ * {@value #SESSION_REFRESH_HEADER}. Routes selected by the shared {@link PublicEndpointPolicy}, a login bearer token, or disabled open
+ * access without a key pass through untouched.
  */
 public class OpenAccessFilter extends OncePerRequestFilter {
+
+    /**
+     * Response header carrying a replacement open-access session token once the presented one is half used. Part of the frontend contract.
+     * Not {@code Authorization}, which the frontend treats as a login.
+     */
+    public static final String SESSION_REFRESH_HEADER = "X-PICSURE-Session-Refresh";
 
     /**
      * Set to {@link Boolean#TRUE} only by this filter, only after PSAMA grants the open-access validate. This — not the user-id attribute,
@@ -40,28 +49,66 @@ public class OpenAccessFilter extends OncePerRequestFilter {
      */
     public static final String ATTR_OPEN_ACCESS_GRANTED = OpenAccessFilter.class.getName() + ".granted";
 
+    /**
+     * The {@link OpenAccessValidation} PSAMA granted, set only by this filter and only on a grant. Later filters read the verified key
+     * identity from here, so none of them needs the key or trusts what the caller claimed with it.
+     */
+    public static final String ATTR_OPEN_ACCESS_VALIDATION = OpenAccessFilter.class.getName() + ".validation";
+
+    /** 401 error type when PSAMA requires a key and none was presented. Part of the frontend contract. */
+    public static final String ERROR_API_KEY_MISSING = "api_key_missing";
+
+    /** 401 error type when the presented key is unknown, malformed, expired, or revoked. Part of the frontend contract. */
+    public static final String ERROR_API_KEY_INVALID = "api_key_invalid";
+
+    private record Denial(String errorType, String failureReason, String message) {
+    }
+
+    private static final Denial KEY_MISSING = new Denial(ERROR_API_KEY_MISSING, ERROR_API_KEY_MISSING, "An API key is required.");
+    private static final Denial KEY_INVALID = new Denial(ERROR_API_KEY_INVALID, ERROR_API_KEY_INVALID, "API key is not valid.");
+    private static final Denial RULES_DENIED = new Denial("unauthorized", "access_rules_denied", "User is not authorized.");
+    private static final Denial NOT_AUTHORIZED = new Denial("unauthorized", "open_access_denied", "User is not authorized.");
+    private static final Denial OPEN_ACCESS_DISABLED = new Denial("unauthorized", "open_access_disabled", "Open access is not enabled.");
+
     private static final Logger log = LoggerFactory.getLogger(OpenAccessFilter.class);
 
     private final PsamaClient psama;
     private final AuditContext audit;
-    private final ObjectMapper json;
     private final boolean openAccessEnabled;
+    private final PublicEndpointPolicy publicEndpoints;
 
-    public OpenAccessFilter(PsamaClient psama, AuditContext audit, ObjectMapper json, boolean openAccessEnabled) {
+    public OpenAccessFilter(PsamaClient psama, AuditContext audit, boolean openAccessEnabled, PublicEndpointPolicy publicEndpoints) {
         this.psama = psama;
         this.audit = audit;
-        this.json = json;
         this.openAccessEnabled = openAccessEnabled;
+        this.publicEndpoints = publicEndpoints;
     }
 
+    /**
+     * Applies open-access validation to eligible requests. Denials produce HTTP 401; exceptions from PSAMA validation produce HTTP 502. On
+     * a grant, sets the open-access identity and validation attributes and any session refresh header before continuing the chain.
+     *
+     * @throws ServletException if the downstream filter chain fails
+     * @throws IOException if writing an error response or executing the downstream filter chain fails
+     */
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse resp, FilterChain chain)
         throws ServletException, IOException {
-        String authz = req.getHeader("Authorization");
-        boolean noToken = authz == null || authz.isBlank() || authz.length() <= 7; // JWTFilter.java:154-157
-
-        if (!openAccessEnabled || !noToken) {
+        if (publicEndpoints.evaluate(req.getMethod(), req.getRequestURI()).publicEndpoint()) {
             chain.doFilter(req, resp);
+            return;
+        }
+
+        String authz = req.getHeader("Authorization");
+        String apiKey = ApiKeyBearer.extract(authz);
+        boolean noToken = authz == null || authz.isBlank() || authz.length() <= 7; // Missing or empty Bearer value.
+
+        if (apiKey == null && (!openAccessEnabled || !noToken)) {
+            chain.doFilter(req, resp);
+            return;
+        }
+        if (!openAccessEnabled) {
+            deny(resp, OPEN_ACCESS_DISABLED);
             return;
         }
 
@@ -69,67 +116,81 @@ public class OpenAccessFilter extends OncePerRequestFilter {
         Map<String, Object> body = new HashMap<>();
         body.put("request", queryMap);
         String hostMarker = openAccessIpAddress(req);
-        body.put("ipAddress", hostMarker); // NO token field (JWTFilter.java:389-394)
+        body.put("ipAddress", hostMarker); // Open-access validation sends no token field.
+        if (apiKey != null) {
+            body.put("apiKey", apiKey);
+        }
 
-        boolean granted;
+        OpenAccessValidation validation;
         try {
-            granted = psama.validateOpenAccess(body);
+            validation = psama.validateOpenAccess(body);
+        } catch (IntrospectionTokenRejectedException e) {
+            log.error(e.getMessage());
+            validationFailed(resp, "introspection_token_rejected");
+            return;
         } catch (Exception e) {
             // Mirror PsamaIntrospectionFilter's transport-failure handling: keep the gateway error shape
             // (rather than Spring's default 500) and record the same audit failure the deny path records.
             log.error("PSAMA open-access validation failed", e);
-            audit.put("auth_result", "failure");
-            audit.put("auth_action", "open_access.denied");
-            audit.put("auth_failure_reason", "open_access_unreachable");
-            GatewayErrors.write(resp, HttpStatus.BAD_GATEWAY, "open_access_unreachable", "Open access validation failed.");
+            validationFailed(resp, "open_access_unreachable");
             return;
         }
-        if (!granted) {
-            audit.put("auth_result", "failure");
-            audit.put("auth_action", "open_access.denied");
-            GatewayErrors.write(resp, HttpStatus.UNAUTHORIZED, "unauthorized", "User is not authorized.");
+        if (validation == null || !validation.valid()) {
+            denied(resp, validation == null ? null : validation.denial());
             return;
         }
         req.setAttribute(GatewayUserResolver.HEADER_USER_ID, hostMarker);
         req.setAttribute(ATTR_OPEN_ACCESS_GRANTED, Boolean.TRUE);
-        // Downstream services select the open HPDS backend from this. They cannot infer it from the user id above:
-        // OPEN_ACCESS:<host> is non-blank and so reads as an authenticated user to any presence check.
+        req.setAttribute(ATTR_OPEN_ACCESS_VALIDATION, validation);
+        // Record that the open-access flow admitted this request. Backend routing remains path-based.
         req.setAttribute(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_OPEN);
         audit.put("auth_result", "success");
         audit.put("auth_action", "open_access.granted");
+        // before the chain: a proxied response is already committed when the chain returns, so a header set afterwards is dropped
+        if (validation.refreshedToken() != null) {
+            resp.setHeader(SESSION_REFRESH_HEADER, validation.refreshedToken());
+        }
         chain.doFilter(req, resp);
     }
 
-    /** {@code "OPEN_ACCESS:<host>"} marker sent as {@code ipAddress} to PSAMA's open-access validate endpoint (JWTFilter.java:389-394). */
+    private void validationFailed(HttpServletResponse resp, String reason) throws IOException {
+        audit.put("auth_result", "failure");
+        audit.put("auth_action", "open_access.denied");
+        audit.put("auth_failure_reason", reason);
+        GatewayErrors.write(resp, HttpStatus.BAD_GATEWAY, "open_access_unreachable", "Open access validation failed.");
+    }
+
+    /**
+     * Key denials get their own error type so a client can tell "get a new key or session" apart from "the access rules said no". A denial
+     * PSAMA gave no reason for (a bare-boolean {@code false}) or one this gateway doesn't know is {@code unauthorized}, and its audit
+     * reason claims no cause.
+     */
+    private void denied(HttpServletResponse resp, String reason) throws IOException {
+        Denial denial = switch (reason == null ? "" : reason) {
+            case OpenAccessValidation.DENIAL_KEY_MISSING -> KEY_MISSING;
+            case OpenAccessValidation.DENIAL_KEY_INVALID -> KEY_INVALID;
+            case OpenAccessValidation.DENIAL_RULES -> RULES_DENIED;
+            default -> NOT_AUTHORIZED;
+        };
+        deny(resp, denial);
+    }
+
+    private void deny(HttpServletResponse resp, Denial denial) throws IOException {
+        audit.put("auth_result", "failure");
+        audit.put("auth_action", "open_access.denied");
+        audit.put("auth_failure_reason", denial.failureReason());
+        GatewayErrors.write(resp, HttpStatus.UNAUTHORIZED, denial.errorType(), denial.message());
+    }
+
+    /** Builds the {@code "OPEN_ACCESS:<host>"} marker sent as {@code ipAddress} to PSAMA's open-access validation endpoint. */
     private static String openAccessIpAddress(HttpServletRequest req) {
         return "OPEN_ACCESS:" + (req.getServerName() == null ? "unknown" : req.getServerName());
     }
 
-    /** Builds the inner {@code { "Target Service", "query" }} request map sent to PSAMA's open-access validate endpoint. */
+    /** Builds the inner {@code { "Target Service" }} request map sent to PSAMA's open-access validate endpoint. */
     private Map<String, Object> buildOpenAccessRequest(HttpServletRequest req) {
         Map<String, Object> queryMap = new HashMap<>();
-        queryMap.put("Target Service", req.getRequestURI()); // real path
-        if (req instanceof BufferedRequestWrapper buffered && buffered.getBody().length > 0) {
-            try {
-                JsonNode parsed = json.readTree(buffered.getBody());
-                stripResourceCredentials(parsed);
-                queryMap.put("query", parsed);
-            } catch (IOException ignored) {
-                // best-effort, mirrors the WAR
-            }
-        }
+        queryMap.put("Target Service", UrlPathHelper.defaultInstance.getPathWithinApplication(req));
         return queryMap;
-    }
-
-    private void stripResourceCredentials(JsonNode node) {
-        if (node == null) {
-            return;
-        }
-        if (node.isObject()) {
-            ((ObjectNode) node).remove("resourceCredentials");
-            node.fields().forEachRemaining(e -> stripResourceCredentials(e.getValue()));
-        } else if (node.isArray()) {
-            node.forEach(this::stripResourceCredentials);
-        }
     }
 }

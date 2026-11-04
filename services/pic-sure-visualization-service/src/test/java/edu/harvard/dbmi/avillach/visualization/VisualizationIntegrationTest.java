@@ -1,23 +1,33 @@
 package edu.harvard.dbmi.avillach.visualization;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.dbmi.avillach.logging.LoggingClient;
+import edu.harvard.dbmi.avillach.logging.LoggingEvent;
+import edu.harvard.dbmi.avillach.visualization.logging.AuditLoggingContext;
 import edu.harvard.dbmi.avillach.visualization.model.VisualizationResponse;
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureExceptionAdvice;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -37,19 +47,20 @@ class VisualizationIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @MockitoBean
+    private LoggingClient loggingClient;
+
     @Test
     void healthEndpoint_isPublic() throws Exception {
         mockMvc.perform(get("/actuator/health")).andExpect(status().isOk());
     }
 
     @Test
-    void distributions_withAuthorizedAccessType_returnsOk() throws Exception {
-        // Access type comes from the gateway-owned X-Picsure-Access-Type header; no hpdsResourceUUID needed (path-routed frontend omits
-        // it).
+    void distributions_authBackend_returnsOk() throws Exception {
         String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
 
         MvcResult result = mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
+            post("/auth/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
                 .header("X-User-Id", "test-user").header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED)
                 .content(body)
         ).andExpect(status().isOk()).andReturn();
@@ -61,13 +72,11 @@ class VisualizationIntegrationTest {
     }
 
     @Test
-    void distributions_withOpenAccessType_returnsOk() throws Exception {
-        // Open-access requests carry the gateway's OPEN_ACCESS:<host> marker in X-User-Id. That marker is non-blank, so
-        // the access type must come from the dedicated header -- reading identity presence would classify this as authorized.
+    void distributions_openBackend_returnsOk() throws Exception {
         String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
 
         MvcResult result = mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "OPEN_ACCESS:aio.local")
+            post("/open/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "OPEN_ACCESS:aio.local")
                 .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_OPEN).content(body)
         ).andExpect(status().isOk()).andReturn();
 
@@ -78,25 +87,35 @@ class VisualizationIntegrationTest {
     }
 
     @Test
-    void distributions_withoutAccessTypeHeader_returns400() throws Exception {
-        // Fail closed: the header is absent only when the request bypassed the gateway auth chain, so there is no
-        // trustworthy access type. Neither default is safe, so neither is taken.
+    void distributions_withoutAccessTypeHeader_usesPathBackend() throws Exception {
         String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
 
-        MvcResult result = mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).content(body))
-            .andExpect(status().isBadRequest()).andReturn();
-
-        assertTrue(result.getResponse().getContentAsString().contains("X-Picsure-Access-Type"));
+        mockMvc.perform(post("/open/distributions").contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk());
     }
 
     @Test
-    void distributions_withUnrecognizedAccessType_returns400() throws Exception {
+    void distributions_gatewayAccessTypeDoesNotSelectBackend() throws Exception {
         String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
 
         mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON).header(GatewayUserResolver.HEADER_ACCESS_TYPE, "superuser")
-                .content(body)
-        ).andExpect(status().isBadRequest());
+            post("/open/distributions").contentType(MediaType.APPLICATION_JSON)
+                .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED).content(body)
+        ).andExpect(status().isOk());
+    }
+
+    @Test
+    void distributions_withUnknownBackend_returns400() throws Exception {
+        String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
+
+        mockMvc.perform(post("/superuser/distributions").contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Missing or unrecognized visualization backend"));
+    }
+
+    @Test
+    void distributions_withoutBackend_isRemoved() throws Exception {
+        String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
+
+        mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isNotFound());
     }
 
     @Test
@@ -106,7 +125,7 @@ class VisualizationIntegrationTest {
             objectMapper.writeValueAsString(Map.of("hpdsResourceUUID", "550e8400-e29b-41d4-a716-446655440099", "query", Map.of()));
 
         mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "test-user")
+            post("/auth/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "test-user")
                 .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED).content(body)
         ).andExpect(status().isOk());
     }
@@ -115,7 +134,7 @@ class VisualizationIntegrationTest {
     void distributions_nullQuery_returns400() throws Exception {
         String body = "{\"hpdsResourceUUID\":\"" + AUTHORIZED_UUID + "\",\"query\":null}";
 
-        MvcResult result = mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).content(body))
+        MvcResult result = mockMvc.perform(post("/open/distributions").contentType(MediaType.APPLICATION_JSON).content(body))
             .andExpect(status().isBadRequest()).andReturn();
 
         assertTrue(result.getResponse().getContentAsString().contains("query"));
@@ -123,10 +142,10 @@ class VisualizationIntegrationTest {
 
     @Test
     void distributions_malformedJson_returns400() throws Exception {
-        MvcResult result = mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).content("not valid json"))
+        MvcResult result = mockMvc.perform(post("/open/distributions").contentType(MediaType.APPLICATION_JSON).content("not valid json"))
             .andExpect(status().isBadRequest()).andReturn();
 
-        assertTrue(result.getResponse().getContentAsString().contains("Malformed request body"));
+        assertTrue(result.getResponse().getContentAsString().contains(PicsureExceptionAdvice.BODY_UNREADABLE));
     }
 
     @Test
@@ -148,12 +167,18 @@ class VisualizationIntegrationTest {
     }
 
     @Test
+    void binContinuous_v3Route_isRemoved() throws Exception {
+        mockMvc.perform(post("/v3/bin/continuous").contentType(MediaType.APPLICATION_JSON).content("{\"query\": null}"))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
     void binContinuous_invalidDataFormat_returns400() throws Exception {
         MvcResult result =
             mockMvc.perform(post("/bin/continuous").contentType(MediaType.APPLICATION_JSON).content("{\"query\": \"not a map\"}"))
                 .andExpect(status().isBadRequest()).andReturn();
 
-        assertTrue(result.getResponse().getContentAsString().contains("Malformed request body"));
+        assertTrue(result.getResponse().getContentAsString().contains(PicsureExceptionAdvice.BODY_UNREADABLE));
     }
 
     @Test
@@ -174,37 +199,9 @@ class VisualizationIntegrationTest {
             .perform(post("/bin/continuous").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(requestBody)))
             .andExpect(status().isOk()).andReturn();
 
-        @SuppressWarnings("unchecked")
-        Map<String, Map<String, Object>> response = objectMapper.readValue(result.getResponse().getContentAsString(), Map.class);
-        assertTrue(response.containsKey("\\measurements\\bmi\\"));
-        assertFalse(response.get("\\measurements\\bmi\\").isEmpty());
-    }
-
-    @Test
-    void binContinuous_v3RouteAcceptsQueryRequestFormat() throws Exception {
-        Map<String, Object> requestBody = Map.of(
-            "query", Map.of("\\measurements\\bmi\\", Map.of("18.0", 100, "25.0", 200, "30.0", 150)), "resourceUUID",
-            "550e8400-e29b-41d4-a716-446655440000", "resourceCredentials", Map.of()
-        );
-
-        MvcResult result = mockMvc.perform(
-            post("/v3/bin/continuous").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(requestBody))
-        ).andExpect(status().isOk()).andReturn();
-
-        @SuppressWarnings("unchecked")
-        Map<String, Map<String, Object>> response = objectMapper.readValue(result.getResponse().getContentAsString(), Map.class);
-        assertTrue(response.containsKey("\\measurements\\bmi\\"));
-        assertFalse(response.get("\\measurements\\bmi\\").isEmpty());
-    }
-
-    @Test
-    void info_returnsResourceInfo() throws Exception {
-        MvcResult result =
-            mockMvc.perform(post("/info").contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isOk()).andReturn();
-
-        String content = result.getResponse().getContentAsString();
-        assertTrue(content.contains("PIC-SURE Visualization Service"));
-        assertTrue(content.contains("queryFormats"));
+        JsonNode bins = objectMapper.readTree(result.getResponse().getContentAsString()).path("bins");
+        assertTrue(bins.has("\\measurements\\bmi\\"));
+        assertFalse(bins.path("\\measurements\\bmi\\").isEmpty());
     }
 
     @Test
@@ -213,10 +210,42 @@ class VisualizationIntegrationTest {
             .andExpect(status().isOk()).andReturn();
 
         String content = result.getResponse().getContentAsString();
-        assertTrue(content.contains("POST /distributions"));
+        assertTrue(content.contains("POST /{backend}/distributions"));
         assertTrue(content.contains("query"));
-        // hpdsResourceUUID is no longer part of the request: the backend is chosen by X-Picsure-Access-Type and the
-        // path query-service is called on. Advertising it would tell clients to send a field nothing reads.
+        // hpdsResourceUUID is no longer part of the request. The path selects the backend.
         assertFalse(content.contains("hpdsResourceUUID"));
+    }
+
+    @Test
+    void binContinuous_sendsOneAuditEventCarryingTheHandlerLabel() throws Exception {
+        MvcResult result = mockMvc.perform(
+            post("/bin/continuous").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\": {\"\\\\age\\\\\": {\"30\": 12, \"40\": 15}}}")
+        ).andExpect(status().isOk()).andReturn();
+
+        assertEquals("QUERY", result.getRequest().getAttribute(AuditLoggingContext.EVENT_TYPE_ATTR));
+        assertEquals("visualization.bin_continuous", result.getRequest().getAttribute(AuditLoggingContext.ACTION_ATTR));
+        LoggingEvent event = singleAuditEvent();
+        assertEquals("QUERY", event.getEventType());
+        assertEquals("visualization.bin_continuous", event.getAction());
+    }
+
+    @Test
+    void distributions_sendsOneAuditEventCarryingTheHandlerLabel() throws Exception {
+        MvcResult result = mockMvc.perform(post("/open/distributions").contentType(MediaType.APPLICATION_JSON).content("{\"query\": {}}"))
+            .andExpect(status().isOk()).andReturn();
+
+        assertEquals("QUERY", result.getRequest().getAttribute(AuditLoggingContext.EVENT_TYPE_ATTR));
+        assertEquals("visualization.distributions", result.getRequest().getAttribute(AuditLoggingContext.ACTION_ATTR));
+        LoggingEvent event = singleAuditEvent();
+        assertEquals("QUERY", event.getEventType());
+        assertEquals("visualization.distributions", event.getAction());
+    }
+
+    private LoggingEvent singleAuditEvent() {
+        ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient, times(1)).send(captor.capture(), any(), any());
+        verify(loggingClient, never()).send(any());
+        return captor.getValue();
     }
 }

@@ -1,7 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
-import edu.harvard.hms.dbmi.avillach.auth.entity.UserMetadataMapping;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserMetadataMappingRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,9 +14,6 @@ import org.springframework.test.context.ContextConfiguration;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.*;
 
 @SpringBootTest
@@ -48,41 +44,6 @@ public class ConnectionWebServiceTest {
     }
 
     @Test
-    public void testAddConnection_Success() {
-        Connection conn = createMockConnection(UUID.randomUUID().toString());
-        when(connectionRepo.findById(anyString())).thenReturn(Optional.empty());
-        when(connectionRepo.saveAll(anyList())).thenReturn(Collections.singletonList(conn));
-
-        List<Connection> result = service.addConnection(Collections.singletonList(conn));
-        assertFalse(result.isEmpty());
-        assertEquals(1, result.size());
-        verify(connectionRepo, times(1)).saveAll(anyList());
-        verify(userMetadataMappingRepo, times(1)).saveAll(argThat((List<UserMetadataMapping> mappings) -> {
-            if (mappings.size() != 1) return false;
-            UserMetadataMapping m = mappings.get(0);
-            return "$.email".equals(m.getGeneralMetadataJsonPath())
-                    && "$.email".equals(m.getAuth0MetadataJsonPath())
-                    && conn.equals(m.getConnection());
-        }));
-    }
-
-    @Test
-    public void testAddConnection_FailureDueToNullFields() {
-        Connection conn = new Connection(); // missing required fields
-        assertThrows(IllegalArgumentException.class, () -> service.addConnection(Collections.singletonList(conn)));
-        verify(userMetadataMappingRepo, never()).saveAll(anyList());
-    }
-
-    @Test
-    public void testAddConnection_FailureDueToDuplicateId() {
-        Connection conn = createMockConnection("123");
-        when(connectionRepo.findById("123")).thenReturn(Optional.of(conn));
-
-        assertThrows(IllegalArgumentException.class, () -> service.addConnection(Collections.singletonList(conn)));
-        verify(userMetadataMappingRepo, never()).saveAll(anyList());
-    }
-
-    @Test
     public void testGetConnectionById_Success() {
         Connection conn = createMockConnection("123");
         when(connectionRepo.findById("123")).thenReturn(Optional.of(conn));
@@ -107,17 +68,6 @@ public class ConnectionWebServiceTest {
         List<Connection> results = service.getAllConnections();
         assertNotNull(results);
         assertEquals(2, results.size());
-    }
-
-    @Test
-    public void testUpdateConnections() {
-        Connection conn1 = createMockConnection("123");
-        when(connectionRepo.saveAll(anyList())).thenReturn(Collections.singletonList(conn1));
-
-        List<Connection> results = service.updateConnections(Collections.singletonList(conn1));
-        assertNotNull(results);
-        assertEquals(1, results.size());
-        assertEquals("123", results.get(0).getId());
     }
 
     @Test

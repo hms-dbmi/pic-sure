@@ -31,16 +31,6 @@
 		<aws.version>2.20.153</aws.version>
 		<spotless.version>2.46.1</spotless.version>
 	</properties>
-	<repositories>
-		<repository>
-			<id>github</id>
-			<name>GitHub HMS-DBMI Apache Maven Packages</name>
-			<url>https://maven.pkg.github.com/hms-dbmi/pic-sure-common</url>
-			<snapshots>
-				<enabled>true</enabled>
-			</snapshots>
-		</repository>
-	</repositories>
 	<build>
 		<pluginManagement>
 			<plugins>
@@ -92,7 +82,7 @@
 				<!-- default lifecycle, jar packaging: see https://maven.apache.org/ref/current/maven-core/default-bindings.html#Plugin_bindings_for_jar_packaging -->
 				<plugin>
 					<artifactId>maven-resources-plugin</artifactId>
-					<version>3.3.1</version>
+					<version>3.5.0</version>
 				</plugin>
 				<plugin>
 					<artifactId>maven-compiler-plugin</artifactId>
@@ -152,11 +142,6 @@
 				<version>1.2</version>
 			</dependency>
 			<dependency>
-				<groupId>org.apache.commons</groupId>
-				<artifactId>commons-compress</artifactId>
-				<version>1.26.0</version>
-			</dependency>
-			<dependency>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-starter-tomcat</artifactId>
 				<scope>provided</scope>
@@ -189,7 +174,7 @@
 			<dependency>
 				<groupId>com.google.guava</groupId>
 				<artifactId>guava</artifactId>
-				<version>33.4.8-jre</version>
+				<version>33.7.2-jre</version>
 			</dependency>
 			<dependency>
 				<groupId>org.apache.commons</groupId>
@@ -244,7 +229,7 @@
 			<dependency>
 				<groupId>org.xerial.snappy</groupId>
 				<artifactId>snappy-java</artifactId>
-				<version>1.1.10.5</version>
+				<version>1.1.10.11</version>
 			</dependency>
 			<dependency>
 				<groupId>software.amazon.awssdk</groupId>
@@ -257,11 +242,6 @@
 						<artifactId>commons-logging</artifactId>
 					</exclusion>
 				</exclusions>
-			</dependency>
-			<dependency>
-				<groupId>io.swagger.core.v3</groupId>
-				<artifactId>swagger-annotations</artifactId>
-				<version>2.2.40</version>
 			</dependency>
     </dependencies>
   </dependencyManagement>

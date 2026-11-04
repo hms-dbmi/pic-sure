@@ -24,6 +24,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     private static final Logger logger = LoggerFactory.getLogger(AuditLoggingFilter.class);
     private static final String REQUEST_ID_HEADER = "X-Request-Id";
     private static final String SESSION_ID_HEADER = "X-Session-Id";
+    private static final String CLIENT_TYPE_HEADER = "X-Client-Type";
 
     private final LoggingClient loggingClient;
 
@@ -34,7 +35,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         return switch (request.getRequestURI()) {
-            case "/distributions", "/bin/continuous" -> false;
+            case "/auth/distributions", "/open/distributions", "/bin/continuous" -> false;
             default -> true;
         };
     }
@@ -73,14 +74,13 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
         HttpServletRequest request, HttpServletResponse response, String requestId, String sessionId, long duration, Exception failure
     ) {
         try {
-            String action = switch (request.getRequestURI()) {
-                case "/distributions" -> "visualization.distributions";
-                case "/bin/continuous" -> "visualization.bin_continuous";
-                default -> "visualization.request";
-            };
-
-            LoggingEvent.Builder builder = LoggingEvent.builder("QUERY").action(action).sessionId(sessionId)
+            LoggingEvent.Builder builder = LoggingEvent.builder(eventType(request)).action(action(request)).sessionId(sessionId)
                 .request(requestInfo(request, response, requestId, duration)).metadata(AuditLoggingContext.metadata(request));
+
+            String caller = request.getHeader(CLIENT_TYPE_HEADER);
+            if (caller != null && !caller.isEmpty()) {
+                builder.caller(caller);
+            }
 
             Map<String, Object> error = errorMap(response.getStatus(), failure);
             if (!error.isEmpty()) {
@@ -91,6 +91,33 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
         } catch (Exception e) {
             logger.debug("Failed to send audit log event: {}", e.getMessage());
         }
+    }
+
+    /**
+     * The event type from the handler's {@code @AuditEvent}, or {@code UNLABELED} when no handler label reached the request.
+     *
+     * @param request the completed request
+     * @return the audit event type
+     */
+    private static String eventType(HttpServletRequest request) {
+        return request.getAttribute(AuditLoggingContext.EVENT_TYPE_ATTR) instanceof String type ? type : "UNLABELED";
+    }
+
+    /**
+     * The action from the handler's {@code @AuditEvent}, or one derived from the request path when the handler carries none.
+     *
+     * @param request the completed request
+     * @return the audit action
+     */
+    private static String action(HttpServletRequest request) {
+        if (request.getAttribute(AuditLoggingContext.ACTION_ATTR) instanceof String action) {
+            return action;
+        }
+        return switch (request.getRequestURI()) {
+            case "/auth/distributions", "/open/distributions" -> "visualization.distributions";
+            case "/bin/continuous" -> "visualization.bin_continuous";
+            default -> "visualization.request";
+        };
     }
 
     private static RequestInfo requestInfo(HttpServletRequest request, HttpServletResponse response, String requestId, long duration) {

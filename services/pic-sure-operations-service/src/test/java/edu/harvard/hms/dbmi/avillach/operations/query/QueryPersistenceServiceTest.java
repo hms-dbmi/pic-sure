@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.operations.query;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Instant;
 import java.util.Base64;
 import java.util.UUID;
 
@@ -15,6 +16,9 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.context.annotation.Import;
 
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
+import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
+import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
 /**
@@ -66,7 +70,7 @@ class QueryPersistenceServiceTest {
         entityManager.flush();
         entityManager.clear();
 
-        service.update(picsureId, new UpdateQueryRequest("AVAILABLE", null, null));
+        service.update(picsureId, new UpdateQueryRequest("AVAILABLE", null, null, null, null));
         entityManager.flush();
         entityManager.clear();
 
@@ -75,12 +79,46 @@ class QueryPersistenceServiceTest {
         // resourceResultId/metadata were not part of the update -> unchanged.
         assertThat(stored.resourceResultId()).isEqualTo("orig-result-id");
         assertThat(stored.version()).isEqualTo("1");
+        assertThat(stored.query()).isEqualTo("{\"q\":1}");
+    }
+
+    @Test
+    void updateReplacesQueryAndVersionWhenPresent() {
+        UUID picsureId = service.save(new SaveQueryRequest("{\"query\":{\"categoryFilters\":{}}}", "rr-old", "AVAILABLE", null, null));
+        entityManager.flush();
+        entityManager.clear();
+
+        service.update(picsureId, new UpdateQueryRequest("PENDING", "rr-new", null, "{\"query\":{\"phenotypicClause\":null}}", "3"));
+        entityManager.flush();
+        entityManager.clear();
+
+        StoredQuery stored = service.get(picsureId);
+        assertThat(stored.query()).isEqualTo("{\"query\":{\"phenotypicClause\":null}}");
+        assertThat(stored.version()).isEqualTo("3");
+        assertThat(stored.resourceResultId()).isEqualTo("rr-new");
+        assertThat(stored.status()).isEqualTo("PENDING");
+        assertThat(service.dispatchQueryJson(picsureId)).isEqualTo("{\"query\":{\"phenotypicClause\":null}}");
+    }
+
+    @Test
+    void updateStripsResourceCredentialsFromAReplacementQuery() {
+        UUID picsureId = service.save(new SaveQueryRequest("{}", null, "QUEUED", null, null));
+        entityManager.flush();
+        entityManager.clear();
+
+        service.update(picsureId, new UpdateQueryRequest(null, null, null, "{\"resourceCredentials\":{\"k\":\"v\"},\"query\":{}}", null));
+        entityManager.flush();
+        entityManager.clear();
+
+        StoredQuery stored = service.get(picsureId);
+        assertThat(stored.query()).isEqualTo("{\"query\":{}}");
+        assertThat(stored.version()).isNull();
     }
 
     @Test
     void updateUnknownIdThrowsNotFound() {
         UUID unknown = UUID.randomUUID();
-        UpdateQueryRequest req = new UpdateQueryRequest("AVAILABLE", null, null);
+        UpdateQueryRequest req = new UpdateQueryRequest("AVAILABLE", null, null, null, null);
         assertThatThrownBy(() -> service.update(unknown, req)).isInstanceOf(PicsureException.class)
             .satisfies(e -> assertThat(((PicsureException) e).getStatus().value()).isEqualTo(404));
     }
@@ -95,7 +133,7 @@ class QueryPersistenceServiceTest {
         assertThat(afterSave.startTime()).isNotNull();
         assertThat(afterSave.readyTime()).isNull();
 
-        service.update(picsureId, new UpdateQueryRequest("AVAILABLE", null, null));
+        service.update(picsureId, new UpdateQueryRequest("AVAILABLE", null, null, null, null));
         entityManager.flush();
         entityManager.clear();
 
@@ -104,26 +142,27 @@ class QueryPersistenceServiceTest {
         assertThat(ready.readyTime()).isNotNull();
 
         // a later status update must not move the original readyTime
-        service.update(picsureId, new UpdateQueryRequest("AVAILABLE", "rr-later", null));
+        service.update(picsureId, new UpdateQueryRequest("AVAILABLE", "rr-later", null, null, null));
         entityManager.flush();
         entityManager.clear();
         assertThat(service.get(picsureId).readyTime()).isEqualTo(ready.readyTime());
     }
 
     @Test
-    void timingFieldsOnMigratedRowsRoundTripThroughGet() {
-        // rows migrated from the legacy schema already carry timing; the internal API must return it
-        Query legacy = new Query();
-        legacy.setQuery("{}");
-        legacy.setStartTime(java.sql.Date.valueOf("2024-01-02"));
-        legacy.setReadyTime(java.sql.Date.valueOf("2024-01-03"));
-        UUID picsureId = repo.save(legacy).getUuid();
+    void timingFieldsKeepTheirTimeOfDayThroughGet() {
+        Instant start = Instant.parse("2024-01-02T15:30:45.123Z");
+        Instant ready = Instant.parse("2024-01-02T15:31:02.456Z");
+        Query query = new Query();
+        query.setQuery("{}");
+        query.setStartTime(start);
+        query.setReadyTime(ready);
+        UUID picsureId = repo.save(query).getUuid();
         entityManager.flush();
         entityManager.clear();
 
         StoredQuery stored = service.get(picsureId);
-        assertThat(stored.startTime()).isEqualTo(java.sql.Date.valueOf("2024-01-02").getTime());
-        assertThat(stored.readyTime()).isEqualTo(java.sql.Date.valueOf("2024-01-03").getTime());
+        assertThat(stored.startTime()).isEqualTo(start.toEpochMilli());
+        assertThat(stored.readyTime()).isEqualTo(ready.toEpochMilli());
     }
 
     @Test
@@ -203,7 +242,7 @@ class QueryPersistenceServiceTest {
         entityManager.flush();
         entityManager.clear();
 
-        UpdateQueryRequest req = new UpdateQueryRequest(null, null, "not-valid-base64!!!");
+        UpdateQueryRequest req = new UpdateQueryRequest(null, null, "not-valid-base64!!!", null, null);
         assertThatThrownBy(() -> service.update(picsureId, req)).isInstanceOf(PicsureException.class)
             .satisfies(e -> assertThat(((PicsureException) e).getStatus().value()).isEqualTo(400));
     }

@@ -21,7 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 /**
  * Proves the {@code ActuatorSecurityConfig} chain (order 0) and the pre-existing {@link WebSecurityConfig} main chain (order 10) coexist on
  * operations-service: the actuator chain owns {@code /actuator/**} (shallow health open, detail/prometheus gated by
- * {@code X-Application-Token}) while the main chain's {@code SUPER_ADMIN} rule on {@code /configuration/admin/**} is untouched.
+ * {@code X-Application-Token}) while the {@code SUPER_ADMIN} gate on the {@code /configuration/admin} writes is untouched.
  *
  * <p>{@code src/test/resources/application.yml} is a self-contained test config (H2 datasource, etc.) that Spring Boot's classpath config
  * loading resolves INSTEAD OF (not merged with) {@code src/main/resources/application.yml} -- test-classes precedes classes on the Surefire
@@ -77,7 +77,7 @@ class ActuatorSecurityConfigTest {
         mockMvc.perform(get("/actuator/prometheus").header("X-Application-Token", "ops-secret")).andExpect(status().isOk());
     }
 
-    /** Coexistence: the main chain's SUPER_ADMIN gate on /configuration/admin/** must be unaffected by the actuator chain. */
+    /** Coexistence: the SUPER_ADMIN gate on the /configuration/admin writes must be unaffected by the actuator chain. */
     @Test
     void adminEndpointStillRequiresSuperAdminAlongsideActuatorChain() throws Exception {
         mockMvc.perform(post("/configuration/admin").contentType(MediaType.APPLICATION_JSON).content("{}"))

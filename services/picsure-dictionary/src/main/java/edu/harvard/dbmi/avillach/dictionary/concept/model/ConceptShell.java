@@ -2,11 +2,24 @@ package edu.harvard.dbmi.avillach.dictionary.concept.model;
 
 import edu.harvard.dbmi.avillach.dictionary.dataset.Dataset;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-public record ConceptShell(String conceptPath, String dataset) implements Concept {
+@Schema(
+    description = "A placeholder the service uses internally when it knows only a concept's path and dataset. Jackson never writes it: the concept services throw before one reaches a response, and it is not a named subtype of Concept."
+)
+public record ConceptShell(
+    @Schema(
+        description = "Full path of the concept, backslash delimited.", example = "\\demographics\\AGE\\",
+        requiredMode = Schema.RequiredMode.REQUIRED
+    ) String conceptPath,
+    @Schema(
+        description = "Ref of the dataset the concept belongs to.", example = "phs000007", requiredMode = Schema.RequiredMode.REQUIRED
+    ) String dataset
+) implements Concept {
     @Override
     public String name() {
         return "Shell. Not for external use.";

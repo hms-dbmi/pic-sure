@@ -1,7 +1,9 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
+import edu.harvard.hms.dbmi.avillach.auth.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
@@ -30,6 +32,9 @@ public class PrivilegeServiceTest {
     private PrivilegeRepository privilegeRepository;
 
     @MockBean
+    private ApplicationRepository applicationRepository;
+
+    @MockBean
     private SecurityContext securityContext;
 
     @MockBean
@@ -40,6 +45,11 @@ public class PrivilegeServiceTest {
 
     @Autowired
     private PrivilegeService privilegeService;
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     @BeforeEach
     public void setUp() {
@@ -61,7 +71,7 @@ public class PrivilegeServiceTest {
         List<Privilege> privileges = Arrays.asList(new Privilege(), new Privilege());
         when(privilegeRepository.findAll()).thenReturn(privileges);
 
-        List<Privilege> result = privilegeService.deletePrivilegeByPrivilegeId(privilegeId.toString());
+        List<Privilege> result = privilegeService.deletePrivilegeByPrivilegeId(privilegeId);
 
         assertEquals(privileges, result);
         verify(privilegeRepository, times(1)).deleteById(privilegeId);
@@ -79,34 +89,8 @@ public class PrivilegeServiceTest {
         when(authentication.getName()).thenReturn("testUser");
 
         assertThrows(RuntimeException.class, () -> {
-            privilegeService.deletePrivilegeByPrivilegeId(privilegeId.toString());
+            privilegeService.deletePrivilegeByPrivilegeId(privilegeId);
         });
-    }
-
-    @Test
-    public void testUpdatePrivileges() {
-        List<Privilege> privileges = Arrays.asList(new Privilege(), new Privilege());
-
-        when(privilegeRepository.saveAll(privileges)).thenReturn(privileges);
-        when(privilegeRepository.findAll()).thenReturn(privileges);
-
-        List<Privilege> result = privilegeService.updatePrivileges(privileges);
-
-        assertEquals(privileges, result);
-        verify(privilegeRepository, times(1)).saveAll(privileges);
-        verify(privilegeRepository, times(1)).findAll();
-    }
-
-    @Test
-    public void testAddPrivileges() {
-        List<Privilege> privileges = Arrays.asList(new Privilege(), new Privilege());
-
-        when(privilegeRepository.saveAll(privileges)).thenReturn(privileges);
-
-        List<Privilege> result = privilegeService.addPrivileges(privileges);
-
-        assertEquals(privileges, result);
-        verify(privilegeRepository, times(1)).saveAll(privileges);
     }
 
     @Test
@@ -129,7 +113,7 @@ public class PrivilegeServiceTest {
 
         when(privilegeRepository.findById(privilegeId)).thenReturn(Optional.of(privilege));
 
-        Privilege result = privilegeService.getPrivilegeById(privilegeId.toString());
+        Privilege result = privilegeService.getPrivilegeById(privilegeId);
 
         assertEquals(privilege, result);
         verify(privilegeRepository, times(1)).findById(privilegeId);
@@ -141,7 +125,7 @@ public class PrivilegeServiceTest {
 
         when(privilegeRepository.findById(privilegeId)).thenReturn(Optional.empty());
 
-        Privilege result = privilegeService.getPrivilegeById(privilegeId.toString());
+        Privilege result = privilegeService.getPrivilegeById(privilegeId);
 
         assertNull(result);
         verify(privilegeRepository, times(1)).findById(privilegeId);

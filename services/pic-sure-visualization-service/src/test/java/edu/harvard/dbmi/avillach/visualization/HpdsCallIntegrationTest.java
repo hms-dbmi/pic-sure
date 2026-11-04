@@ -1,15 +1,20 @@
 package edu.harvard.dbmi.avillach.visualization;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.startsWith;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.*;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import edu.harvard.dbmi.avillach.visualization.model.ObfuscatedCount;
+import edu.harvard.dbmi.avillach.domain.ObfuscatedCount;
 import edu.harvard.dbmi.avillach.visualization.model.VisualizationResponse;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
+import java.net.ConnectException;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,11 +25,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
@@ -55,6 +62,15 @@ class HpdsCallIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    private static final String AUTH_SYNC_URL = "http://localhost:9999/mock-query-service/hpds/auth/query/sync";
+    private static final String OPEN_SYNC_URL = "http://localhost:9999/mock-query-service/hpds/open/query/sync";
+    /** The frontend's body: one categorical and one continuous filter under an AND, every top-level query key present. */
+    private static final String FROZEN_REQUEST = "{\"query\":{\"select\":[],\"authorizationFilters\":[],\"phenotypicClause\":{"
+        + "\"operator\":\"AND\",\"phenotypicClauses\":["
+        + "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demographics\\\\SEX\\\\\",\"not\":false,\"values\":[\"Male\",\"Female\"]},"
+        + "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demographics\\\\AGE\\\\\",\"not\":false,\"min\":20,\"max\":80}],"
+        + "\"not\":false},\"genomicFilters\":[],\"expectedResultType\":\"COUNT\",\"picsureId\":null,\"id\":null}}";
+
     private MockRestServiceServer mockServer;
 
     @BeforeEach
@@ -69,10 +85,8 @@ class HpdsCallIntegrationTest {
         Map<String, Map<String, Integer>> hpdsResponse = new LinkedHashMap<>();
         hpdsResponse.put("\\demographics\\race\\", new LinkedHashMap<>(Map.of("White", 45000, "Black", 12000, "Asian", 8000)));
 
-        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/auth/v3/query/sync")).andExpect(method(HttpMethod.POST))
-            // The caller's Bearer token is NOT forwarded: query-service authorizes from the gateway's identity headers,
-            // which is what must reach it for its /hpds/** .authenticated() rule to pass.
-            .andExpect(headerDoesNotExist("Authorization")).andExpect(header("X-User-Id", "test-user"))
+        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/auth/query/sync")).andExpect(method(HttpMethod.POST))
+            .andExpect(header("Authorization", "Bearer test-token")).andExpect(header("X-User-Id", "test-user"))
             .andExpect(content().json("{\"query\":{\"expectedResultType\":\"CATEGORICAL_CROSS_COUNT\"}}"))
             .andRespond(withSuccess(objectMapper.writeValueAsString(hpdsResponse), MediaType.APPLICATION_JSON));
 
@@ -80,12 +94,12 @@ class HpdsCallIntegrationTest {
         Map<String, Object> query = Map.of(
             "phenotypicClause",
             Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White", "Black")),
-            "select", List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
+            "select", List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of(), "expectedResultType", "COUNT"
         );
         String body = objectMapper.writeValueAsString(Map.of("query", query));
 
         MvcResult result = mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
+            post("/auth/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
                 .header("X-User-Id", "test-user").header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED)
                 .content(body)
         ).andExpect(status().isOk()).andReturn();
@@ -115,18 +129,18 @@ class HpdsCallIntegrationTest {
         bmiValues.put("35.0", 50);
         hpdsResponse.put("\\measurements\\bmi\\", bmiValues);
 
-        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/auth/v3/query/sync")).andExpect(method(HttpMethod.POST))
+        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/auth/query/sync")).andExpect(method(HttpMethod.POST))
             .andExpect(content().json("{\"query\":{\"expectedResultType\":\"CONTINUOUS_CROSS_COUNT\"}}"))
             .andRespond(withSuccess(objectMapper.writeValueAsString(hpdsResponse), MediaType.APPLICATION_JSON));
 
         Map<String, Object> query = Map.of(
             "phenotypicClause", Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\measurements\\bmi\\", "min", 18.0, "max", 40.0),
-            "select", List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
+            "select", List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of(), "expectedResultType", "COUNT"
         );
         String body = objectMapper.writeValueAsString(Map.of("query", query));
 
         MvcResult result = mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
+            post("/auth/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
                 .header("X-User-Id", "test-user").header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED)
                 .content(body)
         ).andExpect(status().isOk()).andReturn();
@@ -157,19 +171,19 @@ class HpdsCallIntegrationTest {
             )
         );
 
-        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/open/v3/query/sync")).andExpect(method(HttpMethod.POST))
+        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/open/query/sync")).andExpect(method(HttpMethod.POST))
             .andRespond(withSuccess(objectMapper.writeValueAsString(hpdsResponse), MediaType.APPLICATION_JSON));
 
         Map<String, Object> query = Map.of(
             "phenotypicClause",
             Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White")), "select",
-            List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
+            List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of(), "expectedResultType", "COUNT"
         );
         String body = objectMapper.writeValueAsString(Map.of("query", query));
 
         MvcResult result = mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON)
-                .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_OPEN).content(body)
+            post("/open/distributions").contentType(MediaType.APPLICATION_JSON)
+                .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED).content(body)
         ).andExpect(status().isOk()).andReturn();
 
         mockServer.verify();
@@ -185,18 +199,18 @@ class HpdsCallIntegrationTest {
 
     @Test
     void distributions_hpdsReturns500_returns502BadGateway() throws Exception {
-        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/auth/v3/query/sync")).andExpect(method(HttpMethod.POST))
+        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/auth/query/sync")).andExpect(method(HttpMethod.POST))
             .andRespond(withServerError().body("{\"error\":\"internal error\"}"));
 
         Map<String, Object> query = Map.of(
             "phenotypicClause",
             Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White")), "select",
-            List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
+            List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of(), "expectedResultType", "COUNT"
         );
         String body = objectMapper.writeValueAsString(Map.of("query", query));
 
         MvcResult result = mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
+            post("/auth/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
                 .header("X-User-Id", "test-user").header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED)
                 .content(body)
         ).andExpect(status().isBadGateway()).andReturn();
@@ -210,24 +224,145 @@ class HpdsCallIntegrationTest {
     }
 
     @Test
-    void distributions_hpdsTimeout_returns502BadGateway() throws Exception {
-        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/auth/v3/query/sync")).andExpect(method(HttpMethod.POST))
-            .andRespond(withServiceUnavailable());
+    void distributions_queryServiceConsentDenialReturns403() throws Exception {
+        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/auth/query/sync"))
+            .andRespond(withStatus(org.springframework.http.HttpStatus.FORBIDDEN).body("{\"errorType\":\"consent_denied\"}"));
 
         Map<String, Object> query = Map.of(
             "phenotypicClause",
             Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White")), "select",
-            List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
+            List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of(), "expectedResultType", "COUNT"
         );
-        String body = objectMapper.writeValueAsString(Map.of("query", query));
 
         mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
+            post("/auth/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
                 .header("X-User-Id", "test-user").header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED)
-                .content(body)
-        ).andExpect(status().isBadGateway());
+                .content(objectMapper.writeValueAsString(Map.of("query", query)))
+        ).andExpect(status().isForbidden()).andExpect(jsonPath("$.errorType").value("consent_denied"));
 
         mockServer.verify();
+    }
+
+    /**
+     * A 503 from the query service is a status the service did not expect, so it takes the non-403 status branch and surfaces as a 502
+     * whose message carries the downstream status.
+     */
+    @Test
+    void distributions_queryServiceReturns503_returns502BadGateway() throws Exception {
+        mockServer.expect(requestTo(AUTH_SYNC_URL)).andExpect(method(HttpMethod.POST)).andRespond(withServiceUnavailable());
+
+        mockMvc.perform(authDistributions()).andExpect(status().isBadGateway())
+            .andExpect(jsonPath("$.error").value("Query service request failed with status 503: Service Unavailable"));
+
+        mockServer.verify();
+    }
+
+    /**
+     * A 4xx other than 403 from the query service is not a consent decision, so it is reported as a 502 carrying the downstream status
+     * rather than as a 403.
+     */
+    @Test
+    void distributions_queryServiceReturns404_returns502BadGateway() throws Exception {
+        mockServer.expect(requestTo(AUTH_SYNC_URL)).andExpect(method(HttpMethod.POST))
+            .andRespond(withStatus(HttpStatus.NOT_FOUND).body("{\"error\":\"Not found\"}"));
+
+        mockMvc.perform(authDistributions()).andExpect(status().isBadGateway())
+            .andExpect(jsonPath("$.error").value("Query service request failed with status 404: Not Found"));
+
+        mockServer.verify();
+    }
+
+    /**
+     * An I/O failure on the query-service call (connection refused, reset, or read timeout) reaches the service as a
+     * {@code ResourceAccessException} and surfaces as a 502 naming the I/O error.
+     */
+    @Test
+    void distributions_queryServiceUnreachable_returns502BadGateway() throws Exception {
+        mockServer.expect(requestTo(AUTH_SYNC_URL)).andExpect(method(HttpMethod.POST))
+            .andRespond(withException(new ConnectException("Connection refused")));
+
+        mockMvc.perform(authDistributions()).andExpect(status().isBadGateway())
+            .andExpect(jsonPath("$.error", startsWith("Query service request failed: I/O error on POST request for \"" + AUTH_SYNC_URL)))
+            .andExpect(jsonPath("$.error", containsString("Connection refused")));
+
+        mockServer.verify();
+    }
+
+    /**
+     * A 200 from the query service whose body cannot be read as cross counts fails outside the HTTP and I/O branches, and the catch-all
+     * wraps it as a 502 naming the extraction failure.
+     */
+    @Test
+    void distributions_queryServiceReturnsUnreadableBody_returns502BadGateway() throws Exception {
+        mockServer.expect(requestTo(AUTH_SYNC_URL)).andExpect(method(HttpMethod.POST))
+            .andRespond(withSuccess("[\"not\", \"cross counts\"]", MediaType.APPLICATION_JSON));
+
+        mockMvc.perform(authDistributions()).andExpect(status().isBadGateway())
+            .andExpect(jsonPath("$.error", startsWith("Query service request failed: Error while extracting response")));
+
+        mockServer.verify();
+    }
+
+    /** A 403 from the query service on the open path is reported as a consent denial, the same as on the auth path. */
+    @Test
+    void distributions_open_queryServiceConsentDenialReturns403() throws Exception {
+        mockServer.expect(requestTo(OPEN_SYNC_URL)).andExpect(method(HttpMethod.POST))
+            .andRespond(withStatus(HttpStatus.FORBIDDEN).body("{\"errorType\":\"consent_denied\"}"));
+
+        mockMvc.perform(openDistributions()).andExpect(status().isForbidden()).andExpect(jsonPath("$.errorType").value("consent_denied"));
+
+        mockServer.verify();
+    }
+
+    /** A 500 from the query service on the open path surfaces as a 502 carrying the downstream status. */
+    @Test
+    void distributions_open_queryServiceReturns500_returns502BadGateway() throws Exception {
+        mockServer.expect(requestTo(OPEN_SYNC_URL)).andExpect(method(HttpMethod.POST))
+            .andRespond(withServerError().body("{\"error\":\"internal error\"}"));
+
+        mockMvc.perform(openDistributions()).andExpect(status().isBadGateway())
+            .andExpect(jsonPath("$.error").value("Query service request failed with status 500: Internal Server Error"));
+
+        mockServer.verify();
+    }
+
+    /** An I/O failure on the open-path query-service call surfaces as a 502 naming the I/O error. */
+    @Test
+    void distributions_open_queryServiceUnreachable_returns502BadGateway() throws Exception {
+        mockServer.expect(requestTo(OPEN_SYNC_URL)).andExpect(method(HttpMethod.POST))
+            .andRespond(withException(new ConnectException("Connection refused")));
+
+        mockMvc.perform(openDistributions()).andExpect(status().isBadGateway())
+            .andExpect(jsonPath("$.error", startsWith("Query service request failed: I/O error on POST request for \"" + OPEN_SYNC_URL)));
+
+        mockServer.verify();
+    }
+
+    /**
+     * Builds an authorized-path distributions request for a single categorical filter, which decomposes into exactly one query-service
+     * call.
+     */
+    private MockHttpServletRequestBuilder authDistributions() throws Exception {
+        return post("/auth/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
+            .header("X-User-Id", "test-user").header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED)
+            .content(singleCategoricalFilterBody());
+    }
+
+    /**
+     * Builds an open-path distributions request for a single categorical filter, which decomposes into exactly one query-service call.
+     */
+    private MockHttpServletRequestBuilder openDistributions() throws Exception {
+        return post("/open/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "OPEN_ACCESS:aio.local")
+            .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_OPEN).content(singleCategoricalFilterBody());
+    }
+
+    private String singleCategoricalFilterBody() throws Exception {
+        Map<String, Object> query = Map.of(
+            "phenotypicClause",
+            Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White")), "select",
+            List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of(), "expectedResultType", "COUNT"
+        );
+        return objectMapper.writeValueAsString(Map.of("query", query));
     }
 
     @Test
@@ -243,17 +378,17 @@ class HpdsCallIntegrationTest {
             )
         );
 
-        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/open/v3/query/sync")).andExpect(method(HttpMethod.POST))
+        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/open/query/sync")).andExpect(method(HttpMethod.POST))
             .andRespond(withSuccess(objectMapper.writeValueAsString(hpdsResponse), MediaType.APPLICATION_JSON));
 
         Map<String, Object> query = Map.of(
             "phenotypicClause", Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\measurements\\bmi\\", "min", 18.0, "max", 40.0),
-            "select", List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
+            "select", List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of(), "expectedResultType", "COUNT"
         );
         String body = objectMapper.writeValueAsString(Map.of("query", query));
 
         MvcResult result = mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON)
+            post("/open/distributions").contentType(MediaType.APPLICATION_JSON)
                 .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_OPEN).content(body)
         ).andExpect(status().isOk()).andReturn();
 
@@ -266,5 +401,78 @@ class HpdsCallIntegrationTest {
         assertEquals(new ObfuscatedCount(600, "600 ±3", 3), bmi.get("18.0 - 24.0"));
         assertEquals(new ObfuscatedCount(0, "< 10", 9), bmi.get("24.0 - 30.0"));
         assertEquals(new ObfuscatedCount(150, "150 ±3", 3), bmi.get("30.0 +"));
+    }
+
+    /**
+     * The exact body the authorized backend answers with. Every component is on the wire in record order, the two chart sizes are null, and
+     * each map value is a count object with a null variance.
+     */
+    @Test
+    void distributions_authorized_bodyIsFrozen() throws Exception {
+        mockServer.expect(requestTo(AUTH_SYNC_URL))
+            .andRespond(withSuccess("{\"\\\\demographics\\\\SEX\\\\\":{\"Male\":620,\"Female\":614}}", MediaType.APPLICATION_JSON));
+        mockServer.expect(requestTo(AUTH_SYNC_URL)).andRespond(
+            withSuccess(
+                "{\"\\\\demographics\\\\AGE\\\\\":{\"20\":5,\"30\":12,\"40\":25,\"50\":40,\"60\":31,\"70\":18,\"80\":6}}",
+                MediaType.APPLICATION_JSON
+            )
+        );
+
+        String body = mockMvc.perform(
+            post("/auth/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "test-user").content(FROZEN_REQUEST)
+        ).andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+
+        mockServer.verify();
+        assertEquals(
+            "{\"categoricalData\":[{\"conceptPath\":\"\\\\demographics\\\\SEX\\\\\",\"title\":\"demographics: SEX\",\"continuous\":false,"
+                + "\"categoricalMap\":{\"Male\":{\"count\":620,\"display\":\"620\",\"variance\":null},"
+                + "\"Female\":{\"count\":614,\"display\":\"614\",\"variance\":null}},\"obfuscated\":false,\"xaxisName\":\"SEX\","
+                + "\"yaxisName\":\"Number of Participants\",\"chartWidth\":null,\"chartHeight\":null}],"
+                + "\"continuousData\":[{\"conceptPath\":\"\\\\demographics\\\\AGE\\\\\",\"title\":\"demographics: AGE\",\"continuous\":true,"
+                + "\"continuousMap\":{\"20.0 - 50.0\":{\"count\":42,\"display\":\"42\",\"variance\":null},"
+                + "\"50.0 +\":{\"count\":95,\"display\":\"95\",\"variance\":null}},\"obfuscated\":false,\"xaxisName\":\"AGE\","
+                + "\"yaxisName\":\"Number of Participants\",\"chartWidth\":null,\"chartHeight\":null}]}",
+            body
+        );
+    }
+
+    /**
+     * The exact body the open backend answers with. The count objects are the ones the query service sent, passed through unchanged, and
+     * {@code obfuscated} is true.
+     */
+    @Test
+    void distributions_open_bodyIsFrozen() throws Exception {
+        mockServer.expect(requestTo(OPEN_SYNC_URL)).andRespond(
+            withSuccess(
+                "{\"\\\\demographics\\\\SEX\\\\\":{\"Male\":{\"count\":622,\"display\":\"622 ±3\",\"variance\":3},"
+                    + "\"Female\":{\"count\":0,\"display\":\"< 10\",\"variance\":9}}}",
+                MediaType.APPLICATION_JSON
+            )
+        );
+        mockServer.expect(requestTo(OPEN_SYNC_URL)).andRespond(
+            withSuccess(
+                "{\"\\\\demographics\\\\AGE\\\\\":{\"20.0 - 50.0\":{\"count\":40,\"display\":\"40 ±3\",\"variance\":3},"
+                    + "\"50.0 +\":{\"count\":97,\"display\":\"97 ±3\",\"variance\":3}}}",
+                MediaType.APPLICATION_JSON
+            )
+        );
+
+        String body = mockMvc.perform(
+            post("/open/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "OPEN_ACCESS:aio.local")
+                .content(FROZEN_REQUEST)
+        ).andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+
+        mockServer.verify();
+        assertEquals(
+            "{\"categoricalData\":[{\"conceptPath\":\"\\\\demographics\\\\SEX\\\\\",\"title\":\"demographics: SEX\",\"continuous\":false,"
+                + "\"categoricalMap\":{\"Male\":{\"count\":622,\"display\":\"622 ±3\",\"variance\":3},"
+                + "\"Female\":{\"count\":0,\"display\":\"< 10\",\"variance\":9}},\"obfuscated\":true,\"xaxisName\":\"SEX\","
+                + "\"yaxisName\":\"Number of Participants\",\"chartWidth\":null,\"chartHeight\":null}],"
+                + "\"continuousData\":[{\"conceptPath\":\"\\\\demographics\\\\AGE\\\\\",\"title\":\"demographics: AGE\",\"continuous\":true,"
+                + "\"continuousMap\":{\"20.0 - 50.0\":{\"count\":40,\"display\":\"40 ±3\",\"variance\":3},"
+                + "\"50.0 +\":{\"count\":97,\"display\":\"97 ±3\",\"variance\":3}},\"obfuscated\":true,\"xaxisName\":\"AGE\","
+                + "\"yaxisName\":\"Number of Participants\",\"chartWidth\":null,\"chartHeight\":null}]}",
+            body
+        );
     }
 }

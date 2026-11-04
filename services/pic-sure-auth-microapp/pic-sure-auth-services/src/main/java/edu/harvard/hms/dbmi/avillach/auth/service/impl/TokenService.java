@@ -46,11 +46,11 @@ public class TokenService {
     private final UserService userService;
 
     @Autowired
-    public TokenService(AuthorizationService authorizationService, UserRepository userRepository,
-                        @Value("${application.token.expiration.time}") long tokenExpirationTime,
-                        JWTUtil jwtUtil,
-                        SessionService sessionService,
-                        UserService userService) {
+    public TokenService(
+        AuthorizationService authorizationService, UserRepository userRepository,
+        @Value("${application.token.expiration.time}") long tokenExpirationTime, JWTUtil jwtUtil, SessionService sessionService,
+        UserService userService
+    ) {
         this.authorizationService = authorizationService;
         this.userRepository = userRepository;
         this.tokenExpirationTime = tokenExpirationTime > 0 ? tokenExpirationTime : defaultTokenExpirationTime;
@@ -75,10 +75,23 @@ public class TokenService {
         return tokenInspection.getResponseMap();
     }
 
+    /**
+     * Inspects a user token for the authenticated application's request, including session or stored long-term token checks and access
+     * rules. Missing or rejected tokens and authorization failures produce an inactive result; an authorized regular token may be
+     * refreshed. Removes {@code token} from the input after successful parsing.
+     *
+     * @param inputMap mutable introspection input containing {@code token} and optional {@code request} details
+     * @throws IllegalAccessException if the authenticated principal is not an application principal
+     * @throws NullPointerException if the application principal has no associated application
+     * @throws io.jsonwebtoken.security.WeakKeyException if the application signing key is shorter than 32 bytes
+     */
     private TokenInspection validateToken(Map<String, Object> inputMap) throws IllegalAccessException {
+        // the token is a live credential, and a rejected one may be an open-access session sent as a bearer by mistake: never log it
         logger.debug(
             "_inspectToken, the incoming token map is: {}",
-            inputMap.entrySet().stream().map(entry -> entry.getKey() + " - " + entry.getValue()).collect(Collectors.joining(", "))
+            inputMap.entrySet().stream()
+                .map(entry -> entry.getKey() + " - " + ("token".equals(entry.getKey()) ? "REDACTED" : entry.getValue()))
+                .collect(Collectors.joining(", "))
         );
 
         TokenInspection tokenInspection = new TokenInspection();
@@ -98,8 +111,7 @@ public class TokenService {
             // Remove token from inputMap to prevent accidental logging
             inputMap.remove("token");
         } catch (NotAuthorizedException ex) {
-            // Log invalid token only when verification fails
-            logger.error("_inspectToken() the token - {} - is invalid with exception: {}", token, ex.getMessage());
+            logger.error("_inspectToken() the token is invalid with exception: {}", ex.getMessage());
             tokenInspection.setMessage(ex.getMessage());
             tokenInspection.addField("active", false);
             return tokenInspection;
@@ -151,6 +163,14 @@ public class TokenService {
             return tokenInspection;
         }
 
+        // Authorization below checks session expiry but cannot check which session issued the token.
+        if (!isLongTermToken && !sessionService.isTokenValidForCurrentSession(subject, jws.getPayload().get("sid"))) {
+            logger.error("_inspectToken() token for subject {} does not belong to a live session", subject);
+            tokenInspection.setMessage("Your session has expired. Please log in again.");
+            tokenInspection.addField("active", false);
+            return tokenInspection;
+        }
+
         // Verify token is active and authorized
         boolean isAuthorizationPassed = false;
         String errorMsg = null;
@@ -167,23 +187,11 @@ public class TokenService {
         }
 
         // Authorize token based on application privileges
-        if (application.getPrivileges() == null || application.getPrivileges().isEmpty()) {
-            isAuthorizationPassed = true;
-            logger.info(
-                "ACCESS_LOG ___ {},{},{} ___ has been granted access to execute query ___ {} ___ in application ___ {} ___ NO APP PRIVILEGES DEFINED",
-                user.getUuid(), user.getEmail(), user.getName(), inputMap.get("request"), application.getName()
-            );
-        } else if (!isLongTermTokenCompromised && user.getRoles() != null) {
+        if (!isLongTermTokenCompromised && user.getRoles() != null) {
             EvaluateAccessRuleResult evaluateAccessRuleResult =
                 authorizationService.isAuthorized(application, inputMap.get("request"), user, isLongTermToken);
             isAuthorizationPassed = evaluateAccessRuleResult.result();
-            evaluateAccessRuleResult.query().ifPresent(query -> {
-                try {
-                    tokenInspection.addField("query", new ObjectMapper().writeValueAsString(query));
-                } catch (JsonProcessingException e) {
-                    throw new RuntimeException(e);
-                }
-            });
+            errorMsg = evaluateAccessRuleResult.denialReason().orElse(null);
         } else if (!isLongTermTokenCompromised) {
             errorMsg = "User doesn't have enough privileges.";
         }
@@ -260,21 +268,18 @@ public class TokenService {
             return new InvalidRefreshToken("User has been deactivated.");
         }
 
-        if (!JWTUtil.isLongTermToken(claims.getSubject()) && sessionService.isSessionExpired(claims.getSubject())) {
-            logger.info("refreshToken() The user has just is being logged out. The user's session has expired.");
+        if (!JWTUtil.isLongTermToken(subject) && !sessionService.isTokenValidForCurrentSession(subject, claims.get("sid"))) {
+            logger.info("refreshToken() The token presented for refresh belongs to a session that has ended.");
             return new InvalidRefreshToken("Your session has expired. Please log in again.");
         }
 
+        // Preserve the incoming sid even if another login replaces the session during refresh.
         Map<String, Object> claimsMap = new HashMap<>(claims);
         claimsMap.put("roles", userService.addRoleClaims(loadUser));
 
         Date expirationDate = new Date(Calendar.getInstance().getTimeInMillis() + this.tokenExpirationTime);
-        String refreshedToken = this.jwtUtil.createJwtToken(
-                claims.getId(),
-                claims.getIssuer(),
-                claimsMap,
-                subject,
-                this.tokenExpirationTime);
+        String refreshedToken =
+            this.jwtUtil.createJwtToken(claims.getId(), claims.getIssuer(), claimsMap, subject, this.tokenExpirationTime);
 
         logger.debug("Finished RefreshToken and new token has been generated.");
         return new ValidRefreshToken(refreshedToken, ZonedDateTime.ofInstant(expirationDate.toInstant(), ZoneOffset.UTC).toString());

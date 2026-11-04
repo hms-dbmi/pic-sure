@@ -1,0 +1,37 @@
+{
+  "properties": [
+    {
+      "name": "chart.categorical.max-categories",
+      "type": "java.lang.Integer",
+      "description": "Maximum number of categories kept in a categorical distribution result before the rest are merged into a single 'Other' bucket. Maps from the CHART_MAX_CATEGORIES environment variable.",
+      "defaultValue": 7
+    },
+    {
+      "name": "logging.audit.api-key",
+      "type": "java.lang.String",
+      "description": "API key sent with each audit log event to the logging service. Maps from the LOGGING_API_KEY environment variable. When this and logging.audit.url are both blank, LoggingClientBean builds a no-op logging client and audit logging is disabled.",
+      "defaultValue": ""
+    },
+    {
+      "name": "logging.audit.url",
+      "type": "java.lang.String",
+      "description": "Base URL of the audit logging service that receives query and request events. Maps from the LOGGING_SERVICE_URL environment variable. When this and logging.audit.api-key are both blank, LoggingClientBean builds a no-op logging client and audit logging is disabled.",
+      "defaultValue": ""
+    },
+    {
+      "name": "picsure.query-service.base-url",
+      "type": "java.lang.String",
+      "description": "Base URL of pic-sure-hpds-query-service, the single HPDS ingress this service posts distribution sub-queries to. Maps from the HPDS_QUERY_SERVICE_URL environment variable, with application.properties defaulting it to http://pic-sure-hpds-query-service:8080."
+    },
+    {
+      "name": "rest-template.connect-timeout",
+      "type": "java.lang.Integer",
+      "description": "Connect timeout, in milliseconds, for the shared RestClient used to call downstream services. Maps from the REST_TEMPLATE_CONNECT_TIMEOUT environment variable, with application.properties defaulting it to 5000."
+    },
+    {
+      "name": "rest-template.read-timeout",
+      "type": "java.lang.Integer",
+      "description": "Read timeout, in milliseconds, for the shared RestClient used to call downstream services. Maps from the REST_TEMPLATE_READ_TIMEOUT environment variable, with application.properties defaulting it to 30000."
+    }
+  ]
+}

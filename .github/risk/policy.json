@@ -1,0 +1,169 @@
+{
+  "version": 1,
+  "allowForks": false,
+  "labels": { "low": "risk:low", "review": "risk:needs-review" },
+
+  "review": {
+    "checkName": "Review policy",
+    "minApprovals": 1,
+    "requireApprovalOnLatestCommit": false
+  },
+
+  "limits": {
+    "maxChangedLines": 450,
+    "maxFiles": 10,
+    "apiFileCap": 3000,
+    "ignoreForSize": []
+  },
+
+  "categories": [
+    { "id": "ci", "lowRisk": false, "reason": "CI, workflow or repository-automation change", "globs": [".github/**"] },
+    {
+      "id": "build",
+      "lowRisk": false,
+      "reason": "Build, dependency or container configuration change",
+      "globs": ["**/pom.xml", ".mvn/**", "mvnw", "mvnw.cmd", "**/Dockerfile", "**/Dockerfile.*", "**/docker-compose*.{yml,yaml}", "**/.dockerignore", "**/*.sh"]
+    },
+    { "id": "tests", "lowRisk": true, "checkSensitive": false, "globs": ["**/src/test/**"] },
+    {
+      "id": "docs",
+      "lowRisk": true,
+      "checkSensitive": false,
+      "allowNoPatch": true,
+      "globs": ["**/*.md", "docs/**", "**/*.adoc", "LICENSE*", "NOTICE*"]
+    },
+    {
+      "id": "migrations",
+      "lowRisk": false,
+      "reason": "Database schema or migration change",
+      "globs": ["**/db/migration/**", "**/db/changelog/**", "**/*.sql", "**/flyway/**", "**/liquibase/**"]
+    },
+    {
+      "id": "api-contract",
+      "lowRisk": false,
+      "reason": "Public API contract change",
+      "globs": [
+        "libs/pic-sure-commons/pic-sure-api-model/**",
+        "libs/pic-sure-commons/pic-sure-hpds-model/**",
+        "libs/pic-sure-openapi/**",
+        "**/openapi*.{yml,yaml,json}",
+        "**/swagger*.{yml,yaml,json}",
+        "**/api-docs/**"
+      ]
+    },
+    {
+      "id": "config",
+      "lowRisk": false,
+      "reason": "Runtime configuration or resource change",
+      "globs": ["**/src/main/resources/**", "**/application*.{properties,yml,yaml}"]
+    },
+    {
+      "id": "production-source",
+      "lowRisk": false,
+      "lowRiskMaxLines": 300,
+      "reason": "Production Java source change larger than the 300-line low-risk allowance",
+      "globs": ["**/src/main/java/**"]
+    }
+  ],
+
+  "sensitivePaths": [
+    {
+      "pattern": "(auth(?!or(?!i[stz]))|login|oauth|oidc|saml|jwt|token|session|security|permission|privilege|role|crypto|cipher|secret|credential|password|consent|deid|hipaa|fisma)",
+      "flags": "i"
+    }
+  ],
+
+  "redFlags": [
+    {
+      "id": "new-endpoint",
+      "appliesTo": ["**/*.java"],
+      "exclude": ["**/src/test/**"],
+      "pattern": "@(Request|Get|Post|Put|Patch|Delete)Mapping\\b|@(GET|POST|PUT|PATCH|DELETE)\\b|@Path\\(",
+      "message": "Adds or changes an HTTP endpoint"
+    },
+    {
+      "id": "authz-change",
+      "appliesTo": ["**/*.java"],
+      "exclude": ["**/src/test/**"],
+      "on": "both",
+      "pattern": "@(PreAuthorize|PostAuthorize|Secured|RolesAllowed|PermitAll|DenyAll|PreFilter|PostFilter)\\b|SecurityFilterChain|HttpSecurity|WebSecurityConfigurer|permitAll\\(|\\.csrf\\(|authorizeHttpRequests|SecurityContextHolder",
+      "message": "Adds or removes authentication/authorization logic"
+    },
+    {
+      "id": "crypto",
+      "appliesTo": ["**/*.java"],
+      "exclude": ["**/src/test/**"],
+      "pattern": "MessageDigest|javax\\.crypto|java\\.security|\\bCipher\\b|SecretKey|KeyStore|SecureRandom",
+      "message": "Touches cryptography"
+    },
+    {
+      "id": "data-access",
+      "appliesTo": ["**/*.java"],
+      "exclude": ["**/src/test/**"],
+      "pattern": "createNativeQuery|nativeQuery\\s*=\\s*true|JdbcTemplate|EntityManager|prepareStatement\\(|createStatement\\(|@Query\\b",
+      "message": "Adds or changes direct data access (SQL injection surface)"
+    },
+    {
+      "id": "dynamic-execution",
+      "appliesTo": ["**/*.java"],
+      "exclude": ["**/src/test/**"],
+      "pattern": "Runtime\\.getRuntime\\(\\)\\.exec|ProcessBuilder|ObjectInputStream|readObject\\(|Class\\.forName|ScriptEngine|XMLDecoder|SpelExpressionParser",
+      "message": "Uses process execution, reflection-by-name or unsafe deserialization"
+    },
+    {
+      "id": "outbound-call",
+      "appliesTo": ["**/*.java"],
+      "exclude": ["**/src/test/**"],
+      "pattern": "new URL\\(|HttpClient|RestTemplate|WebClient|URI\\.create\\(",
+      "message": "Adds an outbound network call (SSRF surface)"
+    },
+    {
+      "id": "phi-identifiers",
+      "appliesTo": ["**/*.java", "**/*.properties", "**/*.yml", "**/*.yaml"],
+      "exclude": ["**/src/test/**"],
+      "pattern": "\\b(ssn|social[_ ]?security|date[_ ]?of[_ ]?birth|dob|mrn|patient[_ ]?id)\\b",
+      "flags": "i",
+      "message": "Mentions direct PHI/PII identifiers"
+    },
+    {
+      "id": "suppression",
+      "appliesTo": ["**/*.java"],
+      "pattern": "@SuppressWarnings|@SuppressFBWarnings|//\\s*NOSONAR|CHECKSTYLE:OFF|spotless:off",
+      "message": "Adds a lint/static-analysis suppression"
+    },
+    {
+      "id": "hardcoded-secret",
+      "appliesTo": ["**"],
+      "exclude": ["**/package-lock.json"],
+      "pattern": "(password|passwd|secret|api[_-]?key|access[_-]?key|private[_-]?key|token)\\s*[=:]\\s*[\"'][^\"'\\s]{8,}[\"']|-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{30,}",
+      "flags": "i",
+      "message": "Looks like a hardcoded secret"
+    }
+  ],
+
+  "testQuality": {
+    "testFileGlobs": ["**/src/test/**/*.java"],
+    "testDeclaration": "@(Test|ParameterizedTest|RepeatedTest|TestFactory)\\b",
+    "assertion": "\\b(assert[A-Za-z]*|verify[A-Za-z]*|fail|andExpect|andExpectAll|expectThat|should[A-Za-z]*|isEqualTo|hasSize)\\s*\\(",
+    "skipPatterns": ["@Disabled", "@Ignore\\b", "Assumptions?\\.assume", "@EnabledIf", "@DisabledIf"]
+  },
+
+  "trustedBots": {
+    "dependabot[bot]": {
+      "maxBump": "patch",
+      "files": [
+        {
+          "glob": "**/pom.xml",
+          "lineRegex": "^\\s*<[\\w.\\-]*[Vv]ersion>([^<]+)</[\\w.\\-]*[Vv]ersion>\\s*$"
+        }
+      ]
+    }
+  },
+
+  "coverage": {
+    "min": 80,
+    "include": ["**/src/main/java/**/*.java"],
+    "exclude": ["**/src/test/**", "**/generated/**", "**/*Application.java", "**/*Config.java", "**/*Configuration.java"],
+    "failOnMissingFile": false
+  }
+}

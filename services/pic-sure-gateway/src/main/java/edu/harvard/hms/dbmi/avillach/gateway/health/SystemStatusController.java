@@ -1,8 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.gateway.health;
 
 /**
- * Backward-compatible replacement for the WAR's SystemService {@code /system/status}. Plain-text, unauthenticated (on the introspection
- * allow-list), throttled to one real deep check per window with a cached last result to avoid a DoS via the deep probes.
+ * Serves the plain-text, unauthenticated {@code /system/status} endpoint. Deep checks are throttled to one per window, with the latest
+ * result cached to prevent repeated probes from exhausting resources.
  *
  * <p> Deliberately <em>not</em> a {@code @RestController}/{@code @GetMapping}: the gateway's route-backed {@code RouterFunction} beans are
  * registered via {@code RouterFunctionMapping}, which Spring wires at order -1 -- ahead of {@code RequestMappingHandlerMapping} (order 0).

@@ -3,58 +3,85 @@ package edu.harvard.hms.dbmi.avillach.query.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * Aggregate/obfuscation config (replaces the WAR's {@code resource.properties} + DB resource lookup). The {@code @ConfigurationProperties}
- * bean is declared/enabled in the aggregate wiring config (a later task); this class is a plain bindable POJO so it can also be constructed
- * directly in tests.
+ * Aggregate and obfuscation configuration. The {@code @ConfigurationProperties} bean is enabled by the aggregate wiring config; this class
+ * remains a plain bindable POJO so tests can construct it directly.
  */
 @ConfigurationProperties(prefix = "aggregate")
 public class AggregateProperties {
 
     /** Open HPDS backend; same value as HPDS_OPEN_URL (the query service's open backend). */
     private String hpdsOpenUrl;
-    /** Bearer token for the open HPDS backend (+ visualization); same value as HPDS_OPEN_TOKEN. Was target.picsure.token. */
+    /** Bearer token for the open HPDS backend and visualization service; same value as HPDS_OPEN_TOKEN. */
     private String hpdsOpenToken;
     /**
-     * Visualization service base URL; replaces the DB ResourceRepository.getById(visualizationResourceId). Blank = no binning (raw
-     * fallback).
+     * Visualization service base URL, which bins open continuous charts. Blank disables open continuous charts, since unbinned counts would
+     * reveal every observed value.
      */
     private String visualizationUrl;
-    /** Optional resourceUUID injected into the visualization /bin/continuous request body (parity with the WAR). */
-    private String visualizationResourceId;
-    /** Optional resourceUUID injected into every downstream HPDS request body (was target.resource.id). */
-    private String targetResourceId;
     private int connectTimeoutSec = 10;
     private int readTimeoutSec = 60;
-
     private final Obfuscation obfuscation = new Obfuscation();
 
     public static class Obfuscation {
-        private int threshold = 10; // ApplicationProperties.DEFAULT_OBFUSCATION_THRESHOLD
-        private int variance = 3; // ApplicationProperties.DEFAULT_OBFUSCATION_VARIANCE
-        private String salt; // null/blank => random UUID at startup (ObfuscationService)
+        /**
+         * Master switch for open-access obfuscation. True (the default) enforces the thresholds below at startup and obfuscates open
+         * results; false makes the open aggregate path a full passthrough: raw results, no allow-list, no suppression.
+         */
+        private boolean enabled = true;
+        /**
+         * Consent threshold for consent groups, studies and the total; must be at least 10 when obfuscation is enabled (startup fails
+         * otherwise). Consent buckets are this wide and the total rounds up to half of it.
+         */
+        private int consentThreshold = 10;
+        /** Chart buckets below this show "< chartThreshold"; others round up to half of it, with that as their band. */
+        private int chartThreshold = 10;
+        /** No chart is returned for a cohort smaller than this. */
+        private int chartMinimumCohort = 50;
+        /**
+         * When true, a studies-consents CROSS_COUNT returns only the obfuscated total to the client; the per-study and per-consent-group
+         * counts are still computed (so study sums and mismatch warnings run) but dropped from the response. Defends open access against
+         * reconstructing a consent group from its study and sibling counts.
+         */
+        private boolean crossCountTotalOnly = true;
 
-        public int getThreshold() {
-            return threshold;
+        public boolean isEnabled() {
+            return enabled;
         }
 
-        public void setThreshold(int t) {
-            this.threshold = t;
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
         }
 
-        public int getVariance() {
-            return variance;
+        public int getConsentThreshold() {
+            return consentThreshold;
         }
 
-        public void setVariance(int v) {
-            this.variance = v;
+        public void setConsentThreshold(int consentThreshold) {
+            this.consentThreshold = consentThreshold;
         }
 
-        public String getSalt() {
-            return salt;
+        public int getChartThreshold() {
+            return chartThreshold;
         }
 
-        public void setSalt(String s) {
-            this.salt = s;
+        public void setChartThreshold(int chartThreshold) {
+            this.chartThreshold = chartThreshold;
+        }
+
+        public int getChartMinimumCohort() {
+            return chartMinimumCohort;
+        }
+
+        public void setChartMinimumCohort(int chartMinimumCohort) {
+            this.chartMinimumCohort = chartMinimumCohort;
+        }
+
+        public boolean isCrossCountTotalOnly() {
+            return crossCountTotalOnly;
+        }
+
+        public void setCrossCountTotalOnly(boolean crossCountTotalOnly) {
+            this.crossCountTotalOnly = crossCountTotalOnly;
         }
     }
 
@@ -80,22 +107,6 @@ public class AggregateProperties {
 
     public void setVisualizationUrl(String u) {
         this.visualizationUrl = u;
-    }
-
-    public String getVisualizationResourceId() {
-        return visualizationResourceId;
-    }
-
-    public void setVisualizationResourceId(String id) {
-        this.visualizationResourceId = id;
-    }
-
-    public String getTargetResourceId() {
-        return targetResourceId;
-    }
-
-    public void setTargetResourceId(String id) {
-        this.targetResourceId = id;
     }
 
     public int getConnectTimeoutSec() {

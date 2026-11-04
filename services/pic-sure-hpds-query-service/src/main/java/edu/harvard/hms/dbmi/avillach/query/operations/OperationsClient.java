@@ -8,6 +8,10 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
+import edu.harvard.dbmi.avillach.domain.SavedQueryReference;
+import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
 /**
@@ -17,9 +21,8 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
  * authenticates to operations-service's {@code InternalTokenFilter}.
  *
  * <p>Method/endpoint contracts are FIXED by operations-service (see
- * {@code edu.harvard.hms.dbmi.avillach.operations.query.InternalQueryController}); the DTOs here are client-side copies of that service's
- * request/response shapes, matched byte-for-byte since this module cannot depend on operations-service's classes without pulling in its
- * JPA/entity graph.
+ * {@code edu.harvard.hms.dbmi.avillach.operations.query.InternalQueryController}). The request and response records are the shared ones in
+ * {@code edu.harvard.dbmi.avillach.domain}, which operations-service binds as well, so the two sides read and write one definition.
  *
  * <p>A persistence failure must never be swallowed: any 5xx, timeout, or malformed response from operations-service is surfaced as a
  * {@link PicsureException} (BAD_GATEWAY or GATEWAY_TIMEOUT) rather than returning a null/partial result. Only {@link #get(UUID)} has a
@@ -42,8 +45,8 @@ public class OperationsClient {
 
     /** {@code POST /operations/internal/queries} -&gt; 201 {@code { "picsureId": "<uuid>" } }. */
     public UUID save(SaveQueryRequest request) {
-        SaveQueryResponse response =
-            execute(() -> http.post().uri(QUERIES_PATH).body(request).retrieve().body(SaveQueryResponse.class), "save");
+        SavedQueryReference response =
+            execute(() -> http.post().uri(QUERIES_PATH).body(request).retrieve().body(SavedQueryReference.class), "save");
         if (response == null || response.picsureId() == null) {
             throw badGateway("save", "operations-service returned no picsureId");
         }
@@ -89,9 +92,5 @@ public class OperationsClient {
         return new PicsureException(
             HttpStatus.GATEWAY_TIMEOUT, "gateway_timeout", "operations-service " + operation + " timed out: " + cause.getMessage()
         );
-    }
-
-    /** Shape of the {@code POST /operations/internal/queries} response body: {@code { "picsureId": "<uuid>" } }. */
-    private record SaveQueryResponse(UUID picsureId) {
     }
 }

@@ -20,6 +20,10 @@ public final class AuditLoggingContext {
     public static final String ACCESS_TYPE_ATTR = "vizAccessType";
     public static final String AUTHORIZATION_ATTR = "vizAuthorization";
     public static final String SESSION_ID_ATTR = "vizSessionId";
+    /** Event type from the handler's {@code @AuditEvent}, set by {@link AuditInterceptor} and read by {@link AuditLoggingFilter}. */
+    public static final String EVENT_TYPE_ATTR = "vizAuditEventType";
+    /** Action from the handler's {@code @AuditEvent}, set by {@link AuditInterceptor} and read by {@link AuditLoggingFilter}. */
+    public static final String ACTION_ATTR = "vizAuditAction";
 
     private AuditLoggingContext() {}
 
@@ -34,14 +38,17 @@ public final class AuditLoggingContext {
         }
     }
 
-    public static void addDistributionRequestMetadata(HttpServletRequest request, String accessType, Query query, int subQueryCount) {
+    public static void addDistributionRequestMetadata(
+        HttpServletRequest request, String backend, String gatewayAccessType, Query query, int subQueryCount
+    ) {
         addMetadata(request, "route", "distributions");
-        addMetadata(request, "access_type", accessType);
+        addMetadata(request, "backend", backend);
+        addMetadata(request, "gateway_access_type", gatewayAccessType);
         List<String> selectedConceptPaths = selectedConceptPaths(query);
         addMetadata(request, "selected_concept_paths", selectedConceptPaths);
         addMetadata(request, "selected_concept_count", selectedConceptPaths.size());
         addMetadata(request, "subquery_count", subQueryCount);
-        request.setAttribute(ACCESS_TYPE_ATTR, accessType);
+        request.setAttribute(ACCESS_TYPE_ATTR, backend);
     }
 
     public static void addDistributionResponseMetadata(HttpServletRequest request, VisualizationResponse response) {

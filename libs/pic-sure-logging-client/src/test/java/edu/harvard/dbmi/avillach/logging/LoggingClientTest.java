@@ -122,6 +122,23 @@ class LoggingClientTest {
         assertFalse(req.body.contains("\"client_type\":\"api\""));
     }
 
+    /**
+     * Regression test for caller being dropped by the config-default copy. The event leaves clientType null, so {@code resolveClientType}
+     * rebuilds the event through {@code withClientType()} -- a rebuild that silently discards any field the copy chain forgets to thread
+     * through. Asserting on the wire body (not a direct builder round-trip) is what makes that reachable.
+     */
+    @Test
+    void callerSurvivesTheConfigClientTypeCopyOnSend() throws Exception {
+        LoggingClient client = createClient();
+
+        client.send(LoggingEvent.builder("QUERY").action("execute").caller("PYTHON_ADAPTER").build());
+
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "Server should receive request");
+        ReceivedRequest req = received.get(0);
+        assertTrue(req.body.contains("\"client_type\":\"api\""), "config default clientType should have been applied");
+        assertTrue(req.body.contains("\"caller\":\"PYTHON_ADAPTER\""), "caller must survive the withClientType copy: " + req.body);
+    }
+
     @Test
     void noOpClientDiscardsSilently() {
         LoggingClient client = LoggingClient.noOp();

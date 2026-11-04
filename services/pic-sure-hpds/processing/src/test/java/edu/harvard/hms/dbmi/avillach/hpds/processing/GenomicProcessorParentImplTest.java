@@ -32,9 +32,7 @@ class GenomicProcessorParentImplTest {
 
     @BeforeEach
     public void setup() {
-        parentProcessor = new GenomicProcessorParentImpl(List.of(
-                mockProcessor1, mockProcessor2, mockProcessor3
-        ));
+        parentProcessor = new GenomicProcessorParentImpl(List.of(mockProcessor1, mockProcessor2, mockProcessor3));
     }
 
     @Test
@@ -46,34 +44,61 @@ class GenomicProcessorParentImplTest {
                 mockProcessor1, mockProcessor2, mockProcessor3
         ));
     }
+
+    /**
+     * Pins the element comparison in initializePatientIds: every partition reports the same number of patients and exactly one element
+     * differs. The stubs are lenient because the partitions are read on boundedElastic and reduced in completion order, so the first
+     * mismatch can cancel the fan-out before every partition has been asked.
+     */
     @Test
     public void patientIdInit_patientsDiffer_exception() {
-        when(mockProcessor1.getPatientIds()).thenReturn(List.of("1", "42", "99"));
-        when(mockProcessor2.getPatientIds()).thenReturn(List.of("1", "43", "99"));
+        lenient().when(mockProcessor1.getPatientIds()).thenReturn(List.of("1", "42", "99"));
+        lenient().when(mockProcessor2.getPatientIds()).thenReturn(List.of("1", "43", "99"));
+        lenient().when(mockProcessor3.getPatientIds()).thenReturn(List.of("1", "42", "99"));
 
-        assertThrows(IllegalStateException.class, () -> {
-            parentProcessor = new GenomicProcessorParentImpl(List.of(
-                    mockProcessor1, mockProcessor2, mockProcessor3
-            ));
-        });
+        IllegalStateException exception = assertThrows(
+            IllegalStateException.class, () -> new GenomicProcessorParentImpl(List.of(mockProcessor1, mockProcessor2, mockProcessor3))
+        );
+        assertEquals("Patient lists from partitions do not match", exception.getMessage());
+    }
+
+    /**
+     * Pins the size comparison in initializePatientIds: one partition reports fewer patients than the others. Lenient for the same
+     * completion-order reason as the element-mismatch case.
+     */
+    @Test
+    public void patientIdInit_patientCountsDiffer_exception() {
+        lenient().when(mockProcessor1.getPatientIds()).thenReturn(List.of("1", "42", "99"));
+        lenient().when(mockProcessor2.getPatientIds()).thenReturn(List.of("1", "42"));
+        lenient().when(mockProcessor3.getPatientIds()).thenReturn(List.of("1", "42", "99"));
+
+        IllegalStateException exception = assertThrows(
+            IllegalStateException.class, () -> new GenomicProcessorParentImpl(List.of(mockProcessor1, mockProcessor2, mockProcessor3))
+        );
+        assertEquals("Patient lists from partitions do not match", exception.getMessage());
     }
 
 
     @Test
     public void getPatientMask_validResponses_returnMerged() {
         DistributableQuery distributableQuery = new DistributableQuery();
-        when(mockProcessor1.getPatientMask(distributableQuery)).thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("110110000011", 2))));
-        when(mockProcessor2.getPatientMask(distributableQuery)).thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("110001100011", 2))));
-        when(mockProcessor3.getPatientMask(distributableQuery)).thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("110000000111", 2))));
+        when(mockProcessor1.getPatientMask(distributableQuery))
+            .thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("110110000011", 2))));
+        when(mockProcessor2.getPatientMask(distributableQuery))
+            .thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("110001100011", 2))));
+        when(mockProcessor3.getPatientMask(distributableQuery))
+            .thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("110000000111", 2))));
 
         VariantMask patientMask = parentProcessor.getPatientMask(distributableQuery).block();
         VariantMask expectedPatientMask = new VariantMaskBitmaskImpl(new BigInteger("110111100111", 2));
         assertEquals(expectedPatientMask, patientMask);
     }
+
     @Test
     public void getPatientMask_oneNode_returnPatients() {
         DistributableQuery distributableQuery = new DistributableQuery();
-        when(mockProcessor1.getPatientMask(distributableQuery)).thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("110110000011", 2))));
+        when(mockProcessor1.getPatientMask(distributableQuery))
+            .thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("110110000011", 2))));
         parentProcessor = new GenomicProcessorParentImpl(List.of(mockProcessor1));
 
         VariantMask patientMask = parentProcessor.getPatientMask(distributableQuery).block();

@@ -2,23 +2,21 @@ package edu.harvard.hms.dbmi.avillach.operations;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration;
 import org.springframework.context.annotation.Import;
 
-import edu.harvard.hms.dbmi.avillach.commons.error.GatewayExceptionAdvice;
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureErrorBodyAdvice;
 
 /**
- * Entry point for pic-sure-operations-service: the sole owner of the pic-sure MySQL {@code Configuration}, {@code NamedDataset}, and
- * {@code Query} tables. Exposes {@code /configuration/**}, {@code /dataset/**}, and (later) an internal query API.
- *
  * <p>The JPA entities and repositories live under this application's own base package ({@code edu.harvard.hms.dbmi.avillach.operations},
  * co-located with each feature's service/mapper), so Spring Boot's default same-package {@code @EntityScan}/repository auto-detection finds
  * them without any explicit scan configuration.
  *
- * <p>{@link GatewayExceptionAdvice} (from {@code pic-sure-spring-commons}) is imported explicitly because it lives outside this
+ * <p>{@link PicsureErrorBodyAdvice} (from {@code pic-sure-spring-commons}) is imported explicitly because it lives outside this
  * application's base package, so component scanning alone would not pick it up.
  */
-@SpringBootApplication
-@Import(GatewayExceptionAdvice.class)
+@SpringBootApplication(exclude = UserDetailsServiceAutoConfiguration.class)
+@Import(PicsureErrorBodyAdvice.class)
 public class OperationsApplication {
 
     public static void main(String[] args) {

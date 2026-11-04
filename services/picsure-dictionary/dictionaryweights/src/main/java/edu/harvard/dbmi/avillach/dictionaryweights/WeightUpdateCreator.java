@@ -9,27 +9,22 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * Generates the SQL UPDATE statement that populates the searchable_fields tsvector
- * column on concept_node. Each field is wrapped in {@code setweight(to_tsvector(...), tier)}
- * and concatenated with {@code ||} to produce a single weighted tsvector per concept.
+ * Generates the SQL UPDATE statement that populates the searchable_fields tsvector column on concept_node. Each field is wrapped in
+ * {@code setweight(to_tsvector(...), tier)} and concatenated with {@code ||} to produce a single weighted tsvector per concept.
  *
- * <p>Weight tiers (A/B/C/D) control ranking via {@code ts_rank}/{@code ts_rank_cd}:
- * A = highest priority (display name, path), D = lowest (meta values).</p>
+ * <p>Weight tiers (A/B/C/D) control ranking via {@code ts_rank}/{@code ts_rank_cd}: A = highest priority (display name, path), D = lowest
+ * (meta values).</p>
  *
- * <p>Underscores in field values are replaced with spaces before tsvector conversion
- * so that terms like {@code pasc_pg2023} are tokenized as two independent terms
- * ({@code pasc}, {@code pg2023}) rather than a single file-path token.</p>
+ * <p>Underscores in field values are replaced with spaces before tsvector conversion so that terms like {@code pasc_pg2023} are tokenized
+ * as two independent terms ({@code pasc}, {@code pg2023}) rather than a single file-path token.</p>
  *
- * <p>Meta values are filtered to a whitelist of searchable keys (description, values,
- * derived_values, variable_type, comment, domain, question, unit) to avoid indexing
- * non-searchable content like DRS URIs or numeric identifiers. The 'values' key is
- * capped at 60k characters to handle imaging datasets with very large categorical
- * value sets.</p>
+ * <p>Meta values are filtered to a whitelist of searchable keys (description, values, derived_values, variable_type, comment, domain,
+ * question, unit) to avoid indexing non-searchable content like DRS URIs or numeric identifiers. The 'values' key is capped at 60k
+ * characters to handle imaging datasets with very large categorical value sets.</p>
  *
- * <p>The tsvector is built with the 'english' language configuration to match the
- * query layer's use of {@code to_tsquery('english', ...)}. Without this, the server
- * default ({@code pg_catalog.simple}) applies no stemming, causing mismatches for
- * words like "Coding" (stored as 'coding' but queried as 'code:*').</p>
+ * <p>The tsvector is built with the 'english' language configuration to match the query layer's use of {@code to_tsquery('english', ...)}.
+ * Without this, the server default ({@code pg_catalog.simple}) applies no stemming, causing mismatches for words like "Coding" (stored as
+ * 'coding' but queried as 'code:*').</p>
  */
 @Service
 public class WeightUpdateCreator {
@@ -38,21 +33,18 @@ public class WeightUpdateCreator {
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[a-zA-Z_][a-zA-Z0-9_.]*$");
 
     /**
-     * Builds the UPDATE statement from the given weight configuration. Each weight entry
-     * specifies a field name and a tier (A/B/C/D). The field is wrapped in
-     * {@code setweight(to_tsvector('english', replace(coalesce(FIELD, ''), '_', ' ')), 'TIER')}
-     * and all entries are joined with {@code ||}.
+     * Builds the UPDATE statement from the given weight configuration. Each weight entry specifies a field name and a tier (A/B/C/D). The
+     * field is wrapped in {@code setweight(to_tsvector('english', replace(coalesce(FIELD, ''), '_', ' ')), 'TIER')} and all entries are
+     * joined with {@code ||}.
      */
     public String createUpdate(List<Weight> weights) {
         LOG.info("Turning {} weights into a setweight query", weights.size());
-        String searchVector = weights.stream()
-            .map(w -> {
-                if (!SAFE_SQL_IDENTIFIER.matcher(w.key()).matches()) {
-                    throw new IllegalArgumentException("Unsafe SQL identifier in weight key: " + w.key());
-                }
-                return "setweight(to_tsvector('english', replace(coalesce(%s, ''), '_', ' ')), '%s')".formatted(w.key(), w.tier());
-            })
-            .collect(Collectors.joining(" ||\n            "));
+        String searchVector = weights.stream().map(w -> {
+            if (!SAFE_SQL_IDENTIFIER.matcher(w.key()).matches()) {
+                throw new IllegalArgumentException("Unsafe SQL identifier in weight key: " + w.key());
+            }
+            return "setweight(to_tsvector('english', replace(coalesce(%s, ''), '_', ' ')), '%s')".formatted(w.key(), w.tier());
+        }).collect(Collectors.joining(" ||\n            "));
         return """
             UPDATE concept_node
             SET SEARCHABLE_FIELDS = data_table.search_vector
@@ -101,6 +93,7 @@ public class WeightUpdateCreator {
                     ) AS dataset ON dataset.concept_path = REGEXP_REPLACE(concept_node.concept_path, '(^\\\\[^\\\\]*\\\\[^\\\\]*\\\\)(.*$)', '\\1')
             ) AS data_table
             WHERE concept_node.concept_node_id = data_table.search_key;
-            """.formatted(searchVector);
+            """
+            .formatted(searchVector);
     }
 }

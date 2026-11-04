@@ -7,8 +7,8 @@ import edu.harvard.dbmi.avillach.dictionary.dashboard.DashboardController;
 import edu.harvard.dbmi.avillach.dictionary.dashboarddrawer.DashboardDrawerController;
 import edu.harvard.dbmi.avillach.dictionary.facet.FacetController;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
-import edu.harvard.dbmi.avillach.dictionary.info.InfoController;
 import edu.harvard.dbmi.avillach.dictionary.legacysearch.LegacySearchController;
+import edu.harvard.dbmi.avillach.dictionary.legacysearch.model.LegacySearchQuery;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import org.junit.jupiter.api.Test;
 
@@ -59,14 +59,8 @@ class ControllerAuditEventTest {
     }
 
     @Test
-    void infoController() throws Exception {
-        Class<?> c = InfoController.class;
-        assertAuditEvent(c, "getInfo", new Class[] {Object.class}, "OTHER", "info");
-    }
-
-    @Test
     void legacySearchController() throws Exception {
         Class<?> c = LegacySearchController.class;
-        assertAuditEvent(c, "legacySearch", new Class[] {String.class}, "SEARCH", "search.legacy");
+        assertAuditEvent(c, "legacySearch", new Class[] {LegacySearchQuery.class}, "SEARCH", "search.legacy");
     }
 }

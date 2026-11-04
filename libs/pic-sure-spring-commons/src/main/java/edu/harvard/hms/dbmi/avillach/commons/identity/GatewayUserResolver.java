@@ -9,8 +9,7 @@ import java.util.stream.Collectors;
 import jakarta.servlet.http.HttpServletRequest;
 
 /**
- * Header-name contract between the gateway's identity/introspection filters (which set these headers on the way in) and the WAR's
- * GatewayHeaderFilter (which rebuilds the SecurityContext from them).
+ * Header-name contract between the gateway's identity filters and downstream request filters that rebuild the security context.
  */
 public final class GatewayUserResolver {
 

@@ -53,8 +53,7 @@ class FacetControllerTest {
 
     @Test
     void shouldNotGetFacetDetails() {
-        Facet questionnaire = new Facet("questionnaire", "Questionnaire", "questionnaire", "Questionare", 1, null, "category", null);
-        Mockito.when(facetService.facetDetails("category", "questionnaire")).thenReturn(Optional.of(questionnaire));
+        Mockito.when(facetService.facetDetails("category", "brungus")).thenReturn(Optional.empty());
 
         ResponseEntity<Facet> actual = subject.facetDetails("category", "brungus");
 

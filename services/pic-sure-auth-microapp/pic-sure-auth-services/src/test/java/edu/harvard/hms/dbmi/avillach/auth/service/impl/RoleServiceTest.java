@@ -1,10 +1,11 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
-import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 
+import edu.harvard.hms.dbmi.avillach.auth.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.RoleRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
@@ -36,6 +37,9 @@ public class RoleServiceTest {
     private PrivilegeRepository privilegeRepo;
 
     @MockBean
+    private ApplicationRepository applicationRepository;
+
+    @MockBean
     private SecurityContext securityContext;
 
     @MockBean
@@ -44,26 +48,16 @@ public class RoleServiceTest {
     @Autowired
     private RoleService roleService;
 
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
+
     @BeforeEach
     public void setUp() {
         MockitoAnnotations.openMocks(this);
         SecurityContextHolder.setContext(securityContext);
         when(securityContext.getAuthentication()).thenReturn(authentication);
-    }
-
-    @Test
-    public void testGetRoleById_String() {
-        UUID roleId = UUID.randomUUID();
-        Role role = new Role();
-        role.setUuid(roleId);
-
-        when(roleRepository.findById(roleId)).thenReturn(Optional.of(role));
-
-        Optional<Role> result = roleService.getRoleById(roleId.toString());
-
-        assertTrue(result.isPresent());
-        assertEquals(role, result.get());
-        verify(roleRepository, times(1)).findById(roleId);
     }
 
     @Test
@@ -94,58 +88,6 @@ public class RoleServiceTest {
     }
 
     @Test
-    public void testAddRoles() {
-        List<Role> roles = Arrays.asList(new Role(), new Role());
-
-        when(roleRepository.saveAll(roles)).thenReturn(roles);
-
-        List<Role> result = roleService.addRoles(roles);
-
-        assertEquals(roles, result);
-        verify(roleRepository, times(1)).saveAll(roles);
-    }
-
-    @Test
-    public void testAddRoles_PrivilegeNotFound() {
-        Role role = new Role();
-        Privilege privilege = new Privilege();
-        privilege.setUuid(UUID.randomUUID());
-        role.setPrivileges(new HashSet<>(Collections.singletonList(privilege)));
-
-        when(privilegeRepo.findById(privilege.getUuid())).thenReturn(Optional.empty());
-
-        assertThrows(RuntimeException.class, () -> {
-            roleService.addRoles(Collections.singletonList(role));
-        });
-    }
-
-    @Test
-    public void testUpdateRoles() {
-        List<Role> roles = Arrays.asList(new Role(), new Role());
-
-        when(roleRepository.saveAll(roles)).thenReturn(roles);
-
-        List<Role> result = roleService.updateRoles(roles);
-
-        assertEquals(roles, result);
-        verify(roleRepository, times(1)).saveAll(roles);
-    }
-
-    @Test
-    public void testUpdateRoles_PrivilegeNotFound() {
-        Role role = new Role();
-        Privilege privilege = new Privilege();
-        privilege.setUuid(UUID.randomUUID());
-        role.setPrivileges(new HashSet<>(Collections.singletonList(privilege)));
-
-        when(privilegeRepo.findById(privilege.getUuid())).thenReturn(Optional.empty());
-
-        assertThrows(RuntimeException.class, () -> {
-            roleService.updateRoles(Collections.singletonList(role));
-        });
-    }
-
-    @Test
     public void testRemoveRoleById_Success() {
         Role role = new Role();
         UUID roleId = UUID.randomUUID();
@@ -156,7 +98,7 @@ public class RoleServiceTest {
         when(roleRepository.findById(roleId)).thenReturn(Optional.of(role));
         when(roleRepository.findAll()).thenReturn(Collections.singletonList(role));
 
-        Optional<List<Role>> result = roleService.removeRoleById(roleId.toString());
+        Optional<List<Role>> result = roleService.removeRoleById(roleId);
 
         assertTrue(result.isPresent());
         assertEquals(1, result.get().size());
@@ -170,7 +112,7 @@ public class RoleServiceTest {
 
         when(roleRepository.findById(roleId)).thenReturn(Optional.empty());
 
-        Optional<List<Role>> result = roleService.removeRoleById(roleId.toString());
+        Optional<List<Role>> result = roleService.removeRoleById(roleId);
 
         assertFalse(result.isPresent());
         verify(roleRepository, never()).deleteById(any());

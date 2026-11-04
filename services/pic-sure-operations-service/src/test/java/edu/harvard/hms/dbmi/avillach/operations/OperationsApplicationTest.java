@@ -7,6 +7,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ApplicationContext;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.transaction.annotation.Transactional;
 
 import edu.harvard.hms.dbmi.avillach.operations.configuration.Configuration;
@@ -22,6 +24,9 @@ import edu.harvard.hms.dbmi.avillach.operations.query.QueryRepository;
  */
 @SpringBootTest
 class OperationsApplicationTest {
+
+    @Autowired
+    private ApplicationContext context;
 
     @Autowired
     private ConfigurationRepository configurationRepository;
@@ -52,5 +57,15 @@ class OperationsApplicationTest {
 
         assertThat(reloaded.getName()).isEqualTo(uniqueName);
         assertThat(reloaded.getKind()).isEqualTo("smoke-test");
+    }
+
+    /**
+     * Guards the {@code UserDetailsServiceAutoConfiguration} exclusion on the application class. Without it Spring Boot registers an
+     * {@code InMemoryUserDetailsManager} holding a {@code user} account with a random password and logs that password at startup, even
+     * though no filter chain here ever authenticates against it.
+     */
+    @Test
+    void noGeneratedInMemoryUserIsCreated() {
+        assertThat(context.getBeanNamesForType(UserDetailsService.class)).isEmpty();
     }
 }

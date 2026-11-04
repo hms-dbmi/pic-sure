@@ -40,14 +40,8 @@ class PicSureV3ServiceAuditTest {
         queryService = mock(QueryV3Service.class);
         queryExecutor = mock(QueryExecutor.class);
         service = new PicSureV3Service(
-            queryService,
-            mock(CountV3Processor.class),
-            mock(VariantListV3Processor.class),
-            queryExecutor,
-            mock(Paginator.class),
-            mock(SignUrlService.class),
-            mock(FileSharingV3Service.class),
-            mock(TestDataService.class)
+            queryService, mock(CountV3Processor.class), mock(VariantListV3Processor.class), queryExecutor, mock(Paginator.class),
+            mock(SignUrlService.class), mock(FileSharingV3Service.class), mock(TestDataService.class)
         );
 
         request = new MockHttpServletRequest();

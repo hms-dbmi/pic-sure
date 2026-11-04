@@ -93,12 +93,9 @@ class InternalTokenFilterTest {
     }
 
     /**
-     * Regression test for the finding this filter was hardened against: gating {@code /internal/**} by checking
-     * {@code request.getRequestURI().startsWith("/internal/")} DIRECTLY breaks under a non-empty {@code server.servlet.context-path},
-     * because {@code getRequestURI()} includes the context path prefix (here, {@code /ops}) and so never starts with the literal string
-     * {@code "/internal/"} -- even though the container would still dispatch this exact request to {@code InternalQueryController} per the
-     * {@code addUrlPatterns("/internal/*")} registration. {@link InternalTokenFilter} now strips {@code getContextPath()} off first, so it
-     * agrees with the container's own routing decision regardless of context path.
+     * Verifies that internal-token enforcement uses a context-relative path. {@code getRequestURI()} includes any
+     * {@code server.servlet.context-path} prefix, while the container matches {@code addUrlPatterns("/internal/*")} relative to that
+     * prefix. {@link InternalTokenFilter} strips {@code getContextPath()} before checking the protected path.
      */
     @Test
     void tokenStillEnforcedUnderANonEmptyContextPath() throws Exception {

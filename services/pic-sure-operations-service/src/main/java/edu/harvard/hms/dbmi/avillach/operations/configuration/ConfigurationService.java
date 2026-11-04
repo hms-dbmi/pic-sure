@@ -12,10 +12,9 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.operations.error.PicsureExceptions;
 
 /**
- * Ports the legacy WildFly {@code ConfigurationService}. Preserved behaviors: (1) UUID-or-name lookup ({@link #getByIdentifier(String)}) --
- * try {@link UUID#fromString}; if valid, look up by id; if absent (or if the identifier is not a valid UUID at all), fall back to the first
- * {@code findByName} match. (2) name+kind uniqueness on create and update via {@code findByNameAndKind}, excluding the row being updated.
- * (3) partial PATCH via {@link ConfigurationMapper#applyPatch}.
+ * Provides configuration lookup and mutation. UUID-or-name lookup ({@link #getByIdentifier(String)}) tries {@link UUID#fromString}, looks
+ * up a valid UUID by id, then falls back to the first {@code findByName} match. Create and update enforce name+kind uniqueness through
+ * {@code findByNameAndKind}, excluding the row being updated. Updates apply partial changes through {@link ConfigurationMapper#applyPatch}.
  *
  * <p>Behavior upgrades to honest statuses: not-found -> 404, duplicate name+kind -> 409. Both are expressed as {@link PicsureException} --
  * the actual {@code pic-sure-spring-commons} built for this monorepo ships only that one public error class (no
@@ -23,10 +22,9 @@ import edu.harvard.hms.dbmi.avillach.operations.error.PicsureExceptions;
  * the exception's Java type.
  *
  * <p>{@code Configuration} carries a DB-level unique constraint on {@code (name, kind)}. The {@code findByNameAndKind} pre-check above
- * handles the common case, but a check-then-save is inherently racy under concurrent writers (two SUPER_ADMIN requests, or a residual
- * WildFly writer during migration). {@link #create} and {@link #update} therefore also use {@code saveAndFlush} inside a try/catch so a
- * constraint violation that slips past the pre-check is translated to {@code 409 CONFLICT} via {@link PicsureException}, mirroring
- * {@code NamedDatasetService.saveOrConflict}.
+ * handles the common case, but a check-then-save is inherently racy under concurrent writers. {@link #create} and {@link #update} therefore
+ * also use {@code saveAndFlush} inside a try/catch so a constraint violation that slips past the pre-check is translated to
+ * {@code 409 CONFLICT} via {@link PicsureException}, mirroring {@code NamedDatasetService.saveOrConflict}.
  */
 @Service
 public class ConfigurationService {
@@ -45,7 +43,7 @@ public class ConfigurationService {
         return configs.stream().map(mapper::toDto).toList();
     }
 
-    /** UUID-or-name lookup, preserving the legacy {@code ConfigurationService.getConfigurationByIdentifier}. */
+    /** Looks up a configuration by UUID, then by name. */
     @Transactional(readOnly = true)
     public ConfigurationDto getByIdentifier(String identifier) {
         return findEntityByIdentifier(identifier).map(mapper::toDto).orElseThrow(() -> notFound(identifier));

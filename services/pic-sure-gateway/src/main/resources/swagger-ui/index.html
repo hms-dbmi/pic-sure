@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PIC-SURE API</title>
+  <link rel="stylesheet" href="swagger-ui/swagger-ui.css">
+  <link rel="stylesheet" href="swagger-ui/index.css">
+  <link rel="icon" type="image/png" href="swagger-ui/favicon-32x32.png" sizes="32x32">
+  <link rel="icon" type="image/png" href="swagger-ui/favicon-16x16.png" sizes="16x16">
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="swagger-ui/swagger-ui-bundle.js"></script>
+  <script src="swagger-ui/swagger-ui-standalone-preset.js"></script>
+  <script>
+    /**
+     * Returns the PIC-SURE session token the frontend keeps in localStorage under "token", or null when there is none, it cannot be read,
+     * or its exp claim has passed.
+     */
+    function sessionToken() {
+      try {
+        var token = window.localStorage.getItem('token');
+        if (!token) { return null; }
+        var payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+        if (payload.exp && payload.exp * 1000 <= Date.now()) { return null; }
+        return token;
+      } catch (error) {
+        return null;
+      }
+    }
+
+    /** Sends the session token on "Try it out" requests that carry no Authorization header, leaving spec downloads untouched. */
+    function withSessionToken(request) {
+      var token = sessionToken();
+      if (token && !request.loadSpec && !request.headers.Authorization) {
+        request.headers.Authorization = 'Bearer ' + token;
+      }
+      return request;
+    }
+
+    window.onload = function () {
+      var mount = document.getElementById('swagger-ui');
+      fetch('openapi', { headers: { Accept: 'application/json' } })
+        .then(function (response) {
+          if (!response.ok) { throw new Error('index responded ' + response.status); }
+          return response.json();
+        })
+        .then(function (index) {
+          if (index.length === 0) {
+            mount.textContent = 'No API documents are registered on this gateway.';
+            return;
+          }
+          window.ui = SwaggerUIBundle({
+            urls: index.map(function (entry) { return { url: entry.url, name: entry.title }; }),
+            dom_id: '#swagger-ui',
+            deepLinking: true,
+            queryConfigEnabled: false,
+            presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+            plugins: [SwaggerUIBundle.plugins.DownloadUrl],
+            layout: 'StandaloneLayout',
+            requestInterceptor: withSessionToken,
+            onComplete: function () {
+              var token = sessionToken();
+              if (token) { window.ui.preauthorizeApiKey('bearerAuth', token); }
+            }
+          });
+        })
+        .catch(function (error) {
+          mount.textContent = 'The API document index could not be loaded: ' + error.message;
+        });
+    };
+  </script>
+</body>
+</html>

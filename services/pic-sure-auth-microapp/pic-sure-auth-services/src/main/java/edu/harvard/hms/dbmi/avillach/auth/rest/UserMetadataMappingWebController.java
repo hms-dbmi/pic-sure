@@ -1,31 +1,38 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
-import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.entity.UserMetadataMapping;
+import edu.harvard.hms.dbmi.avillach.auth.exceptions.PicSureResponseException;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.UserMetadataMappingCreateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.UserMetadataMappingUpdateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.ConnectionResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.UserMetadataMappingResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserMetadataMappingService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.security.RolesAllowed;
+import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.UUID;
 
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 /**
- * <p>Endpoint for service handling business logic for user metadata mapping.</p>
- * <p><Note: Only users with the super admin role can access this endpoint.</p>
+ * <p>Endpoint for service handling business logic for user metadata mapping.</p> <p><Note: Only users with the super admin role can access
+ * this endpoint.</p>
  */
-@Tag(name = "User Metadata Mapping Management")
+@Tag(name = "User Metadata Mapping Management", description = "Mappings from identity provider claims to user metadata.")
 @Controller
 @RequestMapping("/mapping")
 public class UserMetadataMappingWebController {
@@ -37,66 +44,86 @@ public class UserMetadataMappingWebController {
         this.mappingService = mappingService;
     }
 
-    @Operation(description = "GET information of one UserMetadataMapping with the UUID, requires ADMIN or SUPER_ADMIN role")
+    @Operation(
+        summary = "The connection a mapping lookup names",
+        description = "Returns the connection with the given business id. The response is the connection itself, not its mappings."
+    )
+    @ApiResponse(responseCode = "200", description = "The named connection.")
     @AuditEvent(type = "OTHER", action = "mapping.read")
-    @RolesAllowed({ADMIN, SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(path = "{connectionId}", produces = "application/json")
-    public ResponseEntity<Connection> getMappingsForConnection(@PathVariable("connectionId") String connection) {
-        Connection allMappingsForConnection = this.mappingService.getAllMappingsForConnection(connection);
-        return PICSUREResponse.success(allMappingsForConnection);
+    public ResponseEntity<ConnectionResponse> getMappingsForConnection(@PathVariable("connectionId") String connection) {
+        return PICSUREResponse.success(ConnectionResponse.from(this.mappingService.getAllMappingsForConnection(connection)));
     }
 
-    @Operation(description = "GET a list of existing UserMetadataMappings, requires ADMIN or SUPER_ADMIN role")
+    @Operation(summary = "List every user metadata mapping", description = "Lists every user metadata mapping.")
+    @ApiResponse(responseCode = "200", description = "Every user metadata mapping.")
     @AuditEvent(type = "OTHER", action = "mapping.list")
-    @RolesAllowed({ADMIN, SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(produces = "application/json")
-    public ResponseEntity<List<UserMetadataMapping>> getAllMappings() {
-        List<UserMetadataMapping> allMappings = mappingService.getAllMappings();
-        return PICSUREResponse.success(allMappings);
+    public ResponseEntity<List<UserMetadataMappingResponse>> getAllMappings() {
+        return PICSUREResponse.success(UserMetadataMappingResponse.fromAll(mappingService.getAllMappings()));
     }
 
-    @Operation(description = "POST a list of UserMetadataMappings, requires SUPER_ADMIN role")
+    @Operation(summary = "Create mappings", description = "Creates the user metadata mappings in the request body.")
+    @ApiResponse(responseCode = "200", description = "The created mappings.")
     @AuditEvent(type = "ADMIN", action = "mapping.modify")
-    @RolesAllowed({SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PostMapping(consumes = "application/json", produces = "application/json")
-    public ResponseEntity<?> addMapping(
-            @Parameter(required = true, description = "A list of UserMetadataMapping in JSON format")
-            @RequestBody List<UserMetadataMapping> mappings, HttpServletRequest request) {
+    public ResponseEntity<List<UserMetadataMappingResponse>> addMapping(
+        @Parameter(
+            required = true, description = "The mappings to create, each naming an existing connection by its id."
+        ) @RequestBody List<@NotNull @Valid UserMetadataMappingCreateRequest> mappings, HttpServletRequest request
+    ) {
 
         AuditAttributes.putMetadata(request, "mapping_count", String.valueOf(mappings.size()));
+        List<UserMetadataMapping> userMetadataMappings;
         try {
-            List<UserMetadataMapping> userMetadataMappings = mappingService.addMappings(mappings);
-            return PICSUREResponse.success(userMetadataMappings);
+            userMetadataMappings = mappingService.createFrom(mappings);
         } catch (IllegalArgumentException e) {
-            return PICSUREResponse.error(e.getMessage());
+            throw new PicSureResponseException(HttpStatus.INTERNAL_SERVER_ERROR, "Application error", e.getMessage());
         }
+        return PICSUREResponse.success(UserMetadataMappingResponse.fromAll(userMetadataMappings));
     }
 
-    @Operation(description = "Update a list of UserMetadataMappings, will only update the fields listed, requires SUPER_ADMIN role")
+    @Operation(
+        summary = "Update the given fields of mappings",
+        description = "Updates the user metadata mappings in the request body, changing only the fields each one lists."
+    )
+    @ApiResponse(responseCode = "200", description = "The updated mappings.")
     @AuditEvent(type = "ADMIN", action = "mapping.modify")
-    @RolesAllowed({SUPER_ADMIN})
-    @PutMapping(consumes = "application/json", produces = "application/json")
-    public ResponseEntity<?> updateMapping(
-            @Parameter(required = true, description = "A list of UserMetadataMapping with fields to be updated in JSON format")
-            @RequestBody List<UserMetadataMapping> mappings, HttpServletRequest request) {
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
+    @PatchMapping(consumes = "application/json", produces = "application/json")
+    public ResponseEntity<List<UserMetadataMappingResponse>> updateMapping(
+        @Parameter(
+            required = true, description = "The mappings to update, each named by UUID; a field left out keeps its stored value."
+        ) @RequestBody List<@NotNull @Valid UserMetadataMappingUpdateRequest> mappings, HttpServletRequest request
+    ) {
         AuditAttributes.putMetadata(request, "mapping_count", String.valueOf(mappings.size()));
-        List<UserMetadataMapping> userMetadataMappings = this.mappingService.updateUserMetadataMappings(mappings);
+        List<UserMetadataMapping> userMetadataMappings = this.mappingService.updateFrom(mappings);
 
         if (userMetadataMappings == null || userMetadataMappings.isEmpty()) {
-            return PICSUREResponse.error("No UserMetadataMapping found with the given Ids");
+            throw new PicSureResponseException(
+                HttpStatus.INTERNAL_SERVER_ERROR, "Application error", "No UserMetadataMapping found with the given Ids"
+            );
         }
-        return PICSUREResponse.success(userMetadataMappings);
+        return PICSUREResponse.success(UserMetadataMappingResponse.fromAll(userMetadataMappings));
     }
 
-    @Operation(description = "DELETE an UserMetadataMapping by Id only if the UserMetadataMapping is not associated by others, requires SUPER_ADMIN role")
+    @Operation(
+        summary = "Delete a mapping",
+        description = "Deletes the user metadata mapping with the given UUID and returns the remaining mappings."
+    )
+    @ApiResponse(responseCode = "200", description = "The remaining mappings.")
     @AuditEvent(type = "ADMIN", action = "mapping.delete")
-    @RolesAllowed({SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @DeleteMapping(path = "/{mappingId}", produces = "application/json")
-    public ResponseEntity<List<UserMetadataMapping>> removeById(
-            @Parameter(required = true, description = "A valid UserMetadataMapping Id")
-            @PathVariable("mappingId") final String mappingId, HttpServletRequest request) {
-        AuditAttributes.putMetadata(request, "mapping_id", mappingId);
-        List<UserMetadataMapping> userMetadataMappings = this.mappingService.removeMetadataMappingByIdAndRetrieveAll(mappingId);
-        return PICSUREResponse.success(userMetadataMappings);
+    public ResponseEntity<List<UserMetadataMappingResponse>> removeById(
+        @Parameter(required = true, description = "The uuid of the mapping to delete.") @PathVariable("mappingId") final UUID mappingId,
+        HttpServletRequest request
+    ) {
+        AuditAttributes.putMetadata(request, "mapping_id", mappingId.toString());
+        return PICSUREResponse
+            .success(UserMetadataMappingResponse.fromAll(this.mappingService.removeMetadataMappingByIdAndRetrieveAll(mappingId)));
     }
 }

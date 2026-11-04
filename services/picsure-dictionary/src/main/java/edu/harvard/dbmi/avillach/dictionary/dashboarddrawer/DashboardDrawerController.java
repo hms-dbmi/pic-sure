@@ -1,6 +1,7 @@
 package edu.harvard.dbmi.avillach.dictionary.dashboarddrawer;
 
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
+import io.swagger.v3.oas.annotations.Hidden;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -8,8 +9,12 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * Serves the per-study detail the PIC-SURE frontend shows in the dashboard drawer. Hidden from the OpenAPI document.
+ */
 @Controller
 @RequestMapping("/dashboard-drawer")
+@Hidden
 public class DashboardDrawerController {
 
     @Autowired

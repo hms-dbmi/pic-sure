@@ -1,0 +1,209 @@
+package edu.harvard.hms.dbmi.avillach.auth.rest;
+
+import edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint;
+import edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint.Access;
+import edu.harvard.dbmi.avillach.logging.AuditEvent;
+import edu.harvard.hms.dbmi.avillach.auth.enums.ApiKeyType;
+import edu.harvard.hms.dbmi.avillach.auth.exceptions.PicSureResponseException;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.PlainTextValidator;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.PlatformApiKeyRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.UserApiKeyRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.ApiKeyCreationResponse;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.ApiKeyMetadata;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.ApiKeyPage;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
+import edu.harvard.hms.dbmi.avillach.auth.service.CaptchaVerifier;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.ApiKeyService;
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
+
+import java.util.Optional;
+import java.util.UUID;
+
+/**
+ * <p>Endpoints for open-access API keys. Key generation for anonymous users is public (CAPTCHA-gated); listing, platform-key minting, and
+ * revocation are admin operations.</p> <br>The plaintext key appears only in the creation response body. It is never persisted or logged.
+ */
+@Tag(name = "API Key Management", description = "Open-access API key generation, listing, and revocation.")
+@Controller
+public class ApiKeyController {
+
+    private static final int MAX_METADATA_FIELD_LENGTH = 255;
+    private static final int MAX_PAGE_SIZE = 1000;
+
+    private final ApiKeyService apiKeyService;
+    private final CaptchaVerifier captchaVerifier;
+    private final boolean openIdpProviderIsEnabled;
+    private final boolean generationEnabled;
+
+    @Autowired
+    public ApiKeyController(
+        ApiKeyService apiKeyService, CaptchaVerifier captchaVerifier,
+        @Value("${open.idp.provider.is.enabled}") boolean openIdpProviderIsEnabled,
+        @Value("${api.key.generation.enabled}") boolean generationEnabled
+    ) {
+        this.apiKeyService = apiKeyService;
+        this.captchaVerifier = captchaVerifier;
+        this.openIdpProviderIsEnabled = openIdpProviderIsEnabled;
+        this.generationEnabled = generationEnabled;
+    }
+
+    @Operation(
+        summary = "Generate an open-access USER API key",
+        description = "Generates a USER API key for open access. The endpoint is public and gated by CAPTCHA verification when a provider is configured. The key is returned once and cannot be recovered."
+    )
+    @ApiResponse(responseCode = "200", description = "The new key, including its one-time plaintext.")
+    @ApiResponse(
+        responseCode = "400", description = "Generation is disabled, a metadata field is too long, or CAPTCHA verification failed."
+    )
+    @AuditEvent(type = "ACCESS", action = "api_key.create")
+    @PostMapping(produces = "application/json", path = "/open/apiKey")
+    @PublicEndpoint(Access.ANONYMOUS)
+    public ResponseEntity<ApiKeyCreationResponse> createUserKey(
+        @Parameter(
+            required = true,
+            description = "The CAPTCHA token, which is required when CAPTCHA is enabled, and an optional contact name and email."
+        ) @RequestBody UserApiKeyRequest keyRequest, HttpServletRequest request
+    ) {
+        if (!generationEnabled || !openIdpProviderIsEnabled) {
+            throw rejected("API key generation is not enabled on this deployment.");
+        }
+        String name = normalize(keyRequest.name());
+        String email = normalize(keyRequest.email());
+        requireAcceptableMetadata(name, email);
+        if (!captchaVerifier.verify(keyRequest.captchaToken(), AuditAttributes.extractClientIp(request))) {
+            AuditAttributes.putMetadata(request, "captcha_result", "failure");
+            throw rejected("CAPTCHA verification failed.");
+        }
+
+        ApiKeyCreationResponse created = apiKeyService.generateUserKey(name, email);
+        AuditAttributes.putMetadata(request, "api_key_id", created.uuid().toString());
+        AuditAttributes.putMetadata(request, "api_key_prefix", created.displayPrefix());
+        return PICSUREResponse.success(created);
+    }
+
+    @Operation(
+        summary = "List API key metadata",
+        description = "Lists a page of API key metadata, newest first, optionally filtered by key type. Key material is never returned."
+    )
+    @ApiResponse(responseCode = "200", description = "A page of API key metadata.")
+    @AuditEvent(type = "OTHER", action = "api_key.list")
+    @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
+    @GetMapping(produces = "application/json", path = "/apiKey")
+    public ResponseEntity<ApiKeyPage> listKeys(
+        @RequestParam(value = "page", defaultValue = "0") int page, @RequestParam(value = "size", defaultValue = "100") int size,
+        @RequestParam(value = "keyType", required = false) ApiKeyType keyType
+    ) {
+        return PICSUREResponse.success(apiKeyService.listKeys(Math.max(0, page), Math.clamp(size, 1, MAX_PAGE_SIZE), keyType));
+    }
+
+    @Operation(
+        summary = "Mint a PLATFORM API key",
+        description = "Mints a PLATFORM API key for a partner service. The expiry is an explicit ISO-8601 expiresAt,"
+            + " or neverExpires set to true, but not both; with neither, the configured platform TTL default applies."
+            + " The key is returned once and cannot be recovered."
+    )
+    @ApiResponse(responseCode = "200", description = "The new key, including its one-time plaintext.")
+    @ApiResponse(responseCode = "400", description = "Name or email is missing or too long, or the expiry is invalid.")
+    @AuditEvent(type = "ADMIN", action = "api_key.platform.create")
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
+    @PostMapping(produces = "application/json", path = "/apiKey/platform")
+    public ResponseEntity<ApiKeyCreationResponse> createPlatformKey(
+        @Parameter(
+            required = true,
+            description = "The key name and contact email, both required, and an optional ISO-8601 expiresAt or neverExpires flag."
+        ) @RequestBody PlatformApiKeyRequest keyRequest, HttpServletRequest request
+    ) {
+        String name = normalize(keyRequest.name());
+        String email = normalize(keyRequest.email());
+        if (name == null || email == null) {
+            throw rejected("Platform keys require a name and a contact email.");
+        }
+        requireAcceptableMetadata(name, email);
+
+        ApiKeyCreationResponse created;
+        try {
+            created = apiKeyService.generatePlatformKey(name, email, keyRequest.expiresAt(), keyRequest.neverExpires());
+        } catch (IllegalArgumentException e) {
+            throw rejected(e.getMessage());
+        }
+        AuditAttributes.putMetadata(request, "api_key_id", created.uuid().toString());
+        AuditAttributes.putMetadata(request, "api_key_prefix", created.displayPrefix());
+        return PICSUREResponse.success(created);
+    }
+
+    @Operation(summary = "Revoke an API key", description = "Revokes an API key by UUID. Revocation is permanent.")
+    @ApiResponse(responseCode = "200", description = "The revoked key's metadata.")
+    @ApiResponse(responseCode = "400", description = "The ID is not a UUID, or no key has that ID.")
+    @AuditEvent(type = "ADMIN", action = "api_key.revoke")
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
+    @PutMapping(produces = "application/json", path = "/apiKey/{keyId}/revoke")
+    public ResponseEntity<ApiKeyMetadata> revokeKey(
+        @Parameter(required = true, description = "UUID of the API key to revoke.") @PathVariable("keyId") String keyId,
+        HttpServletRequest request
+    ) {
+        // the raw keyId is client-controlled: never echo it back or record it; the parsed UUID is canonical
+        UUID uuid;
+        try {
+            uuid = UUID.fromString(keyId);
+        } catch (IllegalArgumentException e) {
+            throw rejected("Invalid API key ID.");
+        }
+
+        AuditAttributes.putMetadata(request, "api_key_id", uuid.toString());
+        Optional<ApiKeyMetadata> revoked = apiKeyService.revokeKey(uuid);
+        if (revoked.isEmpty()) {
+            throw rejected("API key not found by given ID.");
+        }
+        return PICSUREResponse.success(revoked.get());
+    }
+
+    /**
+     * Builds the 400 a key request is refused with. The reason is the message of the error body, where the admin and public key screens
+     * read it.
+     *
+     * @param reason why the request was refused
+     * @return the exception to throw
+     */
+    private static PicSureResponseException rejected(String reason) {
+        return new PicSureResponseException(HttpStatus.BAD_REQUEST, reason, null);
+    }
+
+    // strips control characters at the boundary: these free-text fields flow into audit metadata and logs
+    private static String normalize(String value) {
+        if (value == null) {
+            return null;
+        }
+        String cleaned = value.replaceAll("\\p{Cntrl}", "").trim();
+        return cleaned.isBlank() ? null : cleaned;
+    }
+
+    private static void requireAcceptableMetadata(String name, String email) {
+        if (tooLong(name) || tooLong(email)) {
+            throw rejected("Name and email must be at most " + MAX_METADATA_FIELD_LENGTH + " characters.");
+        }
+        if (!PlainTextValidator.isPlain(name) || !PlainTextValidator.isPlain(email)) {
+            throw rejected("Name and email must not contain '<' or '>'.");
+        }
+    }
+
+    private static boolean tooLong(String value) {
+        return value != null && value.length() > MAX_METADATA_FIELD_LENGTH;
+    }
+}

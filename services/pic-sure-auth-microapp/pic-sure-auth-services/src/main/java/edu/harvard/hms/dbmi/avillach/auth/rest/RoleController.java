@@ -1,32 +1,40 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
+import edu.harvard.hms.dbmi.avillach.auth.exceptions.PicSureResponseException;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.RoleCreateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.RoleUpdateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.PicSureResponseBody;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.RoleResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.security.RolesAllowed;
+import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
 import java.text.MessageFormat;
 import java.util.List;
-import java.util.Optional;
+import java.util.UUID;
 
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 /**
- * <p>Endpoint for service handling business logic for user roles.
- * <br>Note: Users with admin level access can view roles, but only super admin users can modify them.</p>
+ * <p>Endpoint for service handling business logic for user roles. <br>Note: Users with admin level access can view roles, but only super
+ * admin users can modify them.</p>
  */
-@Tag(name = "Role Management")
+@Tag(name = "Role Management", description = "Roles that bundle privileges for users.")
 @Controller
 @RequestMapping("/role")
 public class RoleController {
@@ -38,71 +46,90 @@ public class RoleController {
         this.roleService = roleService;
     }
 
-    @Operation(description = "GET information of one Role with the UUID, requires ADMIN or SUPER_ADMIN role")
+    @Operation(summary = "Read one role", description = "Returns one role by its UUID.")
+    @ApiResponse(responseCode = "200", description = "The role.")
+    @ApiResponse(responseCode = "400", description = "No role with that UUID.")
     @AuditEvent(type = "OTHER", action = "role.read")
-    @RolesAllowed({ADMIN, SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(produces = "application/json", path = "/{roleId}")
-    public ResponseEntity<?> getRoleById(
-            @Parameter(description = "The UUID of the Role to fetch information about")
-            @PathVariable("roleId") String roleId) {
-        Optional<Role> optionalRole = this.roleService.getRoleById(roleId);
-        if (optionalRole.isEmpty()) {
-            return PICSUREResponse.protocolError("Role is not found by given role ID: " + roleId);
-        }
-        return PICSUREResponse.success(optionalRole.get());
+    public ResponseEntity<RoleResponse> getRoleById(
+        @Parameter(description = "The UUID of the role to fetch.") @PathVariable("roleId") UUID roleId
+    ) {
+        Role role = this.roleService.getRoleById(roleId).orElseThrow(
+            () -> new PicSureResponseException(HttpStatus.BAD_REQUEST, "Invalid request", "Role is not found by given role ID: " + roleId)
+        );
+        return PICSUREResponse.success(RoleResponse.from(role));
     }
 
-    @Operation(description = "GET a list of existing Roles, requires ADMIN or SUPER_ADMIN role")
+    @Operation(summary = "List every role", description = "Lists every role.")
+    @ApiResponse(responseCode = "200", description = "Every role.")
     @AuditEvent(type = "OTHER", action = "role.list")
-    @RolesAllowed({ADMIN, SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping
-    public ResponseEntity<List<Role>> getRoleAll() {
-        List<Role> allRoles = this.roleService.getAllRoles();
-        return PICSUREResponse.success(allRoles);
+    public ResponseEntity<List<RoleResponse>> getRoleAll() {
+        return PICSUREResponse.success(RoleResponse.fromAll(this.roleService.getAllRoles()));
     }
 
-    @Operation(description = "POST a list of Roles, requires SUPER_ADMIN role")
+    @Operation(summary = "Create roles", description = "Creates the roles in the request body.")
+    @ApiResponse(responseCode = "200", description = "The created roles, in the message and content envelope.")
     @AuditEvent(type = "ADMIN", action = "role.modify")
-    @RolesAllowed({SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PostMapping(produces = "application/json")
-    public ResponseEntity<?> addRole(
-            @Parameter(required = true, description = "A list of Roles in JSON format")
-            @RequestBody List<Role> roles, HttpServletRequest request) {
+    public ResponseEntity<PicSureResponseBody<List<RoleResponse>>> addRole(
+        @Parameter(
+            required = true, description = "The roles to create, each naming its privileges by UUID."
+        ) @RequestBody List<@NotNull @Valid RoleCreateRequest> roles, HttpServletRequest request
+    ) {
         AuditAttributes.putMetadata(request, "role_count", String.valueOf(roles.size()));
-        List<Role> savedRoles = this.roleService.addRoles(roles);
-        return PICSUREResponse.success("All roles are added.", savedRoles);
+        return PICSUREResponse.success("All roles are added.", RoleResponse.fromAll(this.roleService.createFrom(roles)));
     }
 
-    @Operation(description = "Update a list of Roles, will only update the fields listed, requires SUPER_ADMIN role")
+    @Operation(
+        summary = "Update the given fields of roles",
+        description = "Updates the roles in the request body, changing only the fields each one lists."
+    )
+    @ApiResponse(responseCode = "200", description = "The updated roles, in the message and content envelope.")
     @AuditEvent(type = "ADMIN", action = "role.modify")
-    @RolesAllowed({SUPER_ADMIN})
-    @PutMapping(produces = "application/json")
-    public ResponseEntity<?> updateRole(
-            @Parameter(required = true, description = "A list of Roles with fields to be updated in JSON format")
-            @RequestBody List<Role> roles, HttpServletRequest request) {
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
+    @PatchMapping(produces = "application/json")
+    public ResponseEntity<PicSureResponseBody<List<RoleResponse>>> updateRole(
+        @Parameter(
+            required = true, description = "The roles to update, each named by UUID; a field left out keeps its stored value."
+        ) @RequestBody List<@NotNull @Valid RoleUpdateRequest> roles, HttpServletRequest request
+    ) {
         AuditAttributes.putMetadata(request, "role_count", String.valueOf(roles.size()));
-        List<Role> updatedRoles = this.roleService.updateRoles(roles);
+        List<Role> updatedRoles = this.roleService.updateFrom(roles);
         if (updatedRoles.isEmpty()) {
-            return PICSUREResponse.protocolError("No Role(s) has been updated.");
+            throw new PicSureResponseException(HttpStatus.BAD_REQUEST, "Invalid request", "No Role(s) has been updated.");
         }
 
-        return PICSUREResponse.success("All Roles are updated.", updatedRoles);
+        return PICSUREResponse.success("All Roles are updated.", RoleResponse.fromAll(updatedRoles));
     }
 
-    @Operation(description = "DELETE an Role by Id only if the Role is not associated by others, requires SUPER_ADMIN role")
+    @Operation(
+        summary = "Delete a role that nothing references",
+        description = "Deletes the role with the given UUID unless other entities still reference it, and returns the remaining roles."
+    )
+    @ApiResponses(
+        {@ApiResponse(responseCode = "200", description = "The remaining roles, in the message and content envelope."),
+            @ApiResponse(responseCode = "400", description = "No role with that UUID."),
+            @ApiResponse(responseCode = "409", description = "Other entities still reference this role.")}
+    )
     @AuditEvent(type = "ADMIN", action = "role.delete")
-    @RolesAllowed({SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @DeleteMapping(produces = "application/json", path = "/{roleId}")
-    public ResponseEntity<?> removeById(
-            @Parameter(required = true, description = "A valid Role Id")
-            @PathVariable("roleId") final String roleId, HttpServletRequest request) {
-        AuditAttributes.putMetadata(request, "role_id", roleId);
-        Optional<List<Role>> roles = this.roleService.removeRoleById(roleId);
-        if (roles.isEmpty()) {
-            return PICSUREResponse.protocolError("Role not found - uuid: " + roleId);
-        }
+    public ResponseEntity<PicSureResponseBody<List<RoleResponse>>> removeById(
+        @Parameter(required = true, description = "The uuid of the role to delete.") @PathVariable("roleId") final UUID roleId,
+        HttpServletRequest request
+    ) {
+        AuditAttributes.putMetadata(request, "role_id", roleId.toString());
+        List<Role> remainingRoles = this.roleService.removeRoleById(roleId)
+            .orElseThrow(() -> new PicSureResponseException(HttpStatus.BAD_REQUEST, "Invalid request", "Role not found - uuid: " + roleId));
 
-        return PICSUREResponse.success(MessageFormat.format("Successfully deleted role by id: {0}, listing rest of the role(s) as below", roleId), roles.get());
+        return PICSUREResponse.success(
+            MessageFormat.format("Successfully deleted role by id: {0}, listing rest of the role(s) as below", roleId),
+            RoleResponse.fromAll(remainingRoles)
+        );
     }
 
 

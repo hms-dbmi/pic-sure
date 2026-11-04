@@ -1,0 +1,71 @@
+name: Quality Gates
+
+# Extra evidence for low-risk PRs, which skip human review: whether a PR adds duplicated code.
+# Diff coverage lives in github-actions-test.yml so it can reuse the full build's JaCoCo reports.
+# Both run for every PR, not just risk:low ones, so the numbers are always visible. Make them
+# required checks in the branch ruleset: they are what stands in for a reviewer on risk:low PRs.
+#
+# Secret scanning (and optional CodeQL SAST, off by default) are repo settings, not workflows: see RISK_REVIEW.md.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  duplication:
+    name: Duplication delta
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: .github/scripts/risk/package-lock.json
+      - name: Install jscpd
+        run: npm ci --prefix .github/scripts/risk --ignore-scripts --no-audit --no-fund
+      # Fails only on clones origin/${BASE_REF} doesn't have (--baseline-from-ref needs fetch-depth: 0).
+      # --fail-on-empty catches filters that match no files.
+      # --ignore-pattern skips import lines. Many files import the same classes, so any new import can break one
+      # long matching run of imports into shorter pieces, and each piece is then reported as a new clone.
+      # jscpd writes only a JSON report (no console dump). duplication-report.mjs turns the new clones into a
+      # job summary plus inline annotations, then the step fails with jscpd's own exit code.
+      - name: Check for new duplicated code
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          status=0
+          .github/scripts/risk/node_modules/.bin/jscpd \
+            --pattern '**/src/main/**/*.java' \
+            --ignore '**/generated/**,**/target/**' \
+            --ignore-pattern '(?m)^\s*import\s+[^;]+;' \
+            --min-lines 6 --min-tokens 60 \
+            --baseline-from-ref "origin/${BASE_REF}" \
+            --fail-on-new-clones 0 \
+            --fail-on-empty \
+            --skip-comments \
+            --reporters json --output "$RUNNER_TEMP/jscpd" --silent \
+            . || status=$?
+          if [ -f "$RUNNER_TEMP/jscpd/jscpd-report.json" ]; then
+            node .github/scripts/risk/duplication-report.mjs "$RUNNER_TEMP/jscpd/jscpd-report.json" "$status"
+          fi
+          exit "$status"
+      # The summary lists only the first few clones; the artifact has all of them.
+      - name: Upload duplication report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: jscpd-report
+          path: ${{ runner.temp }}/jscpd/jscpd-report.json
+          if-no-files-found: ignore
+          retention-days: 7
