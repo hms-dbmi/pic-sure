@@ -4,15 +4,18 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import edu.harvard.dbmi.avillach.logging.TestJwtBuilder;
-import edu.harvard.dbmi.avillach.logging.config.AppConfig;
+import edu.harvard.dbmi.avillach.logging.config.LoggingProperties;
 import edu.harvard.dbmi.avillach.logging.model.AuditEvent;
 import edu.harvard.dbmi.avillach.logging.model.RequestInfo;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
+import java.util.AbstractMap;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -21,16 +24,16 @@ class AuditLogServiceTest {
     private AuditLogService service;
     private ListAppender<ILoggingEvent> listAppender;
     private Logger auditLogger;
+    private SimpleMeterRegistry registry;
 
     @BeforeEach
     void setUp() {
-        AppConfig config = new AppConfig(
-            "test-key", "myapp", "myplatform", "staging", "myhost",
-            8080, "*",
-            Map.of("sub", "subject", "email", "user_email", "roles", "roles", "logged_in", "logged_in")
+        LoggingProperties config = new LoggingProperties(
+            "test-key", "myapp", "myplatform", "staging", "myhost", "*", Map.of("sub", "subject", "email", "user_email", "roles", "roles")
         );
         JwtDecodeService jwtService = new JwtDecodeService(config.jwtClaimMapping());
-        service = new AuditLogService(config, jwtService);
+        registry = new SimpleMeterRegistry();
+        service = new AuditLogService(config, jwtService, registry);
 
         auditLogger = (Logger) LoggerFactory.getLogger("AUDIT");
         listAppender = new ListAppender<>();
@@ -46,16 +49,11 @@ class AuditLogServiceTest {
     @Test
     void fullEventWithAllFields() {
         RequestInfo request = new RequestInfo(
-            "req-123", "POST", "/api/query", "limit=10",
-            "192.168.1.1", "10.0.0.5", 8443,
-            "Mozilla/5.0", "application/json", 200, 1024L, 150L,
-            "https://example.com"
+            "req-123", "POST", "/api/query", "limit=10", "192.168.1.1", "10.0.0.5", 8443, "Mozilla/5.0", "application/json", 200, 1024L,
+            150L, "https://example.com"
         );
         AuditEvent event = new AuditEvent(
-            "QUERY", "execute", "web", null, null,
-            request,
-            Map.of("query_id", "q1"),
-            Map.of("code", "500", "message", "Internal error")
+            "QUERY", "execute", "web", null, null, request, Map.of("query_id", "q1"), Map.of("code", "500", "message", "Internal error")
         );
 
         String token = TestJwtBuilder.buildToken(Map.of("sub", "user123", "email", "user@example.com"));
@@ -68,6 +66,34 @@ class AuditLogServiceTest {
         assertTrue(message.contains("action=execute"));
         assertTrue(message.contains("request_id=req-123"));
         assertTrue(message.contains("app=myapp"));
+    }
+
+    @Test
+    void successfulSubmissionIncrementsSubmittedCounter() {
+        AuditEvent event = new AuditEvent("LOGIN", null, null, null, null, null, null, null);
+
+        service.logEvent(event, null, null);
+
+        assertEquals(1.0, registry.get("picsure.audit.submitted").counter().count());
+        assertEquals(0.0, registry.get("picsure.audit.submission.failed").counter().count());
+    }
+
+    @Test
+    void assemblyFailureIncrementsFailureCounterAndPropagates() {
+        Map<String, Object> failingMetadata = new AbstractMap<>() {
+            @Override
+            public Set<Entry<String, Object>> entrySet() {
+                throw new IllegalStateException("synthetic assembly failure");
+            }
+        };
+        AuditEvent event = new AuditEvent("LOGIN", null, null, null, null, null, failingMetadata, null);
+
+        AuditLogException exception = assertThrows(AuditLogException.class, () -> service.logEvent(event, null, null));
+
+        assertEquals("synthetic assembly failure", exception.getCause().getMessage());
+        assertTrue(exception.getMessage().contains("synthetic assembly failure"));
+        assertEquals(0.0, registry.get("picsure.audit.submitted").counter().count());
+        assertEquals(1.0, registry.get("picsure.audit.submission.failed").counter().count());
     }
 
     @Test
@@ -170,6 +196,7 @@ class AuditLogServiceTest {
     void exceptionSafety() {
         // Service should never throw, even with a null event
         assertDoesNotThrow(() -> service.logEvent(null, null, null));
+        assertEquals(0.0, registry.get("picsure.audit.submitted").counter().count());
     }
 
     // --- String truncation tests (Change 3) ---

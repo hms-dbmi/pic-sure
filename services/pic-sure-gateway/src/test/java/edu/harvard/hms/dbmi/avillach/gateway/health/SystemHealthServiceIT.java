@@ -17,13 +17,13 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 
 /**
  * Exercises the real HTTP path (unlike {@link SystemHealthServiceTest}, which stubs {@code probe} directly): a Spring Boot Actuator-style
- * sibling ({@code {"status":"UP"}}), a Javalin-logging-style {@code /health} (200 with a differently-shaped body, no status predicate), and
- * a downstream that is down.
+ * sibling ({@code {"status":"UP"}}), a logging {@code /health} endpoint (200 with a differently-shaped body, no status predicate), and a
+ * downstream that is down.
  */
 class SystemHealthServiceIT {
 
     static WireMockServer actuatorUp; // Spring Boot sibling: {"status":"UP"}
-    static WireMockServer loggingUp; // Javalin /health: 200 {"status":"healthy"}
+    static WireMockServer loggingUp; // Logging /health: 200 {"status":"healthy"}
     static WireMockServer down;
 
     @BeforeAll
@@ -49,7 +49,7 @@ class SystemHealthServiceIT {
     }
 
     @Test
-    void aggregatesDeepActuatorAndJavalinHealthAndOneDownDegradesIt() {
+    void aggregatesDeepActuatorAndLoggingHealthAndOneDownDegradesIt() {
         DownstreamHealthProperties props = new DownstreamHealthProperties(
             List.of(
                 new MonitoredDownstream("psama", "http://127.0.0.1:" + actuatorUp.port(), null, null, null, false, 200, true),

@@ -69,15 +69,15 @@
 
     <!-- ===================== Async file appenders ===================== -->
 
-    <!-- Async wrapper for AUDIT_FILE: never discard, never block HTTP threads -->
+    <!-- Async wrapper for AUDIT_FILE: never discard; backpressure when the bounded queue fills -->
     <appender name="ASYNC_AUDIT_FILE" class="ch.qos.logback.classic.AsyncAppender">
         <queueSize>1024</queueSize>
         <discardingThreshold>0</discardingThreshold>
-        <neverBlock>true</neverBlock>
+        <neverBlock>false</neverBlock>
         <appender-ref ref="AUDIT_FILE" />
     </appender>
 
-    <!-- Async wrapper for APP_FILE: never discard, never block HTTP threads -->
+    <!-- Async wrapper for APP_FILE: non-blocking, best-effort application logging -->
     <appender name="ASYNC_APP_FILE" class="ch.qos.logback.classic.AsyncAppender">
         <queueSize>512</queueSize>
         <discardingThreshold>0</discardingThreshold>

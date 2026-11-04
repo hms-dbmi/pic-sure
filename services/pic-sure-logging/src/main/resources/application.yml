@@ -1,0 +1,43 @@
+server:
+  # Spring Boot does NOT read $PORT. logging.env sets PORT=80 and the gateway reaches
+  # this service on port 80; without this placeholder the container binds 8080.
+  port: "${PORT:8080}"
+  shutdown: graceful
+
+spring:
+  application:
+    name: pic-sure-logging
+  main:
+    # LOAD-BEARING, and the quotes are load-bearing too: unquoted `off` is resolved by
+    # SnakeYAML as the boolean false, which will not convert to Banner.Mode.OFF.
+    # The banner prints to System.out before logging initializes, and stdout is the
+    # audit-JSON channel that Splunk parses.
+    banner-mode: "off"
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+picsure:
+  logging:
+    api-key: "${LOGGING_API_KEY:}"
+    app: "${APP:unknown}"
+    platform: "${PLATFORM:unknown}"
+    environment: "${ENVIRONMENT:unknown}"
+    hostname: "${HOSTNAME:}"
+    allowed-origin: "${ALLOWED_ORIGIN:*}"
+    jwt-claim-mapping: "${JWT_CLAIM_MAPPING:}"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # 'none', not empty: an empty include makes Boot fall back to exposing health.
+        include: "${PICSURE_ACTUATOR_EXPOSURE:none}"
+  endpoint:
+    health:
+      show-details: "${PICSURE_ACTUATOR_DETAILS:never}"
+      probes:
+        enabled: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true
