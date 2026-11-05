@@ -40,6 +40,7 @@ import edu.harvard.hms.dbmi.avillach.ai.model.ModelTurnResult;
 import edu.harvard.hms.dbmi.avillach.ai.model.ModelUnavailableException;
 import edu.harvard.hms.dbmi.avillach.ai.model.RequestedToolCall;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 
 /**
  * Runs one chat turn's tool-use loop. The dictionary/count lookups are dispatched to {@link McpToolGateway}; the query/facets/search
@@ -65,7 +66,27 @@ class ToolUseLoopService implements ChatOrchestrator {
 
     private static final Logger log = LoggerFactory.getLogger(ToolUseLoopService.class);
 
-    static final String SYSTEM_PROMPT = loadPrompt("/prompts/system-prompt.txt");
+    private static final String PROMPT_TEMPLATE = loadPrompt("/prompts/system-prompt.txt");
+
+    /** Open-access callers get obfuscated counts: the only counts the MCP gateway can run. */
+    static final String OPEN_PROMPT = PROMPT_TEMPLATE
+        .replace("{{capabilities}}", "You can search the data dictionary, list facets, and run obfuscated open-access counts,").replace(
+            "{{counts}}",
+            "Counts are obfuscated open-access counts that ignore the researcher's consents: say so, and never present one as an exact or authorized number."
+        );
+
+    /**
+     * A logged-in researcher has exact, consent-filtered counts in their results panel, and the only counts this service can run are the
+     * obfuscated open ones, so those tools are withheld and the prompt says the assistant cannot count.
+     */
+    static final String AUTHORIZED_PROMPT = PROMPT_TEMPLATE.replace("{{capabilities}}", "You can search the data dictionary and list facets,")
+        .replace(
+            "{{counts}}",
+            "You cannot count participants: the researcher's own results panel shows their exact counts, so when they ask how many participants match, say that and point them to it; never give or estimate a count."
+        );
+
+    /** Tools that run on the obfuscated open channel, which an authorized caller's own results panel supersedes. */
+    static final Set<String> OPEN_ONLY_TOOLS = Set.of("count_participants", "cross_count");
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -172,9 +193,18 @@ class ToolUseLoopService implements ChatOrchestrator {
 
     private enum Stop { NONE, ITERATION_CAP, REPEATED_FAILURE }
 
+    private static boolean isAuthorized(CallerContext caller) {
+        return GatewayUserResolver.ACCESS_TYPE_AUTHORIZED.equals(caller.accessType());
+    }
+
+    private boolean isExcluded(String tool, CallerContext caller) {
+        return excludedTools.contains(tool) || isAuthorized(caller) && OPEN_ONLY_TOOLS.contains(tool);
+    }
+
     private ChatResponse handleTurn(ChatRequest request, CallerContext caller, TurnStats stats, ProposeQueryInput currentQuery) {
         List<ToolDefinition> tools =
-            new ArrayList<>(listTools(caller).stream().filter(tool -> !excludedTools.contains(tool.name())).toList());
+            new ArrayList<>(listTools(caller).stream().filter(tool -> !isExcluded(tool.name(), caller)).toList());
+        String systemPrompt = isAuthorized(caller) ? AUTHORIZED_PROMPT : OPEN_PROMPT;
         tools.add(proposeQueryTool.definition());
         ConversationStore.Key conversation = new ConversationStore.Key(caller.owner(), request.conversationId());
         List<ConversationTurn> earlier = conversations.turns(conversation);
@@ -199,7 +229,7 @@ class ToolUseLoopService implements ChatOrchestrator {
 
         log.debug("Chat turn start: tools={} maxIterations={}", tools.stream().map(ToolDefinition::name).toList(), maxIterations);
 
-        ModelTurnResult turn = callModel(history, tools, stats);
+        ModelTurnResult turn = callModel(systemPrompt, history, tools, stats);
         int emptyRetries = 0;
         while (stats.modelCalls < maxIterations && !state.toolsStopped) {
             List<String> unknownPaths = turn.hasToolCalls() || state.pathRepairAsked ? List.of() : unknownPathsIn(turn.text(), state);
@@ -228,7 +258,7 @@ class ToolUseLoopService implements ChatOrchestrator {
             } else {
                 break;
             }
-            turn = callModel(history, tools, stats);
+            turn = callModel(systemPrompt, history, tools, stats);
         }
         // toolsStopped usually ends the loop on a reply in words, so it is checked first: the model answered after tool use was cut short.
         Stop stop = state.toolsStopped ? Stop.REPEATED_FAILURE : turn.hasToolCalls() ? Stop.ITERATION_CAP : Stop.NONE;
@@ -236,7 +266,7 @@ class ToolUseLoopService implements ChatOrchestrator {
             // One last call so the model can answer from the results it has; the total stays bounded at maxIterations + 1.
             history.add(new AssistantToolCallEntry(turn.text(), turn.toolCalls()));
             turn.toolCalls().forEach(call -> history.add(new ToolResultEntry(call.id(), call.name(), CAP_REACHED_RESULT)));
-            turn = callModel(history, tools, stats);
+            turn = callModel(systemPrompt, history, tools, stats);
         }
         if (!turn.hasToolCalls() && !state.hasProposal()) {
             proposeFromReply(turn.text(), history, caller, state, stats);
@@ -386,11 +416,11 @@ class ToolUseLoopService implements ChatOrchestrator {
         return ReplyText.claimsScreenChanged(reply) || state.searches.lastSearchWasNarrowed() || namesOneSearchsPaths;
     }
 
-    private ModelTurnResult callModel(List<ConversationEntry> history, List<ToolDefinition> tools, TurnStats stats) {
+    private ModelTurnResult callModel(String systemPrompt, List<ConversationEntry> history, List<ToolDefinition> tools, TurnStats stats) {
         long start = System.nanoTime();
         ModelTurnResult result;
         try {
-            result = modelClient.send(SYSTEM_PROMPT, history, tools);
+            result = modelClient.send(systemPrompt, history, tools);
         } catch (ModelUnavailableException e) {
             // Distinct from a tool/MCP failure (see dispatchToolCalls), which is folded back into the
             // conversation and never reaches the HTTP layer -- the two must stay distinguishable.
@@ -520,7 +550,7 @@ class ToolUseLoopService implements ChatOrchestrator {
     /** A tool/MCP failure never crashes the turn -- it becomes a normal, model-visible error result. */
     private ToolResult callToolSafely(RequestedToolCall call, JsonNode arguments, CallerContext caller, TurnState state) {
         try {
-            if (excludedTools.contains(call.name())) {
+            if (isExcluded(call.name(), caller)) {
                 return ToolResult.failure("Unknown tool: " + call.name());
             }
             // A concept path the model was never shown is invented (small models copy the placeholder paths in tool examples), and

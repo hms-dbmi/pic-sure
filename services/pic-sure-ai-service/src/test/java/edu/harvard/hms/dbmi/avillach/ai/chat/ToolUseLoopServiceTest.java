@@ -85,6 +85,47 @@ class ToolUseLoopServiceTest {
         assertTrue(fedBack.content().contains("phenotypicClauses"), "the missing field must be named in the result fed back to the model");
     }
 
+    private static final CallerContext AUTHORIZED_CALLER = new CallerContext("Bearer test-jwt", "req-1", "user-1", "authorized");
+    private static final CallerContext OPEN_CALLER = new CallerContext("Bearer picsure_s_x", "req-1", null, "open");
+
+    @Test
+    void anAuthorizedCallerIsNotOfferedTheOpenOnlyCountTools() {
+        FakeModelClient model = FakeModelClient.returning(doneTurn("ok"));
+
+        new ToolUseLoopService(model, FakeToolGateway.listingCountTools(), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, AUTHORIZED_CALLER);
+
+        assertEquals(List.of("search_concepts", "propose_query"), model.lastToolNames);
+        assertFalse(model.lastSystemPrompt.contains("open-access"), model.lastSystemPrompt);
+        assertTrue(model.lastSystemPrompt.contains("You cannot count participants"), model.lastSystemPrompt);
+        assertFalse(model.lastSystemPrompt.contains("{{"), "every placeholder is filled");
+    }
+
+    @Test
+    void anOpenCallerKeepsTheCountToolsAndTheObfuscationWording() {
+        FakeModelClient model = FakeModelClient.returning(doneTurn("ok"));
+
+        new ToolUseLoopService(model, FakeToolGateway.listingCountTools(), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, OPEN_CALLER);
+
+        assertEquals(List.of("search_concepts", "count_participants", "cross_count", "propose_query"), model.lastToolNames);
+        assertTrue(model.lastSystemPrompt.contains("obfuscated open-access counts"), model.lastSystemPrompt);
+        assertFalse(model.lastSystemPrompt.contains("{{"), "every placeholder is filled");
+    }
+
+    @Test
+    void anAuthorizedCallersCountCallIsRefusedEvenIfTheModelMakesIt() {
+        String searchResult = "{\"concepts\":[{\"conceptPath\":\"\\\\demo\\\\body\\\\bmi\\\\\"}]}";
+        String count =
+            "{\"query\":{\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"\\\\demo\\\\body\\\\bmi\\\\\"}}}";
+        FakeModelClient model = FakeModelClient.returning(
+            toolCallTurn("search_concepts", "{\"search\":\"bmi\"}"), toolCallTurn("count_participants", count), doneTurn("Done")
+        );
+        FakeToolGateway tools = FakeToolGateway.returning(searchResult);
+
+        new ToolUseLoopService(model, tools, PROPOSE_QUERY_TOOL, 8).handle(REQUEST, AUTHORIZED_CALLER);
+
+        assertEquals(List.of("search_concepts"), tools.calls.stream().map(c -> c.name).toList());
+    }
+
     @Test
     void aConceptPathNoSearchReturnedIsRefusedWithoutReachingTheGateway() {
         // The placeholder path a small model copied from a tool example, called before any search had returned.
@@ -1832,6 +1873,8 @@ class ToolUseLoopServiceTest {
         private final boolean throwsOnFirstCall;
         private final List<List<ConversationEntry>> historiesSeen = new ArrayList<>();
         int callCount;
+        String lastSystemPrompt;
+        List<String> lastToolNames = List.of();
 
         private FakeModelClient(Deque<ModelTurnResult> turns, boolean throwsOnFirstCall) {
             this.turns = turns;
@@ -1850,6 +1893,8 @@ class ToolUseLoopServiceTest {
         @Override
         public ModelTurnResult send(String systemPrompt, List<ConversationEntry> history, List<ToolDefinition> tools) {
             callCount++;
+            lastSystemPrompt = systemPrompt;
+            lastToolNames = tools.stream().map(ToolDefinition::name).toList();
             historiesSeen.add(List.copyOf(history));
             if (throwsOnFirstCall) {
                 throw new ModelUnavailableException("boom", new RuntimeException("boom"));
@@ -1902,7 +1947,17 @@ class ToolUseLoopServiceTest {
             if (failListing) {
                 throw new RestClientException("mock gateway failure");
             }
-            return List.of();
+            return listed;
+        }
+
+        private List<ToolDefinition> listed = List.of();
+
+        /** A gateway that lists a search tool and both open-only count tools, as the real MCP endpoint does. */
+        static FakeToolGateway listingCountTools() {
+            FakeToolGateway gateway = new FakeToolGateway();
+            gateway.listed = List.of("search_concepts", "count_participants", "cross_count").stream()
+                .map(name -> new ToolDefinition(name, name, "{}")).toList();
+            return gateway;
         }
 
         @Override
