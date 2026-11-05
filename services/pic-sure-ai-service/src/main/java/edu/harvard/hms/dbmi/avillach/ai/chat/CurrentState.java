@@ -20,9 +20,11 @@ final class CurrentState {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /** Stands in for a query too large to send; {@link ProposeQueryTool} refuses query proposals while this is what the model was shown. */
-    static final String TOO_LARGE = "[too large to show. The researcher built it themselves and can edit it. Do not propose a "
-        + "query: propose only facets and search, and tell the researcher to make the query smaller (at most " + ProposeQueryInput.MAX_FILTERS
-        + " filters) before you can change it.]";
+    static String tooLarge(int maxFilters) {
+        return "[too large to show. The researcher built it themselves and can edit it. Do not propose a "
+            + "query: propose only facets and search, and tell the researcher you can't change a query this large (your limit is "
+            + maxFilters + " filters; they have none) so they would need to edit it themselves.]";
+    }
 
     static final String NONE = "none";
 
@@ -37,12 +39,13 @@ final class CurrentState {
      * @param query the request's query as {@link ChatStateValidator#requireValid} returned it, or null
      * @param removedByHand what the researcher took off their screen since the service last changed their query
      *        ({@link EarlierTurns#removedByHand}), or null
+     * @param maxFilters the most filters the model may read ({@link ProposeQueryTool#maxFilters}); a bigger query is withheld
      * @return the message, followed by the researcher's current query, facets and search
      */
-    static String appendedTo(ChatRequest request, ProposeQueryInput query, String removedByHand) {
+    static String appendedTo(ChatRequest request, ProposeQueryInput query, String removedByHand, int maxFilters) {
         StringBuilder state = new StringBuilder();
-        if (query != null && query.exceedsSizeLimit()) {
-            state.append("\nquery: ").append(TOO_LARGE);
+        if (query != null && query.exceedsSizeLimit(maxFilters)) {
+            state.append("\nquery: ").append(tooLarge(maxFilters));
         } else if (query != null && !query.isEmpty()) {
             state.append("\nquery: ").append(ChatStateValidator.toJson(query));
         } else {

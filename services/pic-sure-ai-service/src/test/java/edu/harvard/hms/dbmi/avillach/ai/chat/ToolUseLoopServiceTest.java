@@ -227,12 +227,32 @@ class ToolUseLoopServiceTest {
         }
     }
 
-    /** A valid query with twelve filters under one subquery: over {@link ProposeQueryInput#MAX_FILTERS}. */
+    /** A valid query with two more filters than {@link ProposeQueryInput#DEFAULT_MAX_FILTERS} allows, under one subquery. */
     private static ChatRequest oversizedQueryRequest() throws Exception {
-        String clauses = String.join(",", java.util.Collections.nCopies(12,
+        return requestWithFilters(ProposeQueryInput.DEFAULT_MAX_FILTERS + 2);
+    }
+
+    private static ChatRequest requestWithFilters(int count) throws Exception {
+        String clauses = String.join(",", java.util.Collections.nCopies(count,
             "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demo\\\\age\\\\\",\"values\":[\"x\"]}"));
         String big = "{\"phenotypicClause\":{\"operator\":\"AND\",\"phenotypicClauses\":[" + clauses + "]}}";
         return new ChatRequest("narrow it", "c", "r", new ObjectMapper().readTree(big), null, null);
+    }
+
+    @Test
+    void theConfiguredFilterLimitDecidesWhatTheModelIsShown() throws Exception {
+        FakeModelClient small = FakeModelClient.returning(doneTurn("ok"));
+        new ToolUseLoopService(small, new FakeToolGateway(), new ProposeQueryTool(new ObjectMapper(), 3), 8)
+            .handle(requestWithFilters(5), CALLER);
+        String withheld = ((ConversationEntry.UserEntry) small.historySeenOnCall(1).get(0)).text();
+        assertTrue(withheld.contains("too large to show"), withheld);
+        assertTrue(withheld.contains("your limit is 3 filters"), withheld);
+
+        FakeModelClient roomy = FakeModelClient.returning(doneTurn("ok"));
+        new ToolUseLoopService(roomy, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(requestWithFilters(5), CALLER);
+        String shown = ((ConversationEntry.UserEntry) roomy.historySeenOnCall(1).get(0)).text();
+        assertFalse(shown.contains("too large to show"), shown);
+        assertTrue(shown.contains("phenotypicClauses"), shown);
     }
 
     @Test
@@ -244,10 +264,12 @@ class ToolUseLoopServiceTest {
 
         String shown = ((ConversationEntry.UserEntry) model.historySeenOnCall(1).get(0)).text();
         assertTrue(shown.contains("too large to show"), shown);
+        assertTrue(shown.contains("they have none"), "the researcher is not limited: " + shown);
         assertFalse(shown.contains("phenotypicClauses"), shown);
         ConversationEntry.ToolResultEntry fedBack =
             (ConversationEntry.ToolResultEntry) model.historySeenOnCall(2).get(model.historySeenOnCall(2).size() - 1);
         assertTrue(fedBack.content().contains("too large"), "the refusal reaches the model: " + fedBack.content());
+        assertTrue(fedBack.content().contains("not theirs"), "the limit is the model's own: " + fedBack.content());
         assertNull(response.query());
     }
 

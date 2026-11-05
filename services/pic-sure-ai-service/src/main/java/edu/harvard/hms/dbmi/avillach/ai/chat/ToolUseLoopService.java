@@ -179,17 +179,19 @@ class ToolUseLoopService implements ChatOrchestrator {
         ConversationStore.Key conversation = new ConversationStore.Key(caller.owner(), request.conversationId());
         List<ConversationTurn> earlier = conversations.turns(conversation);
         List<ConversationEntry> history = new ArrayList<>(EarlierTurns.entries(earlier));
-        String message = CurrentState.appendedTo(request, currentQuery, EarlierTurns.removedByHand(earlier, currentQuery));
+        int maxFilters = proposeQueryTool.maxFilters();
+        String message = CurrentState.appendedTo(request, currentQuery, EarlierTurns.removedByHand(earlier, currentQuery, maxFilters), maxFilters);
         log.debug("Message as the model sees it (earlierTurns={}): {}", earlier.size(), message);
         history.add(new UserEntry(message));
         TurnState state = new TurnState(currentQuery);
-        state.removedByHand = EarlierTurns.removedPathsByHand(earlier, currentQuery);
+        state.removedByHand = EarlierTurns.removedPathsByHand(earlier, currentQuery, maxFilters);
+        state.maxFilters = maxFilters;
         state.currentSearch = ChatStateValidator.searchText(request.search());
         state.asksToSelect = ProposalRules.asksToSelect(request.message());
         // Before the request's own state, as the provenance follow-up in TRACKER.md's conversation-history entry has it.
         EarlierTurns.learnInto(state, earlier);
         // Only the modeled fields, the ones CurrentState shows the model: a path in authorizationFilters was never shown to it.
-        state.queryLocked = currentQuery != null && currentQuery.exceedsSizeLimit();
+        state.queryLocked = currentQuery != null && currentQuery.exceedsSizeLimit(maxFilters);
         if (currentQuery != null && !state.queryLocked) {
             state.conceptPaths.learnFrom(ChatStateValidator.toJson(currentQuery));
         }

@@ -80,8 +80,8 @@ final class ProposalRules {
             List<String> selected = selectedAfter(before, query.select(), proposal.removeSelect());
             proposal = proposal.withQuery(new ProposeQueryInput(selected, query.phenotypicClause(), query.genomicFilters()));
             // The researcher's own selection plus the additions can be over the limit though the proposal alone was not.
-            if (proposal.query().exceedsSizeLimit()) {
-                return ToolResult.failure(ProposeQueryTool.QUERY_TOO_LARGE);
+            if (proposal.query().exceedsSizeLimit(state.maxFilters)) {
+                return ToolResult.failure(ProposeQueryTool.queryTooLarge(state.maxFilters));
             }
             selectNote = selectNote(proposal.query(), before, proposal.removeSelect());
         }

@@ -42,8 +42,8 @@ final class EarlierTurns {
      * @param current the request's validated query, or null
      * @return e.g. {@code filters on `\a\`; selected variables `\a\`}, or null when nothing was removed or no query was ever sent
      */
-    static String removedByHand(List<ConversationTurn> turns, ProposeQueryInput current) {
-        Removed removed = removed(turns, current);
+    static String removedByHand(List<ConversationTurn> turns, ProposeQueryInput current, int maxFilters) {
+        Removed removed = removed(turns, current, maxFilters);
         List<String> parts = new ArrayList<>();
         if (!removed.filters().isEmpty()) {
             parts.add("filters on " + backticked(removed.filters()));
@@ -59,8 +59,8 @@ final class EarlierTurns {
      * @param current the request's validated query, or null
      * @return every path {@link #removedByHand} names, filters and selected variables together, normalized; empty when none
      */
-    static Set<String> removedPathsByHand(List<ConversationTurn> turns, ProposeQueryInput current) {
-        Removed removed = removed(turns, current);
+    static Set<String> removedPathsByHand(List<ConversationTurn> turns, ProposeQueryInput current, int maxFilters) {
+        Removed removed = removed(turns, current, maxFilters);
         Set<String> paths = new LinkedHashSet<>(removed.filters());
         paths.addAll(removed.selected());
         return paths;
@@ -68,12 +68,12 @@ final class EarlierTurns {
 
     private record Removed(Set<String> filters, Set<String> selected) {}
 
-    private static Removed removed(List<ConversationTurn> turns, ProposeQueryInput current) {
+    private static Removed removed(List<ConversationTurn> turns, ProposeQueryInput current, int maxFilters) {
         JsonNode sent = null;
         for (ConversationTurn turn : turns) {
             sent = turn.sentQuery() != null ? turn.sentQuery() : sent;
         }
-        if (sent == null || (current != null && current.exceedsSizeLimit())) {
+        if (sent == null || (current != null && current.exceedsSizeLimit(maxFilters))) {
             return new Removed(Set.of(), Set.of());
         }
         JsonNode now = current == null ? MissingNode.getInstance() : ChatStateValidator.toJson(current);

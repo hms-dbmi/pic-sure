@@ -25,6 +25,9 @@ final class TurnState {
     /** Whether the researcher's message asks to change their selected variables ({@link ProposalRules#asksToSelect}). */
     boolean asksToSelect;
 
+    /** The most filters the model may propose, from {@link ProposeQueryTool#maxFilters}. */
+    int maxFilters = ProposeQueryInput.DEFAULT_MAX_FILTERS;
+
     /** Whether the researcher's query was too large to show the model, so it may not propose a query. */
     boolean queryLocked;
 

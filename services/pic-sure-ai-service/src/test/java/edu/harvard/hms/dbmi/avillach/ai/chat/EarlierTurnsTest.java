@@ -10,6 +10,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 class EarlierTurnsTest {
+    private static final int MAX = ProposeQueryInput.DEFAULT_MAX_FILTERS;
+
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -40,7 +42,7 @@ class EarlierTurnsTest {
 
         assertEquals(
             "filters on `\\demo\\sex\\`; selected variables `\\demo\\sex\\`",
-            EarlierTurns.removedByHand(List.of(sent(BOTH)), onScreen(ageOnly))
+            EarlierTurns.removedByHand(List.of(sent(BOTH)), onScreen(ageOnly), MAX)
         );
     }
 
@@ -48,15 +50,15 @@ class EarlierTurnsTest {
     void aClearedQueryNamesEverythingTheLastSentQueryHad() throws Exception {
         assertEquals(
             "filters on `\\demo\\sex\\`, `\\demo\\age\\`; selected variables `\\demo\\sex\\`, `\\demo\\age\\`",
-            EarlierTurns.removedByHand(List.of(sent(BOTH)), null)
+            EarlierTurns.removedByHand(List.of(sent(BOTH)), null, MAX)
         );
     }
 
     @Test
     void nothingIsNamedWhenTheScreenStillHasTheSentQueryOrNoneWasSent() throws Exception {
-        assertNull(EarlierTurns.removedByHand(List.of(sent(BOTH)), onScreen(BOTH)));
-        assertNull(EarlierTurns.removedByHand(List.of(sent(null)), null));
-        assertNull(EarlierTurns.removedByHand(List.of(), null));
+        assertNull(EarlierTurns.removedByHand(List.of(sent(BOTH)), onScreen(BOTH), MAX));
+        assertNull(EarlierTurns.removedByHand(List.of(sent(null)), null, MAX));
+        assertNull(EarlierTurns.removedByHand(List.of(), null, MAX));
     }
 
     @Test
@@ -64,6 +66,6 @@ class EarlierTurnsTest {
         String ageOnly = "{\"select\":[\"\\\\demo\\\\age\\\\\"],\"phenotypicClause\":" + AGE + "}";
 
         // The second turn removed SEX itself, and a turn that sent nothing does not reset what was last sent.
-        assertNull(EarlierTurns.removedByHand(List.of(sent(BOTH), sent(ageOnly), sent(null)), onScreen(ageOnly)));
+        assertNull(EarlierTurns.removedByHand(List.of(sent(BOTH), sent(ageOnly), sent(null)), onScreen(ageOnly), MAX));
     }
 }

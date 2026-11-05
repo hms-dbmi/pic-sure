@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.ai.chat;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,9 +57,28 @@ public class ProposeQueryTool {
         "facets":{"type":"array"},"search":{"type":"string"}}}""";
 
     private final ObjectMapper objectMapper;
+    private final int maxFilters;
 
     public ProposeQueryTool(ObjectMapper objectMapper) {
+        this(objectMapper, ProposeQueryInput.DEFAULT_MAX_FILTERS);
+    }
+
+    /**
+     * @param maxFilters the most filters (subqueries count) a query may hold and still be read or proposed by the model. The researcher has
+     *        no such limit in the UI; this bounds only what is resent to the model on every call.
+     */
+    @Autowired
+    public ProposeQueryTool(ObjectMapper objectMapper, @Value("${picsure.ai.max-filters:100}") int maxFilters) {
+        if (maxFilters < 1) {
+            throw new IllegalArgumentException("picsure.ai.max-filters must be at least 1, was " + maxFilters);
+        }
         this.objectMapper = objectMapper;
+        this.maxFilters = maxFilters;
+    }
+
+    /** @return the most filters the model may read or propose in one query */
+    int maxFilters() {
+        return maxFilters;
     }
 
     /**
@@ -123,9 +144,12 @@ public class ProposeQueryTool {
         return propose(argumentsJson, knownFacets, false);
     }
 
-    /** Refusal for a query over {@link ProposeQueryInput#MAX_FILTERS}/{@link ProposeQueryInput#MAX_SELECT}, as proposed or once applied. */
-    static final String QUERY_TOO_LARGE = "The query is too large: at most " + ProposeQueryInput.MAX_FILTERS + " filters and "
-        + ProposeQueryInput.MAX_SELECT + " selected variables. Propose a smaller query; the researcher can add the rest themselves.";
+    /** Refusal for a query over the filter limit or {@link ProposeQueryInput#MAX_SELECT}, as proposed or once applied. */
+    static String queryTooLarge(int maxFilters) {
+        return "The query is too large: you can propose at most " + maxFilters + " filters and "
+        + ProposeQueryInput.MAX_SELECT + " selected variables. That limit is yours, not the researcher's: they can add as many as they like "
+        + "themselves, so never tell them they are limited. Propose a smaller query and say they can add the rest themselves.";
+    }
 
     /**
      * As {@link #propose(String, KnownFacets)}, optionally refusing any {@code query} -- for a turn whose researcher query was too large to
@@ -145,16 +169,17 @@ public class ProposeQueryTool {
             Arguments bound = ProposeQueryBinder.bind(arguments, Arguments.class);
             if (bound.query() != null && queryLocked) {
                 return Outcome.rejected(
-                    "The researcher's query is too large for you to change. Propose only facets and search, and tell the researcher to "
-                        + "make the query smaller themselves first."
+                    "The researcher's query is too large for you to change. That limit is yours, not theirs: they can keep adding "
+                        + "filters themselves. Propose only facets and search, and tell the researcher you can't change a query this "
+                        + "large, so they would need to edit it themselves."
                 );
             }
             if (bound.query() == null && bound.facets() == null && bound.search() == null) {
                 return Outcome.rejected("The proposal is empty. Send at least one of query, facets, or search.");
             }
             ProposeQueryInput query = bound.query() == null ? null : bound.query().additions();
-            if (query != null && query.exceedsSizeLimit()) {
-                return Outcome.rejected(QUERY_TOO_LARGE);
+            if (query != null && query.exceedsSizeLimit(maxFilters)) {
+                return Outcome.rejected(queryTooLarge(maxFilters));
             }
             List<String> removeSelect = bound.query() == null ? List.of() : bound.query().removals();
             ChatStateValidator.requireValidFacets(bound.facets());

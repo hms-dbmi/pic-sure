@@ -25,6 +25,9 @@ picsure:
     # Hard cap on tool-call round-trips per turn. Hitting it
     # returns the best answer so far, prose only -- never an error.
     max-tool-iterations: ${AI_MAX_TOOL_ITERATIONS:8}
+    # Most filters (subqueries count too) a query may hold and still be read or proposed by the
+    # model. The UI has no such limit; this only bounds what is resent to the model on every call.
+    max-filters: ${AI_MAX_FILTERS:100}
     model:
       # aws-sdk (default): ConverseSdkModelClient, real AWS Bedrock Converse over SigV4/IAM.
       # http: ConverseHttpModelClient, the same Converse wire shape over a plain bearer token to a
