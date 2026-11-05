@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.ai.chat;
 
 import java.util.Optional;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,6 +33,7 @@ import jakarta.validation.Valid;
  */
 @Tag(name = "AI chat", description = "AI-assisted dictionary search")
 @RestController
+@ConditionalOnProperty(name = "picsure.ai.enabled", havingValue = "true")
 public class ChatController {
 
     private final ChatOrchestrator orchestrator;

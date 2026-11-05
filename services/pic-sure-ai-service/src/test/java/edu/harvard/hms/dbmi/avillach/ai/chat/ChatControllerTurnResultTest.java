@@ -13,6 +13,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
@@ -32,6 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * &amp; partial results").
  */
 @WebMvcTest(ChatController.class)
+@TestPropertySource(properties = "picsure.ai.enabled=true")
 @Import(
     {ValidationExceptionAdvice.class, WebSecurityConfig.class, InMemoryTurnResultStore.class, ChatControllerTurnResultTest.Counting.class}
 )

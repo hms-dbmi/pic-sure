@@ -22,6 +22,9 @@ spring:
 
 picsure:
   ai:
+    # Off (the default) registers no chat endpoint, so /ai/chat answers 404 even though the service is up. For an environment that must not offer the
+    # assistant but still runs this container; the UI has its own switches (ENABLE_ASSISTED_SEARCH, ENABLE_ASSISTED_SEARCH_DISCOVER).
+    enabled: ${AI_ENABLED:false}
     # Hard cap on tool-call round-trips per turn. Hitting it
     # returns the best answer so far, prose only -- never an error.
     max-tool-iterations: ${AI_MAX_TOOL_ITERATIONS:8}

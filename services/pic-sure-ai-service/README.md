@@ -67,6 +67,7 @@ touching the dispatch loop, the controller, or anything else in the service).
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
+| `AI_ENABLED` | no, default `false` | `true` registers the chat endpoint. Left `false`, no chat endpoint exists, so `/ai/chat` and `/ai/chat/{requestId}` answer 404 while the service stays up: set it to `true` wherever the assistant should be offered. The UI is switched separately (`ENABLE_ASSISTED_SEARCH` for Explorer, `ENABLE_ASSISTED_SEARCH_DISCOVER` for Discover). |
 | `AI_MODEL_PROVIDER` | no, default `aws-sdk` | `aws-sdk` or `http` — which `ConverseModelClient` is active. |
 | `BEDROCK_REGION` | no, default `us-east-1` | AWS region, `aws-sdk` provider only. |
 | `BEDROCK_MODEL_ID` | no, default `openai.gpt-oss-120b-1:0` | Bedrock model id, `aws-sdk` provider only. The model must support Converse tool use and be in the deployment's IAM allowlist — see [Choosing a model](#choosing-a-model). |

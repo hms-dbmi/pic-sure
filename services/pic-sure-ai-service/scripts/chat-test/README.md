@@ -16,7 +16,7 @@ Needs Node 22 (built-in `fetch`), no `npm install`.
 ## Running
 
 1. Start the stack with the service configured for the model under test (`BEDROCK_MODEL_ID`, etc.; see the service
-   README). The model must be in the IAM allowlist, or every request fails with `model_unavailable`.
+   README) and `AI_ENABLED=true`: the chat endpoint is off by default. The model must be in the IAM allowlist, or every request fails with `model_unavailable`.
 2. Point it at the stack:
 
    ```sh

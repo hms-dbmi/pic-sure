@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -35,6 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * gateway was actually invoked with.
  */
 @WebMvcTest(ChatController.class)
+@TestPropertySource(properties = "picsure.ai.enabled=true")
 @Import({ValidationExceptionAdvice.class, WebSecurityConfig.class, InMemoryTurnResultStore.class, ChatControllerCallerIdentityTest.RealLoopWithFakeModel.class})
 class ChatControllerCallerIdentityTest {
 
