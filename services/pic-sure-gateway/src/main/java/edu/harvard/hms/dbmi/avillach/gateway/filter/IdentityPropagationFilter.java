@@ -19,6 +19,7 @@ import edu.harvard.hms.dbmi.avillach.commons.audit.ClientTypeAllowlist;
 import edu.harvard.hms.dbmi.avillach.commons.audit.VerifiedCaller;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.commons.request.RequestIdFilter;
+import edu.harvard.hms.dbmi.avillach.gateway.request.HeaderNames;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -151,15 +152,7 @@ public class IdentityPropagationFilter extends OncePerRequestFilter {
 
         @Override
         public Enumeration<String> getHeaderNames() {
-            Set<String> names = new LinkedHashSet<>();
-            Enumeration<String> superNames = super.getHeaderNames();
-            while (superNames != null && superNames.hasMoreElements()) {
-                String n = superNames.nextElement();
-                if (ownedCanonicalName(n) == null) {
-                    // Drop any client-supplied gateway-owned header name; only the resolved value (added below, if any) may appear.
-                    names.add(n);
-                }
-            }
+            Set<String> names = HeaderNames.retain(super.getHeaderNames(), n -> ownedCanonicalName(n) == null);
             names.addAll(overrides.keySet());
             return Collections.enumeration(names);
         }

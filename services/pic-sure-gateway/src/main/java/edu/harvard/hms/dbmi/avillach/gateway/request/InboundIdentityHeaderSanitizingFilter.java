@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.StringJoiner;
@@ -187,14 +186,7 @@ public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter 
 
         @Override
         public Enumeration<String> getHeaderNames() {
-            Set<String> names = new LinkedHashSet<>();
-            Enumeration<String> superNames = super.getHeaderNames();
-            while (superNames != null && superNames.hasMoreElements()) {
-                String n = superNames.nextElement();
-                if (!isStripped(n)) {
-                    names.add(n);
-                }
-            }
+            Set<String> names = HeaderNames.retain(super.getHeaderNames(), n -> !isStripped(n));
             return Collections.enumeration(names);
         }
     }
