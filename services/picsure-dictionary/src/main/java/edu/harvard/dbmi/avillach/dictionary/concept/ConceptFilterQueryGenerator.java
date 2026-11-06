@@ -15,6 +15,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 /**
@@ -150,13 +151,9 @@ public class ConceptFilterQueryGenerator {
      */
     private List<String> createFacetFilter(Filter filter, MapSqlParameterSource params) {
         String consentWhere = CollectionUtils.isEmpty(filter.consents()) ? "" : CONSENT_QUERY;
-        return filter.facets().stream().collect(Collectors.groupingBy(Facet::category)).entrySet().stream().map(facetsForCategory -> {
-            params
-                // The templating here is to namespace the params for each facet category in the query
-                .addValue(
-                    "facets_for_category_%s".formatted(facetsForCategory.getKey()),
-                    facetsForCategory.getValue().stream().map(Facet::name).toList()
-                ).addValue("category_%s".formatted(facetsForCategory.getKey()), facetsForCategory.getKey());
+        List<List<Facet>> categories = facetsByCategory(filter);
+        return IntStream.range(0, categories.size()).mapToObj(i -> {
+            addCategoryParams(categories.get(i), i, params);
             String rankQuery = "0";
             String rankWhere = "";
             if (StringUtils.hasLength(filter.search())) {
@@ -177,15 +174,24 @@ public class ConceptFilterQueryGenerator {
                         %s
                         AND %s
                         %s
-                        facet.name IN (:facets_for_category_%s ) AND facet_category.name = :category_%s
+                        facet.name IN (:facets_for_category_%d) AND facet_category.name = :category_%d
                     GROUP BY
                         facet__concept_node.concept_node_id
                 )
-                """.formatted(
-                rankQuery, schemaDetector.conceptNodeQueryableClause("concept_node"), rankWhere, consentWhere, facetsForCategory.getKey(),
-                facetsForCategory.getKey()
-            );
+                """.formatted(rankQuery, schemaDetector.conceptNodeQueryableClause("concept_node"), rankWhere, consentWhere, i, i);
         }).toList();
+    }
+
+    private static List<List<Facet>> facetsByCategory(Filter filter) {
+        return List.copyOf(filter.facets().stream().collect(Collectors.groupingBy(Facet::category)).values());
+    }
+
+    /**
+     * Parameter names and table aliases use the category group's index, so categories and facet names reach the query only as bound values.
+     */
+    private static void addCategoryParams(List<Facet> facets, int index, MapSqlParameterSource params) {
+        params.addValue("facets_for_category_" + index, facets.stream().map(Facet::name).toList());
+        params.addValue("category_" + index, facets.getFirst().category());
     }
 
     /**
@@ -218,24 +224,21 @@ public class ConceptFilterQueryGenerator {
             return new QueryParamPair(sql, params);
         }
 
-        // Group facets by category — each category produces an EXISTS clause
-        var grouped = filter.facets().stream().collect(Collectors.groupingBy(Facet::category));
-
-        List<String> existsClauses = grouped.entrySet().stream().map(entry -> {
-            String categoryKey = entry.getKey();
-            params.addValue("facets_for_category_%s".formatted(categoryKey), entry.getValue().stream().map(Facet::name).toList());
-            params.addValue("category_%s".formatted(categoryKey), categoryKey);
+        // Each facet category produces an EXISTS clause
+        List<List<Facet>> categories = facetsByCategory(filter);
+        List<String> existsClauses = IntStream.range(0, categories.size()).mapToObj(i -> {
+            addCategoryParams(categories.get(i), i, params);
             return """
                 EXISTS (
-                    SELECT 1 FROM facet__concept_node fcn_%1$s
-                    WHERE fcn_%1$s.concept_node_id = cn.concept_node_id
-                      AND fcn_%1$s.facet_id IN (
+                    SELECT 1 FROM facet__concept_node fcn_%1$d
+                    WHERE fcn_%1$d.concept_node_id = cn.concept_node_id
+                      AND fcn_%1$d.facet_id IN (
                         SELECT f.facet_id FROM facet f
                         JOIN facet_category fc ON fc.facet_category_id = f.facet_category_id
-                        WHERE f.name IN (:facets_for_category_%1$s) AND fc.name = :category_%1$s
+                        WHERE f.name IN (:facets_for_category_%1$d) AND fc.name = :category_%1$d
                       )
                 )
-                """.formatted(categoryKey);
+                """.formatted(i);
         }).toList();
 
         String existsWhere = String.join(" AND ", existsClauses);
