@@ -19,6 +19,7 @@ import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
+import edu.harvard.hms.dbmi.avillach.commons.audit.ClientTypeAllowlist;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
@@ -58,7 +59,7 @@ class AuditFilterOrderTest {
 
     private static FilterRegistrationBean<?> auditRegistration(LoggingClient client, AuditContext audit) {
         AuditFilterConfig config = new AuditFilterConfig();
-        return config.auditLoggingFilter(client, config.auditRouteTable(), audit);
+        return config.auditLoggingFilter(client, config.auditRouteTable(), audit, ClientTypeAllowlist.DEFAULT);
     }
 
     @Test

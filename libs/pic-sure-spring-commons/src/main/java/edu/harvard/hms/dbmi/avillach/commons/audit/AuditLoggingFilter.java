@@ -35,7 +35,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     private final AuditRouteTable routes;
     private final AuditContext audit;
     private final List<String> skipContains;
-    private final boolean verifiedCallerOnly;
+    private final ClientTypeAllowlist clientTypes;
 
     /**
      * Creates a filter that records the client-supplied {@code X-Client-Type} header as the audit event's {@code caller}.
@@ -46,28 +46,29 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
      * @param skipContains path fragments whose requests are not audited
      */
     public AuditLoggingFilter(LoggingClient client, AuditRouteTable routes, AuditContext audit, List<String> skipContains) {
-        this(client, routes, audit, skipContains, false);
+        this(client, routes, audit, skipContains, null);
     }
 
     /**
-     * Creates a filter that can take the audit event's {@code caller} only from a verified source. The first four arguments are as for
+     * Creates a filter that accepts only listed client types from the header. The first four arguments are as for
      * {@link #AuditLoggingFilter(LoggingClient, AuditRouteTable, AuditContext, List)}.
      *
      * @param client see the four-argument constructor
      * @param routes see the four-argument constructor
      * @param audit see the four-argument constructor
      * @param skipContains see the four-argument constructor
-     * @param verifiedCallerOnly when true, {@code caller} comes only from the {@link VerifiedCaller} request attribute and a raw
-     *        {@code X-Client-Type} header is recorded as metadata {@code client_type_claimed}; when false, the header is the {@code caller}
+     * @param clientTypes when non-null, {@code caller} is the {@link VerifiedCaller} request attribute when one is set, and otherwise the
+     *        {@code X-Client-Type} header if it is on this list; an absent, unlisted or reserved header value gives {@code UNKNOWN}. The
+     *        raw header is also recorded as metadata {@code client_type_claimed}. When null, the header is the {@code caller}
      */
     public AuditLoggingFilter(
-        LoggingClient client, AuditRouteTable routes, AuditContext audit, List<String> skipContains, boolean verifiedCallerOnly
+        LoggingClient client, AuditRouteTable routes, AuditContext audit, List<String> skipContains, ClientTypeAllowlist clientTypes
     ) {
         this.client = client;
         this.routes = routes;
         this.audit = audit;
         this.skipContains = skipContains != null ? List.copyOf(skipContains) : List.of();
-        this.verifiedCallerOnly = verifiedCallerOnly;
+        this.clientTypes = clientTypes;
     }
 
     @Override
@@ -138,8 +139,9 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
         String claimedClientType = request.getHeader("X-Client-Type");
         boolean hasClaimedClientType = claimedClientType != null && !claimedClientType.isEmpty();
         String caller;
-        if (verifiedCallerOnly) {
-            caller = VerifiedCaller.get(request).orElse(null);
+        if (clientTypes != null) {
+            caller =
+                VerifiedCaller.get(request).orElseGet(() -> clientTypes.resolve(claimedClientType).orElse(ClientTypeAllowlist.UNKNOWN));
             if (hasClaimedClientType) {
                 metadata.put("client_type_claimed", claimedClientType);
             }
