@@ -118,6 +118,16 @@ class DocumentedErrorResponsesTest {
         assertServerError(response, "/concepts");
     }
 
+    /** A facet without a category is rejected while the body is read, before any query runs. */
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {"/concepts", "/facets"})
+    void filterWithFacetMissingItsCategoryIs400(String path) throws Exception {
+        ResponseEntity<String> response = rest.postForEntity(path, json("{\"facets\":[{\"name\":\"phs000007\"}]}"), String.class);
+
+        assertErrorDocument(response, HttpStatus.BAD_REQUEST, path);
+        verifyNoInteractions(conceptService);
+    }
+
     @Test
     void conceptDetailForUnknownPathIs404() {
         ResponseEntity<String> response =
