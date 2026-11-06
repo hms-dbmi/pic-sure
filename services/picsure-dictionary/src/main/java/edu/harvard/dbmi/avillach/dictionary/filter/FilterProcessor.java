@@ -35,7 +35,7 @@ public class FilterProcessor {
         return filter;
     }
 
-    static void validateFacet(Facet facet) {
+    private static void validateFacet(Facet facet) {
         if (facet == null || cannotBeStored(facet.name()) || cannotBeStored(facet.category())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Each facet needs a valid name and category");
         }

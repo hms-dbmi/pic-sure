@@ -224,7 +224,6 @@ public class ConceptFilterQueryGenerator {
             return new QueryParamPair(sql, params);
         }
 
-        // Each facet category produces an EXISTS clause
         List<List<Facet>> categories = facetsByCategory(filter);
         List<String> existsClauses = IntStream.range(0, categories.size()).mapToObj(i -> {
             addCategoryParams(categories.get(i), i, params);
