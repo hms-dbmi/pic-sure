@@ -26,4 +26,26 @@ class CSVLoaderTest {
     void shouldKeepLegacyNameForBareSuffix() {
         Assertions.assertEquals("", CSVLoader.partitionNameFor("-allConcepts.csv"));
     }
+
+    @Test
+    void shouldKeepConceptPathWhenRollUpIsOff() {
+        Assertions.assertEquals("\\phs000000\\var\\Yes\\", CSVLoader.conceptPathFor("\\phs000000\\var\\Yes\\", "Yes", false));
+    }
+
+    @Test
+    void shouldRollUpLastSegmentWhenItMatchesTextValue() {
+        Assertions.assertEquals("\\phs000000\\var\\", CSVLoader.conceptPathFor("\\phs000000\\var\\Yes\\", "Yes", true));
+    }
+
+    @Test
+    void shouldKeepConceptPathWhenTextValueDiffers() {
+        Assertions.assertEquals("\\phs000000\\var\\Yes\\", CSVLoader.conceptPathFor("\\phs000000\\var\\Yes\\", "No", false));
+        Assertions.assertEquals("\\phs000000\\var\\Yes\\", CSVLoader.conceptPathFor("\\phs000000\\var\\Yes\\", "No", true));
+    }
+
+    @Test
+    void shouldKeepConceptPathWhenTextValueIsNull() {
+        Assertions.assertEquals("\\phs000000\\var\\Yes\\", CSVLoader.conceptPathFor("\\phs000000\\var\\Yes\\", null, false));
+        Assertions.assertEquals("\\phs000000\\var\\Yes\\", CSVLoader.conceptPathFor("\\phs000000\\var\\Yes\\", null, true));
+    }
 }
