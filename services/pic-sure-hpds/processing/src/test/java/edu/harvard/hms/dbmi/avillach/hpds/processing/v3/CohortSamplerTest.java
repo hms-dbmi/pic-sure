@@ -40,6 +40,8 @@ class CohortSamplerTest {
     private static final String HARMONIZED = "\\_harmonized_consent\\";
     private static final String TOPMED = "\\_topmed_consents\\";
     private static final String SALT = "fixed-test-salt";
+    private static final String MISSING_CONCEPT_WARNING = "the consents concept is missing from the store or does not hold text values";
+    private static final String NO_MEMBER_WARNING = "has no member in any of";
 
     @Mock
     private PhenotypicObservationStore store;
@@ -200,13 +202,32 @@ class CohortSamplerTest {
 
         assertTrue(output.getOut().contains("cohort of 500 participants has no member in any of the 1 consent groups"));
         assertFalse(output.getOut().contains("phs000001"));
+        assertFalse(output.getOut().contains(MISSING_CONCEPT_WARNING));
     }
 
     @Test
-    void missingConsentsConceptGivesAnEmptySample() {
+    void missingConsentsConceptGivesAnEmptySample(CapturedOutput output) {
         when(store.getCube(CONSENTS)).thenReturn(Optional.empty());
 
+        assertEquals(Set.of(), sample(100, SALT, consentsQuery("phs000001.c1", "phs000002.c1"), range(1, 500)));
+
+        assertTrue(output.getOut().contains(MISSING_CONCEPT_WARNING));
+        assertTrue(output.getOut().contains("none of the 2 consent groups of the query could be read for the cohort of 500 participants"));
+        assertFalse(output.getOut().contains(NO_MEMBER_WARNING));
+        assertFalse(output.getOut().contains("phs00000"));
+        assertFalse(output.getOut().contains(SALT));
+    }
+
+    @Test
+    void consentsConceptThatIsNotTextGivesAnEmptySample(CapturedOutput output) {
+        when(store.getCube(CONSENTS)).thenReturn(Optional.of(new PhenoCube<>(CONSENTS, Double.class)));
+
         assertEquals(Set.of(), sample(100, SALT, consentsQuery("phs000001.c1"), range(1, 500)));
+
+        assertTrue(output.getOut().contains(MISSING_CONCEPT_WARNING));
+        assertTrue(output.getOut().contains("none of the 1 consent groups of the query could be read for the cohort of 500 participants"));
+        assertFalse(output.getOut().contains(NO_MEMBER_WARNING));
+        assertFalse(output.getOut().contains("phs000001"));
     }
 
     @Test
@@ -276,6 +297,144 @@ class CohortSamplerTest {
         live.forEach((value, members) -> assertSame(members, stringCube.getKeysForValue(value)));
     }
 
+    @Test
+    void walkingTheCohortNeverTakesAParticipantOutsideTheGroup() {
+        Set<Integer> group = range(1, 1000);
+        storeConsents(Map.of("phs000001.c1", group, "phs000002.c1", range(-5000, 6000)));
+        Set<Integer> cohortWithFewInTheGroup = union(range(-219, 0), range(471, 530), range(1001, 1220));
+        Set<Integer> cohortWithManyInTheGroup = union(range(-149, 0), range(401, 600), range(1001, 1150));
+
+        Set<Integer> allOfTheFew = sample(100, SALT, consentsQuery("phs000001.c1"), cohortWithFewInTheGroup);
+        Set<Integer> someOfTheMany = sample(100, SALT, consentsQuery("phs000001.c1"), cohortWithManyInTheGroup);
+
+        assertEquals(500, cohortWithFewInTheGroup.size());
+        assertEquals(500, cohortWithManyInTheGroup.size());
+        assertEquals(range(471, 530), allOfTheFew);
+        assertEquals(100, someOfTheMany.size());
+        assertTrue(group.containsAll(someOfTheMany));
+        assertTrue(cohortWithManyInTheGroup.containsAll(someOfTheMany));
+    }
+
+    @Test
+    void walkingTheMemberSetNeverTakesAParticipantOutsideTheCohort() {
+        Set<Integer> group = range(1, 300);
+        storeConsents(Map.of("phs000001.c1", group));
+        Set<Integer> cohortWithFewInTheGroup = range(251, 650);
+        Set<Integer> cohortWithManyInTheGroup = range(151, 600);
+
+        Set<Integer> allOfTheFew = sampler(100, SALT).sample(consentsQuery("phs000001.c1"), cohortWithFewInTheGroup);
+        Set<Integer> someOfTheMany = sampler(100, SALT).sample(consentsQuery("phs000001.c1"), cohortWithManyInTheGroup);
+
+        assertEquals(range(251, 300), allOfTheFew);
+        assertEquals(100, someOfTheMany.size());
+        assertTrue(group.containsAll(someOfTheMany));
+        assertTrue(cohortWithManyInTheGroup.containsAll(someOfTheMany));
+    }
+
+    @Test
+    void memberSetSmallerThanTheCohortGivesThePinnedIds() {
+        storeConsents(Map.of("phs000001.c1", everyThird(399)));
+
+        assertEquals(PINNED_FROM_THE_MEMBER_WALK, sample(10, SALT, consentsQuery("phs000001.c1"), EVEN_IDS_TO_800));
+    }
+
+    @Test
+    void memberSetTheSizeOfTheCohortGivesThePinnedIds() {
+        storeConsents(Map.of("phs000001.c1", everyThird(400)));
+
+        assertEquals(400, EVEN_IDS_TO_800.size());
+        assertEquals(PINNED_FROM_THE_MEMBER_WALK, sample(10, SALT, consentsQuery("phs000001.c1"), EVEN_IDS_TO_800));
+    }
+
+    @Test
+    void memberSetLargerThanTheCohortGivesThePinnedIds() {
+        storeConsents(Map.of("phs000001.c1", everyThird(401)));
+
+        assertEquals(PINNED_FROM_THE_COHORT_WALK, sample(10, SALT, consentsQuery("phs000001.c1"), EVEN_IDS_TO_800));
+    }
+
+    private static final Set<Integer> EVEN_IDS_TO_800 = IntStream.rangeClosed(1, 400).map(id -> id * 2).boxed().collect(Collectors.toSet());
+    private static final Set<Integer> PINNED_FROM_THE_MEMBER_WALK = Set.of(600, 606, 612, 618, 624, 630, 636, 642, 648, 654);
+    private static final Set<Integer> PINNED_FROM_THE_COHORT_WALK = Set.of(66, 72, 78, 84, 90, 96, 102, 108, 114, 120);
+
+    @Test
+    void extremeIdsInTheWalkedCohortStayInsideTheCohort() {
+        Set<Integer> cohort = new HashSet<>(Set.of(Integer.MIN_VALUE, -2_000_000_000, -5, -1, 0, 7, 2_000_000_000, Integer.MAX_VALUE));
+        Query query = query(List.of());
+
+        Set<Integer> sample = sample(3, SALT, query, cohort);
+
+        assertEquals(3, sample.size());
+        assertEquals(sample, sample(3, SALT, query, cohort));
+    }
+
+    @Test
+    void extremeIdsInTheWalkedMemberSetStayInsideTheCohort() {
+        Set<Integer> members = Set.of(Integer.MIN_VALUE, -40, -3, 0, 12, Integer.MAX_VALUE);
+        storeConsents(Map.of("phs000001.c1", members));
+        Set<Integer> cohort = union(range(-10, 10), Set.of(Integer.MIN_VALUE, Integer.MAX_VALUE));
+        Query query = consentsQuery("phs000001.c1");
+
+        Set<Integer> sample = sample(3, SALT, query, cohort);
+
+        assertEquals(3, sample.size());
+        assertTrue(members.containsAll(sample));
+        assertEquals(sample, sample(3, SALT, query, cohort));
+        assertEquals(Set.of(Integer.MIN_VALUE, -3, 0, Integer.MAX_VALUE), sample(10, SALT, query, cohort));
+    }
+
+    @Test
+    void extremeIdsInACohortWalkedForALargerGroupStayInsideBoth() {
+        Set<Integer> members = union(range(-50, 50), Set.of(Integer.MIN_VALUE, Integer.MAX_VALUE));
+        storeConsents(Map.of("phs000001.c1", members));
+        Set<Integer> cohort = new HashSet<>(Set.of(Integer.MIN_VALUE, -2_000_000_000, -40, -7, 3, 99, 2_000_000_000, Integer.MAX_VALUE));
+        Query query = consentsQuery("phs000001.c1");
+
+        Set<Integer> sample = sample(3, SALT, query, cohort);
+
+        assertEquals(3, sample.size());
+        assertTrue(members.containsAll(sample));
+        assertEquals(sample, sample(3, SALT, query, cohort));
+        assertEquals(Set.of(Integer.MIN_VALUE, -40, -7, 3, Integer.MAX_VALUE), sample(7, SALT, query, cohort));
+    }
+
+    @Test
+    void singleMemberGroupGivesThatMemberWhenTheCohortHoldsIt() {
+        storeConsents(
+            Map.of(
+                "phs000001.c1", Set.of(-7), "phs000002.c1", Set.of(Integer.MIN_VALUE), "phs000003.c1", Set.of(Integer.MAX_VALUE),
+                "phs000004.c1", Set.of(4000)
+            )
+        );
+        Set<Integer> cohort = union(range(-20, 20), Set.of(Integer.MIN_VALUE, Integer.MAX_VALUE));
+
+        assertEquals(Set.of(-7), sample(5, SALT, consentsQuery("phs000001.c1"), cohort));
+        assertEquals(Set.of(Integer.MIN_VALUE), sample(5, SALT, consentsQuery("phs000002.c1"), cohort));
+        assertEquals(Set.of(Integer.MAX_VALUE), sample(5, SALT, consentsQuery("phs000003.c1"), cohort));
+        assertEquals(Set.of(), sample(5, SALT, consentsQuery("phs000004.c1"), cohort));
+        assertEquals(
+            Set.of(Integer.MIN_VALUE, -7, Integer.MAX_VALUE),
+            sample(5, SALT, consentsQuery("phs000001.c1", "phs000002.c1", "phs000003.c1", "phs000004.c1"), cohort)
+        );
+    }
+
+    @Test
+    void negativeIdsAreSampledLikeAnyOther() {
+        storeConsents(Map.of("phs000001.c1", range(-900, -600), "phs000002.c1", range(-2000, -1)));
+        Set<Integer> cohort = range(-700, -200);
+        Query oneGroupWalkingItsMembers = consentsQuery("phs000001.c1");
+        Query oneGroupWalkingTheCohort = consentsQuery("phs000002.c1");
+
+        Set<Integer> fromMembers = sample(20, SALT, oneGroupWalkingItsMembers, cohort);
+        Set<Integer> fromCohort = sample(20, SALT, oneGroupWalkingTheCohort, cohort);
+
+        assertEquals(20, fromMembers.size());
+        assertTrue(range(-700, -600).containsAll(fromMembers));
+        assertEquals(fromMembers, sample(20, SALT, oneGroupWalkingItsMembers, cohort));
+        assertEquals(20, fromCohort.size());
+        assertEquals(fromCohort, sample(20, SALT, oneGroupWalkingTheCohort, cohort));
+    }
+
     private Set<Integer> sample(int minSize, String salt, Query query, Set<Integer> cohort) {
         Set<Integer> cohortBefore = Set.copyOf(cohort);
         Set<Integer> sample = sampler(minSize, salt).sample(query, cohort);
@@ -309,6 +468,20 @@ class CohortSamplerTest {
 
     private static Query query(List<AuthorizationFilter> authorizationFilters) {
         return new Query(List.of("\\demographics\\age\\"), authorizationFilters, null, List.of(), ResultType.DATAFRAME, null, null, true);
+    }
+
+    private static Set<Integer> union(Set<Integer> first, Set<Integer> second, Set<Integer> third) {
+        return union(union(first, second), third);
+    }
+
+    private static Set<Integer> union(Set<Integer> first, Set<Integer> second) {
+        Set<Integer> all = new HashSet<>(first);
+        all.addAll(second);
+        return all;
+    }
+
+    private static Set<Integer> everyThird(int count) {
+        return IntStream.rangeClosed(1, count).map(id -> id * 3).boxed().collect(Collectors.toCollection(HashSet::new));
     }
 
     private static Set<Integer> range(int first, int last) {

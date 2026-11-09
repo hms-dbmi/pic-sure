@@ -77,7 +77,17 @@ public class CohortSampler {
         if (consentFilters.isEmpty()) {
             return select(List.of(new GroupCursor(WHOLE_COHORT_GROUP, sortedCohort.get(), null)), minSize);
         }
-        List<GroupCursor> groups = consentGroups(consentFilters, cohort, sortedCohort);
+        Set<String> groupValues = groupValues(consentFilters);
+        Optional<PhenoCube<String>> consents = consentsCube();
+        if (consents.isEmpty()) {
+            log.warn(
+                "Sample is empty because the consents concept is missing from the store or does not hold text values, so none of the {} "
+                    + "consent groups of the query could be read for the cohort of {} participants",
+                groupValues.size(), cohort.size()
+            );
+            return new TreeSet<>();
+        }
+        List<GroupCursor> groups = consentGroups(consents.get(), groupValues, cohort, sortedCohort);
         TreeSet<Integer> sample = select(groups, minSize);
         if (sample.isEmpty()) {
             log.warn(
@@ -88,20 +98,25 @@ public class CohortSampler {
         return sample;
     }
 
-    private List<GroupCursor> consentGroups(List<AuthorizationFilter> consentFilters, Set<Integer> cohort, SortedCohort sortedCohort) {
+    private static Set<String> groupValues(List<AuthorizationFilter> consentFilters) {
         TreeSet<String> values = new TreeSet<>();
         consentFilters.stream().map(AuthorizationFilter::values).filter(Objects::nonNull)
             .forEach(filterValues -> filterValues.stream().filter(Objects::nonNull).forEach(values::add));
-        Optional<PhenoCube<?>> consents =
-            phenotypicObservationStore.getCube(AuthorizationFilter.CONSENTS_CONCEPT_PATH).filter(PhenoCube::isStringType);
-        if (consents.isEmpty()) {
-            return List.of();
-        }
-        @SuppressWarnings("unchecked")
-        PhenoCube<String> cube = (PhenoCube<String>) consents.get();
+        return values;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Optional<PhenoCube<String>> consentsCube() {
+        return phenotypicObservationStore.getCube(AuthorizationFilter.CONSENTS_CONCEPT_PATH).filter(PhenoCube::isStringType)
+            .map(cube -> (PhenoCube<String>) cube);
+    }
+
+    private List<GroupCursor> consentGroups(
+        PhenoCube<String> consents, Set<String> groupValues, Set<Integer> cohort, SortedCohort sortedCohort
+    ) {
         List<GroupCursor> groups = new ArrayList<>();
-        for (String value : values) {
-            Set<Integer> members = cube.getKeysForValue(value);
+        for (String value : groupValues) {
+            Set<Integer> members = consents.getKeysForValue(value);
             if (members.size() <= cohort.size()) {
                 groups.add(new GroupCursor(value, navigable(members), cohort));
             } else {
