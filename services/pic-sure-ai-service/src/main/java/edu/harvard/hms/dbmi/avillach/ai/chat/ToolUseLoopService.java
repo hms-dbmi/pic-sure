@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.ai.chat;
 
+import edu.harvard.hms.dbmi.avillach.commons.request.LogSanitizer;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -153,7 +154,9 @@ class ToolUseLoopService implements ChatOrchestrator {
         }
     }
 
-    private enum Stop { NONE, ITERATION_CAP, REPEATED_FAILURE }
+    private enum Stop {
+        NONE, ITERATION_CAP, REPEATED_FAILURE
+    }
 
     private ChatResponse handleTurn(ChatRequest request, CallerContext caller, TurnStats stats, ProposeQueryInput currentQuery) {
         List<ToolDefinition> tools =
@@ -187,7 +190,10 @@ class ToolUseLoopService implements ChatOrchestrator {
                 // Asked once; a reply that is still wrong goes out as written rather than hiding what the model invented.
                 state.pathRepairAsked = true;
                 stats.corrections.add("pathRepair");
-                log.debug("Reply names {} path(s) no tool returned; asking the model to correct them: {}", unknownPaths.size(), unknownPaths);
+                log.debug(
+                    "Reply names {} path(s) no tool returned; asking the model to correct them: {}", unknownPaths.size(),
+                    LogSanitizer.clean(unknownPaths)
+                );
                 history.add(new AssistantToolCallEntry(turn.text(), List.of()));
                 history.add(new UserEntry(pathRepairMessage(unknownPaths, state.conceptPaths)));
             } else {
@@ -254,7 +260,9 @@ class ToolUseLoopService implements ChatOrchestrator {
         if (arguments != null) {
             stats.corrections.add("proposalFromReplyText");
             log.debug("Reply is a proposal written as text; checking it as a propose_query call");
-            dispatchToolCalls(List.of(new RequestedToolCall("reply-text", ProposeQueryTool.NAME, arguments)), history, caller, state, stats);
+            dispatchToolCalls(
+                List.of(new RequestedToolCall("reply-text", ProposeQueryTool.NAME, arguments)), history, caller, state, stats
+            );
         }
     }
 
@@ -264,7 +272,9 @@ class ToolUseLoopService implements ChatOrchestrator {
             stats.corrections.add("countedQueryProposal");
             log.debug("Reply says the query changed but nothing was proposed; checking the counted query as a propose_query call");
             String arguments = JSON.createObjectNode().set("query", state.lastCountedQuery).toString();
-            dispatchToolCalls(List.of(new RequestedToolCall("counted-query", ProposeQueryTool.NAME, arguments)), history, caller, state, stats);
+            dispatchToolCalls(
+                List.of(new RequestedToolCall("counted-query", ProposeQueryTool.NAME, arguments)), history, caller, state, stats
+            );
         }
     }
 
@@ -277,18 +287,20 @@ class ToolUseLoopService implements ChatOrchestrator {
     }
 
     static String pathRepairMessage(List<String> unknownPaths, ConceptPaths paths) {
-        StringBuilder message = new StringBuilder(
-            "Your reply names concept paths that no tool result returned, so the researcher cannot find them:\n"
-        );
+        StringBuilder message =
+            new StringBuilder("Your reply names concept paths that no tool result returned, so the researcher cannot find them:\n");
         for (String path : unknownPaths) {
             String owner = paths.ownerOfValueIn(path);
             message.append("- `").append(path).append("`: ");
             if (owner != null) {
-                message.append("\"").append(ConceptPaths.segments(path).getLast()).append("\" is not a variable. It is one of the values of `")
-                    .append(owner).append("`. Name that path and mention the value.\n");
+                message.append("\"").append(ConceptPaths.segments(path).getLast())
+                    .append("\" is not a variable. It is one of the values of `").append(owner)
+                    .append("`. Name that path and mention the value.\n");
             } else if (paths.isAncestorOfSeen(path)) {
-                message.append("this is a parent of paths the results returned, but no tool returned it. Name the returned paths under it "
-                    + "instead, each in full.\n");
+                message.append(
+                    "this is a parent of paths the results returned, but no tool returned it. Name the returned paths under it "
+                        + "instead, each in full.\n"
+                );
             } else {
                 message.append("no tool returned this path. Use a path exactly as a tool returned it, or leave it out.\n");
             }
@@ -304,7 +316,8 @@ class ToolUseLoopService implements ChatOrchestrator {
         ProposeQueryInput currentQuery = state.currentQuery;
         JsonNode query = null;
         if (state.query != null) {
-            // Same treatment on both sides, so a select the UI would add anyway, or a not:false the model left out, doesn't count as a change.
+            // Same treatment on both sides, so a select the UI would add anyway, or a not:false the model left out, doesn't count as a
+            // change.
             ProposeQueryInput emitted = state.query.mapPaths(state.conceptPaths::canonical).withFilterPathsSelected();
             boolean unchanged = currentQuery != null && ChatStateValidator.toJson(emitted.withoutFalseNots())
                 .equals(ChatStateValidator.toJson(currentQuery.withFilterPathsSelected().withoutFalseNots()));
@@ -355,7 +368,7 @@ class ToolUseLoopService implements ChatOrchestrator {
             result.hasToolCalls() ? result.toolCalls().stream().map(RequestedToolCall::name).toList() : List.of(),
             result.text() == null ? 0 : result.text().length(), result.inputTokens(), result.outputTokens()
         );
-        log.debug("Model call #{} text: {}", stats.modelCalls, result.text());
+        log.debug("Model call #{} text: {}", stats.modelCalls, LogSanitizer.clean(result.text()));
         return result;
     }
 
@@ -363,7 +376,10 @@ class ToolUseLoopService implements ChatOrchestrator {
         List<RequestedToolCall> toolCalls, List<ConversationEntry> history, CallerContext caller, TurnState state, TurnStats stats
     ) {
         for (RequestedToolCall call : toolCalls) {
-            log.debug("Tool call requested: name={} id={} {}", call.name(), call.id(), call.argumentsJson());
+            log.debug(
+                "Tool call requested: name={} id={} {}", LogSanitizer.clean(call.name()), LogSanitizer.clean(call.id()),
+                LogSanitizer.clean(call.argumentsJson())
+            );
             long start = System.nanoTime();
             JsonNode arguments = readJson(call.argumentsJson());
             ToolResult result = state.toolsStopped ? ToolResult.failure(CAP_REACHED_RESULT)
@@ -386,7 +402,10 @@ class ToolUseLoopService implements ChatOrchestrator {
                 "Tool call: name={} id={} durationMs={} error={} chars={}", call.name(), call.id(), (System.nanoTime() - start) / 1_000_000,
                 result.error(), result.content() == null ? 0 : result.content().length()
             );
-            log.debug("Tool result content: name={} id={} {}", call.name(), call.id(), result.content());
+            log.debug(
+                "Tool result content: name={} id={} {}", LogSanitizer.clean(call.name()), LogSanitizer.clean(call.id()),
+                LogSanitizer.clean(result.content())
+            );
             history.add(new ToolResultEntry(call.id(), call.name(), result.content(), result.error()));
         }
     }
@@ -450,10 +469,13 @@ class ToolUseLoopService implements ChatOrchestrator {
         if (result.error() || result.content() == null) {
             return result;
         }
-        if (readJson(result.content()) instanceof ObjectNode object && object.path("categories").isArray()
-            && object.path("categories").isEmpty()) {
+        if (
+            readJson(result.content()) instanceof ObjectNode object && object.path("categories").isArray()
+                && object.path("categories").isEmpty()
+        ) {
             object.put(
-                "note", "There are no categories, studies or data types to browse by. Do not invent any or show a list of them. "
+                "note",
+                "There are no categories, studies or data types to browse by. Do not invent any or show a list of them. "
                     + "Tell the researcher there are none, and call propose_query with a search for what they asked about instead."
             );
             return ToolResult.success(object.toString());
