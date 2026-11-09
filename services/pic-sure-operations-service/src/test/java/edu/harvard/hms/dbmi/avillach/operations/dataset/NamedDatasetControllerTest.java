@@ -26,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.operations.query.Query;
+import edu.harvard.hms.dbmi.avillach.operations.query.QueryFixtures;
 import edu.harvard.hms.dbmi.avillach.operations.query.QueryRepository;
 
 /**
@@ -66,8 +67,8 @@ class NamedDatasetControllerTest {
 
     @Test
     void listReturnsOnlyCallersDatasets() throws Exception {
-        Query aliceQuery = queryRepo.save(new Query().setQuery(QUERY_BODY));
-        Query bobQuery = queryRepo.save(new Query().setQuery(QUERY_BODY));
+        Query aliceQuery = queryRepo.save(QueryFixtures.withRandomId().setQuery(QUERY_BODY));
+        Query bobQuery = queryRepo.save(QueryFixtures.withRandomId().setQuery(QUERY_BODY));
         namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("alice-1").setQuery(aliceQuery));
         namedDatasetRepo.save(new NamedDataset().setUser(BOB).setName("bob-1").setQuery(bobQuery));
 
@@ -79,7 +80,7 @@ class NamedDatasetControllerTest {
 
     @Test
     void createPersistsUnderCallersEmailAndReturns201() throws Exception {
-        Query query = queryRepo.save(new Query().setQuery(QUERY_BODY));
+        Query query = queryRepo.save(QueryFixtures.withRandomId().setQuery(QUERY_BODY));
 
         mockMvc
             .perform(
@@ -101,7 +102,7 @@ class NamedDatasetControllerTest {
 
     @Test
     void createSecondDatasetOverSameQueryAndUserReturns409() throws Exception {
-        Query query = queryRepo.save(new Query().setQuery(QUERY_BODY));
+        Query query = queryRepo.save(QueryFixtures.withRandomId().setQuery(QUERY_BODY));
 
         mockMvc.perform(
             post("/dataset/named").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
@@ -118,7 +119,7 @@ class NamedDatasetControllerTest {
 
     @Test
     void createWithMissingNameReturns400() throws Exception {
-        Query query = queryRepo.save(new Query());
+        Query query = queryRepo.save(QueryFixtures.withRandomId());
 
         mockMvc.perform(
             post("/dataset/named").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
@@ -129,7 +130,7 @@ class NamedDatasetControllerTest {
 
     @Test
     void getOwnDatasetSucceeds() throws Exception {
-        Query query = queryRepo.save(new Query().setQuery(QUERY_BODY));
+        Query query = queryRepo.save(QueryFixtures.withRandomId().setQuery(QUERY_BODY));
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("mine").setQuery(query));
 
         mockMvc.perform(
@@ -140,7 +141,7 @@ class NamedDatasetControllerTest {
 
     @Test
     void getAnotherUsersDatasetReturns404() throws Exception {
-        Query query = queryRepo.save(new Query());
+        Query query = queryRepo.save(QueryFixtures.withRandomId());
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(BOB).setName("bobs").setQuery(query));
 
         mockMvc.perform(
@@ -151,7 +152,7 @@ class NamedDatasetControllerTest {
 
     @Test
     void updateOwnDatasetSucceeds() throws Exception {
-        Query query = queryRepo.save(new Query().setQuery(QUERY_BODY));
+        Query query = queryRepo.save(QueryFixtures.withRandomId().setQuery(QUERY_BODY));
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("old").setQuery(query));
 
         mockMvc.perform(
@@ -163,7 +164,7 @@ class NamedDatasetControllerTest {
 
     @Test
     void updateAnotherUsersDatasetReturns404() throws Exception {
-        Query query = queryRepo.save(new Query().setQuery(QUERY_BODY));
+        Query query = queryRepo.save(QueryFixtures.withRandomId().setQuery(QUERY_BODY));
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(BOB).setName("bobs").setQuery(query));
 
         mockMvc.perform(
@@ -175,7 +176,7 @@ class NamedDatasetControllerTest {
 
     @Test
     void deleteOwnDatasetReturns204() throws Exception {
-        Query query = queryRepo.save(new Query().setQuery(QUERY_BODY));
+        Query query = queryRepo.save(QueryFixtures.withRandomId().setQuery(QUERY_BODY));
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("mine").setQuery(query));
 
         mockMvc.perform(
@@ -186,7 +187,7 @@ class NamedDatasetControllerTest {
 
     @Test
     void deleteAnotherUsersDatasetReturns404() throws Exception {
-        Query query = queryRepo.save(new Query().setQuery(QUERY_BODY));
+        Query query = queryRepo.save(QueryFixtures.withRandomId().setQuery(QUERY_BODY));
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(BOB).setName("bobs").setQuery(query));
 
         mockMvc.perform(
@@ -203,7 +204,7 @@ class NamedDatasetControllerTest {
      */
     @Test
     void listReturnsTheNestedQueryShapeTheFrontendMaps() throws Exception {
-        Query query = new Query();
+        Query query = QueryFixtures.withRandomId();
         query.setQuery(QUERY_BODY);
         query.setStartTime(java.time.Instant.ofEpochMilli(1690000000000L));
         query.setStatus(PicSureStatus.AVAILABLE);
@@ -225,7 +226,7 @@ class NamedDatasetControllerTest {
     void queryBlobRoundTripsThroughTheLinkedNamedDataset() throws Exception {
         String emptyV3QueryString =
             "{\"select\":[],\"authorizationFilters\":[],\"phenotypicClause\":null,\"genomicFilters\":[],\"expectedResultType\":\"COUNT\",\"picsureId\":null,\"id\":null}";
-        Query query = new Query();
+        Query query = QueryFixtures.withRandomId();
         query.setQuery(emptyV3QueryString).setVersion("3");
         query = queryRepo.save(query);
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("with-query").setQuery(query));
@@ -246,7 +247,7 @@ class NamedDatasetControllerTest {
         String emptyV1QueryString = "{\"categoryFilters\":{}}";
         String emptyV3QueryString =
             "{\"select\":[],\"authorizationFilters\":[],\"phenotypicClause\":null,\"genomicFilters\":[],\"expectedResultType\":\"COUNT\",\"picsureId\":null,\"id\":null}";
-        Query query = new Query();
+        Query query = QueryFixtures.withRandomId();
         query.setVersion("2");
         query.setQuery(emptyV1QueryString);
         query = queryRepo.save(query);
@@ -266,7 +267,7 @@ class NamedDatasetControllerTest {
             {"query":{"categoryFilters":{"sex":["Female"]},"fields":["age"],"expectedResultType":"DATAFRAME"},
             "commonAreaUUID":"common-id"}
             """;
-        Query query = queryRepo.save(new Query().setQuery(stored).setVersion("2"));
+        Query query = queryRepo.save(QueryFixtures.withRandomId().setQuery(stored).setVersion("2"));
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("historical").setQuery(query));
         ObjectMapper json = new ObjectMapper();
         for (String path : List.of("/dataset/named", "/dataset/named/" + saved.getUuid())) {
@@ -291,7 +292,7 @@ class NamedDatasetControllerTest {
     /** POST with {@code X-User-Id} but no {@code X-User-Email} passes the security chain and is rejected by the service email guard. */
     @Test
     void createWithUserIdButNoEmailIsUnauthorized() throws Exception {
-        Query query = queryRepo.save(new Query().setQuery(QUERY_BODY));
+        Query query = queryRepo.save(QueryFixtures.withRandomId().setQuery(QUERY_BODY));
 
         mockMvc.perform(
             post("/dataset/named").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice").contentType(MediaType.APPLICATION_JSON)
@@ -325,7 +326,7 @@ class NamedDatasetControllerTest {
     /** PUT that re-points the caller's own dataset at a queryId with no stored query returns 404 from the query lookup. */
     @Test
     void updateRepointedToUnknownQueryReturns404() throws Exception {
-        Query query = queryRepo.save(new Query().setQuery(QUERY_BODY));
+        Query query = queryRepo.save(QueryFixtures.withRandomId().setQuery(QUERY_BODY));
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("mine").setQuery(query));
 
         mockMvc.perform(
@@ -341,8 +342,8 @@ class NamedDatasetControllerTest {
      */
     @Test
     void updateRepointedOntoAlreadyNamedQueryReturns409() throws Exception {
-        Query first = queryRepo.save(new Query().setQuery(QUERY_BODY));
-        Query second = queryRepo.save(new Query().setQuery(QUERY_BODY));
+        Query first = queryRepo.save(QueryFixtures.withRandomId().setQuery(QUERY_BODY));
+        Query second = queryRepo.save(QueryFixtures.withRandomId().setQuery(QUERY_BODY));
         namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("first").setQuery(first));
         NamedDataset onSecond = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("second").setQuery(second));
 

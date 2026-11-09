@@ -96,7 +96,7 @@ class InternalQueryControllerTest {
 
     @Test
     void patchUpdatesStatusAndResultId() throws Exception {
-        Query saved = queryRepo.save(new Query());
+        Query saved = queryRepo.save(QueryFixtures.withRandomId());
 
         mockMvc.perform(
             patch("/internal/queries/{picsureId}", saved.getUuid()).header(InternalTokenFilter.HEADER, validToken)
@@ -118,7 +118,7 @@ class InternalQueryControllerTest {
     @Test
     void getStripsResourceCredentialsLikeDispatchDoes() throws Exception {
         // the full GET must not be a credential side door around dispatch's stripping
-        Query saved = new Query();
+        Query saved = QueryFixtures.withRandomId();
         saved.setQuery("{\"resourceUUID\":\"r\",\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"query\":\"q\"}");
         saved = queryRepo.save(saved);
 
@@ -131,7 +131,7 @@ class InternalQueryControllerTest {
 
     @Test
     void dispatchReturnsQueryJsonWithResourceCredentialsStripped() throws Exception {
-        Query saved = new Query();
+        Query saved = QueryFixtures.withRandomId();
         saved.setQuery("{\"resourceUUID\":\"r\",\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"query\":\"q\"}");
         saved = queryRepo.save(saved);
 
@@ -150,7 +150,7 @@ class InternalQueryControllerTest {
 
     @Test
     void dispatchWithoutTokenIsForbidden() throws Exception {
-        Query saved = queryRepo.save(new Query());
+        Query saved = queryRepo.save(QueryFixtures.withRandomId());
         mockMvc.perform(get("/internal/queries/{picsureId}/dispatch", saved.getUuid())).andExpect(status().isForbidden());
     }
 

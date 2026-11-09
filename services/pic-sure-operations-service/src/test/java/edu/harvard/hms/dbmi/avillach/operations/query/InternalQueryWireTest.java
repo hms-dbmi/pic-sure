@@ -63,7 +63,7 @@ class InternalQueryWireTest {
 
     @Test
     void dispatchAnswersWithTheStoredQueryAsOneJsonString() throws Exception {
-        Query saved = new Query();
+        Query saved = QueryFixtures.withRandomId();
         saved.setQuery("{\"resourceUUID\":\"r\",\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"query\":\"q\"}");
         saved = queryRepo.save(saved);
 
@@ -74,7 +74,7 @@ class InternalQueryWireTest {
 
     @Test
     void dispatchOfARowWithNoQueryAnswersWithAnExplicitNull() throws Exception {
-        Query saved = queryRepo.save(new Query());
+        Query saved = queryRepo.save(QueryFixtures.withRandomId());
 
         mockMvc.perform(get("/internal/queries/{picsureId}/dispatch", saved.getUuid()).header(InternalTokenFilter.HEADER, validToken))
             .andExpect(status().isOk()).andExpect(content().contentType(MediaType.APPLICATION_JSON))

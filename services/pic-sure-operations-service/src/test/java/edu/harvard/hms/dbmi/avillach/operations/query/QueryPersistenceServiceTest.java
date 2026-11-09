@@ -152,7 +152,7 @@ class QueryPersistenceServiceTest {
     void timingFieldsKeepTheirTimeOfDayThroughGet() {
         Instant start = Instant.parse("2024-01-02T15:30:45.123Z");
         Instant ready = Instant.parse("2024-01-02T15:31:02.456Z");
-        Query query = new Query();
+        Query query = QueryFixtures.withRandomId();
         query.setQuery("{}");
         query.setStartTime(start);
         query.setReadyTime(ready);
@@ -181,7 +181,7 @@ class QueryPersistenceServiceTest {
 
     @Test
     void getStripsResourceCredentialsFromRowsStoredBeforeWritersStripped() {
-        Query legacy = new Query();
+        Query legacy = QueryFixtures.withRandomId();
         legacy.setQuery("{\"resourceUUID\":\"r\",\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"query\":\"q\"}");
         UUID picsureId = repo.save(legacy).getUuid();
         entityManager.flush();

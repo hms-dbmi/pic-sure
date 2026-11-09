@@ -42,13 +42,39 @@ public class QueryPersistenceService {
         this.repo = repo;
     }
 
+    /**
+     * Stores a new query row under a random id.
+     *
+     * @param req the query body, status, version and metadata to store
+     * @return the id of the new row
+     */
     @Transactional
     public UUID save(SaveQueryRequest req) {
-        Query entity = new Query();
-        entity.setQuery(stripResourceCredentials(req.query()));
-        entity.setResourceResultId(req.resourceResultId());
+        return save(null, req);
+    }
+
+    /**
+     * Stores a query row under the id the caller chose. The first save of an id inserts the row with the request's body, version, result
+     * id, status and metadata. A later save of the same id updates that row in place: it takes the new status and metadata, restarts
+     * {@code startTime}, clears {@code readyTime}, and leaves the stored body, version and result id as they were.
+     *
+     * @param picsureId the row id to store under, or null to have a random one assigned
+     * @param req the query body, status, version and metadata to store
+     * @return the id the row is stored under
+     */
+    @Transactional
+    public UUID save(UUID picsureId, SaveQueryRequest req) {
+        Query entity = picsureId == null ? null : repo.findById(picsureId).orElse(null);
+        if (entity == null) {
+            entity = new Query();
+            entity.setUuid(picsureId == null ? UUID.randomUUID() : picsureId);
+            entity.setQuery(stripResourceCredentials(req.query()));
+            entity.setResourceResultId(req.resourceResultId());
+            entity.setVersion(req.version());
+        } else {
+            entity.setReadyTime(null);
+        }
         entity.setStatus(parseStatus(req.status()));
-        entity.setVersion(req.version());
         entity.setMetadata(decodeMetadata(req.metadata()));
         entity.setStartTime(Instant.now()); // server-owned creation time
         return repo.save(entity).getUuid();

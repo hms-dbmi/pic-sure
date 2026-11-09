@@ -16,24 +16,33 @@ import java.util.zip.GZIPOutputStream;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
+import jakarta.persistence.Transient;
+
+import org.springframework.data.domain.Persistable;
 
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 
 /**
  * Persistence model for the {@code query} table. The nullable {@code resourceId} column is intentionally unmapped because platform services
  * do not read or write the resource registry association.
+ *
+ * <p>The id is assigned by the caller, never generated: {@link QueryPersistenceService} sets it before the first save. Because an assigned
+ * id is already present on an unsaved instance, the entity implements {@link Persistable} and tracks its own new state, so Spring Data
+ * inserts a fresh instance and updates a loaded one. Saving an instance with a null id fails.
  */
 @Entity(name = "query")
-public class Query {
+public class Query implements Persistable<UUID> {
 
-    // Hibernate generates a random UUID for a UUID-typed id with a bare @GeneratedValue.
     @Id
-    @GeneratedValue
     @Column(columnDefinition = "BINARY(16)")
     private UUID uuid;
+
+    @Transient
+    private boolean unsaved = true;
 
     private Instant startTime;
 
@@ -60,6 +69,27 @@ public class Query {
 
     public void setUuid(UUID uuid) {
         this.uuid = uuid;
+    }
+
+    /** Returns the row id, the same value as {@link #getUuid()}. */
+    @Override
+    public UUID getId() {
+        return uuid;
+    }
+
+    /**
+     * Returns true until this instance has been loaded from or inserted into the database, which tells Spring Data to insert it instead of
+     * merging it.
+     */
+    @Override
+    public boolean isNew() {
+        return unsaved;
+    }
+
+    @PostLoad
+    @PostPersist
+    void markSaved() {
+        this.unsaved = false;
     }
 
     public String getResourceResultId() {
