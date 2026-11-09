@@ -100,8 +100,10 @@ final class TermBalancedSearch {
         if (arguments == null || arguments.path("page").asInt(0) > 0) {
             return null;
         }
-        Set<String> terms = new LinkedHashSet<>(terms(searchText(arguments)));
-        if (terms.size() < 2 || terms.size() > MAX_TERMS) {
+        List<String> given = terms(searchText(arguments));
+        Set<String> terms = new LinkedHashSet<>(given);
+        // Judged before duplicates are dropped, so a list pic-sure-mcp would refuse is not quietly shortened into one it accepts.
+        if (terms.size() < 2 || given.size() > MAX_TERMS) {
             return null;
         }
         int pageSize = Math.min(MAX_PAGE_SIZE, arguments.path("pageSize").asInt(DEFAULT_PAGE_SIZE));
@@ -188,7 +190,7 @@ final class TermBalancedSearch {
             }
         }
 
-        log.info("Term search: terms={} total={} dictionaryCalls={} merged={}", terms.size(), total, pages, merged.size());
+        log.info("Term search: terms={} total={} dictionaryCalls={} merged={}", terms.size(), total, fetched.size(), merged.size());
         ObjectNode out = JSON.createObjectNode();
         out.put("page", 0);
         out.put("total", total);

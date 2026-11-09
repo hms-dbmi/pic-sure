@@ -114,6 +114,10 @@ class ReplyTextTest {
             ReplyText.withoutScreenRecap("Alcohol variables are listed.\n\n---  \n**Current state**  \nquery: none  \nfacets: none  \nsearch: **alcohol** (updated)")
         );
         assertEquals(
+            "Current view of available data: BMI is available in study A.",
+            ReplyText.withoutScreenRecap("Current view of available data: BMI is available in study A.")
+        );
+        assertEquals(
             "Current state of the cohort: 1,200 participants.\nMore text.",
             ReplyText.withoutScreenRecap("Current state of the cohort: 1,200 participants.\nMore text.")
         );

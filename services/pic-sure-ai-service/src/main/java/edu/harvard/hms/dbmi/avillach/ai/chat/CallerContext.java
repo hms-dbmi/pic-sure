@@ -81,7 +81,13 @@ public record CallerContext(String authorization, String requestId, String userI
             return "user:" + userId;
         }
         String session = GatewayUserResolver.ACCESS_TYPE_OPEN.equals(accessType) ? openSessionId(authorization) : null;
-        return session != null ? "session:" + session : "token:" + sha256(authorization);
+        return session != null ? "session:" + session : "token:" + sha256(withCanonicalScheme(authorization));
+    }
+
+    /** The scheme name is case-insensitive, so {@code bearer x} and {@code Bearer x} are one caller; the token itself is untouched. */
+    private static String withCanonicalScheme(String authorization) {
+        return authorization != null && authorization.regionMatches(true, 0, "Bearer ", 0, 7) ? "Bearer " + authorization.substring(7)
+            : authorization;
     }
 
     /** @return the {@code sub} of a {@code picsure_s_} token, or null when it is not one or its payload is not a session id */
