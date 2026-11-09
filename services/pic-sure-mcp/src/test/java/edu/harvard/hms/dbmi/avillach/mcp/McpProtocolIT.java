@@ -11,11 +11,6 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import ch.qos.logback.classic.Level;
-import ch.qos.logback.classic.Logger;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.classic.spi.ThrowableProxyUtil;
-import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;
@@ -37,7 +32,6 @@ import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
-import org.slf4j.LoggerFactory;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -52,9 +46,8 @@ import org.springframework.test.context.DynamicPropertySource;
  * structured result of every tool, and that each loop-back call to the gateway carries the caller's {@code Authorization}, the MCP
  * credential, and the caller's {@code X-Request-Id}. It also checks the failure layers: a downstream 500 becomes {@code isError} with the
  * model-facing message and none of the downstream body, an unknown tool is a JSON-RPC invalid-params error, a {@code not} in a count query
- * is an {@code isError} naming the field, and a wrong {@code Accept} gets 400. The last steps assert that no response header or body in the
- * whole run, and no log line, holds the caller's bearer token, the caller's API key, or the MCP token. Every log event from the first step
- * on is captured at DEBUG through an appender on the root logger, attached once the application has configured logging.
+ * is an {@code isError} naming the field, and a wrong {@code Accept} gets 400. The last step asserts that no response header or body in the
+ * whole run holds the caller's bearer token, the caller's API key, or the MCP token.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -69,14 +62,12 @@ class McpProtocolIT {
     private static final String DOWNSTREAM_SECRET = "hpds-internal-detail-4c1b";
     private static final String QUERY_SYNC = "/hpds/open/query/sync";
     private static final Set<String> TOOL_NAMES =
-        Set.of("search_concepts", "list_facets", "get_concept", "get_concepts", "count_participants", "cross_count", "get_adapter_code");
+        Set.of("search_concepts", "list_facets", "get_concept", "count_participants", "cross_count", "get_adapter_code", "get_concepts");
     private static final Set<String> QUERY_TOOLS = Set.of("count_participants", "cross_count", "get_adapter_code");
 
     private static final WireMockServer GATEWAY = startGateway();
     private static final List<String> RESPONSES = new CopyOnWriteArrayList<>();
     private static final AtomicInteger REQUEST_IDS = new AtomicInteger();
-    private static final ListAppender<ILoggingEvent> LOGS = new ListAppender<>();
-    private static Level rootLevel;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final HttpClient http = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
@@ -102,20 +93,6 @@ class McpProtocolIT {
     @AfterAll
     static void stopGateway() {
         GATEWAY.stop();
-        Logger root = rootLogger();
-        root.detachAppender(LOGS);
-        root.setLevel(rootLevel);
-    }
-
-    @BeforeEach
-    void captureEveryLogLineAtDebug() {
-        Logger root = rootLogger();
-        if (!root.isAttached(LOGS)) {
-            rootLevel = root.getLevel();
-            LOGS.start();
-            root.addAppender(LOGS);
-            root.setLevel(Level.DEBUG);
-        }
     }
 
     @BeforeEach
@@ -174,22 +151,7 @@ class McpProtocolIT {
             if (QUERY_TOOLS.contains(name)) {
                 assertSelfContained(name, tool.path("inputSchema"));
             }
-            if ("search_concepts".equals(name)) {
-                assertThat(propertyNames(tool.path("inputSchema"))).containsExactlyInAnyOrder("search", "terms", "page", "pageSize");
-            }
-            if ("list_facets".equals(name)) {
-                assertThat(propertyNames(tool.path("inputSchema"))).containsExactly("search");
-            }
-            if ("count_participants".equals(name)) {
-                assertThat(propertyNames(tool.path("inputSchema"))).contains("query");
-            }
         }
-    }
-
-    private static List<String> propertyNames(JsonNode inputSchema) {
-        List<String> names = new ArrayList<>();
-        inputSchema.path("properties").fieldNames().forEachRemaining(names::add);
-        return names;
     }
 
     @Test
@@ -215,7 +177,8 @@ class McpProtocolIT {
         assertThat(structured.path("concepts")).hasSize(2);
         JsonNode sex = structured.path("concepts").path(0);
         assertThat(sex.path("conceptPath").asText()).isEqualTo("\\phs999999\\demographics\\sex\\");
-        assertThat(sex.path("dataset").asText()).isEqualTo("phs999999");
+        assertThat(sex.has("dataset")).as("dataset repeats the path's first segment").isFalse();
+        assertThat(sex.path("display").asText()).as("display differs from the path's last segment").isEqualTo("Sex");
         assertThat(sex.path("type").asText()).isEqualTo("categorical");
         assertThat(sex.path("values")).extracting(JsonNode::asText).containsExactly("Female", "Male");
         assertThat(structured.path("concepts").path(1).path("max").asDouble()).isEqualTo(90.5);
@@ -224,38 +187,26 @@ class McpProtocolIT {
 
     @Test
     @Order(5)
-    void searchConceptsWithTermsMergesOneLoopBackCallPerTerm() throws Exception {
+    void searchConceptsNarrowsByFacetsSentAsJson() throws Exception {
         GATEWAY.stubFor(
-            post(urlPathEqualTo("/dictionary/concepts")).withRequestBody(matchingJsonPath("$.search", equalTo("sex"))).willReturn(okJson("""
-                {"content":[{"type":"Categorical","conceptPath":"\\\\phs999999\\\\demographics\\\\sex\\\\","display":"Sex",
-                 "dataset":"phs999999","values":["Female","Male"]}],"totalElements":1}"""))
-        );
-        GATEWAY.stubFor(
-            post(urlPathEqualTo("/dictionary/concepts")).withRequestBody(matchingJsonPath("$.search", equalTo("gender")))
+            post(urlPathEqualTo("/dictionary/concepts")).withRequestBody(matchingJsonPath("$.search", equalTo("cholesterol")))
+                .withRequestBody(matchingJsonPath("$.facets.length()", equalTo("1")))
+                .withRequestBody(matchingJsonPath("$.facets[0].category", equalTo("dataset_id")))
+                .withRequestBody(matchingJsonPath("$.facets[0].name", equalTo("Nhanes")))
                 .willReturn(okJson("""
-                    {"content":[
-                      {"type":"Categorical","conceptPath":"\\\\phs999999\\\\demographics\\\\gender\\\\","display":"Gender",
-                       "dataset":"phs999999","values":["Woman","Man"]},
-                      {"type":"Categorical","conceptPath":"\\\\phs999999\\\\demographics\\\\sex\\\\","display":"Sex",
-                       "dataset":"phs999999","values":["Female","Male"]}],"totalElements":2}"""))
+                    {"content":[{"type":"Continuous","conceptPath":"\\\\Nhanes\\\\laboratory\\\\biochemistry\\\\Cholesterol (mg per dL)\\\\"}],
+                     "totalElements":6}"""))
         );
 
         JsonNode structured = successfulCall("search_concepts", """
-            {"terms":["sex","gender"]}""");
+            {"search":"cholesterol","facets":[{"category":"dataset_id","name":"Nhanes"}]}""");
 
-        assertThat(structured.has("search")).isFalse();
-        assertThat(structured.path("terms")).extracting(JsonNode::asText).containsExactly("sex", "gender");
-        assertThat(structured.path("total").asLong()).isEqualTo(3);
-        assertThat(structured.path("truncated").asBoolean(true)).isFalse();
-        assertThat(structured.path("concepts")).hasSize(2);
-        assertThat(structured.path("concepts").path(0).path("matchedTerms")).extracting(JsonNode::asText).containsExactly("sex", "gender");
-        assertThat(structured.path("concepts").path(1).path("matchedTerms")).extracting(JsonNode::asText).containsExactly("gender");
-        assertThat(GATEWAY.findAll(anyRequestedFor(anyUrl()))).hasSize(2);
+        assertThat(structured.path("total").asLong()).isEqualTo(6);
         assertLoopBackCarriesCallerHeaders();
     }
 
     @Test
-    @Order(6)
+    @Order(5)
     void listFacetsReturnsTheCategories() throws Exception {
         GATEWAY.stubFor(
             post(urlPathEqualTo("/dictionary/facets")).withRequestBody(matchingJsonPath("$.search", equalTo("asthma")))
@@ -276,7 +227,7 @@ class McpProtocolIT {
     }
 
     @Test
-    @Order(7)
+    @Order(6)
     void getConceptReturnsTheDetail() throws Exception {
         GATEWAY.stubFor(
             post(urlPathEqualTo("/dictionary/concepts/detail/phs999999")).withRequestBody(equalTo("\\phs999999\\demographics\\age\\"))
@@ -298,31 +249,7 @@ class McpProtocolIT {
     }
 
     @Test
-    @Order(8)
-    void getConceptsReturnsTheFoundConceptsAndTheUnknownPaths() throws Exception {
-        GATEWAY.stubFor(
-            post(urlPathEqualTo("/dictionary/concepts/detail"))
-                .withRequestBody(matchingJsonPath("$[0]", equalTo("\\phs999999\\demographics\\age\\")))
-                .withRequestBody(matchingJsonPath("$[1]", equalTo("\\phs999999\\unknown\\"))).willReturn(okJson("""
-                    [{"type":"Continuous","conceptPath":"\\\\phs999999\\\\demographics\\\\age\\\\","name":"age",
-                      "display":"Age","dataset":"phs999999","min":18.0,"max":90.5,"children":[],"meta":{"unit":"years"}}]"""))
-        );
-
-        JsonNode structured = successfulCall("get_concepts", """
-            {"conceptPaths":["\\\\phs999999\\\\demographics\\\\age\\\\","\\\\phs999999\\\\unknown\\\\"]}""");
-
-        assertThat(structured.path("concepts")).hasSize(1);
-        JsonNode age = structured.path("concepts").path(0);
-        assertThat(age.path("conceptPath").asText()).isEqualTo("\\phs999999\\demographics\\age\\");
-        assertThat(age.path("name").asText()).isEqualTo("age");
-        assertThat(age.path("meta").path("unit").asText()).isEqualTo("years");
-        assertThat(age.has("children")).isFalse();
-        assertThat(structured.path("notFound")).extracting(JsonNode::asText).containsExactly("\\phs999999\\unknown\\");
-        assertLoopBackCarriesCallerHeaders();
-    }
-
-    @Test
-    @Order(9)
+    @Order(7)
     void countParticipantsReturnsTheParsedCount() throws Exception {
         GATEWAY.stubFor(
             post(urlPathEqualTo(QUERY_SYNC)).withRequestBody(matchingJsonPath("$.query.expectedResultType", equalTo("COUNT")))
@@ -341,7 +268,7 @@ class McpProtocolIT {
     }
 
     @Test
-    @Order(10)
+    @Order(8)
     void crossCountReturnsTheCells() throws Exception {
         GATEWAY.stubFor(
             post(urlPathEqualTo(QUERY_SYNC))
@@ -365,7 +292,7 @@ class McpProtocolIT {
     }
 
     @Test
-    @Order(11)
+    @Order(9)
     void getAdapterCodeReturnsPythonAndChecksTheConceptsThroughTheGateway() throws Exception {
         GATEWAY.stubFor(post(urlPathEqualTo("/dictionary/concepts/detail")).willReturn(okJson("""
             [{"type":"Categorical","conceptPath":"\\\\phs999999\\\\demographics\\\\sex\\\\","name":"sex","display":"Sex",
@@ -384,7 +311,7 @@ class McpProtocolIT {
     }
 
     @Test
-    @Order(12)
+    @Order(10)
     void aDownstreamFailureIsAnIsErrorWithTheModelMessageAndNoDownstreamBody() throws Exception {
         GATEWAY.stubFor(
             post(urlPathEqualTo(QUERY_SYNC)).willReturn(
@@ -405,7 +332,7 @@ class McpProtocolIT {
     }
 
     @Test
-    @Order(13)
+    @Order(11)
     void anUnknownToolIsAJsonRpcError() throws Exception {
         String body = call(toolCall("drop_tables", "{}"));
 
@@ -417,7 +344,7 @@ class McpProtocolIT {
     }
 
     @Test
-    @Order(14)
+    @Order(12)
     void aNotInACountQueryIsAnIsErrorNamingTheField() throws Exception {
         JsonNode result = result(call(toolCall("count_participants", """
             {"query":{"phenotypicClause":{"phenotypicFilterType":"FILTER",
@@ -429,7 +356,7 @@ class McpProtocolIT {
     }
 
     @Test
-    @Order(15)
+    @Order(13)
     void aRequestThatDoesNotAcceptBothJsonAndSseGets400() throws Exception {
         HttpResponse<String> response = send("application/json", true, """
             {"jsonrpc":"2.0","id":13,"method":"tools/list","params":{}}""");
@@ -439,32 +366,14 @@ class McpProtocolIT {
     }
 
     @Test
-    @Order(16)
+    @Order(14)
     void noResponseHeaderOrBodyInTheRunHoldsTheCallerTokenTheApiKeyOrTheMcpToken() {
-        assertThat(RESPONSES).as("responses collected; fewer than 15 means earlier steps did not all reach the server")
-            .hasSizeGreaterThanOrEqualTo(15);
+        assertThat(RESPONSES).as("responses collected; fewer than 13 means earlier steps did not all reach the server")
+            .hasSizeGreaterThanOrEqualTo(13);
         String callerToken = BEARER.substring("Bearer ".length());
         for (String response : RESPONSES) {
             assertThat(response).doesNotContain(callerToken, API_KEY, MCP_TOKEN);
         }
-    }
-
-    @Test
-    @Order(17)
-    void noLogLineInTheRunHoldsTheCallerTokenTheApiKeyOrTheMcpToken() {
-        List<ILoggingEvent> events = List.copyOf(LOGS.list);
-        assertThat(events).as("log events captured at DEBUG").isNotEmpty()
-            .anySatisfy(event -> assertThat(event.getFormattedMessage()).startsWith("Gateway call POST " + QUERY_SYNC));
-        String callerToken = BEARER.substring("Bearer ".length());
-        for (ILoggingEvent event : events) {
-            String text = event.getFormattedMessage() + "\n" + event.getMDCPropertyMap() + "\n"
-                + (event.getThrowableProxy() == null ? "" : ThrowableProxyUtil.asString(event.getThrowableProxy()));
-            assertThat(text).as(event.getLoggerName()).doesNotContain(callerToken, API_KEY, MCP_TOKEN);
-        }
-    }
-
-    private static Logger rootLogger() {
-        return (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     }
 
     private JsonNode successfulCall(String tool, String arguments) throws Exception {

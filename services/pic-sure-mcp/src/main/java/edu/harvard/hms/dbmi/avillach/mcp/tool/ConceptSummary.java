@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import edu.harvard.hms.dbmi.avillach.mcp.gateway.DictionaryConcept;
 import io.swagger.v3.oas.annotations.media.Schema;
 
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -13,11 +14,12 @@ import static io.swagger.v3.oas.annotations.media.Schema.RequiredMode.NOT_REQUIR
 
 /**
  * A concept trimmed for the model: no children, no table or study, and metadata only when a detail lookup asks for it. Fields that do not
- * apply are omitted from the JSON, since Spring AI rejects a null in {@code structuredContent}.
+ * apply, and empty strings or lists, are omitted from the JSON, since Spring AI rejects a null in {@code structuredContent}. A search
+ * result also omits the display name and dataset when they repeat the path's last and first segments.
  *
  * @param conceptPath the full concept path, the identifier the count tools take
- * @param display the display name
- * @param dataset the dataset the concept belongs to
+ * @param display the display name, omitted from a search result when it equals the path's last segment
+ * @param dataset the dataset the concept belongs to, omitted from a search result when it equals the path's first segment
  * @param type {@code categorical} or {@code continuous}
  * @param studyAcronym the study acronym
  * @param name the last path segment, set on detail lookups
@@ -29,9 +31,9 @@ import static io.swagger.v3.oas.annotations.media.Schema.RequiredMode.NOT_REQUIR
  * @param meta a few metadata entries, set on detail lookups
  * @param matchedTerms the terms of a several-term search that returned this concept, in the order they were given
  */
-@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonInclude(JsonInclude.Include.NON_EMPTY)
 public record ConceptSummary(
-    String conceptPath, String display, String dataset, String type, @Schema(requiredMode = NOT_REQUIRED) String studyAcronym,
+    String conceptPath, @Schema(requiredMode = NOT_REQUIRED) String display, @Schema(requiredMode = NOT_REQUIRED) String dataset, String type, @Schema(requiredMode = NOT_REQUIRED) String studyAcronym,
     @Schema(requiredMode = NOT_REQUIRED) String name, @Schema(requiredMode = NOT_REQUIRED) String description,
     @Schema(requiredMode = NOT_REQUIRED) List<String> values, @Schema(requiredMode = NOT_REQUIRED) Integer valuesOmitted,
     @Schema(requiredMode = NOT_REQUIRED) Double min, @Schema(requiredMode = NOT_REQUIRED) Double max,
@@ -51,7 +53,7 @@ public record ConceptSummary(
      * Trims a search result concept.
      *
      * @param concept the dictionary's concept
-     * @return the summary, without name or metadata
+     * @return the summary, without name, metadata, or a display name or dataset the path already gives
      */
     public static ConceptSummary summary(DictionaryConcept concept) {
         return of(concept, false);
@@ -84,10 +86,25 @@ public record ConceptSummary(
         List<String> kept = values == null ? null : values.stream().limit(MAX_VALUES).toList();
         Integer omitted = values != null && values.size() > MAX_VALUES ? values.size() - MAX_VALUES : null;
         String type = concept.type() == null ? null : concept.type().toLowerCase(Locale.ROOT);
+        String display = concept.display();
+        String dataset = concept.dataset();
+        if (!detail) {
+            List<String> segments = pathSegments(concept.conceptPath());
+            if (!segments.isEmpty() && segments.getLast().equals(display)) {
+                display = null;
+            }
+            if (!segments.isEmpty() && segments.getFirst().equals(dataset)) {
+                dataset = null;
+            }
+        }
         return new ConceptSummary(
-            concept.conceptPath(), concept.display(), concept.dataset(), type, concept.studyAcronym(), detail ? concept.name() : null,
+            concept.conceptPath(), display, dataset, type, concept.studyAcronym(), detail ? concept.name() : null,
             concept.description(), kept, omitted, concept.min(), concept.max(), detail ? cappedMeta(concept.meta()) : null, null
         );
+    }
+
+    private static List<String> pathSegments(String conceptPath) {
+        return conceptPath == null ? List.of() : Arrays.stream(conceptPath.split("\\\\")).filter(s -> !s.isEmpty()).toList();
     }
 
     private static Map<String, String> cappedMeta(Map<String, String> meta) {
