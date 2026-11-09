@@ -48,6 +48,9 @@ class InMemoryConversationStore implements ConversationStore {
 
     @Override
     public void append(Key key, ConversationTurn turn) {
+        if (maxTurns <= 0) {
+            return;
+        }
         conversations.asMap().merge(key, List.of(turn), (earlier, added) -> {
             List<ConversationTurn> all = new ArrayList<>(earlier);
             all.addAll(added);

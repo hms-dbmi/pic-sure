@@ -77,7 +77,7 @@ final class ReplyText {
     private static final Pattern NEGATION = Pattern.compile("(?i)\\b(?:no|none|not|nothing|never|unchanged)\\b|n't\\b");
     /** The heading of a recap of the current state, "**Current state**", "Current screen state:" or "Current view:", with any text after it. */
     private static final Pattern SCREEN_RECAP_HEADING =
-        Pattern.compile("(?i)^\\W*current (?:(?:screen|view)(?: state)?\\b.*|state(?:\\s*\\([^)\\n]*\\))?\\W*)");
+        Pattern.compile("(?i)^\\W*current (?:(?:screen|view)(?: state)?\\b(?:\\s*:.*|\\W*)|state(?:\\s*\\([^)\\n]*\\))?\\W*)");
     /** One recap line: a part of the screen and its value, e.g. "- **facets:** none". */
     private static final Pattern SCREEN_RECAP_LINE =
         Pattern.compile("(?i)^\\W*(?:query|facets|search|filters|selected variables|variables)\\W*:.*");

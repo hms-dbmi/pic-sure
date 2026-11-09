@@ -34,6 +34,15 @@ class InMemoryConversationStoreTest {
     }
 
     @Test
+    void aCapOfZeroKeepsNothing() {
+        InMemoryConversationStore store = store(0);
+
+        store.append(KEY, turn("one"));
+
+        assertTrue(store.turns(KEY).isEmpty());
+    }
+
+    @Test
     void theOldestTurnsAreDroppedPastTheCap() {
         InMemoryConversationStore store = store(2);
 

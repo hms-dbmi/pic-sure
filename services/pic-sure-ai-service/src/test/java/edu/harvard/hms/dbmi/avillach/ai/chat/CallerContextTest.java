@@ -72,6 +72,12 @@ class CallerContextTest {
     }
 
     @Test
+    void aTokenCallerKeepsTheSameOwnerWhateverCaseTheSchemeIsIn() {
+        assertThat(new CallerContext("bearer key-1", null, null).owner()).isEqualTo(new CallerContext("Bearer key-1", null, null).owner());
+        assertThat(new CallerContext("Bearer Key-1", null, null).owner()).isNotEqualTo(new CallerContext("Bearer key-1", null, null).owner());
+    }
+
+    @Test
     void anOpenAccessSessionKeepsTheSameOwnerWhenItsTokenIsRefreshed() {
         String first = sessionToken("{\"sub\":\"" + SESSION + "\",\"iat\":1}");
         String refreshed = sessionToken("{\"sub\":\"" + SESSION + "\",\"iat\":500}");

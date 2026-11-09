@@ -6,6 +6,12 @@ prefix in front of the gateway applies) and acts as an MCP client against the ga
 replaying the caller's bearer JWT untouched on every call. It never mints, caches, or exchanges a
 credential of its own.
 
+> [!WARNING]
+> Deploy this service only behind the gateway; never expose it directly to clients. Conversation history and stored turn results are
+> keyed by the caller's identity, which the service reads from the `X-User-Id` and `X-Picsure-Access-Type` headers the gateway sets
+> after token introspection. The service does not authenticate the gateway itself, so anyone who can reach it directly could supply
+> another user's identity headers and read that user's stored replies.
+
 ## Model provider: only the Bedrock Converse shape, by design
 
 This service speaks exactly one wire shape to the reasoning model: Amazon Bedrock's Converse API
@@ -206,7 +212,7 @@ a check is ever returned.
 | Asked for the whole `select`, sent only the variables it was adding about half the time ("select all race variables" came back without the BMI already selected), while it left out exactly the variable a researcher asked to remove | `propose_query` takes the selected variables as a change, not a list: `addSelect` and `removeSelect`, with every other selected variable kept. A `select` is read as `addSelect` (a counted query or a proposal written as reply text carries one). The result names the variables now selected, and says when a removal did not happen: a filtered variable stays (the UI shows every variable it filters on), and one that was not selected had nothing to remove | repair | `QueryChange`, `ProposalRules.apply` |
 | Leaves a filtered concept path out of `select` | Adds it back (the UI exports every variable it filters on) | repair | `ProposeQueryInput.withFilterPathsSelected` |
 | Proposes exactly what the researcher already has | Leaves `query`/`facets`/`search` out of the response | repair | `ToolUseLoopService.respond` |
-| Searches several terms (joined by `\|` in `search`, or listed in `terms`) and one term's matches fill the page, hiding the others' | Searches each term on its own (in parallel, up to 8 terms in `search`, or the tool's own limit of 5 in `terms`, so a later page is accepted too) and interleaves the results, with each term's total in `termTotals`. The researcher's table still uses the combined ranking | repair | `TermBalancedSearch` |
+| Searches several terms (joined by `\|` in `search`, or listed in `terms`) and one term's matches fill the page, hiding the others' | Searches the terms together as one OR search at the largest page size (up to 10 distinct terms, in `search` or `terms`; a longer list goes to the tool unchanged for it to refuse), fetches up to 5 more pages in parallel, and groups each page's concepts by the terms that matched them and interleaves the groups, with each term's total in `termTotals`. The researcher's table still uses the combined ranking | repair | `TermBalancedSearch` |
 | Proposes a search containing terms that matched nothing this turn (e.g. an abbreviation whose spelled-out form did match) | Drops those terms and says so in the result; refuses when no term matched | repair | `ProposalRules.acceptDroppingUnmatchedTerms`, `SearchHistory` |
 | Gets an empty category list from `list_facets` and invents studies or counts to fill the gap | Adds a note to the result saying there are none and to propose a search instead | prevent | `ToolUseLoopService.withNoCategoriesNote` |
 | Writes query JSON, or `query:`/`facets:`/`search:` labels, into its reply | Scrubs them out. If nothing is left, the reply becomes "I've prepared an updated search for you to review." (proposal attached) or the fallback text (nothing attached) | repair | `ReplyText.withoutQueryJson` |
