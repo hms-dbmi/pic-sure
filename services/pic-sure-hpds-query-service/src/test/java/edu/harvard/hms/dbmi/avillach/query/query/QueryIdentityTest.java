@@ -44,21 +44,22 @@ class QueryIdentityTest {
     private static final String AGE = "\\demographics\\AGE\\";
     private static final String SEX = "\\demographics\\SEX\\";
 
-    private static final String GOLDEN_CANONICAL = "{\"select\":[\"\\\\demographics\\\\SEX\\\\\",\"\\\\demographics\\\\AGE\\\\\"],"
-        + "\"phenotypicClause\":{\"clause\":\"subquery\",\"not\":false,\"phenotypicClauses\":["
-        + "{\"clause\":\"filter\",\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demographics\\\\SEX\\\\\","
-        + "\"values\":[\"Female\",\"Male\",\"caf\\u00e9 \\\"quoted\\\"\"],\"min\":null,\"max\":null,\"not\":false},"
-        + "{\"clause\":\"filter\",\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demographics\\\\AGE\\\\\","
-        + "\"values\":[],\"min\":0x4032000000000000,\"max\":0x4055500000000000,\"not\":true},"
-        + "{\"clause\":\"subquery\",\"not\":true,\"phenotypicClauses\":["
-        + "{\"clause\":\"filter\",\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"\\\\labs\\\\A1C\\\\\","
-        + "\"values\":[],\"min\":null,\"max\":null,\"not\":false},"
-        + "{\"clause\":\"filter\",\"phenotypicFilterType\":\"ANY_RECORD_OF\",\"conceptPath\":\"\\\\labs\\\\\","
-        + "\"values\":[],\"min\":null,\"max\":null,\"not\":false}],\"operator\":\"OR\"}],\"operator\":\"AND\"},"
-        + "\"genomicFilters\":[{\"key\":\"Gene_with_variant\",\"values\":[\"BRCA2\",\"APOE\"],\"min\":null,\"max\":null},"
-        + "{\"key\":\"Variant_frequency_in_gnomAD\",\"values\":[],\"min\":0x3fe0000000000000,\"max\":0x4059000000000000}],"
-        + "\"expectedResultType\":\"DATAFRAME_PFB\",\"sample\":true}";
-    private static final String GOLDEN_ID = "7364010f-fe64-50ba-bec1-076fa44dd172";
+    private static final String GOLDEN_CANONICAL = "{\"v\":1,\"select\":[\"\\\\demographics\\\\SEX\\\\\",\"\\\\demographics\\\\AGE\\\\\"],"
+        + "\"phenotypicClause\":{\"clause\":\"subquery\",\"not\":false,\"phenotypicClauses\":[{\"clause\":\"filter\","
+        + "\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demographics\\\\SEX\\\\\",\"values\":[\"Female\",\"Male\","
+        + "\"caf\\u00e9 \\\"quoted\\\"\",\"tab\\u0009separated\"],\"min\":null,\"max\":null,\"not\":false},{\"clause\":\"filter\","
+        + "\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demographics\\\\AGE\\\\\",\"values\":[],\"min\":0x4032000000000000,"
+        + "\"max\":0x4055500000000000,\"not\":true},{\"clause\":\"filter\",\"phenotypicFilterType\":\"FILTER\","
+        + "\"conceptPath\":\"\\\\demographics\\\\AGE\\\\\",\"values\":null,\"min\":0x8000000000000000,\"max\":0x0000000000000000,"
+        + "\"not\":false},{\"clause\":\"subquery\",\"not\":true,\"phenotypicClauses\":[{\"clause\":\"filter\","
+        + "\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"\\\\labs\\\\A1C\\\\\",\"values\":null,\"min\":null,\"max\":null,"
+        + "\"not\":false},{\"clause\":\"filter\",\"phenotypicFilterType\":\"ANY_RECORD_OF\",\"conceptPath\":null,\"values\":null,"
+        + "\"min\":null,\"max\":null,\"not\":false}],\"operator\":\"OR\"},{\"clause\":\"subquery\",\"not\":false,\"phenotypicClauses\":[],"
+        + "\"operator\":null}],\"operator\":\"AND\"},\"genomicFilters\":[{\"key\":\"Gene_with_variant\",\"values\":[\"BRCA2\",\"APOE\"],"
+        + "\"min\":null,\"max\":null},{\"key\":\"Variant_frequency_in_gnomAD\",\"values\":null,\"min\":0x3fe0000000000000,"
+        + "\"max\":0x4059000000000000},{\"key\":null,\"values\":[],\"min\":null,\"max\":null}],\"expectedResultType\":\"DATAFRAME_PFB\","
+        + "\"sample\":true}";
+    private static final String GOLDEN_ID = "8c6f2644-054c-51f2-9a4a-d129acf11b06";
 
     private static Query query(List<String> select, PhenotypicClause clause, List<GenomicFilter> genomic, ResultType type, boolean sample) {
         return new Query(select, List.of(), clause, genomic, type, null, null, sample);
@@ -85,30 +86,37 @@ class QueryIdentityTest {
     }
 
     private static Query fullyPopulated() {
-        Set<String> sexes = new LinkedHashSet<>(List.of("Male", "café \"quoted\"", "Female"));
+        Set<String> sexes = new LinkedHashSet<>(List.of("Male", "café \"quoted\"", "tab\tseparated", "Female"));
         PhenotypicClause tree = new PhenotypicSubquery(
             false,
             List.of(
                 new PhenotypicFilter(PhenotypicFilterType.FILTER, SEX, sexes, null, null, false),
                 new PhenotypicFilter(PhenotypicFilterType.FILTER, AGE, Set.of(), 18.0, 85.25, true),
+                new PhenotypicFilter(PhenotypicFilterType.FILTER, AGE, null, -0.0, 0.0, null),
                 new PhenotypicSubquery(
                     true,
                     List.of(
                         new PhenotypicFilter(PhenotypicFilterType.REQUIRED, "\\labs\\A1C\\", null, null, null, null),
-                        new PhenotypicFilter(PhenotypicFilterType.ANY_RECORD_OF, "\\labs\\", null, null, null, null)
+                        new PhenotypicFilter(PhenotypicFilterType.ANY_RECORD_OF, null, null, null, null, null)
                     ), Operator.OR
-                )
+                ), new PhenotypicSubquery(null, null, null)
             ), Operator.AND
         );
         List<GenomicFilter> genomic = List.of(
             new GenomicFilter("Gene_with_variant", List.of("BRCA2", "APOE"), null, null),
-            new GenomicFilter("Variant_frequency_in_gnomAD", null, 0.5f, 100f)
+            new GenomicFilter("Variant_frequency_in_gnomAD", null, 0.5f, 100f), new GenomicFilter(null, List.of(), null, null)
         );
         List<AuthorizationFilter> consents = List.of(new AuthorizationFilter("\\_consents\\", Set.of("phs000007.c1", "phs000007.c2")));
         return new Query(
             List.of(SEX, AGE), consents, tree, genomic, ResultType.DATAFRAME_PFB, UUID.fromString("8694e3d4-5cb4-410f-8431-993445e6d3f6"),
             UUID.fromString("11111111-2222-4333-8444-555555555555"), true
         );
+    }
+
+    private static String writtenName(String canonical, String member) {
+        String opening = "\"" + member + "\":\"";
+        int start = canonical.indexOf(opening) + opening.length();
+        return canonical.substring(start, canonical.indexOf('"', start));
     }
 
     private static Query fromJson(String json) {
@@ -239,26 +247,57 @@ class QueryIdentityTest {
     }
 
     @Test
-    void nullAndEmptyCollectionsGiveTheSameId() {
-        Query nulls = new Query(
-            null, null,
-            all(
-                new PhenotypicFilter(PhenotypicFilterType.REQUIRED, AGE, null, null, null, null),
-                new PhenotypicSubquery(null, null, Operator.OR)
-            ), null, ResultType.DATAFRAME, null, null, false
-        );
+    void nullAndEmptySelectGenomicFiltersAndSubqueryClausesGiveTheSameId() {
+        Query nulls =
+            new Query(null, null, all(new PhenotypicSubquery(null, null, Operator.OR)), null, ResultType.DATAFRAME, null, null, false);
         Query empties = new Query(
-            new ArrayList<>(), new ArrayList<>(),
-            all(
-                new PhenotypicFilter(PhenotypicFilterType.REQUIRED, AGE, new HashSet<>(), null, null, null),
-                new PhenotypicSubquery(null, new ArrayList<>(), Operator.OR)
-            ), new ArrayList<>(), ResultType.DATAFRAME, null, null, false
+            new ArrayList<>(), new ArrayList<>(), all(new PhenotypicSubquery(null, new ArrayList<>(), Operator.OR)), new ArrayList<>(),
+            ResultType.DATAFRAME, null, null, false
         );
 
         assertThat(CanonicalQuery.of(nulls)).isEqualTo(CanonicalQuery.of(empties));
         assertThat(QueryIdentity.idFor(USER, nulls)).isEqualTo(QueryIdentity.idFor(USER, empties));
-        assertThat(QueryIdentity.idFor(USER, withGenomic(new GenomicFilter("k", null, 1f, null))))
-            .isEqualTo(QueryIdentity.idFor(USER, withGenomic(new GenomicFilter("k", List.of(), 1f, null))));
+    }
+
+    @Test
+    void nullAndEmptyPhenotypicValuesGiveDifferentIds() {
+        Query rangeOnly = withClause(new PhenotypicFilter(PhenotypicFilterType.FILTER, AGE, null, 18.0, null, null));
+        Query rangeAndNoValue = withClause(new PhenotypicFilter(PhenotypicFilterType.FILTER, AGE, new HashSet<>(), 18.0, null, null));
+
+        assertThat(CanonicalQuery.of(rangeOnly)).contains("\"values\":null,\"min\":0x4032000000000000");
+        assertThat(CanonicalQuery.of(rangeAndNoValue)).contains("\"values\":[],\"min\":0x4032000000000000");
+        assertThat(QueryIdentity.idFor(USER, rangeOnly)).isNotEqualTo(QueryIdentity.idFor(USER, rangeAndNoValue));
+    }
+
+    @Test
+    void nullAndEmptyPhenotypicValuesInJsonGiveDifferentIds() {
+        String filter = "{\"phenotypicClause\":{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"a\",%s\"min\":18},"
+            + "\"expectedResultType\":\"COUNT\"}";
+        Query omitted = fromJson(filter.formatted(""));
+        Query explicitNull = fromJson(filter.formatted("\"values\":null,"));
+        Query explicitEmpty = fromJson(filter.formatted("\"values\":[],"));
+
+        assertThat(QueryIdentity.idFor(USER, explicitNull)).isEqualTo(QueryIdentity.idFor(USER, omitted));
+        assertThat(QueryIdentity.idFor(USER, explicitEmpty)).isNotEqualTo(QueryIdentity.idFor(USER, omitted));
+    }
+
+    @Test
+    void nullAndEmptyGenomicValuesGiveDifferentIds() {
+        Query noValues = withGenomic(new GenomicFilter("Gene_with_variant", null, null, null));
+        Query emptyValues = withGenomic(new GenomicFilter("Gene_with_variant", List.of(), null, null));
+
+        assertThat(CanonicalQuery.of(noValues)).contains("\"key\":\"Gene_with_variant\",\"values\":null,");
+        assertThat(CanonicalQuery.of(emptyValues)).contains("\"key\":\"Gene_with_variant\",\"values\":[],");
+        assertThat(QueryIdentity.idFor(USER, noValues)).isNotEqualTo(QueryIdentity.idFor(USER, emptyValues));
+    }
+
+    @Test
+    void theVersionMarkerIsTheFirstMember() {
+        Query smallest = new Query(null, null, null, null, null, null, null, false);
+
+        assertThat(CanonicalQuery.FORM_VERSION).isEqualTo(1);
+        assertThat(CanonicalQuery.of(smallest)).startsWith("{\"v\":1,\"select\":");
+        assertThat(CanonicalQuery.of(fullyPopulated())).startsWith("{\"v\":" + CanonicalQuery.FORM_VERSION + ",");
     }
 
     @Test
@@ -312,9 +351,28 @@ class QueryIdentityTest {
             + "\"genomicFilters\":[{\"key\":\"k\",\"min\":1.00,\"max\":0.2e1}],\"expectedResultType\":\"COUNT\"}";
 
         assertThat(CanonicalQuery.of(fromJson(integerJson))).isEqualTo(CanonicalQuery.of(fromJson(decimalJson)));
-        assertThat(QueryIdentity.idFor(USER, withClause(numeric(0.0, null))))
-            .isEqualTo(QueryIdentity.idFor(USER, withClause(numeric(-0.0, null))));
         assertThat(CanonicalQuery.of(withClause(numeric(1.0, null)))).contains("\"min\":0x3ff0000000000000,\"max\":null");
+    }
+
+    @Test
+    void negativeZeroAndZeroGiveDifferentIds() {
+        Query zero = withClause(numeric(0.0, null));
+        Query negativeZero = withClause(numeric(-0.0, null));
+
+        assertThat(CanonicalQuery.of(zero)).contains("\"min\":0x0000000000000000,");
+        assertThat(CanonicalQuery.of(negativeZero)).contains("\"min\":0x8000000000000000,");
+        assertThat(QueryIdentity.idFor(USER, zero)).isNotEqualTo(QueryIdentity.idFor(USER, negativeZero));
+        assertThat(QueryIdentity.idFor(USER, withGenomic(new GenomicFilter("k", null, 0f, null))))
+            .isNotEqualTo(QueryIdentity.idFor(USER, withGenomic(new GenomicFilter("k", null, -0f, null))));
+    }
+
+    @Test
+    void everyNanHasOneRepresentation() {
+        double otherNan = Double.longBitsToDouble(0x7ff0000000000001L);
+
+        assertThat(Double.doubleToRawLongBits(otherNan)).isNotEqualTo(Double.doubleToRawLongBits(Double.NaN));
+        assertThat(CanonicalQuery.of(withClause(numeric(otherNan, null))))
+            .isEqualTo(CanonicalQuery.of(withClause(numeric(Double.NaN, null)))).contains("\"min\":0x7ff8000000000000,");
     }
 
     @Test
@@ -342,6 +400,28 @@ class QueryIdentityTest {
     @Test
     void theCanonicalFormOfAFixedQueryNeverChanges() {
         assertThat(CanonicalQuery.of(fullyPopulated())).isEqualTo(GOLDEN_CANONICAL);
+    }
+
+    @Test
+    void everyEnumConstantIsWrittenUnderItsPinnedName() {
+        List<String> resultTypes = Arrays.stream(ResultType.values())
+            .map(type -> writtenName(CanonicalQuery.of(query(List.of(), null, List.of(), type, false)), "expectedResultType")).toList();
+        List<String> operators = Arrays.stream(Operator.values())
+            .map(operator -> writtenName(CanonicalQuery.of(withClause(new PhenotypicSubquery(null, null, operator))), "operator")).toList();
+        List<String> filterTypes = Arrays.stream(PhenotypicFilterType.values())
+            .map(
+                type -> writtenName(
+                    CanonicalQuery.of(withClause(new PhenotypicFilter(type, null, null, null, null, null))), "phenotypicFilterType"
+                )
+            ).toList();
+
+        assertThat(resultTypes).containsExactly(
+            "COUNT", "DATAFRAME", "CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT", "INFO_COLUMN_LISTING",
+            "OBSERVATION_CROSS_COUNT", "VARIANT_COUNT_FOR_QUERY", "VARIANT_LIST_FOR_QUERY", "VCF_EXCERPT", "AGGREGATE_VCF_EXCERPT",
+            "DATAFRAME_TIMESERIES", "DATAFRAME_PFB", "PATIENTS"
+        );
+        assertThat(operators).containsExactly("AND", "OR");
+        assertThat(filterTypes).containsExactly("REQUIRED", "FILTER", "ANY_RECORD_OF");
     }
 
     @Test

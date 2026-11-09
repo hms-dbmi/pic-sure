@@ -150,6 +150,16 @@ class AggregateServiceTest {
         assertThat(sent.id()).isEqualTo(id);
     }
 
+    @Test
+    void openCrossCountKeepsSample() {
+        AggregateBackendClient backend = mock(AggregateBackendClient.class);
+        when(backend.search(any())).thenReturn(consentsSearch());
+        AggregateService svc = service(backend, new AggregateProperties());
+
+        assertThat(svc.openCrossCount(sampleOf(ResultType.COUNT)).sample()).isTrue();
+        assertThat(svc.openCrossCount(sync("COUNT")).sample()).isFalse();
+    }
+
     private static Query sampleOf(ResultType type) {
         return new Query(null, null, null, null, type, null, null, true);
     }

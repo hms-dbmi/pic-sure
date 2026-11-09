@@ -28,6 +28,9 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
  * <p>The string is written by hand, member by member, in the order below. It does not use {@code toString()}, a JSON mapper, or the
  * iteration order of any set or map.
  *
+ * <p><b>Version.</b> The first member is {@code v}, the number in {@link #FORM_VERSION}. It names the set of rules the rest of the string
+ * was written under.
+ *
  * <p><b>Query.</b> <ul> <li>{@code select}: every path in the given order, because that order is the column order of the export. Null is
  * written as an empty list.</li> <li>{@code phenotypicClause}: the clause tree, or {@code null} when there is none. A missing clause and a
  * subquery with no clauses are different queries.</li> <li>{@code genomicFilters}: every filter in the given order. Null is written as an
@@ -36,32 +39,43 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
  * not depend on who is asking or on their consents.</li> </ul>
  *
  * <p><b>PhenotypicFilter.</b> {@code phenotypicFilterType} as the constant name or {@code null}, {@code conceptPath} as a string or
- * {@code null}, {@code values} sorted, {@code min}, {@code max}, {@code not}.
+ * {@code null}, {@code values} sorted or {@code null}, {@code min}, {@code max}, {@code not}.
  *
  * <p><b>PhenotypicSubquery.</b> {@code not}, {@code phenotypicClauses} in the given order with null written as an empty list, and
  * {@code operator} as the constant name or {@code null}.
  *
- * <p><b>GenomicFilter.</b> {@code key} as a string or {@code null}, {@code values} in the given order with null written as an empty list,
- * {@code min}, {@code max}.
+ * <p><b>GenomicFilter.</b> {@code key} as a string or {@code null}, {@code values} in the given order or {@code null}, {@code min},
+ * {@code max}.
  *
  * <p><b>Rules that apply everywhere.</b> <ul> <li>A set is sorted by {@link String#compareTo(String)}, which compares UTF-16 code units and
- * does not depend on the locale. A null element sorts first. A null set is written as an empty list.</li> <li>A list keeps its order,
- * duplicates included.</li> <li>A null collection and an empty one are the same query, because the model reads both as "nothing
- * given".</li> <li>A null {@code not} is written as {@code false}, because an absent flag means "not negated".</li> <li>A number is written
- * as {@code 0x} and the sixteen hex digits of its IEEE 754 double bits. A {@code Float} is widened to a double first, negative zero is
- * written as zero and every NaN has one bit pattern, so 1 and 1.0 are the same text. A null number is {@code null}.</li> <li>A string is
- * written between double quotes. A double quote or a backslash is preceded by a backslash, and every character outside printable ASCII is
- * written as {@code \}{@code u} and four hex digits per UTF-16 code unit. The whole form is therefore ASCII and two different strings never
- * give the same text. Strings are not trimmed, case-folded or Unicode-normalized, because HPDS matches concept paths and values
- * exactly.</li> </ul>
+ * does not depend on the locale. A null element sorts first.</li> <li>A list keeps its order, duplicates included.</li> <li>For
+ * {@code Query.select}, {@code Query.genomicFilters} and {@code PhenotypicSubquery.phenotypicClauses} a null collection and an empty one
+ * are the same query and both are written as {@code []}, because the model accessors return an empty list for null.</li> <li>For
+ * {@code PhenotypicFilter.values} and {@code GenomicFilter.values} null and empty are different queries: null is written as {@code null}
+ * and empty as {@code []}. HPDS reads null values as "no value filter" and empty values as a filter that lists no value, so a filter with
+ * empty values and a range matches nobody while the same filter with null values runs the range.</li> <li>A null {@code not} is written as
+ * {@code false}, because an absent flag means "not negated".</li> <li>A number is written as {@code 0x} and the sixteen hex digits of its
+ * IEEE 754 double bits. A {@code Float} is widened to a double first and every NaN has one bit pattern, so 1 and 1.0 are the same text.
+ * Negative zero and zero keep their own bits and are different queries, because the HPDS range comparison tells them apart. A null number
+ * is {@code null}.</li> <li>A string is written between double quotes. A double quote or a backslash is preceded by a backslash, and every
+ * character outside printable ASCII is written as {@code \}{@code u} and four hex digits per UTF-16 code unit. The whole form is therefore
+ * ASCII and two different strings never give the same text. Strings are not trimmed, case-folded or Unicode-normalized, because HPDS
+ * matches concept paths and values exactly.</li> </ul>
  *
- * <p><b>New model members.</b> The class lists every record component it writes or leaves out. When the class loads, the list is compared
- * with the record components and the permitted clause subtypes of the model, and a difference fails with {@link IllegalStateException}. A
- * member added to the model can therefore not be left out of the id unnoticed.
+ * <p><b>New model members.</b> The class lists every record component it writes or leaves out. When the class is initialized, the list is
+ * compared with the record components and the permitted clause subtypes of the model, and a difference fails with
+ * {@link IllegalStateException}. The check runs on the first use of this class, which is the first query that needs an id, and not at
+ * service startup. The tests in {@code QueryIdentityTest} run the same comparison, so a mismatch fails the build before it can reach a
+ * running service. A member added to the model can therefore not be left out of the id unnoticed.
  */
 public final class CanonicalQuery {
 
-    private static final String MODEL_PACKAGE = Query.class.getPackageName();
+    /**
+     * The version of the rules this class writes under, written as the first member of the canonical form. Raise it on every deliberate
+     * change of the rules. A string written under new rules then always differs from every string written under old rules, so a query can
+     * never take the id of a different query that was stored before the change.
+     */
+    static final int FORM_VERSION = 1;
 
     /** Records that are reachable from the query but never written, because the member that holds them is left out. */
     static final Set<Class<?>> IGNORED_RECORDS = Set.of(AuthorizationFilter.class);
@@ -113,7 +127,7 @@ public final class CanonicalQuery {
     public static String of(Query query) {
         Objects.requireNonNull(query, "query is null");
         StringBuilder out = new StringBuilder(256);
-        out.append("{\"select\":");
+        out.append("{\"v\":").append(FORM_VERSION).append(",\"select\":");
         writeStrings(out, query.select());
         out.append(",\"phenotypicClause\":");
         writeClause(out, query.phenotypicClause());
@@ -206,7 +220,10 @@ public final class CanonicalQuery {
         out.append(",\"conceptPath\":");
         writeString(out, filter.conceptPath());
         out.append(",\"values\":");
-        writeStrings(out, orEmpty(filter.values()).stream().sorted(Comparator.nullsFirst(Comparator.naturalOrder())).toList());
+        Set<String> values = filter.values();
+        writeNullableStrings(
+            out, values == null ? null : values.stream().sorted(Comparator.nullsFirst(Comparator.naturalOrder())).toList()
+        );
         out.append(",\"min\":");
         writeNumber(out, filter.min());
         out.append(",\"max\":");
@@ -237,7 +254,7 @@ public final class CanonicalQuery {
         out.append("{\"key\":");
         writeString(out, filter.key());
         out.append(",\"values\":");
-        writeStrings(out, filter.values());
+        writeNullableStrings(out, filter.values());
         out.append(",\"min\":");
         writeNumber(out, filter.min());
         out.append(",\"max\":");
@@ -247,6 +264,14 @@ public final class CanonicalQuery {
 
     private static <T> Collection<T> orEmpty(Collection<T> collection) {
         return collection == null ? List.of() : collection;
+    }
+
+    private static void writeNullableStrings(StringBuilder out, Collection<String> strings) {
+        if (strings == null) {
+            out.append("null");
+            return;
+        }
+        writeStrings(out, strings);
     }
 
     private static void writeStrings(StringBuilder out, Collection<String> strings) {
@@ -269,9 +294,7 @@ public final class CanonicalQuery {
             out.append("null");
             return;
         }
-        double value = number.doubleValue();
-        double withoutNegativeZero = value == 0.0d ? 0.0d : value;
-        out.append("0x").append(HexFormat.of().toHexDigits(Double.doubleToLongBits(withoutNegativeZero)));
+        out.append("0x").append(HexFormat.of().toHexDigits(Double.doubleToLongBits(number.doubleValue())));
     }
 
     private static void writeString(StringBuilder out, String string) {

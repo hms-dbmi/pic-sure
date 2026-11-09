@@ -231,7 +231,7 @@ public class AggregateService {
      * @param query the query to derive from
      * @return a new query selecting the full study-consents allow-list
      */
-    private Query openCrossCount(Query query) {
+    Query openCrossCount(Query query) {
         return new Query(
             studyConsentPaths.studyConsentPaths(), query.authorizationFilters(), query.phenotypicClause(), query.genomicFilters(),
             ResultType.CROSS_COUNT, null, query.id(), query.sample()
