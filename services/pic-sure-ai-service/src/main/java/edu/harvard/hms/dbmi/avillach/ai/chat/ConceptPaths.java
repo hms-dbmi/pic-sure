@@ -1,7 +1,11 @@
 package edu.harvard.hms.dbmi.avillach.ai.chat;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -18,15 +22,30 @@ import com.fasterxml.jackson.databind.node.TextNode;
  * <p>Small models invent paths, often by copying the placeholder paths in a tool's example arguments. A path counts as seen if a tool
  * result or the researcher's current query contained it; backslash variants of the same path (doubled, or missing the leading or trailing
  * one) are treated as the same path when checking, then rewritten to the form first seen before the call goes out (see
- * {@link #canonicalize(String)}), since HPDS matches concept paths by exact key. One instance per chat turn; not thread-safe.
+ * {@link #canonicalize(String)}), since HPDS matches concept paths by exact key. Categorical filter values are rewritten the same way
+ * when they differ only in case from a value listed for that path. One instance per chat turn; not thread-safe.
  */
 final class ConceptPaths {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Pattern BACKSLASH_RUN = Pattern.compile("\\\\+");
+    /** A code range such as {@code (G00-G99)}, which models drop when copying a long path. */
+    private static final Pattern TRAILING_PARENTHETICAL = Pattern.compile("\\s*\\([^()]*\\)\\s*$");
 
     /** Normalized path to the form it was first seen in, so output can carry the path exactly as a tool returned it. */
     private final Map<String, String> seen = new HashMap<>();
+
+    /**
+     * The arguments holding lists of concept paths: a query's {@code select}, {@code propose_query}'s changes to it, and
+     * {@code get_concepts}'s batch.
+     */
+    private static final Set<String> PATH_LISTS = Set.of("select", "addSelect", "removeSelect", "conceptPaths");
+
+    /** Categorical value to the concept path it was listed under. */
+    private final Map<String, String> valueOwners = new HashMap<>();
+
+    /** Normalized path to the categorical values listed for it, as listed. */
+    private final Map<String, Set<String>> valuesByPath = new HashMap<>();
 
     /**
      * Collapses every run of backslashes to one and ensures exactly one leading and one trailing backslash.
@@ -79,6 +98,7 @@ final class ConceptPaths {
                 JsonNode value = entry.getValue();
                 if ("conceptPath".equals(entry.getKey()) && value.isTextual()) {
                     learn(value.asText());
+                    learnValues(value.asText(), node.path("values"));
                 } else if ("select".equals(entry.getKey()) && value.isArray()) {
                     value.forEach(item -> {
                         if (item.isTextual()) {
@@ -91,6 +111,33 @@ final class ConceptPaths {
         } else if (node.isArray()) {
             node.forEach(this::learnFrom);
         }
+    }
+
+    private void learnValues(String path, JsonNode values) {
+        if (values.isArray()) {
+            values.forEach(item -> {
+                if (item.isTextual() && !item.asText().isBlank()) {
+                    valueOwners.putIfAbsent(item.asText().strip(), path);
+                    valuesByPath.computeIfAbsent(normalize(path), key -> new LinkedHashSet<>()).add(item.asText());
+                }
+            });
+        }
+    }
+
+    /**
+     * Diagnosis folders list their child codes as values, and gpt-oss turns such a value into a path of its own.
+     *
+     * @return the seen path whose values include the written path's last folder, or null
+     */
+    String ownerOfValueIn(String path) {
+        List<String> segments = path == null || path.isBlank() ? List.of() : segments(path);
+        return segments.isEmpty() ? null : valueOwners.get(segments.getLast());
+    }
+
+    boolean isAncestorOfSeen(String path) {
+        String normalized = normalize(path);
+        return normalized != null && !normalized.isBlank() && !isKnown(path)
+            && seen.keySet().stream().anyMatch(known -> known.startsWith(normalized));
     }
 
     private void learn(String path) {
@@ -119,9 +166,9 @@ final class ConceptPaths {
     }
 
     /**
-     * Rewrites every seen {@code conceptPath} value and {@code select} entry in a tool call's arguments, at any depth, to the path exactly
-     * as this turn first saw it, so a backslash variant the model wrote still matches when the tool looks it up. Unseen paths are left as
-     * written.
+     * Rewrites every seen {@code conceptPath} value and {@link #PATH_LISTS} entry in a tool call's arguments, at any depth, to the path
+     * exactly as this turn first saw it, so a backslash variant the model wrote still matches when the tool looks it up. Unseen paths are
+     * left as written.
      *
      * @param argumentsJson the raw JSON arguments of a tool call, or null
      * @return the rewritten arguments, or the input unchanged if nothing needed rewriting or it can't be read
@@ -150,7 +197,7 @@ final class ConceptPaths {
                         entry.setValue(TextNode.valueOf(canonical));
                         changed = true;
                     }
-                } else if ("select".equals(entry.getKey()) && value.isArray()) {
+                } else if (PATH_LISTS.contains(entry.getKey()) && value.isArray()) {
                     ArrayNode select = (ArrayNode) value;
                     for (int i = 0; i < select.size(); i++) {
                         String canonical = select.get(i).isTextual() ? canonicalOrNull(select.get(i).asText()) : null;
@@ -162,9 +209,35 @@ final class ConceptPaths {
                 }
                 changed |= canonicalize(entry.getValue());
             }
+            changed |= canonicalizeValues(object);
         } else if (node.isArray()) {
             for (JsonNode item : node) {
                 changed |= canonicalize(item);
+            }
+        }
+        return changed;
+    }
+
+    /**
+     * HPDS matches categorical values by exact string, and gpt-oss capitalizes them ({@code Female} for a path listing {@code female}),
+     * which counts nobody. Only a value that matches exactly one listed value ignoring case is rewritten.
+     */
+    private boolean canonicalizeValues(ObjectNode filter) {
+        JsonNode path = filter.path("conceptPath");
+        Set<String> listed = path.isTextual() ? valuesByPath.get(normalize(path.asText())) : null;
+        if (listed == null || !(filter.path("values") instanceof ArrayNode values)) {
+            return false;
+        }
+        boolean changed = false;
+        for (int i = 0; i < values.size(); i++) {
+            String written = values.get(i).isTextual() ? values.get(i).asText() : null;
+            if (written == null || listed.contains(written)) {
+                continue;
+            }
+            List<String> matches = listed.stream().filter(written::equalsIgnoreCase).toList();
+            if (matches.size() == 1) {
+                values.set(i, TextNode.valueOf(matches.getFirst()));
+                changed = true;
             }
         }
         return changed;
@@ -174,6 +247,63 @@ final class ConceptPaths {
     private String canonicalOrNull(String path) {
         String canonical = canonical(path);
         return canonical.equals(path) ? null : canonical;
+    }
+
+    /**
+     * gpt-oss drops a folder's {@code (G00-G99)} suffix or a middle folder when it copies a long path into prose.
+     *
+     * @return the one seen path {@code path} abbreviates, or {@code path} unchanged when none or several do
+     */
+    String snapped(String path) {
+        if (path == null || path.isBlank() || isKnown(path)) {
+            return path;
+        }
+        List<String> wanted = segments(path);
+        if (wanted.size() < 2) {
+            return path;
+        }
+        String match = null;
+        for (Map.Entry<String, String> entry : seen.entrySet()) {
+            if (abbreviates(wanted, segments(entry.getKey()))) {
+                if (match != null) {
+                    return path;
+                }
+                match = entry.getValue();
+            }
+        }
+        return match == null ? path : match;
+    }
+
+    static List<String> segments(String path) {
+        List<String> segments = new ArrayList<>();
+        for (String segment : normalize(path).split("\\\\")) {
+            if (!segment.isBlank()) {
+                segments.add(segment.strip());
+            }
+        }
+        return segments;
+    }
+
+    /**
+     * Whether {@code wanted} is {@code full} with some middle folders left out. A folder may lose its trailing parenthetical, but one the
+     * model does write must match: a different unit or range is a different variable.
+     */
+    private static boolean abbreviates(List<String> wanted, List<String> full) {
+        if (full.isEmpty() || wanted.size() > full.size() || !sameFolder(wanted.getFirst(), full.getFirst())
+            || !sameFolder(wanted.getLast(), full.getLast())) {
+            return false;
+        }
+        int next = 0;
+        for (String folder : full) {
+            if (next < wanted.size() && sameFolder(wanted.get(next), folder)) {
+                next++;
+            }
+        }
+        return next == wanted.size();
+    }
+
+    private static boolean sameFolder(String written, String real) {
+        return written.equals(real) || written.equals(TRAILING_PARENTHETICAL.matcher(real).replaceFirst(""));
     }
 
     /**
@@ -195,8 +325,8 @@ final class ConceptPaths {
 
     /**
      * Finds the first concept path in a tool call's arguments that no search result (or the researcher's own query) has shown this turn.
-     * Looks at every {@code conceptPath} value and every {@code select} entry, at any depth. Blank paths are skipped (the tool reports those
-     * itself).
+     * Looks at every {@code conceptPath} value and every {@link #PATH_LISTS} entry, at any depth. Blank paths are skipped (the tool reports
+     * those itself).
      *
      * @param argumentsJson the raw JSON arguments of a tool call, or null
      * @return the first unseen path as written, or null if every path was seen or the arguments can't be read
@@ -219,7 +349,7 @@ final class ConceptPaths {
                 String unseen = null;
                 if ("conceptPath".equals(entry.getKey()) && value.isTextual()) {
                     unseen = unseenOrNull(value.asText());
-                } else if ("select".equals(entry.getKey()) && value.isArray()) {
+                } else if (PATH_LISTS.contains(entry.getKey()) && value.isArray()) {
                     for (JsonNode item : value) {
                         if (unseen == null && item.isTextual()) {
                             unseen = unseenOrNull(item.asText());

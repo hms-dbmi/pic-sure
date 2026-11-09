@@ -28,6 +28,7 @@ public final class StrictArgumentBinder {
     private final ObjectMapper mapper;
     private final ObjectMapper ignoringUnknown;
     private final Class<?> clauseType;
+    private final String clauseMessage;
     private final Function<String, ? extends RuntimeException> failure;
 
     /**
@@ -38,6 +39,20 @@ public final class StrictArgumentBinder {
      * @param failure builds the exception thrown for a message
      */
     public StrictArgumentBinder(Class<?> clauseType, boolean refuseEnumIndexes, Function<String, ? extends RuntimeException> failure) {
+        this(clauseType, refuseEnumIndexes, failure, "");
+    }
+
+    /**
+     * Creates a binder whose clause-shape message carries a tool-specific hint.
+     *
+     * @param clauseType the polymorphic clause type whose unresolvable type id gets the clause-shape message
+     * @param refuseEnumIndexes whether an enum given by its index, as a number or numeric string, is refused
+     * @param failure builds the exception thrown for a message
+     * @param clauseHint appended to the clause-shape message, such as {@code " Leave it out if unused."}; empty for none
+     */
+    public StrictArgumentBinder(
+        Class<?> clauseType, boolean refuseEnumIndexes, Function<String, ? extends RuntimeException> failure, String clauseHint
+    ) {
         JsonMapper.Builder builder = JsonMapper.builder().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
             .enable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES);
         if (refuseEnumIndexes) {
@@ -47,6 +62,8 @@ public final class StrictArgumentBinder {
         this.ignoringUnknown = mapper.copy().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
         this.clauseType = clauseType;
         this.failure = failure;
+        this.clauseMessage = "Each phenotypic clause must be a filter (phenotypicFilterType and conceptPath) or a subquery (operator and "
+            + "phenotypicClauses)." + clauseHint;
     }
 
     /**
@@ -91,8 +108,7 @@ public final class StrictArgumentBinder {
             return "Field '" + safe(unknown.getPropertyName()) + "' is not part of this tool's input.";
         }
         if (e instanceof InvalidTypeIdException typeId && typeId.getBaseType() != null && typeId.getBaseType().hasRawClass(clauseType)) {
-            return "Each phenotypic clause must be a filter (phenotypicFilterType and conceptPath) or a subquery (operator and "
-                + "phenotypicClauses).";
+            return clauseMessage;
         }
         String field = lastField(e.getPath());
         if (e instanceof InvalidFormatException format && format.getTargetType() != null && format.getTargetType().isEnum()) {
