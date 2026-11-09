@@ -223,7 +223,7 @@ public class AggregateService {
     private Query openCrossCount(Query query) {
         return new Query(
             studyConsentPaths.studyConsentPaths(), query.authorizationFilters(), query.phenotypicClause(), query.genomicFilters(),
-            ResultType.CROSS_COUNT, query.picsureId(), query.id()
+            ResultType.CROSS_COUNT, null, query.id(), query.sample()
         );
     }
 

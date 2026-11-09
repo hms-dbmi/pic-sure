@@ -89,8 +89,8 @@ public class QueryServiceClient {
 
         // HQS replaces authorizationFilters using the caller token before it executes or stores this subquery.
         Query subQuery = new Query(
-            query.select(), query.authorizationFilters(), query.phenotypicClause(), query.genomicFilters(), resultType, query.picsureId(),
-            query.id()
+            query.select(), query.authorizationFilters(), query.phenotypicClause(), query.genomicFilters(), resultType, null, query.id(),
+            query.sample()
         );
 
         HttpHeaders headers = new HttpHeaders();

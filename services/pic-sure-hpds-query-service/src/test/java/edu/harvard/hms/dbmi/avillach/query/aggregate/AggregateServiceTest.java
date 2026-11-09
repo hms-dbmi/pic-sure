@@ -16,6 +16,7 @@ import static org.mockito.Mockito.when;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -121,6 +122,25 @@ class AggregateServiceTest {
         Query sent = (Query) cap.getValue().getQuery();
         assertThat(sent.expectedResultType()).isEqualTo(ResultType.CROSS_COUNT);
         assertThat(sent.select()).containsExactly("\\study\\a\\consent\\", "\\study\\b\\consent\\");
+    }
+
+    @Test
+    void openCrossCountKeepsSampleAndClearsPicsureId() {
+        AggregateBackendClient backend = mock(AggregateBackendClient.class);
+        when(backend.search(any())).thenReturn(consentsSearch());
+        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"101\"}"));
+        AggregateService svc = service(backend, new AggregateProperties());
+        UUID id = UUID.randomUUID();
+
+        svc.querySync(new Query(null, null, null, null, ResultType.COUNT, UUID.randomUUID(), id, true));
+
+        ArgumentCaptor<QueryRequest> cap = ArgumentCaptor.forClass(QueryRequest.class);
+        verify(backend).querySync(cap.capture());
+        Query sent = (Query) cap.getValue().getQuery();
+        assertThat(sent.expectedResultType()).isEqualTo(ResultType.CROSS_COUNT);
+        assertThat(sent.sample()).isTrue();
+        assertThat(sent.picsureId()).isNull();
+        assertThat(sent.id()).isEqualTo(id);
     }
 
     @Test

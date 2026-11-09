@@ -48,7 +48,7 @@ public class QueryDecomposer {
         if (!categoricalPaths.isEmpty()) {
             Query categoricalQuery = new Query(
                 new ArrayList<>(categoricalPaths), query.authorizationFilters(), query.phenotypicClause(), query.genomicFilters(),
-                ResultType.CATEGORICAL_CROSS_COUNT, query.picsureId(), null
+                ResultType.CATEGORICAL_CROSS_COUNT, null, null, query.sample()
             );
             subQueries.add(new SubQueryDescriptor(categoricalQuery, ResultType.CATEGORICAL_CROSS_COUNT, DistributionType.CATEGORICAL));
         }
@@ -56,7 +56,7 @@ public class QueryDecomposer {
         if (!numericPaths.isEmpty()) {
             Query numericQuery = new Query(
                 new ArrayList<>(numericPaths), query.authorizationFilters(), query.phenotypicClause(), query.genomicFilters(),
-                ResultType.CONTINUOUS_CROSS_COUNT, query.picsureId(), null
+                ResultType.CONTINUOUS_CROSS_COUNT, null, null, query.sample()
             );
             subQueries.add(new SubQueryDescriptor(numericQuery, ResultType.CONTINUOUS_CROSS_COUNT, DistributionType.CONTINUOUS));
         }
