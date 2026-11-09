@@ -80,15 +80,17 @@ public class QueryService {
     private final ResourceWebClient hpds;
     private final HpdsBackendSelector selector;
     private final ConsentAuthorizationService consentAuthorization;
+    private final SampleRules sampleRules;
 
     public QueryService(
         OperationsClient operationsClient, ResourceWebClient hpds, HpdsBackendSelector selector,
-        ConsentAuthorizationService consentAuthorization
+        ConsentAuthorizationService consentAuthorization, SampleRules sampleRules
     ) {
         this.operationsClient = operationsClient;
         this.hpds = hpds;
         this.selector = selector;
         this.consentAuthorization = consentAuthorization;
+        this.sampleRules = sampleRules;
     }
 
     public record QuerySyncResponse(byte[] body, String queryMetadata) {
@@ -108,6 +110,7 @@ public class QueryService {
         if (req == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing query data");
         }
+        sampleRules.check(backend, req.getQuery());
         consentAuthorization.scopeQuery(backend, req, authorizationHeader);
         HpdsTarget target = selector.select(backend); // URL + service token
 
@@ -138,11 +141,15 @@ public class QueryService {
      * Runs a query on HPDS's synchronous route and records it. HPDS returns its query id in the {@code queryMetadata} header for every
      * result type it computes as a query; INFO_COLUMN_LISTING is a listing rather than a query and carries no id, so nothing is recorded
      * for it. An HPDS rejection propagates from {@link ResourceWebClient} before anything is persisted.
+     *
+     * <p>A sample query never runs here. {@link SampleRules} refuses it unless it asks for a dataframe export on {@code auth} with sampling
+     * turned on, and HPDS answers that one with 400 because its synchronous route does not serve the dataframe exports.
      */
     public QuerySyncResponse querySync(String backend, QueryRequest req, String requestSource, String authorizationHeader) {
         if (req == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing query data");
         }
+        sampleRules.check(backend, req.getQuery());
         consentAuthorization.scopeQuery(backend, req, authorizationHeader);
         HpdsTarget target = selector.select(backend);
 

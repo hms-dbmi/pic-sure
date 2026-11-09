@@ -36,10 +36,12 @@ import edu.harvard.dbmi.avillach.domain.SignedUrlResponse;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.AuthorizationFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.query.consent.ConsentAuthorizationService;
 import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
+import edu.harvard.hms.dbmi.avillach.query.config.SampleProperties;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
 import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
@@ -59,7 +61,9 @@ class QueryServiceTest {
     HpdsProperties props = props();
     HpdsBackendSelector selector = new HpdsBackendSelector(props);
     ConsentAuthorizationService consent = mock(ConsentAuthorizationService.class);
-    QueryService service = new QueryService(operationsClient, hpds, selector, consent);
+    SampleProperties sampleProperties = new SampleProperties();
+    SampleRules sampleRules = new SampleRules(sampleProperties);
+    QueryService service = new QueryService(operationsClient, hpds, selector, consent, sampleRules);
 
     private static HpdsProperties props() {
         HpdsProperties p = new HpdsProperties();
@@ -111,10 +115,65 @@ class QueryServiceTest {
             .update(eq(picsureId), argThat((UpdateQueryRequest u) -> picsureId.toString().equals(u.resourceResultId())));
     }
 
+    private static QueryRequest sampleRequest(ResultType type) {
+        return new GeneralQueryRequest().setQuery(new Query(List.of(), List.of(), null, List.of(), type, null, null, true));
+    }
+
+    private void assertRefusedBeforeAnyCall(Runnable call, String errorType) {
+        assertThatThrownBy(call::run).isInstanceOfSatisfying(PicsureException.class, refused -> {
+            assertThat(refused.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(refused.getErrorType()).isEqualTo(errorType);
+        });
+        verifyNoInteractions(consent, hpds, operationsClient);
+    }
+
+    @Test
+    void createRefusesSampleBeforeConsentScopingWhenSamplingIsOff() {
+        assertRefusedBeforeAnyCall(
+            () -> service.query("auth", sampleRequest(ResultType.DATAFRAME), "Bearer caller-token"), "sample_disabled"
+        );
+    }
+
+    @Test
+    void createRefusesSampleOnTheOpenBackend() {
+        sampleProperties.setEnabled(true);
+
+        assertRefusedBeforeAnyCall(() -> service.query("open", sampleRequest(ResultType.DATAFRAME)), "bad_request");
+    }
+
+    @Test
+    void createSubmitsADataframeSampleWhenSamplingIsOn() {
+        sampleProperties.setEnabled(true);
+        QueryRequest request = sampleRequest(ResultType.DATAFRAME_PFB);
+        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-sample"));
+        when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
+
+        service.query("auth", request, "Bearer caller-token");
+
+        verify(consent).scopeQuery("auth", request, "Bearer caller-token");
+        verify(operationsClient).save(argThat((SaveQueryRequest saved) -> saved.query().contains("\"sample\":true")));
+    }
+
+    @Test
+    void syncRefusesSampleBeforeConsentScopingWhenSamplingIsOff() {
+        assertRefusedBeforeAnyCall(
+            () -> service.querySync("auth", sampleRequest(ResultType.COUNT), null, "Bearer caller-token"), "sample_disabled"
+        );
+    }
+
+    @Test
+    void syncRefusesSampleOnAResultTypeItServes() {
+        sampleProperties.setEnabled(true);
+
+        assertRefusedBeforeAnyCall(
+            () -> service.querySync("auth", sampleRequest(ResultType.COUNT), null, "Bearer caller-token"), "bad_request"
+        );
+    }
+
     @Test
     void createScopesBeforeCallingHpdsOrPersistence() {
         ConsentAuthorizationService consent = mock(ConsentAuthorizationService.class);
-        QueryService scopedService = new QueryService(operationsClient, hpds, selector, consent);
+        QueryService scopedService = new QueryService(operationsClient, hpds, selector, consent, sampleRules);
         QueryRequest request = req();
         when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-3"));
         when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
@@ -184,7 +243,7 @@ class QueryServiceTest {
     @Test
     void syncScopesThenCallsHpdsBeforePersisting() {
         ConsentAuthorizationService consent = mock(ConsentAuthorizationService.class);
-        QueryService scopedService = new QueryService(operationsClient, hpds, selector, consent);
+        QueryService scopedService = new QueryService(operationsClient, hpds, selector, consent, sampleRules);
         QueryRequest request = req();
         when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
         when(hpds.querySync(any(HpdsTarget.class), any(), any()))

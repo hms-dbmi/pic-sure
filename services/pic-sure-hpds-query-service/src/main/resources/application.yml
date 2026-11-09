@@ -70,6 +70,9 @@ aggregate:
     # True: a studies-consents CROSS_COUNT returns only the total; per-study and per-consent counts are computed but not sent.
     cross-count-total-only: ${AGGREGATE_OBFUSCATION_CROSS_COUNT_TOTAL_ONLY:true}
 
+sample:
+  enabled: ${SAMPLE_ENABLED:false}
+
 management:
   endpoints:
     web:

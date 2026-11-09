@@ -273,6 +273,21 @@ class HpdsQueryControllerTest {
     }
 
     @Test
+    void sampleDisabledBodyCarriesErrorType() throws Exception {
+        mockMvc
+            .perform(
+                post("/hpds/auth/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
+                    .header("Authorization", "Bearer caller-token")
+                    .content("{\"query\":{\"expectedResultType\":\"DATAFRAME\",\"sample\":true}}")
+            ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("sample_disabled"))
+            .andExpect(jsonPath("$.message").value("Sample datasets are not available at this time"));
+
+        verify(consentAuthorization, never()).scopeQuery(any(), any(), any());
+        verify(operationsClient, never()).save(any());
+        hpds.verify(0, postRequestedFor(urlEqualTo("/PIC-SURE/v3/query")));
+    }
+
+    @Test
     void signedUrlBodyIsByteIdenticalToWhatHpdsSent() throws Exception {
         UUID id = UUID.randomUUID();
         String fromHpds = "{\"signedUrl\":\"https://pic-sure-exports.s3.amazonaws.com/rr-1.avro"

@@ -118,6 +118,10 @@ public class HpdsQueryController {
 
     private static final String UNREADABLE_BODY = " or a body that cannot be read as a query request.";
 
+    private static final String SUBMIT_BAD_REQUEST = "Unknown backend, missing query data, a query with `sample` set to true while sample "
+        + "datasets are turned off (error type `sample_disabled`) or with a result type other than DATAFRAME, DATAFRAME_PFB and "
+        + "DATAFRAME_TIMESERIES," + UNREADABLE_BODY;
+
     private static final String METHOD_NOT_ALLOWED =
         "The request used a method this endpoint does not support, such as POST. The Allow header names GET.";
 
@@ -152,7 +156,7 @@ public class HpdsQueryController {
     @Operation(summary = "Submit an asynchronous query", description = SUBMIT_DESCRIPTION)
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The status of the submitted query."),
-            @ApiResponse(responseCode = "400", description = "Unknown backend, missing query data," + UNREADABLE_BODY),
+            @ApiResponse(responseCode = "400", description = SUBMIT_BAD_REQUEST),
             @ApiResponse(responseCode = "403", description = "Consent does not permit this query."),
             @ApiResponse(responseCode = "410", description = "Institutional (federated) queries are no longer supported."),
             @ApiResponse(responseCode = "502", description = "Consent lookup, HPDS call, or query save failed."),
