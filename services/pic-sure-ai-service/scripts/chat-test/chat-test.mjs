@@ -226,6 +226,8 @@ async function send(url, token, body, timeoutSec) {
     const text = await res.text();
     let json = null;
     try { json = JSON.parse(text); } catch { /* keep raw text */ }
+    // A string, number or array body is not a chat reply; keep it as raw text so field checks never see it.
+    if (json !== null && (typeof json !== 'object' || Array.isArray(json))) json = null;
     return { status: res.status, json, raw: json ? undefined : text, ms: Date.now() - started };
   } catch (e) {
     return { status: 0, error: String(e.cause?.message ?? e.message), ms: Date.now() - started };
@@ -236,6 +238,8 @@ function captureLog(args, since) {
   if (args.logFile) return readFileSync(args.logFile, 'utf8');
   const cmd = process.env.LOG_CMD;
   if (!cmd) return null;
+  // meta.started comes from a results file that may not be ours, and goes into a shell command.
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(since)) die(`refusing to run LOG_CMD: "${since}" is not a generated start time`);
   try {
     // docker logs writes the container's stderr to its own stderr, so merge both.
     return execSync(`${cmd} --since ${since} 2>&1`, { encoding: 'utf8', maxBuffer: 512 * 1024 * 1024 });
@@ -342,7 +346,9 @@ function check(run, logLines, priorLines = []) {
 
   // The model sends the selection as a change (addSelect/removeSelect), so its own propose_query calls show whether it changed what
   // the researcher asked for and nothing else. A plain select is read as addSelect.
-  if (run.selectChange) {
+  if (run.selectChange && !logLines.length) {
+    flags.push('selection change not checked (no log)');
+  } else if (run.selectChange) {
     const proposals = logLines
       .map((l) => l.match(/Tool call requested: name=propose_query id=\S+ (.*)$/))
       .filter(Boolean)
@@ -384,11 +390,12 @@ function check(run, logLines, priorLines = []) {
   };
 }
 
-/** Splits the log once into its lines by request id. Lines are tagged [conversationId|requestId], so an id never matches a longer one. */
+/** Splits the log once into its lines by request id. Lines are tagged [requestId|conversationId|chatRequestId], so an id never matches a longer one. */
 function indexLog(log) {
   const byRequest = new Map();
   for (const line of log ? log.split('\n') : []) {
-    const id = line.match(/\[[^\]|]*\|([^\]]+)\]/)?.[1];
+    // The tag is [requestId|conversationId|chatRequestId]; older logs have two fields. The chat request id is always the last.
+    const id = line.match(/\[[^\]|]*(?:\|[^\]|]*)*\|([^\]|]+)\]/)?.[1];
     if (id === undefined) continue;
     if (!byRequest.has(id)) byRequest.set(id, []);
     byRequest.get(id).push(line);
@@ -453,13 +460,17 @@ async function main() {
 
   if (args.rescore) {
     const prev = JSON.parse(readFileSync(args.rescore, 'utf8'));
-    let suitePath = args.suite ?? prev.meta.suite;
-    if (!args.suite && !existsSync(suitePath)) {
-      // Results from another machine, or from a suite that has since been replaced.
-      console.warn(`warning: ${suitePath} not found; using ${DEFAULT_SUITE} for test names and pass criteria`);
-      suitePath = DEFAULT_SUITE;
+    let suite = args.suite ? JSON.parse(readFileSync(args.suite, 'utf8')) : prev.meta.suiteSnapshot;
+    if (!suite) {
+      // Results saved before suites were snapshotted: the suite may have changed since, so names and pass criteria can differ.
+      let suitePath = prev.meta.suite;
+      if (!existsSync(suitePath)) {
+        console.warn(`warning: ${suitePath} not found; using ${DEFAULT_SUITE} for test names and pass criteria`);
+        suitePath = DEFAULT_SUITE;
+      }
+      console.warn(`warning: results have no suite snapshot; reading ${suitePath}, which may differ from the suite that ran`);
+      suite = JSON.parse(readFileSync(suitePath, 'utf8'));
     }
-    const suite = JSON.parse(readFileSync(suitePath, 'utf8'));
     const log = captureLog(args, prev.meta.started);
     if (!log) die('--rescore needs --log-file or LOG_CMD');
     args.out ??= args.rescore.replace(/-results\.json$/, '');
@@ -506,7 +517,7 @@ async function main() {
   // fails in seconds instead of after the whole suite.
   process.stdout.write(`preflight ${url} ... `);
   const pre = await send(url, token, { conversationId: `${label}-preflight-conv`, requestId: `${label}-preflight`, message: 'hello' }, args.timeout);
-  if (pre.status !== 200 || !pre.json || !('response' in pre.json)) {
+  if (pre.status !== 200 || !pre.json || !('response' in pre.json) || String(pre.json.response).includes(FALLBACK)) {
     console.log('FAILED');
     die(`preflight got HTTP ${pre.status || 'error'}: ${pre.error ?? JSON.stringify(pre.json ?? pre.raw).slice(0, 400)}`);
   }
@@ -531,7 +542,7 @@ async function main() {
   // Give the container a moment to flush the last lines before reading its log.
   await new Promise((r) => setTimeout(r, 2000));
   const log = captureLog(args, started);
-  const meta = { label, url, started, suite: resolve(suitePath), note: args.note ?? null };
+  const meta = { label, url, started, suite: resolve(suitePath), suiteSnapshot: suite, note: args.note ?? null };
   const out = writeOutputs(args, suite, tests, runs, log, meta);
 
   const flagged = runs.filter((r) => r.check.flags.length);
