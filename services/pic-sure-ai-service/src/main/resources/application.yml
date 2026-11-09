@@ -11,7 +11,7 @@ spring:
       converse:
         chat:
           options:
-            model: ${BEDROCK_MODEL_ID:amazon.nova-lite-v1:0}
+            model: ${BEDROCK_MODEL_ID:openai.gpt-oss-120b-1:0}
             max-tokens: ${BEDROCK_MAX_TOKENS:1024}
             # The tool-use loop (iteration cap, MCP dispatch, error shaping) is hand-written in
             # ai.chat/ai.model -- Spring AI must never auto-execute tool calls on its own, or that
@@ -36,9 +36,18 @@ picsure:
         api-token: ${AI_MODEL_HTTP_API_TOKEN:}
         model-id: ${AI_MODEL_HTTP_MODEL_ID:}
     mcp:
-      # mock (default) | gateway (a real MCP client against pic-sure-mcp via the
-      # gateway's /mcp route). See McpToolGateway and its MockMcpToolGateway implementation.
-      mode: ${AI_MCP_MODE:mock}
+      # gateway (default, and the only implementation): a real MCP client against pic-sure-mcp via
+      # the gateway's /mcp route. See McpToolGateway and GatewayMcpToolGateway. The property stays
+      # configurable (rather than hardcoded) so a future alternative implementation -- a different
+      # transport, a test double -- is a bean choice, not a code change.
+      mode: ${AI_MCP_MODE:gateway}
+      # Required since mode=gateway is the default. Same gateway, same env var pic-sure-mcp itself
+      # binds via picsure.mcp.gateway-url -- one gateway URL, shared across both services' deploy config.
+      gateway-url: ${PICSURE_GATEWAY_URL:}
+      # Comma-separated gateway tool names withheld from the model (and refused if it requests them anyway). Default: the
+      # adapter-code tool, which the connected UI has no use for -- its long definition is resent on every model call. Set
+      # AI_MCP_EXCLUDED_TOOLS to blank to offer every tool.
+      excluded-tools: ${AI_MCP_EXCLUDED_TOOLS:get_adapter_code}
   # The shared X-Application-Token gate for THIS service's own /actuator/** endpoints (see
   # ActuatorSecurityConfig / the shared ActuatorSecurityHelper in pic-sure-spring-commons).
   actuator:
