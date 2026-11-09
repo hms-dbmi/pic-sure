@@ -22,8 +22,9 @@ public record FacetCategory(String name, String display, String description, Lis
      * @param display the facet display name
      * @param description the facet description
      * @param count the number of matching concepts, or null
+     * @param children the facets nested under this one, in the same category, or null
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Facet(String name, String display, String description, Integer count) {
+    public record Facet(String name, String display, String description, Integer count, List<Facet> children) {
     }
 }
