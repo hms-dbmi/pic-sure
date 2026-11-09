@@ -1,30 +1,56 @@
 package edu.harvard.hms.dbmi.avillach.ai.chat;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
+import java.util.function.UnaryOperator;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.GenomicFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Operator;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
 
 /**
- * The shape of {@code propose_query}'s {@code query} argument: the real {@code hpds.data.query.v3.Query} fields the model is allowed to
- * set, mirroring {@code pic-sure-mcp}'s own {@code query.QueryInput} -- {@code select}, {@code phenotypicClause} (a filter or a nested
- * subquery), and {@code genomicFilters} -- with the same exclusions: no {@code authorizationFilters}, {@code picsureId}, {@code id}, or
- * {@code not} on either clause type, since those must never come from the model.
+ * The shape of a {@code query} object, on both sides of the chat: {@code propose_query}'s {@code query} argument (model output) and the
+ * request's current {@code query} (client input), both validated by the same code ({@link ChatStateValidator}). It carries the real
+ * {@code hpds.data.query.v3.Query} fields the model is allowed to set, mirroring {@code pic-sure-mcp}'s own {@code query.QueryInput} --
+ * {@code select}, {@code phenotypicClause} (a filter or a nested subquery), and {@code genomicFilters} -- with the same exclusions: no
+ * {@code authorizationFilters}, {@code picsureId}, {@code id}, or {@code not} on either clause type, since those must never come from the
+ * model.
  *
- * <p>Unlike {@code QueryInput}, there is no {@code toQuery()}/{@code toClause()}: this input is validated for shape only (see
- * {@link ProposeQueryTool}) and never executed or sent anywhere -- the final {@code ChatResponse} deliberately never carries a proposed
- * query yet (see {@code ToolUseLoopService}'s class Javadoc), so there is nothing to map this onto.
+ * <p>Unlike {@code QueryInput}, there is no {@code toQuery()}/{@code toClause()}: this input is never executed or sent anywhere. A
+ * validated one is serialized back out as the response's {@code query}, so what the UI receives is built from these checked fields, not
+ * from whatever JSON the model wrote.
  *
  * @param select concept paths to select
  * @param phenotypicClause a single filter, or a subquery that combines nested clauses with AND or OR
  * @param genomicFilters genomic filters
  */
-public record ProposeQueryInput(List<String> select, Clause phenotypicClause, List<GenomicFilter> genomicFilters) {
+public record ProposeQueryInput(
+    @JsonDeserialize(contentUsing = StrictStringDeserializer.class) List<String> select, Clause phenotypicClause,
+    List<GenomicFilter> genomicFilters
+) {
+
+    /** Longest concept path accepted in a filter or in {@code select}, in characters. Same bound as {@code pic-sure-mcp}. */
+    public static final int MAX_CONCEPT_PATH_LENGTH = 2000;
+
+    /** Longest genomic filter key accepted, in characters. Same bound as {@code pic-sure-mcp}. */
+    public static final int MAX_GENOMIC_KEY_LENGTH = 200;
+
+    /** Deepest subquery nesting accepted; a query nested further than any person would build is refused rather than recursed into. */
+    public static final int MAX_CLAUSE_DEPTH = 20;
+
+    /**
+     * Most filters and subqueries (at any depth) plus genomic filters a query may hold and still be read or proposed by the model. A bigger
+     * query is the researcher's to edit in the UI; it also bounds what {@link CurrentState} sends to the model on every call.
+     */
+    public static final int MAX_FILTERS = 10;
+
+    /** Most {@code select} paths a query may hold and still be read or proposed by the model. */
+    public static final int MAX_SELECT = 100;
 
     /**
      * Checks this input and every nested clause and genomic filter for completeness.
@@ -32,15 +58,55 @@ public record ProposeQueryInput(List<String> select, Clause phenotypicClause, Li
      * @throws IllegalArgumentException naming the first incomplete field found
      */
     public void validate() {
+        if (select != null) {
+            for (String path : select) {
+                requirePath("select", path);
+            }
+        }
         if (phenotypicClause != null) {
-            phenotypicClause.validate();
+            phenotypicClause.validate(1);
         }
         if (genomicFilters != null) {
             for (GenomicFilter filter : genomicFilters) {
                 if (filter == null || filter.key() == null || filter.key().isBlank()) {
                     throw new IllegalArgumentException("Field 'key' is required on every genomic filter.");
                 }
+                if (filter.key().length() > MAX_GENOMIC_KEY_LENGTH) {
+                    throw new IllegalArgumentException("Field 'key' is too long on a genomic filter.");
+                }
             }
+        }
+    }
+
+    /** @return how many filters and subqueries (at any depth) and genomic filters this query holds */
+    public int filterCount() {
+        return (phenotypicClause == null ? 0 : phenotypicClause.count()) + (genomicFilters == null ? 0 : genomicFilters.size());
+    }
+
+    /** @return whether this query is too big for the model to read or propose, by {@link #MAX_FILTERS} or {@link #MAX_SELECT} */
+    public boolean exceedsSizeLimit() {
+        return filterCount() > MAX_FILTERS || (select != null && select.size() > MAX_SELECT);
+    }
+
+    /**
+     * Rewrites every concept path (in {@code select} and in every filter), leaving the rest untouched.
+     *
+     * @param rewrite maps a path to the form to emit
+     * @return the rewritten input
+     */
+    public ProposeQueryInput mapPaths(UnaryOperator<String> rewrite) {
+        return new ProposeQueryInput(
+            select == null ? null : select.stream().map(rewrite).toList(),
+            phenotypicClause == null ? null : phenotypicClause.mapPaths(rewrite), genomicFilters
+        );
+    }
+
+    private static void requirePath(String field, String path) {
+        if (path == null || path.isBlank()) {
+            throw new IllegalArgumentException("Field '" + field + "' must not hold a blank concept path.");
+        }
+        if (path.length() > MAX_CONCEPT_PATH_LENGTH) {
+            throw new IllegalArgumentException("Field '" + field + "' holds a concept path that is too long.");
         }
     }
 
@@ -52,9 +118,19 @@ public record ProposeQueryInput(List<String> select, Clause phenotypicClause, Li
         /**
          * Checks this clause and any nested clauses for completeness.
          *
+         * @param depth how deeply this clause is nested, the top-level clause being 1
          * @throws IllegalArgumentException naming the first incomplete field found
          */
-        void validate();
+        void validate(int depth);
+
+        /** @return this clause plus every clause nested in it */
+        int count();
+
+        /**
+         * @param rewrite maps a concept path to the form to emit
+         * @return this clause with every concept path rewritten
+         */
+        Clause mapPaths(UnaryOperator<String> rewrite);
     }
 
     /**
@@ -66,17 +142,52 @@ public record ProposeQueryInput(List<String> select, Clause phenotypicClause, Li
      * @param min numeric lower bound
      * @param max numeric upper bound
      */
-    public record Filter(PhenotypicFilterType phenotypicFilterType, String conceptPath, Set<String> values, Double min, Double max)
-        implements Clause {
+    public record Filter(
+        PhenotypicFilterType phenotypicFilterType, @JsonDeserialize(using = StrictStringDeserializer.class) String conceptPath,
+        @JsonDeserialize(contentUsing = StrictStringDeserializer.class) Set<String> values, Double min, Double max
+    ) implements Clause {
 
         @Override
-        public void validate() {
+        public void validate(int depth) {
             if (phenotypicFilterType == null) {
                 throw new IllegalArgumentException("Field 'phenotypicFilterType' is required on every filter.");
             }
             if (conceptPath == null || conceptPath.isBlank()) {
                 throw new IllegalArgumentException("Field 'conceptPath' is required on every filter.");
             }
+            requirePath("conceptPath", conceptPath);
+            if (values != null && values.stream().anyMatch(Objects::isNull)) {
+                throw new IllegalArgumentException("Field 'values' must not hold null.");
+            }
+            boolean hasValues = values != null && !values.isEmpty();
+            boolean hasRange = min != null || max != null;
+            if (hasValues && hasRange) {
+                throw new IllegalArgumentException("A filter takes either 'values' or 'min' and 'max', not both.");
+            }
+            if (phenotypicFilterType == PhenotypicFilterType.FILTER && !hasValues && !hasRange) {
+                throw new IllegalArgumentException("A FILTER filter needs either 'values' or 'min' and 'max'.");
+            }
+            if (phenotypicFilterType != PhenotypicFilterType.FILTER && (hasValues || hasRange)) {
+                throw new IllegalArgumentException(
+                    "A " + phenotypicFilterType + " filter takes neither 'values' nor 'min' and 'max'; use FILTER to match on them."
+                );
+            }
+            if (min != null && !Double.isFinite(min) || max != null && !Double.isFinite(max)) {
+                throw new IllegalArgumentException("Fields 'min' and 'max' must be finite numbers.");
+            }
+            if (min != null && max != null && min > max) {
+                throw new IllegalArgumentException("Field 'min' must not be greater than 'max'.");
+            }
+        }
+
+        @Override
+        public int count() {
+            return 1;
+        }
+
+        @Override
+        public Clause mapPaths(UnaryOperator<String> rewrite) {
+            return new Filter(phenotypicFilterType, rewrite.apply(conceptPath), values, min, max);
         }
     }
 
@@ -89,7 +200,10 @@ public record ProposeQueryInput(List<String> select, Clause phenotypicClause, Li
     public record Subquery(List<Clause> phenotypicClauses, Operator operator) implements Clause {
 
         @Override
-        public void validate() {
+        public void validate(int depth) {
+            if (depth > MAX_CLAUSE_DEPTH) {
+                throw new IllegalArgumentException("Subqueries are nested too deeply.");
+            }
             if (operator == null) {
                 throw new IllegalArgumentException("Field 'operator' is required on every subquery.");
             }
@@ -100,8 +214,18 @@ public record ProposeQueryInput(List<String> select, Clause phenotypicClause, Li
                 if (clause == null) {
                     throw new IllegalArgumentException("A phenotypic clause must not be null.");
                 }
-                clause.validate();
+                clause.validate(depth + 1);
             }
+        }
+
+        @Override
+        public int count() {
+            return 1 + phenotypicClauses.stream().mapToInt(Clause::count).sum();
+        }
+
+        @Override
+        public Clause mapPaths(UnaryOperator<String> rewrite) {
+            return new Subquery(phenotypicClauses.stream().map(clause -> clause.mapPaths(rewrite)).toList(), operator);
         }
     }
 }
