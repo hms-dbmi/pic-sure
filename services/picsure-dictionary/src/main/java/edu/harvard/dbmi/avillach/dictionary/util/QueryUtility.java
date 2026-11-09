@@ -23,10 +23,21 @@ public class QueryUtility {
 
     /**
      * Converts a pre-sanitized search string into a prefix-matching tsquery. Input is sanitized by FilterProcessor.sanitizeSearch() before
-     * reaching SQL — only contains Unicode letters, digits, and single spaces. Splits on whitespace, appends :* to each word, and ANDs them
-     * together. e.g. "ear infection" becomes to_tsquery('english', 'ear:* & infection:*')
+     * reaching SQL — only contains Unicode letters, digits, single spaces, and bare '|' between terms. Splits on whitespace, appends :* to
+     * each word, and ANDs them together; '|' ORs whole terms, since & binds tighter than | in a tsquery. e.g. "ear infection" becomes
+     * to_tsquery('english', 'ear:* & infection:*'), and "asthma|ear infection" becomes 'asthma:* | ear:* & infection:*'
      */
-    private static final String TSQUERY_EXPR = "to_tsquery('english', regexp_replace(trim(:search), '\\s+', ':* & ', 'g') || ':*')";
+    private static final String TSQUERY_EXPR = tsqueryExpr("search");
+
+    /**
+     * The tsquery expression for a pre-sanitized search held in a named parameter, as described on {@link #TSQUERY_EXPR}.
+     *
+     * @param param the name of the named parameter that holds the search, without the colon
+     * @return the SQL expression
+     */
+    public static String tsqueryExpr(String param) {
+        return "to_tsquery('english', replace(regexp_replace(trim(:" + param + "), '\\s+', ':* & ', 'g'), '|', ':* | ') || ':*')";
+    }
 
     public static final String SEARCH_QUERY = "ts_rank_cd(searchable_fields, " + TSQUERY_EXPR + ")";
 
