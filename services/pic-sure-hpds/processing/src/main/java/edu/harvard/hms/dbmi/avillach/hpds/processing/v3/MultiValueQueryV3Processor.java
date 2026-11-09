@@ -28,16 +28,20 @@ public class MultiValueQueryV3Processor implements HpdsV3Processor {
 
     private final PhenotypicObservationStore phenotypicObservationStore;
 
+    private final CohortSampler cohortSampler;
+
     private static final Logger log = LoggerFactory.getLogger(MultiValueQueryV3Processor.class);
 
 
     @Autowired
     public MultiValueQueryV3Processor(
-        QueryExecutor queryExecutor, PhenotypicObservationStore phenotypicObservationStore, @Value("${ID_BATCH_SIZE:0}") int idBatchSize
+        QueryExecutor queryExecutor, PhenotypicObservationStore phenotypicObservationStore, CohortSampler cohortSampler,
+        @Value("${ID_BATCH_SIZE:0}") int idBatchSize
     ) {
         this.queryExecutor = queryExecutor;
         this.idBatchSize = idBatchSize;
         this.phenotypicObservationStore = phenotypicObservationStore;
+        this.cohortSampler = cohortSampler;
     }
 
     @Override
@@ -50,7 +54,8 @@ public class MultiValueQueryV3Processor implements HpdsV3Processor {
 
     @Override
     public void runQuery(Query query, AsyncResult result) {
-        Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
+        Set<Integer> cohort = queryExecutor.getPatientSubsetForQuery(query);
+        Set<Integer> idList = query.sample() ? cohortSampler.sample(query, cohort) : cohort;
         log.info("Processing " + idList.size() + " rows for result " + result.getId());
         Lists.partition(new ArrayList<>(idList), idBatchSize).forEach(patientIds -> {
             Map<String, Map<Integer, List<String>>> pathToPatientToValueMap = buildResult(query, new TreeSet<>(patientIds));

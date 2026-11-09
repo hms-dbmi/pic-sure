@@ -14,4 +14,10 @@ public record AuthorizationFilter(
         example = "[\"phs000007.c1\", \"phs000007.c2\"]"
     ) Set<String> values
 ) {
+
+    /**
+     * The concept path that holds each participant's study consent groups. An authorization filter on this path lists the consent groups
+     * the caller may read, one value per group, for example {@code phs000007.c1}.
+     */
+    public static final String CONSENTS_CONCEPT_PATH = "\\_consents\\";
 }

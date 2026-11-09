@@ -84,23 +84,20 @@ public class QueryV3Service {
 
         try {
             queryValidator.validate(query);
-            if (query.select().size() > SMALL_JOB_LIMIT) {
-                result.setJobQueue(largeTaskExecutor);
-            } else {
-                result.setJobQueue(smallTaskExecutor);
-            }
+            result.setJobQueue(runsOnSmallExecutor(query) ? smallTaskExecutor : largeTaskExecutor);
 
             result.enqueue();
 
             if (loggingClient != null && loggingClient.isEnabled()) {
                 try {
                     loggingClient.send(
-                        LoggingEvent.builder("QUERY").action("query.enqueued").metadata(
-                            Map.of(
-                                "query_id", result.getId(), "result_type", String.valueOf(query.expectedResultType()), "field_count",
-                                String.valueOf(query.select().size()), "queue", query.select().size() > SMALL_JOB_LIMIT ? "large" : "small"
-                            )
-                        ).build()
+                        LoggingEvent.builder("QUERY").action("query.enqueued")
+                            .metadata(
+                                Map.of(
+                                    "query_id", result.getId(), "result_type", String.valueOf(query.expectedResultType()), "field_count",
+                                    String.valueOf(query.select().size()), "queue", runsOnSmallExecutor(query) ? "small" : "large"
+                                )
+                            ).build()
                     );
                 } catch (Exception e) {
                     log.warn("Failed to send audit log event", e);
@@ -140,10 +137,20 @@ public class QueryV3Service {
 
     public AsyncResult getStatusFor(String queryId) {
         AsyncResult asyncResult = results.get(queryId);
-        int queueDepth =
-            asyncResult.getQuery().select().size() > SMALL_JOB_LIMIT ? largeTaskExecutionQueue.size() : smallTaskExecutionQueue.size();
+        int queueDepth = runsOnSmallExecutor(asyncResult.getQuery()) ? smallTaskExecutionQueue.size() : largeTaskExecutionQueue.size();
         // note: code copied from this method in QueryService was removed, it was obviously not working
         return asyncResult.setQueueDepth(queueDepth);
+    }
+
+    /**
+     * Decides which executor a query belongs to. A sample query always runs on the small executor, whatever its column count, so it never
+     * waits behind a long full export. Any other query runs there only when it selects no more than {@code SMALL_JOB_LIMIT} columns.
+     *
+     * @param query the submitted query
+     * @return true for the small executor, false for the large one
+     */
+    private boolean runsOnSmallExecutor(Query query) {
+        return query.sample() || query.select().size() <= SMALL_JOB_LIMIT;
     }
 
     public AsyncResult getResultFor(UUID queryId) {

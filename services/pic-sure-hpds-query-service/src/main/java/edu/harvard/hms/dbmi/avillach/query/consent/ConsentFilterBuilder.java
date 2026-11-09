@@ -15,7 +15,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 @Component
 public class ConsentFilterBuilder {
 
-    static final String CONSENT_PATH = "\\_consents\\";
+    static final String CONSENT_PATH = AuthorizationFilter.CONSENTS_CONCEPT_PATH;
     static final String GENOMIC_CONSENT_PATH = "\\_topmed_consents\\";
     static final String HARMONIZED_CONSENT_PATH = "\\_harmonized_consent\\";
     private static final String HARMONIZED_DATASET_PREFIX = "\\DCC Harmonized data set\\";
