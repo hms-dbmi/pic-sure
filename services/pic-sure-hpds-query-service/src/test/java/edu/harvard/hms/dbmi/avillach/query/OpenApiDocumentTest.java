@@ -288,6 +288,25 @@ class OpenApiDocumentTest {
         assertThat(sync.path("schema").path("description").asText()).doesNotContain("obfuscated");
     }
 
+    @Test
+    void submitAndSyncDocumentTheSampleRefusalsUnder400() throws Exception {
+        JsonNode document = document();
+        JsonNode authDocument = groupDocument("auth");
+
+        for (JsonNode submit : List.of(operation(document, "post", QUERY), operation(authDocument, "post", "/hpds/auth/query"))) {
+            assertThat(submit.path("responses").path("400").path("description").asText()).contains(
+                "a query with `sample` set to true while sample datasets are turned off (error type `sample_disabled`)",
+                "on a backend other than auth", "or with a result type other than DATAFRAME, DATAFRAME_PFB and DATAFRAME_TIMESERIES"
+            );
+        }
+        for (JsonNode sync : List.of(operation(document, "post", SYNC), operation(authDocument, "post", "/hpds/auth/query/sync"))) {
+            assertThat(sync.path("responses").path("400").path("description").asText()).contains(
+                "a result type not served inline", "a query with `sample` set to true, which this endpoint never runs",
+                "error type `sample_disabled` while sample datasets are turned off"
+            );
+        }
+    }
+
     private JsonNode groupDocument(String group) throws Exception {
         return objectMapper.readTree(
             mockMvc.perform(get("/v3/api-docs/" + group)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()

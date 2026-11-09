@@ -19,7 +19,10 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,12 +35,16 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.query.config.AggregateProperties;
+import edu.harvard.hms.dbmi.avillach.query.config.SampleProperties;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 import edu.harvard.hms.dbmi.avillach.query.query.QueryService;
+import edu.harvard.hms.dbmi.avillach.query.query.SampleRules;
 
 class AggregateServiceTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
+    private final SampleProperties sampleProperties = new SampleProperties();
+    private final SampleRules sampleRules = new SampleRules(sampleProperties);
 
     private ObfuscationService obfuscation() {
         return new ObfuscationService(new AggregateProperties(), new VisualizationFormatter());
@@ -48,7 +55,7 @@ class AggregateServiceTest {
         props.getObfuscation().setEnabled(true); // these tests exercise the obfuscation path, which is off by default
         return new AggregateService(
             backend, obfuscation(), props, mock(QueryService.class), new ConceptMetadataLookup(backend),
-            new StudyConsentPathProvider(backend)
+            new StudyConsentPathProvider(backend), sampleRules
         );
     }
 
@@ -83,7 +90,7 @@ class AggregateServiceTest {
         disabled.getObfuscation().setEnabled(false);
         AggregateService svc = new AggregateService(
             backend, obfuscation(), disabled, mock(QueryService.class), new ConceptMetadataLookup(backend),
-            new StudyConsentPathProvider(backend)
+            new StudyConsentPathProvider(backend), sampleRules
         );
 
         assertThat(svc.querySync(sync("COUNT")).getBody()).isEqualTo("1234");
@@ -125,22 +132,86 @@ class AggregateServiceTest {
     }
 
     @Test
-    void openCrossCountKeepsSampleAndClearsPicsureId() {
+    void openCrossCountClearsPicsureIdAndKeepsId() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         when(backend.search(any())).thenReturn(consentsSearch());
         when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"101\"}"));
         AggregateService svc = service(backend, new AggregateProperties());
         UUID id = UUID.randomUUID();
 
-        svc.querySync(new Query(null, null, null, null, ResultType.COUNT, UUID.randomUUID(), id, true));
+        svc.querySync(new Query(null, null, null, null, ResultType.COUNT, UUID.randomUUID(), id, false));
 
         ArgumentCaptor<QueryRequest> cap = ArgumentCaptor.forClass(QueryRequest.class);
         verify(backend).querySync(cap.capture());
         Query sent = (Query) cap.getValue().getQuery();
         assertThat(sent.expectedResultType()).isEqualTo(ResultType.CROSS_COUNT);
-        assertThat(sent.sample()).isTrue();
+        assertThat(sent.sample()).isFalse();
         assertThat(sent.picsureId()).isNull();
         assertThat(sent.id()).isEqualTo(id);
+    }
+
+    private static Query sampleOf(ResultType type) {
+        return new Query(null, null, null, null, type, null, null, true);
+    }
+
+    private static void assertRefused(Runnable call, String errorType) {
+        assertThatThrownBy(call::run).isInstanceOfSatisfying(PicsureException.class, refused -> {
+            assertThat(refused.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(refused.getErrorType()).isEqualTo(errorType);
+        });
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = ResultType.class, names = {"COUNT", "CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "DATAFRAME"})
+    void syncRefusesSampleWith400BadRequestWhenSamplingIsOn(ResultType type) {
+        sampleProperties.setEnabled(true);
+        AggregateBackendClient backend = mock(AggregateBackendClient.class);
+        AggregateService svc = service(backend, new AggregateProperties());
+
+        assertRefused(() -> svc.querySync(sampleOf(type)), "bad_request");
+
+        verifyNoInteractions(backend);
+    }
+
+    @Test
+    void syncRefusesSampleWith400SampleDisabledWhenSamplingIsOff() {
+        AggregateBackendClient backend = mock(AggregateBackendClient.class);
+        AggregateService svc = service(backend, new AggregateProperties());
+
+        assertRefused(() -> svc.querySync(sampleOf(ResultType.COUNT)), "sample_disabled");
+
+        verifyNoInteractions(backend);
+    }
+
+    @Test
+    void syncRefusesSampleWhenObfuscationIsOff() {
+        sampleProperties.setEnabled(true);
+        AggregateBackendClient backend = mock(AggregateBackendClient.class);
+        AggregateProperties passthrough = new AggregateProperties();
+        passthrough.getObfuscation().setEnabled(false);
+        AggregateService svc = new AggregateService(
+            backend, obfuscation(), passthrough, mock(QueryService.class), new ConceptMetadataLookup(backend),
+            new StudyConsentPathProvider(backend), sampleRules
+        );
+
+        assertRefused(() -> svc.querySync(sampleOf(ResultType.DATAFRAME)), "bad_request");
+
+        verifyNoInteractions(backend);
+    }
+
+    @Test
+    void asyncOpenCrossCountSampleIsRefusedBeforeTheStudyConsentsLookup() {
+        sampleProperties.setEnabled(true);
+        AggregateBackendClient backend = mock(AggregateBackendClient.class);
+        QueryService queryService = mock(QueryService.class);
+        AggregateService svc = new AggregateService(
+            backend, obfuscation(), enabledProps(), queryService, new ConceptMetadataLookup(backend), new StudyConsentPathProvider(backend),
+            sampleRules
+        );
+
+        assertRefused(() -> svc.query(sampleOf(ResultType.CROSS_COUNT)), "bad_request");
+
+        verifyNoInteractions(backend, queryService);
     }
 
     @Test
@@ -366,7 +437,8 @@ class AggregateServiceTest {
         when(backend.search(any())).thenReturn(consentsSearch());
         QueryService queryService = mock(QueryService.class);
         AggregateService svc = new AggregateService(
-            backend, obfuscation(), enabledProps(), queryService, new ConceptMetadataLookup(backend), new StudyConsentPathProvider(backend)
+            backend, obfuscation(), enabledProps(), queryService, new ConceptMetadataLookup(backend), new StudyConsentPathProvider(backend),
+            sampleRules
         );
 
         svc.query(sync("CROSS_COUNT"));
@@ -384,7 +456,8 @@ class AggregateServiceTest {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         QueryService queryService = mock(QueryService.class);
         AggregateService svc = new AggregateService(
-            backend, obfuscation(), enabledProps(), queryService, new ConceptMetadataLookup(backend), new StudyConsentPathProvider(backend)
+            backend, obfuscation(), enabledProps(), queryService, new ConceptMetadataLookup(backend), new StudyConsentPathProvider(backend),
+            sampleRules
         );
 
         Query submitted = sync("COUNT");
@@ -402,7 +475,8 @@ class AggregateServiceTest {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         QueryService queryService = mock(QueryService.class);
         AggregateService svc = new AggregateService(
-            backend, obfuscation(), enabledProps(), queryService, new ConceptMetadataLookup(backend), new StudyConsentPathProvider(backend)
+            backend, obfuscation(), enabledProps(), queryService, new ConceptMetadataLookup(backend), new StudyConsentPathProvider(backend),
+            sampleRules
         );
 
         assertThatThrownBy(() -> svc.query(withoutResultType())).isInstanceOf(PicsureException.class);

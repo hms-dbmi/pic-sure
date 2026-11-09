@@ -24,6 +24,8 @@ import java.util.UUID;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpStatus;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
@@ -492,6 +494,25 @@ class QueryServiceTest {
             });
 
         verifyNoInteractions(hpds);
+        verify(operationsClient, never()).update(any(), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"true", "false"})
+    void legacyRowCarryingASampleKeyIs422WithoutRerunningOrPatching(String sampleValue) {
+        UUID id = UUID.randomUUID();
+        String body = "{\"query\":{\"expectedResultType\":\"DATAFRAME\",\"categoryFilters\":{\"\\\\sex\\\\\":[\"M\"]},\"sample\":"
+            + sampleValue + "}}";
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, body, "rr-old", "AVAILABLE", null, null));
+        sampleProperties.setEnabled(true);
+
+        assertThatThrownBy(() -> service.queryStatus("auth", id, "Bearer caller-token"))
+            .isInstanceOfSatisfying(PicsureException.class, e -> {
+                assertThat(e.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                assertThat(e.getErrorType()).isEqualTo("untranslatable_query");
+            });
+
+        verifyNoInteractions(hpds, consent);
         verify(operationsClient, never()).update(any(), any());
     }
 

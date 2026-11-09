@@ -31,6 +31,7 @@ import edu.harvard.hms.dbmi.avillach.query.config.AggregateProperties;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 import edu.harvard.hms.dbmi.avillach.query.query.QueryService;
+import edu.harvard.hms.dbmi.avillach.query.query.SampleRules;
 
 /**
  * Orchestrates querySync obfuscation, {@code CROSS_COUNT} query scoping through {@link #openCrossCount}, and chart suppression. This
@@ -71,10 +72,11 @@ public class AggregateService {
     private final QueryService queryService;
     private final ConceptMetadataLookup conceptMetadata;
     private final StudyConsentPathProvider studyConsentPaths;
+    private final SampleRules sampleRules;
 
     public AggregateService(
         AggregateBackendClient backend, ObfuscationService obfuscation, AggregateProperties props, QueryService queryService,
-        ConceptMetadataLookup conceptMetadata, StudyConsentPathProvider studyConsentPaths
+        ConceptMetadataLookup conceptMetadata, StudyConsentPathProvider studyConsentPaths, SampleRules sampleRules
     ) {
         this.backend = backend;
         this.obfuscation = obfuscation;
@@ -82,6 +84,7 @@ public class AggregateService {
         this.queryService = queryService;
         this.conceptMetadata = conceptMetadata;
         this.studyConsentPaths = studyConsentPaths;
+        this.sampleRules = sampleRules;
         if (!props.hasVisualization()) {
             logger.warn("No visualization service configured (VISUALIZATION_URL); open continuous charts are disabled");
         }
@@ -96,26 +99,34 @@ public class AggregateService {
      * result, signed-url, and metadata calls through {@link edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryController} therefore
      * operate on the consent-scoped query.
      *
+     * <p>A query that sets {@code sample} is refused by {@link SampleRules} before the study-consents lookup, so no backend is called for
+     * it.
+     *
      * @param query the query the caller submitted, or null when the body carried none
      * @return the status HPDS answered with, carrying the PIC-SURE result id
-     * @throws PicsureException 400 when the query or its {@code expectedResultType} is missing
+     * @throws PicsureException 400 when the query or its {@code expectedResultType} is missing, or the query sets {@code sample}
      */
     public QueryStatus query(Query query) {
         ResultType expectedResultType = requireExpectedResultType(query);
+        sampleRules.check(HpdsBackendSelector.OPEN, query);
         boolean rewrite = props.getObfuscation().isEnabled() && expectedResultType == ResultType.CROSS_COUNT;
         Query dispatched = rewrite ? openCrossCount(query) : query;
         return queryService.query(HpdsBackendSelector.OPEN, envelope(dispatched));
     }
 
     /**
-     * Runs an open query inline and obfuscates its result.
+     * Runs an open query inline and obfuscates its result. This path calls the open backend directly instead of going through
+     * {@link QueryService}, so it runs {@link SampleRules} itself: a query that sets {@code sample} never reaches the open backend,
+     * whatever the request record that produced it allows.
      *
      * @param query the query the caller sent, or null when the body carried none
      * @return the obfuscated body as {@code application/json}, with HPDS's {@code queryMetadata} header when it sent one
-     * @throws PicsureException 400 when the query or its {@code expectedResultType} is missing, or the type is not on the allow-list
+     * @throws PicsureException 400 when the query or its {@code expectedResultType} is missing, the query sets {@code sample}, or the type
+     *         is not on the allow-list
      */
     public ResponseEntity<String> querySync(Query query) {
         ResultType expectedResultType = requireExpectedResultType(query);
+        sampleRules.check(HpdsBackendSelector.OPEN, query);
         boolean obfuscate = props.getObfuscation().isEnabled();
         if (obfuscate && !ALLOWED_RESULT_TYPES.contains(expectedResultType)) {
             logger.warn("Incorrect Result Type: {}", expectedResultType);

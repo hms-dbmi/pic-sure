@@ -119,8 +119,12 @@ public class HpdsQueryController {
     private static final String UNREADABLE_BODY = " or a body that cannot be read as a query request.";
 
     private static final String SUBMIT_BAD_REQUEST = "Unknown backend, missing query data, a query with `sample` set to true while sample "
-        + "datasets are turned off (error type `sample_disabled`) or with a result type other than DATAFRAME, DATAFRAME_PFB and "
-        + "DATAFRAME_TIMESERIES," + UNREADABLE_BODY;
+        + "datasets are turned off (error type `sample_disabled`), on a backend other than auth, or with a result type other than "
+        + "DATAFRAME, DATAFRAME_PFB and DATAFRAME_TIMESERIES," + UNREADABLE_BODY;
+
+    private static final String SYNC_BAD_REQUEST = "Unknown backend, missing query data, a result type not served inline, a query with "
+        + "`sample` set to true, which this endpoint never runs (error type `sample_disabled` while sample datasets are turned off),"
+        + UNREADABLE_BODY;
 
     private static final String METHOD_NOT_ALLOWED =
         "The request used a method this endpoint does not support, such as POST. The Allow header names GET.";
@@ -232,7 +236,11 @@ public class HpdsQueryController {
                     ), @ExampleObject(name = "VARIANT_LIST_FOR_QUERY", value = VARIANT_LIST_EXAMPLE),
                     @ExampleObject(name = "VCF_EXCERPT", value = VCF_EXCERPT_EXAMPLE)}
             )
-        ), @ApiResponse(responseCode = "400", description = "Unknown backend, missing query data, a result type not served inline," + UNREADABLE_BODY), @ApiResponse(responseCode = "403", description = "Consent does not permit this query."), @ApiResponse(responseCode = "502", description = "Consent lookup, HPDS call, or query save failed."), @ApiResponse(responseCode = "503", description = "Backend not configured."), @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
+        ), @ApiResponse(responseCode = "400", description = SYNC_BAD_REQUEST),
+            @ApiResponse(responseCode = "403", description = "Consent does not permit this query."),
+            @ApiResponse(responseCode = "502", description = "Consent lookup, HPDS call, or query save failed."),
+            @ApiResponse(responseCode = "503", description = "Backend not configured."),
+            @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
     )
     public ResponseEntity<byte[]> querySync(
         @Parameter(ref = BackendParameterConfig.BACKEND_REFERENCE) @PathVariable("backend") String backend,

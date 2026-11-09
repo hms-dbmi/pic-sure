@@ -5,6 +5,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.never;
@@ -20,6 +21,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -34,6 +37,7 @@ import com.github.tomakehurst.wiremock.client.WireMock;
 
 import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
+import edu.harvard.hms.dbmi.avillach.query.config.SampleProperties;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
 
 /**
@@ -82,9 +86,47 @@ class AggregateAsyncOpenQueryTest {
     @MockitoBean
     private OperationsClient operationsClient;
 
+    @Autowired
+    private SampleProperties sampleProperties;
+
     @BeforeEach
     void reset() {
         hpds.resetAll();
+        sampleProperties.setEnabled(false);
+    }
+
+    private void postOpenSample(String resultType, String errorType) throws Exception {
+        mockMvc.perform(
+            post("/hpds/open/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\":{\"expectedResultType\":\"" + resultType + "\",\"sample\":true}}")
+        ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value(errorType));
+
+        verify(operationsClient, never()).save(any());
+        assertThat(hpds.getAllServeEvents()).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"DATAFRAME", "COUNT", "CROSS_COUNT"})
+    void openAsyncSampleIs400SampleDisabledWithNoBackendCallWhenSamplingIsOff(String resultType) throws Exception {
+        postOpenSample(resultType, "sample_disabled");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"DATAFRAME", "COUNT", "CROSS_COUNT"})
+    void openAsyncSampleIs400BadRequestWithNoBackendCallWhenSamplingIsOn(String resultType) throws Exception {
+        sampleProperties.setEnabled(true);
+
+        postOpenSample(resultType, "bad_request");
+    }
+
+    @Test
+    void openAsyncSampleDisabledBodyCarriesTheMessage() throws Exception {
+        mockMvc
+            .perform(
+                post("/hpds/open/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"query\":{\"expectedResultType\":\"DATAFRAME\",\"sample\":true}}")
+            ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("sample_disabled"))
+            .andExpect(jsonPath("$.message").value("Sample datasets are not available at this time"));
     }
 
     @Test
