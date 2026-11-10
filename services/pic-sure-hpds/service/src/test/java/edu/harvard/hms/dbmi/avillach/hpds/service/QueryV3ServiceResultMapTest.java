@@ -4,6 +4,9 @@ import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.util.UUIDv5;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.AuthorizationFilter;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.GenomicFilter;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilter;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary.DictionaryService;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.AsyncResult;
@@ -20,6 +23,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.RecordComponent;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -353,6 +357,141 @@ class QueryV3ServiceResultMapTest {
         assertNotSame(first, second);
         assertEquals(List.of(), second.getQuery().authorizationFilters());
         assertSame(second, service.getResultFor(picsureId));
+    }
+
+    @Test
+    void submitForARunningIdWithADifferentSelectReplacesIt() throws Exception {
+        Query changed = new Query(List.of("\\demographics\\SEX\\"), consents("phs1.c1"), null, List.of(), ResultType.DATAFRAME, null, null);
+
+        assertARunningJobIsReplacedBy(changed);
+    }
+
+    @Test
+    void submitForARunningIdWithTheSameSelectInAnotherOrderReplacesIt() throws Exception {
+        List<String> select = List.of("\\demographics\\AGE\\", "\\demographics\\SEX\\");
+        List<String> reordered = List.of("\\demographics\\SEX\\", "\\demographics\\AGE\\");
+        Query running = new Query(select, consents("phs1.c1"), null, List.of(), ResultType.DATAFRAME, null, null);
+        Query changed = new Query(reordered, consents("phs1.c1"), null, List.of(), ResultType.DATAFRAME, null, null);
+
+        assertARunningJobIsReplacedBy(running, changed);
+    }
+
+    @Test
+    void submitForARunningIdWithADifferentExpectedResultTypeReplacesIt() throws Exception {
+        Query changed =
+            new Query(List.of("\\demographics\\AGE\\"), consents("phs1.c1"), null, List.of(), ResultType.DATAFRAME_PFB, null, null);
+
+        assertARunningJobIsReplacedBy(changed);
+    }
+
+    @Test
+    void submitForARunningIdWithADifferentSampleFlagReplacesIt() throws Exception {
+        Query changed =
+            new Query(List.of("\\demographics\\AGE\\"), consents("phs1.c1"), null, List.of(), ResultType.DATAFRAME, null, null, true);
+
+        assertARunningJobIsReplacedBy(changed);
+    }
+
+    @Test
+    void submitForARunningIdWithADifferentPhenotypicClauseReplacesIt() throws Exception {
+        PhenotypicFilter females =
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\demographics\\SEX\\", Set.of("Female"), null, null, null);
+        Query changed =
+            new Query(List.of("\\demographics\\AGE\\"), consents("phs1.c1"), females, List.of(), ResultType.DATAFRAME, null, null);
+
+        assertARunningJobIsReplacedBy(changed);
+    }
+
+    @Test
+    void submitForARunningIdWithDifferentGenomicFiltersReplacesIt() throws Exception {
+        List<GenomicFilter> apoe = List.of(new GenomicFilter("Gene_with_variant", List.of("APOE"), null, null));
+        Query changed = new Query(List.of("\\demographics\\AGE\\"), consents("phs1.c1"), null, apoe, ResultType.DATAFRAME, null, null);
+
+        assertARunningJobIsReplacedBy(changed);
+    }
+
+    @Test
+    void submitForARunningIdWithTheSameQueryUnderAnotherQueryIdReturnsTheSameJob() throws Exception {
+        UUID picsureId = UUID.randomUUID();
+        PhenotypicFilter females =
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\demographics\\SEX\\", Set.of("Female"), null, null, null);
+        List<GenomicFilter> apoe = List.of(new GenomicFilter("Gene_with_variant", List.of("APOE"), null, null));
+        List<String> select = List.of("\\demographics\\AGE\\", "\\demographics\\SEX\\");
+        Query running =
+            new Query(select, consents("phs1.c1", "phs2.c1"), females, apoe, ResultType.DATAFRAME, picsureId, UUID.randomUUID(), true);
+        Query resubmitted = new Query(
+            new ArrayList<>(select), consents("phs2.c1", "phs1.c1"),
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\demographics\\SEX\\", Set.of("Female"), null, null, null),
+            List.of(new GenomicFilter("Gene_with_variant", List.of("APOE"), null, null)), ResultType.DATAFRAME, picsureId,
+            UUID.randomUUID(), true
+        );
+        AsyncResult first = service.runQuery(running);
+        assertTrue(workerStarted.await(WAIT_SECONDS, TimeUnit.SECONDS));
+
+        AsyncResult second = service.runQuery(resubmitted);
+
+        assertSame(first, second);
+        assertSame(first, service.getResultFor(picsureId));
+        assertEquals(0, smallQueue().size());
+        finishAllJobs();
+        verify(multiValueProcessor, times(1)).runQuery(any(), any());
+    }
+
+    @Test
+    void everyComponentOfAQueryIsEitherComparedForReuseOrKnownToBeIgnored() {
+        Set<String> compared =
+            Set.of("select", "authorizationFilters", "phenotypicClause", "genomicFilters", "expectedResultType", "sample");
+        Set<String> ignored = Set.of("picsureId", "id");
+        Set<String> components = new HashSet<>();
+        for (RecordComponent component : Query.class.getRecordComponents()) {
+            components.add(component.getName());
+        }
+        Set<String> expected = new HashSet<>(compared);
+        expected.addAll(ignored);
+
+        assertEquals(expected, components, "a new Query component must be added to QueryV3Service.isSameQuery or to the ignored set here");
+    }
+
+    private void assertARunningJobIsReplacedBy(Query changed) throws Exception {
+        assertARunningJobIsReplacedBy(query(null, consents("phs1.c1")), changed);
+    }
+
+    /**
+     * Submits {@code running}, waits until its job runs, then submits {@code changed} under the same result id. Asserts that the second
+     * submit gets a new job built from {@code changed}, that the job takes over the id and is enqueued, and that the processor's next run
+     * receives {@code changed} and that job.
+     */
+    private void assertARunningJobIsReplacedBy(Query running, Query changed) throws Exception {
+        UUID picsureId = UUID.randomUUID();
+        Query submitted = changed.setPicsureId(picsureId);
+        AsyncResult first = service.runQuery(running.setPicsureId(picsureId));
+        assertTrue(workerStarted.await(WAIT_SECONDS, TimeUnit.SECONDS));
+        assertEquals(AsyncResult.Status.RUNNING, first.getStatus());
+
+        AsyncResult second = service.runQuery(submitted);
+
+        assertNotSame(first, second);
+        assertEquals(picsureId.toString(), second.getId());
+        assertEquals(submitted, withoutQueryId(second.getQuery()));
+        assertSame(second, service.getResultFor(picsureId));
+        assertSame(second, service.getStatusFor(picsureId.toString()));
+        assertEquals(1, smallQueue().size());
+        finishAllJobs();
+        ArgumentCaptor<Query> executed = ArgumentCaptor.forClass(Query.class);
+        ArgumentCaptor<AsyncResult> jobs = ArgumentCaptor.forClass(AsyncResult.class);
+        verify(multiValueProcessor, times(2)).runQuery(executed.capture(), jobs.capture());
+        assertSame(second, jobs.getAllValues().get(1));
+        assertEquals(submitted, withoutQueryId(executed.getAllValues().get(1)));
+        assertEquals(AsyncResult.Status.SUCCESS, second.getStatus());
+        assertSame(second, service.getResultFor(picsureId));
+    }
+
+    /** Returns the query without the random id a job gives the query it runs, so it can be compared with the query as submitted. */
+    private static Query withoutQueryId(Query query) {
+        return new Query(
+            query.select(), query.authorizationFilters(), query.phenotypicClause(), query.genomicFilters(), query.expectedResultType(),
+            query.picsureId(), null, query.sample()
+        );
     }
 
     @Test

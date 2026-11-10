@@ -87,10 +87,11 @@ public class QueryV3Service {
      * {@link IllegalArgumentException} gets a job in {@code ERROR} that is returned but never stored, so whatever the key held stays as it
      * was. Any other validation failure is thrown to the caller, and also leaves the key untouched.
      *
-     * <p>A valid submit returns the job that is still queued or running under the key, and enqueues nothing, when that job was built with
-     * the same authorization filters. In every other case a new job takes over the key and is enqueued: the key is unused, the stored job
-     * finished or failed, or the stored job was built with different authorization filters. A replaced job that is still queued or running
-     * is not cancelled. It runs to its end, but no lookup by key reaches it again.
+     * <p>A valid submit returns the job that is still queued or running under the key, and enqueues nothing, when that job was built from
+     * the same query, as {@link #isSameQuery} defines it. In every other case a new job built from the submitted query takes over the key
+     * and is enqueued: the key is unused, the stored job finished or failed, or the stored job was built from a query that differs in
+     * anything that shapes the result. A replaced job that is still queued or running is not cancelled. It runs to its end, but no lookup
+     * by key reaches it again.
      *
      * <p>The new job and its temporary file are built before the result map is locked, so a slow build never holds up another submit. When
      * two submits race, the map keeps one job and the other is discarded together with its file.
@@ -227,10 +228,10 @@ public class QueryV3Service {
      *
      * @param stored the job under the submit's key, or null when the key is unused
      * @param submitted the query of the new submit
-     * @return true when the stored job is still queued or running and was built with the submit's authorization filters
+     * @return true when the stored job is still queued or running and was built from the same query as the submit
      */
     private static boolean isReusableFor(AsyncResult stored, Query submitted) {
-        return stored != null && isInFlight(stored) && hasSameAuthorizationFilters(stored.getQuery(), submitted);
+        return stored != null && isInFlight(stored) && isSameQuery(stored.getQuery(), submitted);
     }
 
     /**
@@ -244,6 +245,29 @@ public class QueryV3Service {
             case PENDING, RUNNING, RETRY -> true;
             case SUCCESS, ERROR -> false;
         };
+    }
+
+    /**
+     * Tells whether two queries ask for the same result, so that a job built from one can serve a submit of the other.
+     *
+     * <p>Every component that shapes the result has to be equal: {@code select}, {@code authorizationFilters}, {@code phenotypicClause},
+     * {@code genomicFilters}, {@code expectedResultType} and {@code sample}. The authorization filters are compared as sets, so their order
+     * does not matter. Everything else is compared as it stands: {@code select} in order, because its order is the column order of an
+     * export, and the clauses of a subquery and the genomic filters in order too, so a reordered query counts as a different one and gets a
+     * new job. An absent list equals an empty one.
+     *
+     * <p>{@code id} and {@code picsureId} are not compared. {@code id} is a random value given to each job's query, and {@code picsureId}
+     * is the key both queries were already found under.
+     *
+     * @param running the query of the stored job
+     * @param submitted the query of the new submit
+     * @return true when both ask for the same result
+     */
+    private static boolean isSameQuery(Query running, Query submitted) {
+        return hasSameAuthorizationFilters(running, submitted) && running.select().equals(submitted.select())
+            && Objects.equals(running.phenotypicClause(), submitted.phenotypicClause())
+            && running.genomicFilters().equals(submitted.genomicFilters()) && running.expectedResultType() == submitted.expectedResultType()
+            && running.sample() == submitted.sample();
     }
 
     /**
