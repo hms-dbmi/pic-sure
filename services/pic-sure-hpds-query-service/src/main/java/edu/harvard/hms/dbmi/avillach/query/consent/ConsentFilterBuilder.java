@@ -20,6 +20,12 @@ public class ConsentFilterBuilder {
     static final String HARMONIZED_CONSENT_PATH = "\\_harmonized_consent\\";
     private static final String HARMONIZED_DATASET_PREFIX = "\\DCC Harmonized data set\\";
 
+    /**
+     * Every concept path {@link #apply} can write an authorization filter on. A filter on one of these paths lists consent groups, so its
+     * values are consent values.
+     */
+    static final Set<String> CONSENT_PATHS = Set.of(CONSENT_PATH, GENOMIC_CONSENT_PATH, HARMONIZED_CONSENT_PATH);
+
     public Query apply(Query query, Map<String, Set<String>> consents) {
         List<AuthorizationFilter> filters = new ArrayList<>();
         filters.add(new AuthorizationFilter(CONSENT_PATH, requiredConsent(consents, CONSENT_PATH)));

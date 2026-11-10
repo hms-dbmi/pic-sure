@@ -49,6 +49,9 @@ import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
  * PSAMA's consent lookup, and operations-service's internal query store, so each status comes from the production throw site rather than a
  * mocked bean. The 503 cases need an unconfigured backend and live in {@link UnconfiguredBackendResponsesTest}, and the 503 for a stored
  * query another request keeps busy is reproduced in {@code QueryServiceOwnedReadConcurrencyTest}.
+ *
+ * <p>The metadata read declares no 403 and no consent failure. Its cases here send the requests that would draw those answers from the
+ * other reads and expect 200, with no call to the consent lookup.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
@@ -129,8 +132,7 @@ class DocumentedErrorResponsesTest {
             endpoint("submit", id -> authorized(post("/hpds/auth/query")).content(QUERY_BODY)),
             endpoint("sync", id -> authorized(post("/hpds/auth/query/sync")).content(QUERY_BODY)),
             endpoint("result", id -> authorized(get("/hpds/auth/query/{id}/result", id))),
-            endpoint("signed-url", id -> authorized(get("/hpds/auth/query/{id}/signed-url", id))),
-            endpoint("metadata", id -> authorized(get("/hpds/auth/query/{id}/metadata", id)))
+            endpoint("signed-url", id -> authorized(get("/hpds/auth/query/{id}/signed-url", id)))
         );
     }
 
@@ -150,6 +152,51 @@ class DocumentedErrorResponsesTest {
 
         mockMvc.perform(request.build(storedId)).andExpect(status().isBadGateway())
             .andExpect(jsonPath("$.errorType").value("consent_lookup_failed"));
+    }
+
+    @Test
+    void metadataOfAnOwnedQueryAnswersAnotherUserWhoHoldsNoneOfItsConsents() throws Exception {
+        storeOwnedQuery(Map.of(CONSENT_PATH, List.of(GRANTED_CONSENT)));
+        grantConsents(Map.of("\\_topmed_consents\\", List.of("phs000009.c9")));
+
+        String body = mockMvc.perform(calledBy(get("/hpds/auth/query/{id}/metadata", ownedId), ANOTHER_USER)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.picsureResultId").value(ownedId.toString()))
+            .andExpect(jsonPath("$.resultMetadata.queryJson.query.expectedResultType").value("DATAFRAME"))
+            .andExpect(jsonPath("$.resultMetadata.queryJson.query.authorizationFilters").isEmpty()).andReturn().getResponse()
+            .getContentAsString();
+
+        assertThat(body).doesNotContain(OWNER).doesNotContain(GRANTED_CONSENT).doesNotContain(OWNED_RUN).doesNotContain("userUuid")
+            .doesNotContain("runId").doesNotContain("consents");
+        verifyMetadataAskedOnlyForTheStoredQuery();
+    }
+
+    @Test
+    void metadataOfAQueryStoredWithoutAnOwnerComesBackWithoutItsAuthorizationFiltersWhileConsentLookupIsDown() throws Exception {
+        downstream.stubFor(WireMock.get(urlPathEqualTo(CONSENTS)).willReturn(aResponse().withStatus(500)));
+
+        String body = mockMvc.perform(identified(get("/hpds/auth/query/{id}/metadata", storedId))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.picsureResultId").value(storedId.toString()))
+            .andExpect(jsonPath("$.resultMetadata.queryJson.query.expectedResultType").value("COUNT"))
+            .andExpect(jsonPath("$.resultMetadata.queryJson.query.authorizationFilters").isArray())
+            .andExpect(jsonPath("$.resultMetadata.queryJson.query.authorizationFilters").isEmpty()).andReturn().getResponse()
+            .getContentAsString();
+
+        assertThat(body).doesNotContain(GRANTED_CONSENT).doesNotContain("_consents");
+        verifyMetadataAskedOnlyForTheStoredQuery();
+    }
+
+    @Test
+    void metadataWithoutAGatewayIdentityIsRefusedAndLoadsNothing() throws Exception {
+        mockMvc.perform(get("/hpds/auth/query/{id}/metadata", storedId).header(HttpHeaders.AUTHORIZATION, CALLER_TOKEN))
+            .andExpect(status().isForbidden());
+
+        downstream.verify(0, WireMock.anyRequestedFor(WireMock.anyUrl()));
+    }
+
+    private static void verifyMetadataAskedOnlyForTheStoredQuery() {
+        downstream.verify(1, WireMock.anyRequestedFor(WireMock.anyUrl()));
+        downstream.verify(1, WireMock.getRequestedFor(urlPathMatching(QUERIES + "/.*")));
+        downstream.verify(0, WireMock.getRequestedFor(urlPathEqualTo(CONSENTS)));
     }
 
     /** Endpoints that call HPDS through {@code ResourceWebClient}, where an HPDS 5xx becomes 502. */

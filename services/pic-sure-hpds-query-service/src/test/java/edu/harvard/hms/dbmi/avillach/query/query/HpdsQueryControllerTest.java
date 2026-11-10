@@ -269,17 +269,25 @@ class HpdsQueryControllerTest {
     }
 
     @Test
-    void metadataOnTheUnversionedPathForwardsCallerAuthorizationForSavedConsentVerification() throws Exception {
+    void metadataIsAnsweredToAnIdentifiedCallerWithoutAnyConsentCheck() throws Exception {
         UUID id = UUID.randomUUID();
-        StoredQuery stored = new StoredQuery(id, "{}", "rr-1", "AVAILABLE", "3", null);
-        when(operationsClient.get(id)).thenReturn(stored);
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, COUNT_BODY, "rr-1", "AVAILABLE", "3", null));
 
-        mockMvc.perform(
-            get("/hpds/auth/query/{id}/metadata", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
-                .header("Authorization", "Bearer caller-token")
-        ).andExpect(status().isOk());
+        mockMvc.perform(get("/hpds/auth/query/{id}/metadata", id).header(GatewayUserResolver.HEADER_USER_ID, USER))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.picsureResultId").value(id.toString()))
+            .andExpect(jsonPath("$.resultMetadata.queryJson.query.expectedResultType").value("COUNT"));
 
-        verify(consentAuthorization).verifyReadAccess("auth", stored, "Bearer caller-token");
+        verifyNoInteractions(consentAuthorization);
+    }
+
+    @Test
+    void metadataWithoutAGatewayIdentityIsRefusedBeforeTheQueryIsLoaded() throws Exception {
+        UUID id = UUID.randomUUID();
+
+        mockMvc.perform(get("/hpds/auth/query/{id}/metadata", id).header("Authorization", "Bearer caller-token"))
+            .andExpect(status().isForbidden());
+
+        verifyNoInteractions(operationsClient, consentAuthorization);
     }
 
     @Test

@@ -42,6 +42,7 @@ import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.QueryTranslator;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.query.consent.ConsentAuthorizationService;
+import edu.harvard.hms.dbmi.avillach.query.consent.StoredQueryConsentStripper;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
@@ -62,6 +63,9 @@ import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
  * the caller's consents inside it and compares them with the ones the row records. When they differ, or HPDS no longer holds the job, the
  * read runs the stored query again under the consents it just fetched and saves the row with them. A read of a row without an owner takes
  * no lock, never runs a v3 query again and keeps the check against the authorization filters saved in the row's body.
+ *
+ * <p>A metadata read is not one of those reads. {@link #queryMetadata} answers every caller for every row, with or without an owner, checks
+ * no consent and returns the stored query without any consent value.
  *
  * <p>What is guaranteed for an owned row. A result or a signed URL is fetched only after a check, made inside the lock of the row on that
  * same call, found all four of these: the consents PSAMA returned for the caller on that call equal the ones the row records, the row is
@@ -1155,16 +1159,27 @@ public class QueryService {
 
     // --- metadata (DB-only, no HPDS) ---
 
+    /**
+     * Returns the stored query and the stored result metadata of a query row, read from operations-service alone. HPDS is not called.
+     *
+     * <p>The read is the same for every caller and every row. It does not look at who the caller is, who owns the row or which consents the
+     * caller holds, and it does not call the consent service, so a query can be shared by passing on its id. The answer never carries a
+     * consent value. The stored body goes through {@link StoredQueryConsentStripper}, whatever version the row has and whether or not the
+     * body could be translated, and the owner, the consents and the run of the row are not copied into the answer.
+     *
+     * <p>{@code queryResultMetadata} is the result metadata HPDS answered the submit with, as it was stored. HPDS puts one member in it,
+     * the id it gave the query, and no filter.
+     *
+     * @param id the id of the stored query
+     * @return the id, resource id, status and result id of the row, with {@code queryJson} and {@code queryResultMetadata} under
+     *         {@code resultMetadata}; both are left out when the stored body is not JSON
+     * @throws PicsureException 400 when the id is missing, 404 when no row has the id, and whatever operations-service raises
+     */
     public QueryStatus queryMetadata(UUID id) {
-        return queryMetadata("open", id, null);
-    }
-
-    public QueryStatus queryMetadata(String backend, UUID id, String authorizationHeader) {
         if (id == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing query id");
         }
         StoredQuery stored = load(id);
-        consentAuthorization.verifyReadAccess(backend, stored, authorizationHeader);
 
         QueryStatus response = new QueryStatus();
         response.setPicsureResultId(stored.picsureId());
@@ -1191,25 +1206,22 @@ public class QueryService {
     }
 
     /**
-     * The stored-query body for the {@code /metadata} response. For a v3 row (or a null body) this is the raw parsed JSON, byte-for-byte as
-     * before. For a v1 row it is the same {@code QueryRequest} wrapper with its nested {@code query} translated to the v3 shape, so clients
-     * see one shape regardless of when the query was stored. Any translation failure falls back to the untranslated body (never an error);
-     * a genuinely unparseable body still propagates {@link JsonProcessingException} to preserve the prior "queryJson absent" behavior.
+     * The stored-query body for the {@code /metadata} response, without consent values. For a v3 row this is the stored JSON. For a row
+     * stored before v3 it is the same {@code QueryRequest} wrapper with its nested {@code query} translated to the v3 shape, so clients see
+     * one shape regardless of when the query was stored, and a translation failure falls back to the untranslated body (never an error).
+     * Each of the three goes through {@link StoredQueryConsentStripper} before it is returned. A null body gives null, and a body that is
+     * not JSON propagates {@link JsonProcessingException}, which leaves {@code queryJson} out of the answer.
      */
     Object buildQueryJson(StoredQuery stored) throws JsonProcessingException {
         String json = stored.query();
         if (json == null) {
             return null;
         }
-        if (!isV3(stored)) {
-            JsonNode root = parseOrNull(json);
-            JsonNode translated = root == null ? null : tryTranslate(root);
-            if (translated != null) {
-                // Normalize to the same Map shape the v3/raw path returns, so queryJson has one type regardless of stored version.
-                return MAPPER.convertValue(translated, Object.class);
-            }
-        }
-        return MAPPER.readValue(json, Object.class);
+        JsonNode body = MAPPER.readValue(json, JsonNode.class);
+        JsonNode translated = isV3(stored) ? null : tryTranslate(body);
+        JsonNode shown = translated != null ? translated : body;
+        StoredQueryConsentStripper.strip(shown);
+        return MAPPER.convertValue(shown, Object.class);
     }
 
     /**
@@ -1217,7 +1229,8 @@ public class QueryService {
      * translate to v3, and re-embed it in {@code root}. Returns {@code null} when the body is not a wrapper object, has no object-valued
      * {@code query} node, or cannot be translated
      * ({@link edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.UntranslatableQueryException} or any Jackson error). Never throws.
-     * {@link #buildQueryJson} then falls back to the raw body; {@link #upgradeToV3} rejects the row with 422.
+     * {@link #buildQueryJson} then falls back to the raw body; {@link #upgradeToV3} rejects the row with 422. {@code root} is changed only
+     * when the translation succeeds.
      */
     JsonNode tryTranslate(JsonNode root) {
         try {

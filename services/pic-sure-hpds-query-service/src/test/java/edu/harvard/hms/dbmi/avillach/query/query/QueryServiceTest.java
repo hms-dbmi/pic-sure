@@ -2334,16 +2334,14 @@ class QueryServiceTest {
     }
 
     @Test
-    void metadataVerifiesSavedConsentAfterLoading() {
+    void metadataDoesNotCallConsentLookup() {
         UUID id = UUID.randomUUID();
-        StoredQuery stored = new StoredQuery(id, "{}", "rr-1", "AVAILABLE", "3", null);
-        when(operationsClient.get(id)).thenReturn(stored);
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, "{}", "rr-1", "AVAILABLE", "3", null));
 
-        service.queryMetadata("auth", id, "Bearer caller-token");
+        service.queryMetadata(id);
 
-        InOrder order = inOrder(operationsClient, consent);
-        order.verify(operationsClient).get(id);
-        order.verify(consent).verifyReadAccess("auth", stored, "Bearer caller-token");
+        verify(operationsClient).get(id);
+        verifyNoInteractions(consent);
     }
 
     @Test
