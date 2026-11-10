@@ -27,8 +27,8 @@ import org.springframework.http.HttpHeaders;
  *        constructed -- see {@code CallerContextArgumentResolver}
  * @param requestId the inbound {@code X-Request-Id}, or null
  * @param userId the {@code X-User-Id} the gateway set after PSAMA introspection, or null. Never replayed on an outbound call
- * @param accessType the {@code X-Picsure-Access-Type} the gateway set: {@code authorized} for a validated login token, {@code open} for
- *        an open-access grant, or null when the request reached neither gateway filter
+ * @param accessType the {@code X-Picsure-Access-Type} the gateway set: {@code authorized} for a validated login token, {@code open} for an
+ *        open-access grant, or null when the request reached neither gateway filter
  */
 public record CallerContext(String authorization, String requestId, String userId, String accessType) {
 
@@ -68,9 +68,9 @@ public record CallerContext(String authorization, String requestId, String userI
     }
 
     /**
-     * Who a stored conversation or reply belongs to, stable for as long as the caller is the same person or session even though their
-     * token is replaced: a logged-in user by their gateway user id, an open-access session by the session id in its token. Neither can be
-     * the {@code X-User-Id} alone, which every open-access caller shares. The session id is read without checking the token's signature:
+     * Who a stored conversation or reply belongs to, stable for as long as the caller is the same person or session even though their token
+     * is replaced: a logged-in user by their gateway user id, an open-access session by the session id in its token. Neither can be the
+     * {@code X-User-Id} alone, which every open-access caller shares. The session id is read without checking the token's signature:
      * {@code open} means the gateway had PSAMA verify it, the same trust its {@code X-User-*} headers rely on. Any other caller (a stored
      * API key, or a request that did not come through the gateway) is identified by a hash of its token, never the token itself.
      *

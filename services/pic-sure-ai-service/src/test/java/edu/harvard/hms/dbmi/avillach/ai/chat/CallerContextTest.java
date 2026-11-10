@@ -74,7 +74,8 @@ class CallerContextTest {
     @Test
     void aTokenCallerKeepsTheSameOwnerWhateverCaseTheSchemeIsIn() {
         assertThat(new CallerContext("bearer key-1", null, null).owner()).isEqualTo(new CallerContext("Bearer key-1", null, null).owner());
-        assertThat(new CallerContext("Bearer Key-1", null, null).owner()).isNotEqualTo(new CallerContext("Bearer key-1", null, null).owner());
+        assertThat(new CallerContext("Bearer Key-1", null, null).owner())
+            .isNotEqualTo(new CallerContext("Bearer key-1", null, null).owner());
     }
 
     @Test
@@ -104,7 +105,8 @@ class CallerContextTest {
         String apiKey = "Bearer picsure_u_00000000000000000000000000000000000000000003tr27S";
         String notASession = sessionToken("{\"sub\":\"not-a-uuid\"}");
 
-        assertThat(new CallerContext(apiKey, null, "OPEN_ACCESS:localhost", "open").owner()).startsWith("token:").doesNotContain("picsure_u_");
+        assertThat(new CallerContext(apiKey, null, "OPEN_ACCESS:localhost", "open").owner()).startsWith("token:")
+            .doesNotContain("picsure_u_");
         assertThat(new CallerContext(notASession, null, "OPEN_ACCESS:localhost", "open").owner()).startsWith("token:");
         assertThat(new CallerContext("Bearer picsure_s_garbage", null, null, "open").owner()).startsWith("token:");
         assertThat(new CallerContext("Bearer abc", null, null).owner()).isNotEqualTo(new CallerContext("Bearer abd", null, null).owner());

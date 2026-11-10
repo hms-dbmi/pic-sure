@@ -20,9 +20,9 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
  * request's current {@code query} (client input), both validated by the same code ({@link ChatStateValidator}). It carries the real
  * {@code hpds.data.query.v3.Query} fields the model is allowed to set, mirroring {@code pic-sure-mcp}'s own {@code query.QueryInput} --
  * {@code select}, {@code phenotypicClause} (a filter or a nested subquery), and {@code genomicFilters} -- with the same exclusions: no
- * {@code authorizationFilters}, {@code picsureId}, or {@code id}, since those must never come from the model. Unlike {@code QueryInput}, both
- * clause types keep their {@code not}: dropping it from the researcher's query would turn an exclusion into an inclusion in every proposal
- * built on that query.
+ * {@code authorizationFilters}, {@code picsureId}, or {@code id}, since those must never come from the model. Unlike {@code QueryInput},
+ * both clause types keep their {@code not}: dropping it from the researcher's query would turn an exclusion into an inclusion in every
+ * proposal built on that query.
  *
  * <p>Unlike {@code QueryInput}, there is no {@code toQuery()}/{@code toClause()}: this input is never executed or sent anywhere. A
  * validated one is serialized back out as the response's {@code query}, so what the UI receives is built from these checked fields, not
@@ -109,7 +109,8 @@ public record ProposeQueryInput(
     public ProposeQueryInput mapPaths(UnaryOperator<String> rewrite) {
         return new ProposeQueryInput(
             select == null ? null : select.stream().map(rewrite).toList(),
-            phenotypicClause == null ? null : phenotypicClause.mapFilters(filter -> filter.withConceptPath(rewrite.apply(filter.conceptPath()))),
+            phenotypicClause == null ? null
+                : phenotypicClause.mapFilters(filter -> filter.withConceptPath(rewrite.apply(filter.conceptPath()))),
             genomicFilters
         );
     }

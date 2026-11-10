@@ -32,8 +32,8 @@ final class CurrentState {
 
     /**
      * Every part is stated, an empty one as {@code none}: left out, the model filled it in from what earlier turns of the conversation
-     * said, for example bringing back a query the researcher had cleared. An empty query is never shown as JSON, which read to the model
-     * as a query to change and pushed lookups toward proposing one.
+     * said, for example bringing back a query the researcher had cleared. An empty query is never shown as JSON, which read to the model as
+     * a query to change and pushed lookups toward proposing one.
      *
      * @param request a request that has passed {@link ChatStateValidator#requireValid}
      * @param query the request's query as {@link ChatStateValidator#requireValid} returned it, or null

@@ -55,7 +55,8 @@ public class GatewayMcpToolGateway implements McpToolGateway {
     /** @param readTimeout without one the HTTP client waits forever, hanging the chat turn */
     public GatewayMcpToolGateway(
         @Value("${picsure.ai.mcp.gateway-url:}") String gatewayUrl, ObjectMapper objectMapper,
-        @Value("${picsure.ai.mcp.connect-timeout:5s}") Duration connectTimeout, @Value("${picsure.ai.mcp.read-timeout:20s}") Duration readTimeout
+        @Value("${picsure.ai.mcp.connect-timeout:5s}") Duration connectTimeout,
+        @Value("${picsure.ai.mcp.read-timeout:20s}") Duration readTimeout
     ) {
         requireNonBlank(gatewayUrl);
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
@@ -120,8 +121,10 @@ public class GatewayMcpToolGateway implements McpToolGateway {
         }
         // A tool that returns only text content (no structuredContent) still answers; reading just structuredContent would send "".
         JsonNode structured = result.path("structuredContent");
-        return ToolResult.success(structured.isMissingNode() || structured.isNull() ? result.path("content").path(0).path("text").asText("")
-            : structured.toString());
+        return ToolResult.success(
+            structured.isMissingNode() || structured.isNull() ? result.path("content").path(0).path("text").asText("")
+                : structured.toString()
+        );
     }
 
     /**

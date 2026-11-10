@@ -65,7 +65,8 @@ class ConverseSdkModelClient implements ConverseModelClient {
         for (Generation generation : response.getResults()) {
             AssistantMessage output = generation.getOutput();
             if (output.hasToolCalls()) {
-                output.getToolCalls().forEach(tc -> toolCalls.add(new RequestedToolCall(tc.id(), toolName(tc.name(), knownTools), tc.arguments())));
+                output.getToolCalls()
+                    .forEach(tc -> toolCalls.add(new RequestedToolCall(tc.id(), toolName(tc.name(), knownTools), tc.arguments())));
             }
             if (output.getText() != null && !output.getText().isEmpty()) {
                 text.append(output.getText());

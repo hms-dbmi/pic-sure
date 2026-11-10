@@ -20,13 +20,15 @@ class ReplyTextTest {
         // As gpt-oss wrote them once every message ended with the screen state.
         assertEquals(
             "These variables are now shown in your table.",
-            ReplyText.withoutScreenRecap("These variables are now shown in your table.\n\n**Current view**\n- query: none\n- facets: none\n"
-                + "- search: none")
+            ReplyText.withoutScreenRecap(
+                "These variables are now shown in your table.\n\n**Current view**\n- query: none\n- facets: none\n" + "- search: none"
+            )
         );
         assertEquals(
             "D-dimer is not available.",
-            ReplyText.withoutScreenRecap("D-dimer is not available.\n\n---\n\nCurrent screen state:\n\n*query*: none\n*facets*: none\n"
-                + "*search*: none")
+            ReplyText.withoutScreenRecap(
+                "D-dimer is not available.\n\n---\n\nCurrent screen state:\n\n*query*: none\n*facets*: none\n" + "*search*: none"
+            )
         );
         assertEquals(
             "About 1,200 participants.",
@@ -56,8 +58,13 @@ class ReplyTextTest {
         assertFalse(ReplyText.claimsSelectionChanged("Let me know if you'd like to add them to your selected variables."));
         assertFalse(ReplyText.claimsSelectionChanged("Your table already lists the alcohol variables."));
         // From T14 drafts: saying nothing changed is not a claim that something did.
-        assertFalse(ReplyText.claimsSelectionChanged("No filters were added or removed, and none of your previously selected variables changed."));
-        assertFalse(ReplyText.claimsSelectionChanged("Your table now shows those variables, and no filters or selected variables have been changed."));
+        assertFalse(
+            ReplyText.claimsSelectionChanged("No filters were added or removed, and none of your previously selected variables changed.")
+        );
+        assertFalse(
+            ReplyText
+                .claimsSelectionChanged("Your table now shows those variables, and no filters or selected variables have been changed.")
+        );
         assertFalse(ReplyText.claimsSelectionChanged("I wasn't able to add any new variables to your selection."));
         assertFalse(ReplyText.claimsSelectionChanged(null));
     }
@@ -67,7 +74,9 @@ class ReplyTextTest {
         // The path is bold, JSON-escaped, and has U+2011 where the dictionary has '-'.
         String reply = "| **\\\\Nhanes\\\\laboratory\\\\biochemistry\\\\LDL‑cholesterol (mg per dL)\\\\** | 20 – 316 |";
 
-        assertEquals("| **\\Nhanes\\laboratory\\biochemistry\\LDL-cholesterol (mg per dL)\\** | 20 – 316 |", ReplyText.withPlainPaths(reply));
+        assertEquals(
+            "| **\\Nhanes\\laboratory\\biochemistry\\LDL-cholesterol (mg per dL)\\** | 20 – 316 |", ReplyText.withPlainPaths(reply)
+        );
         assertEquals("`\\Nhanes\\demographics\\SEX\\`", ReplyText.withPlainPaths("`\\Nhanes\\demographics\\SEX\\`"));
         assertNull(ReplyText.withPlainPaths(null));
     }
@@ -80,7 +89,8 @@ class ReplyTextTest {
         String reply = "* `\\Nhanes\\questionnaire\\smoking family\\Does anyone smoke in home?` - categorical";
 
         assertEquals(
-            "* `\\Nhanes\\questionnaire\\smoking family\\Does anyone smoke in home?\\` - categorical", ReplyText.withKnownPaths(reply, paths)
+            "* `\\Nhanes\\questionnaire\\smoking family\\Does anyone smoke in home?\\` - categorical",
+            ReplyText.withKnownPaths(reply, paths)
         );
     }
 
@@ -97,8 +107,9 @@ class ReplyTextTest {
 
     @Test
     void aJavaScriptStyleQueryObjectWithBareKeysAndALabelledSearchAreRemoved() {
-        String reply = "query: {select:[\"\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\\"], phenotypicClause:{operator:\"AND\", "
-            + "phenotypicClauses:[{phenotypicFilterType:\"FILTER\", conceptPath:\"\\\\Nhanes\\\\demographics\\\\SEX\", values:[\"female\"]}]}}\n\nsearch: \"sex\"";
+        String reply =
+            "query: {select:[\"\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\\"], phenotypicClause:{operator:\"AND\", "
+                + "phenotypicClauses:[{phenotypicFilterType:\"FILTER\", conceptPath:\"\\\\Nhanes\\\\demographics\\\\SEX\", values:[\"female\"]}]}}\n\nsearch: \"sex\"";
 
         assertEquals("", ReplyText.withoutQueryJson(reply));
     }
@@ -107,11 +118,15 @@ class ReplyTextTest {
     void aCurrentStateRecapInAnyOfTheModelsLayoutsIsRemoved() {
         assertEquals(
             "Here are the two variables.",
-            ReplyText.withoutScreenRecap("Here are the two variables.\n\n---  \n\nCurrent state (unchanged):  \n**query:** none  \n**facets:** none  \n**search:** none")
+            ReplyText.withoutScreenRecap(
+                "Here are the two variables.\n\n---  \n\nCurrent state (unchanged):  \n**query:** none  \n**facets:** none  \n**search:** none"
+            )
         );
         assertEquals(
             "Alcohol variables are listed.",
-            ReplyText.withoutScreenRecap("Alcohol variables are listed.\n\n---  \n**Current state**  \nquery: none  \nfacets: none  \nsearch: **alcohol** (updated)")
+            ReplyText.withoutScreenRecap(
+                "Alcohol variables are listed.\n\n---  \n**Current state**  \nquery: none  \nfacets: none  \nsearch: **alcohol** (updated)"
+            )
         );
         assertEquals(
             "Current view of available data: BMI is available in study A.",
@@ -129,7 +144,8 @@ class ReplyTextTest {
 
     @Test
     void bulletedUndefinedFieldEchoesAndTheHeadingAboveThemAreRemoved() {
-        String reply = "There are no variables returned for waist-hip ratio.\n\n**Current state of the interface**  \n- query: {}  \n- facets: undefined  \n- search: undefined";
+        String reply =
+            "There are no variables returned for waist-hip ratio.\n\n**Current state of the interface**  \n- query: {}  \n- facets: undefined  \n- search: undefined";
 
         assertEquals("There are no variables returned for waist-hip ratio.", ReplyText.withoutQueryJson(reply));
     }
@@ -144,22 +160,25 @@ class ReplyTextTest {
 
     @Test
     void aWholeReplyThatIsQueryJsonBecomesEmpty() {
-        String reply = "{\"query\":{\"select\":[\"\\\\Nhanes\\\\bmi\\\\\"],\"phenotypicClause\":{\"operator\":\"AND\",\"phenotypicClauses\":"
-            + "[{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\Nhanes\\\\SEX\\\\\",\"values\":[\"female\"]}]}},\"facets\":[],\"search\":\"\"}";
+        String reply =
+            "{\"query\":{\"select\":[\"\\\\Nhanes\\\\bmi\\\\\"],\"phenotypicClause\":{\"operator\":\"AND\",\"phenotypicClauses\":"
+                + "[{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\Nhanes\\\\SEX\\\\\",\"values\":[\"female\"]}]}},\"facets\":[],\"search\":\"\"}";
 
         assertEquals("", ReplyText.withoutQueryJson(reply));
     }
 
     @Test
     void labelledQueryJsonAndEmptyFacetsLinesAreRemoved() {
-        String reply = "query: {\n  \"select\": [\"a\"],\n  \"phenotypicClause\": {\"phenotypicFilterType\": \"REQUIRED\", \"conceptPath\": \"x}y\"}\n}\nfacets: []";
+        String reply =
+            "query: {\n  \"select\": [\"a\"],\n  \"phenotypicClause\": {\"phenotypicFilterType\": \"REQUIRED\", \"conceptPath\": \"x}y\"}\n}\nfacets: []";
 
         assertEquals("", ReplyText.withoutQueryJson(reply));
     }
 
     @Test
     void proseAroundQueryJsonIsKept() {
-        String reply = "Here is your view.\n\n```json\n{\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"a\"}}\n```\n\nIt shows women over 40.";
+        String reply =
+            "Here is your view.\n\n```json\n{\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"a\"}}\n```\n\nIt shows women over 40.";
 
         assertEquals("Here is your view.\n\nIt shows women over 40.", ReplyText.withoutQueryJson(reply));
     }
@@ -180,7 +199,8 @@ class ReplyTextTest {
 
     @Test
     void aFencedSelectOnlyQueryIsRemovedAndTheProseAroundItKept() {
-        String reply = "Here are the two variables.\n\n**Current query state**\n```json\n{\"query\":{\"select\":[\"a\"]},\"facets\":[],\"search\":\"\"}\n```";
+        String reply =
+            "Here are the two variables.\n\n**Current query state**\n```json\n{\"query\":{\"select\":[\"a\"]},\"facets\":[],\"search\":\"\"}\n```";
 
         // The bold label above the fence is left dangling once the query is gone, so it goes too.
         assertEquals("Here are the two variables.", ReplyText.withoutQueryJson(reply));

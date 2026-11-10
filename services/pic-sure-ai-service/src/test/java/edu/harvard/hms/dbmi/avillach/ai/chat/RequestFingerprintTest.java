@@ -24,6 +24,8 @@ class RequestFingerprintTest {
 
     @Test
     void theOrderOfAListStillChangesTheFingerprint() throws Exception {
-        assertNotEquals(RequestFingerprint.of(request("{\"select\":[\"a\",\"b\"]}")), RequestFingerprint.of(request("{\"select\":[\"b\",\"a\"]}")));
+        assertNotEquals(
+            RequestFingerprint.of(request("{\"select\":[\"a\",\"b\"]}")), RequestFingerprint.of(request("{\"select\":[\"b\",\"a\"]}"))
+        );
     }
 }

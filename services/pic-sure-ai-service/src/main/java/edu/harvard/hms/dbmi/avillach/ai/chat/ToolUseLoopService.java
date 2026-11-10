@@ -69,21 +69,23 @@ class ToolUseLoopService implements ChatOrchestrator {
     private static final String PROMPT_TEMPLATE = loadPrompt("/prompts/system-prompt.txt");
 
     /** Open-access callers get obfuscated counts: the only counts the MCP gateway can run. */
-    static final String OPEN_PROMPT = PROMPT_TEMPLATE
-        .replace("{{capabilities}}", "You can search the data dictionary, list facets, and run obfuscated open-access counts,").replace(
-            "{{counts}}",
-            "Counts are obfuscated open-access counts that ignore the researcher's consents: say so, and never present one as an exact or authorized number."
-        );
+    static final String OPEN_PROMPT = PROMPT_TEMPLATE.replace(
+        "{{capabilities}}", "You can search the data dictionary, list facets, and run obfuscated open-access counts,"
+    ).replace(
+        "{{counts}}",
+        "Counts are obfuscated open-access counts that ignore the researcher's consents: say so, and never present one as an exact or authorized number."
+    );
 
     /**
      * A logged-in researcher has exact, consent-filtered counts in their results panel, and the only counts this service can run are the
      * obfuscated open ones, so those tools are withheld and the prompt says the assistant cannot count.
      */
-    static final String AUTHORIZED_PROMPT = PROMPT_TEMPLATE.replace("{{capabilities}}", "You can search the data dictionary and list facets,")
-        .replace(
-            "{{counts}}",
-            "You cannot count participants: the researcher's own results panel shows their exact counts, so when they ask how many participants match, say that and point them to it; never give or estimate a count."
-        );
+    static final String AUTHORIZED_PROMPT = PROMPT_TEMPLATE.replace(
+        "{{capabilities}}", "You can search the data dictionary and list facets,"
+    ).replace(
+        "{{counts}}",
+        "You cannot count participants: the researcher's own results panel shows their exact counts, so when they ask how many participants match, say that and point them to it; never give or estimate a count."
+    );
 
     /** Tools that run on the obfuscated open channel, which an authorized caller's own results panel supersedes. */
     static final Set<String> OPEN_ONLY_TOOLS = Set.of("count_participants", "cross_count");
@@ -191,7 +193,9 @@ class ToolUseLoopService implements ChatOrchestrator {
         }
     }
 
-    private enum Stop { NONE, ITERATION_CAP, REPEATED_FAILURE }
+    private enum Stop {
+        NONE, ITERATION_CAP, REPEATED_FAILURE
+    }
 
     private static boolean isAuthorized(CallerContext caller) {
         return GatewayUserResolver.ACCESS_TYPE_AUTHORIZED.equals(caller.accessType());
@@ -202,15 +206,15 @@ class ToolUseLoopService implements ChatOrchestrator {
     }
 
     private ChatResponse handleTurn(ChatRequest request, CallerContext caller, TurnStats stats, ProposeQueryInput currentQuery) {
-        List<ToolDefinition> tools =
-            new ArrayList<>(listTools(caller).stream().filter(tool -> !isExcluded(tool.name(), caller)).toList());
+        List<ToolDefinition> tools = new ArrayList<>(listTools(caller).stream().filter(tool -> !isExcluded(tool.name(), caller)).toList());
         String systemPrompt = isAuthorized(caller) ? AUTHORIZED_PROMPT : OPEN_PROMPT;
         tools.add(proposeQueryTool.definition());
         ConversationStore.Key conversation = new ConversationStore.Key(caller.owner(), request.conversationId());
         List<ConversationTurn> earlier = conversations.turns(conversation);
         List<ConversationEntry> history = new ArrayList<>(EarlierTurns.entries(earlier));
         int maxFilters = proposeQueryTool.maxFilters();
-        String message = CurrentState.appendedTo(request, currentQuery, EarlierTurns.removedByHand(earlier, currentQuery, maxFilters), maxFilters);
+        String message =
+            CurrentState.appendedTo(request, currentQuery, EarlierTurns.removedByHand(earlier, currentQuery, maxFilters), maxFilters);
         log.debug("Message as the model sees it (earlierTurns={}): {}", earlier.size(), message);
         history.add(new UserEntry(message));
         TurnState state = new TurnState(currentQuery);
@@ -245,7 +249,9 @@ class ToolUseLoopService implements ChatOrchestrator {
                 // Asked once; a reply that is still wrong goes out as written rather than hiding what the model invented.
                 state.pathRepairAsked = true;
                 stats.corrections.add("pathRepair");
-                log.debug("Reply names {} path(s) no tool returned; asking the model to correct them: {}", unknownPaths.size(), unknownPaths);
+                log.debug(
+                    "Reply names {} path(s) no tool returned; asking the model to correct them: {}", unknownPaths.size(), unknownPaths
+                );
                 history.add(new AssistantToolCallEntry(turn.text(), List.of()));
                 history.add(new UserEntry(pathRepairMessage(unknownPaths, state.conceptPaths)));
             } else if (claimsUnmadeSelectionChange(turn, state)) {
@@ -289,12 +295,12 @@ class ToolUseLoopService implements ChatOrchestrator {
         boolean fallback = FALLBACK_TEXT.equals(response.response());
         // A fallback is no answer to replay: the model would read it as its own earlier reply.
         if (!fallback) {
-            conversations.append(conversation, new ConversationTurn(request.message(), response.response(), state.toolOutputs, response.query()));
+            conversations
+                .append(conversation, new ConversationTurn(request.message(), response.response(), state.toolOutputs, response.query()));
         }
         log.info(
-            "Chat turn: outcome={} stop={} proposed=[{}] earlierTurns={} userId={} {}",
-            fallback ? "fallback" : "answered", stop.name().toLowerCase(Locale.ROOT),
-            String.join(", ", proposed), earlier.size(), caller.userId(), stats.summary()
+            "Chat turn: outcome={} stop={} proposed=[{}] earlierTurns={} userId={} {}", fallback ? "fallback" : "answered",
+            stop.name().toLowerCase(Locale.ROOT), String.join(", ", proposed), earlier.size(), caller.userId(), stats.summary()
         );
         return response;
     }
@@ -325,7 +331,9 @@ class ToolUseLoopService implements ChatOrchestrator {
         if (arguments != null) {
             stats.corrections.add("proposalFromReplyText");
             log.debug("Reply is a proposal written as text; checking it as a propose_query call");
-            dispatchToolCalls(List.of(new RequestedToolCall("reply-text", ProposeQueryTool.NAME, arguments)), history, caller, state, stats);
+            dispatchToolCalls(
+                List.of(new RequestedToolCall("reply-text", ProposeQueryTool.NAME, arguments)), history, caller, state, stats
+            );
         }
     }
 
@@ -335,7 +343,9 @@ class ToolUseLoopService implements ChatOrchestrator {
             stats.corrections.add("countedQueryProposal");
             log.debug("Reply says the query changed but nothing was proposed; checking the counted query as a propose_query call");
             String arguments = JSON.createObjectNode().set("query", state.lastCountedQuery).toString();
-            dispatchToolCalls(List.of(new RequestedToolCall("counted-query", ProposeQueryTool.NAME, arguments)), history, caller, state, stats);
+            dispatchToolCalls(
+                List.of(new RequestedToolCall("counted-query", ProposeQueryTool.NAME, arguments)), history, caller, state, stats
+            );
         }
     }
 
@@ -359,18 +369,20 @@ class ToolUseLoopService implements ChatOrchestrator {
     }
 
     static String pathRepairMessage(List<String> unknownPaths, ConceptPaths paths) {
-        StringBuilder message = new StringBuilder(
-            "Your reply names concept paths that no tool result returned, so the researcher cannot find them:\n"
-        );
+        StringBuilder message =
+            new StringBuilder("Your reply names concept paths that no tool result returned, so the researcher cannot find them:\n");
         for (String path : unknownPaths) {
             String owner = paths.ownerOfValueIn(path);
             message.append("- `").append(path).append("`: ");
             if (owner != null) {
-                message.append("\"").append(ConceptPaths.segments(path).getLast()).append("\" is not a variable. It is one of the values of `")
-                    .append(owner).append("`. Name that path and mention the value.\n");
+                message.append("\"").append(ConceptPaths.segments(path).getLast())
+                    .append("\" is not a variable. It is one of the values of `").append(owner)
+                    .append("`. Name that path and mention the value.\n");
             } else if (paths.isAncestorOfSeen(path)) {
-                message.append("this is a parent of paths the results returned, but no tool returned it. Name the returned paths under it "
-                    + "instead, each in full.\n");
+                message.append(
+                    "this is a parent of paths the results returned, but no tool returned it. Name the returned paths under it "
+                        + "instead, each in full.\n"
+                );
             } else {
                 message.append("no tool returned this path. Use a path exactly as a tool returned it, or leave it out.\n");
             }
@@ -386,7 +398,8 @@ class ToolUseLoopService implements ChatOrchestrator {
         ProposeQueryInput currentQuery = state.currentQuery;
         JsonNode query = null;
         if (state.query != null) {
-            // Same treatment on both sides, so a select the UI would add anyway, or a not:false the model left out, doesn't count as a change.
+            // Same treatment on both sides, so a select the UI would add anyway, or a not:false the model left out, doesn't count as a
+            // change.
             ProposeQueryInput emitted = state.query.mapPaths(state.conceptPaths::canonical).withFilterPathsSelected();
             boolean unchanged = currentQuery != null && ChatStateValidator.toJson(emitted.withoutFalseNots())
                 .equals(ChatStateValidator.toJson(currentQuery.withFilterPathsSelected().withoutFalseNots()));
@@ -536,10 +549,13 @@ class ToolUseLoopService implements ChatOrchestrator {
         if (result.error() || result.content() == null) {
             return result;
         }
-        if (readJson(result.content()) instanceof ObjectNode object && object.path("categories").isArray()
-            && object.path("categories").isEmpty()) {
+        if (
+            readJson(result.content()) instanceof ObjectNode object && object.path("categories").isArray()
+                && object.path("categories").isEmpty()
+        ) {
             object.put(
-                "note", "There are no categories, studies or data types to browse by. Do not invent any or show a list of them. "
+                "note",
+                "There are no categories, studies or data types to browse by. Do not invent any or show a list of them. "
                     + "Tell the researcher there are none, and call propose_query with a search for what they asked about instead."
             );
             return ToolResult.success(object.toString());

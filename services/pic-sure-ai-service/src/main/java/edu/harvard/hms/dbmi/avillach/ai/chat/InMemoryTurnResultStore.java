@@ -13,8 +13,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * Keeps turn results in this instance's memory, each for {@code result-ttl} after it was written. A turn still marked running when its
- * instance dies simply expires. The result TTL must be at least the conversation idle timeout, so a retry cannot run a turn again while
- * its conversation still holds the first run.
+ * instance dies simply expires. The result TTL must be at least the conversation idle timeout, so a retry cannot run a turn again while its
+ * conversation still holds the first run.
  */
 @Component
 @ConditionalOnProperty(prefix = "picsure.ai.conversation", name = "store", havingValue = "memory", matchIfMissing = true)
