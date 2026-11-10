@@ -53,7 +53,7 @@ public final class StoredQueryConsentStripper {
             stripQuery(envelope);
         } else if (query instanceof ObjectNode queryObject) {
             stripQuery(queryObject);
-        } else if (query != null && query.isTextual()) {
+        } else if (query.isTextual()) {
             stripQueryText(envelope, query.asText());
         }
     }

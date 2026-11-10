@@ -1162,10 +1162,12 @@ public class QueryService {
     /**
      * Returns the stored query and the stored result metadata of a query row, read from operations-service alone. HPDS is not called.
      *
-     * <p>The read is the same for every caller and every row. It does not look at who the caller is, who owns the row or which consents the
-     * caller holds, and it does not call the consent service, so a query can be shared by passing on its id. The answer never carries a
-     * consent value. The stored body goes through {@link StoredQueryConsentStripper}, whatever version the row has and whether or not the
-     * body could be translated, and the owner, the consents and the run of the row are not copied into the answer.
+     * <p>The read is the same for every caller and every row. It makes no owner or consent check: it does not look at who the caller is,
+     * who owns the row or which consents the caller holds, and it does not call the consent service. The only access decision is the one
+     * made before this method is reached, the gateway access every query route needs, so any caller the gateway admits who has the id can
+     * read the query, and a query can be shared by passing on its id. The answer never carries a consent value. The stored body goes
+     * through {@link StoredQueryConsentStripper}, whatever version the row has and whether or not the body could be translated, and the
+     * owner, the consents and the run of the row are not copied into the answer.
      *
      * <p>{@code queryResultMetadata} is the result metadata HPDS answered the submit with, as it was stored. HPDS puts one member in it,
      * the id it gave the query, and no filter.

@@ -295,12 +295,14 @@ class QueryServiceMetadataTest {
     }
 
     @Test
-    void rowWithoutAVersionThatHoldsAV3QueryCarriesNoConsentValue() throws Exception {
+    void rowWithoutAVersionThatHoldsAV3QueryComesBackAsTheEmptyQueryItsTranslationGives() throws Exception {
         PhenotypicClause storedClause = group(Operator.AND, valueFilter(SEX, "Male"), valueFilter(CONSENTS, STUDY_CONSENT));
+        Query emptyTranslation = new Query(List.of(), List.of(), null, List.of(), ResultType.DATAFRAME, null, null);
 
         QueryStatus answer = metadataOf(ownerlessRow(stored(queryWith(SERVER_BUILT_FILTERS, storedClause)), null));
 
-        assertThat(queryJson(answer).path("query").path("authorizationFilters")).isEmpty();
+        assertThat(queryJson(answer).path("query")).isEqualTo(tree(emptyTranslation));
+        assertThat(MAPPER.writeValueAsString(answer)).doesNotContain("demographics", "_consents", "_harmonized_consent");
         assertCarriesNoConsentValue(answer);
     }
 
