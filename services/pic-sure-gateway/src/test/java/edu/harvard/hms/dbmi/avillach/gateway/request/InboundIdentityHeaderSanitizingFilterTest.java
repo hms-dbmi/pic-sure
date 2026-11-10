@@ -93,8 +93,10 @@ class InboundIdentityHeaderSanitizingFilterTest {
 
     @Test
     void rejectsEveryClientTypeThatIsNotOnTheAllowlistWith400() throws Exception {
-        List<String> unexpected =
-            List.of("curl-script", "SERVICE", "mcp", "MCP", "PYTHON_ADAPTER, curl-script", "PYTHON_ADAPTER,service", " Service ,R_ADAPTER");
+        List<String> unexpected = List.of(
+            "curl-script", "SERVICE", "mcp", "MCP", "PYTHON_ADAPTER, curl-script", "PYTHON_ADAPTER,service", " Service ,R_ADAPTER",
+            "PYTHON_ADAPTER, FRONTEND", "PYTHON_ADAPTER,", ",PYTHON_ADAPTER"
+        );
         for (String value : unexpected) {
             MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
             request.addHeader("X-Client-Type", value);
@@ -110,16 +112,17 @@ class InboundIdentityHeaderSanitizingFilterTest {
     }
 
     @Test
-    void rejectsARequestWhenAnyOfSeveralHeaderValuesIsUnexpected() throws Exception {
+    void rejectsARepeatedHeaderEvenWhenEveryLineIsAllowed() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
         request.addHeader("X-Client-Type", "PYTHON_ADAPTER");
-        request.addHeader("X-Client-Type", "mcp");
+        request.addHeader("X-Client-Type", "FRONTEND");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         filter.doFilter(request, response, (req, resp) -> {
         });
 
         assertThat(response.getStatus()).isEqualTo(400);
+        assertThat(response.getContentAsString()).contains("unexpected_caller_type");
     }
 
     @Test
@@ -297,15 +300,5 @@ class InboundIdentityHeaderSanitizingFilterTest {
             assertThat(downstream.getHeaders("Authorization").hasMoreElements()).as(path).isFalse();
             assertThat(Collections.list(downstream.getHeaderNames())).as(path).doesNotContain("Authorization");
         }
-    }
-
-    @Test
-    void keepsACommaJoinedClientTypeWhoseEntriesAreAllListed() throws Exception {
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
-        request.addHeader("X-Client-Type", "PYTHON_ADAPTER, FRONTEND");
-
-        HttpServletRequest downstream = sanitize(request);
-
-        assertThat(downstream.getHeader("X-Client-Type")).isEqualTo("PYTHON_ADAPTER, FRONTEND");
     }
 }

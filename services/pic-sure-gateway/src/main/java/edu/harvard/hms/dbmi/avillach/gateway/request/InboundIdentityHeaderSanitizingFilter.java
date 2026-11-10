@@ -6,7 +6,6 @@ import java.util.Collections;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Set;
-import java.util.StringJoiner;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -80,18 +79,21 @@ public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter 
         filterChain.doFilter(new SanitizedIdentityHeadersRequest(request, clientTypes), response);
     }
 
+    /**
+     * Whether the request carries an X-Client-Type the gateway will not accept. The header must be absent, blank, or exactly one line
+     * holding exactly one allowed value. Repeated header lines and comma-separated lists are rejected, so the audit filter, which reads the
+     * raw header, and every later filter resolve the same caller.
+     *
+     * @param request the inbound request
+     * @return true when the header is repeated, holds a list, or names a value that is not allowed
+     */
     private boolean hasUnexpectedCallerType(HttpServletRequest request) {
+        List<String> lines = Collections.list(request.getHeaders("X-Client-Type"));
+        if (lines.size() > 1) return true;
+        if (lines.isEmpty()) return false;
+        String value = lines.get(0).trim();
         boolean verifiedMcp = VerifiedCaller.get(request).filter(McpCallerFilter.CALLER::equals).isPresent();
-        Enumeration<String> values = request.getHeaders("X-Client-Type");
-        while (values != null && values.hasMoreElements()) {
-            for (String entry : values.nextElement().split(",", -1)) {
-                String token = entry.trim();
-                boolean allowed = token.isEmpty() || clientTypes.resolve(token).isPresent()
-                    || (verifiedMcp && McpCallerFilter.CALLER.equalsIgnoreCase(token));
-                if (!allowed) return true;
-            }
-        }
-        return false;
+        return !value.isEmpty() && clientTypes.resolve(value).isEmpty() && !(verifiedMcp && McpCallerFilter.CALLER.equalsIgnoreCase(value));
     }
 
     static class SanitizedIdentityHeadersRequest extends HttpServletRequestWrapper {
@@ -142,28 +144,14 @@ public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter 
 
         private boolean isDisallowedClientType(String name) {
             if (!CLIENT_TYPE_HEADER.equalsIgnoreCase(name)) return false;
-            Enumeration<String> values = super.getHeaders(name);
-            while (values != null && values.hasMoreElements()) {
-                if (hasDisallowedEntry(values.nextElement())) return true;
-            }
-            return false;
-        }
-
-        private boolean hasDisallowedEntry(String value) {
-            if (value == null) return false;
-            for (String token : value.split(",", -1)) {
-                if (!token.isBlank() && clientTypes.resolve(token).isEmpty()) return true;
-            }
-            return false;
+            String value = super.getHeader(name);
+            return value != null && !value.isBlank() && clientTypes.resolve(value.trim()).isEmpty();
         }
 
         private String canonicalClientType(String value) {
             if (value == null) return null;
-            StringJoiner joined = new StringJoiner(", ");
-            for (String token : value.split(",", -1)) {
-                if (!token.isBlank()) joined.add(clientTypes.resolve(token).orElse(token.trim()));
-            }
-            return joined.toString();
+            String trimmed = value.trim();
+            return clientTypes.resolve(trimmed).orElse(trimmed);
         }
 
         @Override
