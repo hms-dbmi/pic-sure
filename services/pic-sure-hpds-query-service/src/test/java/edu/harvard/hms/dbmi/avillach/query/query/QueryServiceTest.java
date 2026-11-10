@@ -82,7 +82,8 @@ class QueryServiceTest {
     SampleProperties sampleProperties = new SampleProperties();
     SampleRules sampleRules = new SampleRules(sampleProperties);
     QueryRowLocks rowLocks = new QueryRowLocks(new QueryRowLockProperties());
-    QueryService service = new QueryService(operationsClient, hpds, selector, consent, sampleRules, rowLocks);
+    UnsettledQueryRows unsettledRows = new UnsettledQueryRows();
+    QueryService service = new QueryService(operationsClient, hpds, selector, consent, sampleRules, rowLocks, unsettledRows);
 
     private static HpdsProperties props() {
         HpdsProperties p = new HpdsProperties();
@@ -192,7 +193,7 @@ class QueryServiceTest {
     @Test
     void createScopesBeforeCallingHpdsOrPersistence() {
         ConsentAuthorizationService consent = mock(ConsentAuthorizationService.class);
-        QueryService scopedService = new QueryService(operationsClient, hpds, selector, consent, sampleRules, rowLocks);
+        QueryService scopedService = new QueryService(operationsClient, hpds, selector, consent, sampleRules, rowLocks, unsettledRows);
         QueryRequest request = req();
         when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-3"));
         when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
@@ -240,7 +241,8 @@ class QueryServiceTest {
 
     PsamaConsentClient psama = mock(PsamaConsentClient.class);
     QueryService ownedService = new QueryService(
-        operationsClient, hpds, selector, new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), true), sampleRules, rowLocks
+        operationsClient, hpds, selector, new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), true), sampleRules, rowLocks,
+        unsettledRows
     );
     List<Object> queriesSentToHpds = new ArrayList<>();
 
@@ -456,7 +458,7 @@ class QueryServiceTest {
     void consentAuthorizationSwitchedOffAfterARowWasSavedWithConsentsRunsAgainAsAConsentChange() {
         QueryService consentOff = new QueryService(
             operationsClient, hpds, selector, new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), false), sampleRules,
-            rowLocks
+            rowLocks, unsettledRows
         );
         UUID id = QueryIdentity.idFor(ALICE, cohort());
         when(operationsClient.find(id))
@@ -702,7 +704,7 @@ class QueryServiceTest {
     void ownedSubmitWithConsentAuthorizationOffSavesAnEmptyConsentMapAndReusesTheRow() {
         QueryService consentOff = new QueryService(
             operationsClient, hpds, selector, new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), false), sampleRules,
-            rowLocks
+            rowLocks, unsettledRows
         );
         UUID id = QueryIdentity.idFor(ALICE, cohort());
         hpdsAcceptsOwnedSubmits();
@@ -725,7 +727,7 @@ class QueryServiceTest {
     private QueryService consentOffService() {
         return new QueryService(
             operationsClient, hpds, selector, new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), false), sampleRules,
-            rowLocks
+            rowLocks, unsettledRows
         );
     }
 
@@ -909,7 +911,8 @@ class QueryServiceTest {
         when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-legacy"));
         when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
         QueryService consentOff = new QueryService(
-            operationsClient, hpds, selector, new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), false), sampleRules, rowLocks
+            operationsClient, hpds, selector, new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), false), sampleRules, rowLocks,
+            unsettledRows
         );
 
         consentOff.query("auth", envelope(null), TOKEN, user(ALICE));
@@ -933,7 +936,7 @@ class QueryServiceTest {
     private QueryService serviceLockingWith(QueryRowLocks locks, boolean consentAuthorizationOn) {
         return new QueryService(
             operationsClient, hpds, selector, new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), consentAuthorizationOn),
-            sampleRules, locks
+            sampleRules, locks, unsettledRows
         );
     }
 
@@ -1011,7 +1014,7 @@ class QueryServiceTest {
     @Test
     void syncScopesThenCallsHpdsBeforePersisting() {
         ConsentAuthorizationService consent = mock(ConsentAuthorizationService.class);
-        QueryService scopedService = new QueryService(operationsClient, hpds, selector, consent, sampleRules, rowLocks);
+        QueryService scopedService = new QueryService(operationsClient, hpds, selector, consent, sampleRules, rowLocks, unsettledRows);
         QueryRequest request = req();
         when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
         when(hpds.querySync(any(HpdsTarget.class), any(), any()))
@@ -1912,6 +1915,144 @@ class QueryServiceTest {
         verifyNothingWasRunOrWritten();
     }
 
+    private static void assertFailedResult(Throwable thrown) {
+        assertThat(thrown).isInstanceOfSatisfying(PicsureException.class, failed -> {
+            assertThat(failed.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(failed.getErrorType()).isEqualTo("bad_request");
+            assertThat(failed.getMessage()).isEqualTo("Status : ERROR");
+        });
+    }
+
+    /** Reads a row stored as failed under the consents the caller still holds, and checks the answer comes from the row alone. */
+    private void assertAnsweredAsFailedFromTheRow(Read read, StoredQuery row) throws Exception {
+        UUID id = row.picsureId();
+        callerHoldsConsents("phs001.c1", "phs001.c2");
+        hpdsAcceptsOwnedSubmits();
+
+        if (read == Read.STATUS) {
+            QueryStatus out = ownedService.queryStatus("auth", id, TOKEN, user(ALICE));
+            assertThat(out.getStatus()).isEqualTo(PicSureStatus.ERROR);
+            assertThat(out.getPicsureResultId()).isEqualTo(id);
+            assertThat(out.getResourceResultId()).isEqualTo(id.toString());
+            assertThat(out.getResourceID()).isEqualTo(UUID.fromString(MAPPER.readTree(row.query()).path("resourceUUID").asText()));
+            assertNamesNoConsentOrUser(MAPPER.writeValueAsString(out));
+        } else {
+            assertThatThrownBy(() -> read.call(ownedService, "auth", id, TOKEN, user(ALICE)))
+                .satisfies(QueryServiceTest::assertFailedResult);
+        }
+
+        verify(psama, times(1)).fetch(TOKEN);
+        verifyNoResultWasFetched();
+        verifyNothingWasRunOrWritten();
+    }
+
+    @ParameterizedTest
+    @EnumSource(Read.class)
+    void readOfARowStoredAsFailedWhoseJobHpdsDoesNotHoldRunsAndWritesNothing(Read read) throws Exception {
+        StoredQuery row = rowOwnedByAlice(cohort(), "ERROR", BOTH_CONSENTS);
+        hpdsHasLostTheJob(row.picsureId());
+
+        assertAnsweredAsFailedFromTheRow(read, row);
+    }
+
+    @ParameterizedTest
+    @EnumSource(Read.class)
+    void readOfARowStoredAsFailedIsAnsweredFromTheRowEvenWhenHpdsHoldsAFinishedJobUnderItsId(Read read) throws Exception {
+        StoredQuery row = rowOwnedByAlice(cohort(), "ERROR", BOTH_CONSENTS);
+        hpdsHoldsTheJob(row.picsureId(), PicSureStatus.AVAILABLE);
+        hpdsServesTheResult(row.picsureId());
+
+        assertAnsweredAsFailedFromTheRow(read, row);
+    }
+
+    @ParameterizedTest
+    @EnumSource(Read.class)
+    void consentChangeOnARowStoredAsFailedRunsItAgain(Read read) {
+        StoredQuery row = rowOwnedByAlice(cohort(), "ERROR", BOTH_CONSENTS);
+        callerHoldsConsents("phs001.c1");
+        hpdsHasLostTheJob(row.picsureId());
+        hpdsAcceptsOwnedSubmits();
+
+        try {
+            read.call(ownedService, "auth", row.picsureId(), TOKEN, user(ALICE));
+        } catch (PicsureException notReady) {
+            assertResultNotReady(notReady);
+        }
+
+        assertRerunUnder(row.picsureId(), ONE_CONSENT, "CONSENT_CHANGE");
+        verify(hpds, never()).queryStatus(any(), any());
+        verifyNoResultWasFetched();
+    }
+
+    static Stream<Arguments> rerunsOfAResultRead() {
+        return Stream.of(
+            Arguments.of(Read.RESULT, "CONSENT_CHANGE"), Arguments.of(Read.SIGNED_URL, "CONSENT_CHANGE"),
+            Arguments.of(Read.RESULT, "LOST_RESULT"), Arguments.of(Read.SIGNED_URL, "LOST_RESULT")
+        );
+    }
+
+    @ParameterizedTest(name = "{0} {1}")
+    @MethodSource("rerunsOfAResultRead")
+    void rerunThatHpdsAnswersAsFailedSavesTheRowAsFailedOnceAndTheResultCallAnswers400(Read read, String trigger) {
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", BOTH_CONSENTS);
+        UUID id = row.picsureId();
+        if ("LOST_RESULT".equals(trigger)) {
+            callerHoldsConsents("phs001.c1", "phs001.c2");
+            hpdsHasLostTheJob(id);
+        } else {
+            callerHoldsConsents("phs001.c1");
+        }
+        hpdsServesTheResult(id);
+        when(hpds.query(any(HpdsTarget.class), any(), eq(id))).thenReturn(hpdsAnswer(PicSureStatus.ERROR, id.toString(), "ERROR"));
+
+        assertThatThrownBy(() -> read.call(ownedService, "auth", id, TOKEN, user(ALICE))).satisfies(QueryServiceTest::assertFailedResult);
+
+        SaveQueryRequest saved = onlySave();
+        assertThat(saved.status()).isEqualTo("ERROR");
+        assertThat(saved.trigger()).isEqualTo(trigger);
+        verify(hpds, times(1)).query(any(HpdsTarget.class), any(), eq(id));
+        verifyNoResultWasFetched();
+    }
+
+    @Test
+    void statusRerunThatHpdsAnswersAsFailedReportsTheFailureAndSavesTheRowAsFailedOnce() {
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", BOTH_CONSENTS);
+        UUID id = row.picsureId();
+        callerHoldsConsents("phs001.c1");
+        when(hpds.query(any(HpdsTarget.class), any(), eq(id))).thenReturn(hpdsAnswer(PicSureStatus.ERROR, id.toString(), "ERROR"));
+
+        QueryStatus out = ownedService.queryStatus("auth", id, TOKEN, user(ALICE));
+
+        assertThat(out.getStatus()).isEqualTo(PicSureStatus.ERROR);
+        assertThat(onlySave().status()).isEqualTo("ERROR");
+        verify(operationsClient, never()).updateLatestRun(any(), any());
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+        value = HttpStatus.class,
+        names = {"BAD_REQUEST", "UNAUTHORIZED", "FORBIDDEN", "METHOD_NOT_ALLOWED", "CONFLICT", "GONE", "TOO_MANY_REQUESTS"}
+    )
+    void hpds4xxOtherThan404OnStatusIs502AndDoesNotRerun(HttpStatus refusal) {
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", BOTH_CONSENTS);
+        callerHoldsConsents("phs001.c1", "phs001.c2");
+        hpdsServesTheResult(row.picsureId());
+        hpdsAcceptsOwnedSubmits();
+        PicsureException refused = new PicsureException(refusal, refusal.name().toLowerCase(), "what HPDS said");
+        when(hpds.queryStatus(any(HpdsTarget.class), any())).thenThrow(refused);
+
+        for (Read read : Read.values()) {
+            assertThatThrownBy(() -> read.call(ownedService, "auth", row.picsureId(), TOKEN, user(ALICE)))
+                .isInstanceOfSatisfying(HpdsCommunicationException.class, fault -> {
+                    assertThat(fault.getMessage()).isEqualTo("HPDS refused to report the status of the query");
+                    assertThat(fault.getCause()).isSameAs(refused);
+                });
+        }
+
+        verifyNoResultWasFetched();
+        verifyNothingWasRunOrWritten();
+    }
+
     private static Query sampleCohort() {
         return new Query(List.of("\\demographics\\AGE\\"), List.of(), null, List.of(), ResultType.DATAFRAME, null, null, true);
     }
@@ -2002,16 +2143,44 @@ class QueryServiceTest {
 
     @ParameterizedTest
     @EnumSource(Read.class)
-    void ownedReadWithConsentAuthorizationOffLooksUpNoConsentsAndRerunsNothing(Read read) {
+    void ownedReadWithConsentAuthorizationOffChecksTheJobInsideTheRowLockLooksUpNoConsentsAndRerunsNothing(Read read) {
         StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", Map.of());
-        hpdsHoldsTheJob(row.picsureId(), PicSureStatus.AVAILABLE);
-        hpdsServesTheResult(row.picsureId());
+        UUID id = row.picsureId();
+        List<Integer> rowsLockedWhenHpdsWasAskedForTheJob = new ArrayList<>();
+        when(hpds.queryStatus(any(HpdsTarget.class), eq(id.toString()))).thenAnswer(ask -> {
+            rowsLockedWhenHpdsWasAskedForTheJob.add(rowLocks.rowsInUse());
+            return hpdsAnswer(PicSureStatus.AVAILABLE, id.toString(), null);
+        });
+        hpdsServesTheResult(id);
+        when(operationsClient.updateLatestRun(any(), any())).thenReturn(true);
 
-        assertThat(read.call(consentOffService(), "auth", row.picsureId(), null, user(ALICE))).isNotNull();
+        assertThat(read.call(consentOffService(), "auth", id, null, user(ALICE))).isNotNull();
 
         verifyNoInteractions(psama);
+        assertThat(rowsLockedWhenHpdsWasAskedForTheJob).as("HPDS is asked for the job once, inside the lock of the row").containsExactly(1);
+        verify(hpds, never()).query(any(), any());
         verify(hpds, never()).query(any(), any(), any());
         verify(operationsClient, never()).save(any());
+        verify(operationsClient, never()).update(any(), any());
+        if (read == Read.STATUS) {
+            verify(operationsClient).updateLatestRun(id, new UpdateQueryRequest("AVAILABLE", null, null, null, null, row.runId()));
+        } else {
+            verify(operationsClient, never()).updateLatestRun(any(), any());
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(Read.class)
+    void ownedRowReadByAnotherUserWithConsentAuthorizationOffIs403(Read read) {
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", Map.of());
+
+        assertThatThrownBy(() -> read.call(consentOffService(), "auth", row.picsureId(), null, user(BOB)))
+            .isInstanceOfSatisfying(PicsureException.class, refused -> {
+                assertThat(refused.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+                assertThat(refused.getErrorType()).isEqualTo("forbidden");
+            });
+
+        verifyNoInteractions(psama, hpds);
     }
 
     @Test
@@ -2094,7 +2263,7 @@ class QueryServiceTest {
     @Test
     void ownerlessRowKeepsVerifyReadAccess() {
         QueryRowLocks locks = mock(QueryRowLocks.class);
-        QueryService ownerless = new QueryService(operationsClient, hpds, selector, consent, sampleRules, locks);
+        QueryService ownerless = new QueryService(operationsClient, hpds, selector, consent, sampleRules, locks, unsettledRows);
         UUID id = UUID.randomUUID();
         StoredQuery stored = new StoredQuery(id, "{}", "rr-2", "AVAILABLE", "3", null);
         when(operationsClient.get(id)).thenReturn(stored);

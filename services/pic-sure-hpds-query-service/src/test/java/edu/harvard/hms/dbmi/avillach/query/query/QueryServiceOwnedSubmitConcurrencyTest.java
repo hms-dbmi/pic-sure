@@ -93,7 +93,8 @@ class QueryServiceOwnedSubmitConcurrencyTest {
         hpdsProperties.setAuthUrl("http://hpds/PIC-SURE");
         return new QueryService(
             operationsClient, hpds, new HpdsBackendSelector(hpdsProperties),
-            new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), true), new SampleRules(new SampleProperties()), locks
+            new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), true), new SampleRules(new SampleProperties()), locks,
+            new UnsettledQueryRows()
         );
     }
 

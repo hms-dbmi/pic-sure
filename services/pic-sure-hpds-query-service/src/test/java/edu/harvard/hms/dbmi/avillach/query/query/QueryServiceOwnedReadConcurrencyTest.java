@@ -7,6 +7,7 @@ import static edu.harvard.hms.dbmi.avillach.query.query.QueryServiceOwnedSubmitC
 import static edu.harvard.hms.dbmi.avillach.query.query.QueryServiceOwnedSubmitConcurrencyTest.start;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -27,6 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
@@ -107,7 +109,8 @@ class QueryServiceOwnedReadConcurrencyTest {
         hpdsProperties.setAuthUrl("http://hpds/PIC-SURE");
         return new QueryService(
             operationsClient, hpds, new HpdsBackendSelector(hpdsProperties),
-            new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), true), new SampleRules(new SampleProperties()), locks
+            new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), true), new SampleRules(new SampleProperties()), locks,
+            new UnsettledQueryRows()
         );
     }
 
@@ -345,6 +348,72 @@ class QueryServiceOwnedReadConcurrencyTest {
             .containsExactly(BOTH_CONSENTS, ONE_CONSENT);
         assertThat(saves).extracting(SaveQueryRequest::trigger).containsExactly("CONSENT_CHANGE", "CONSENT_CHANGE");
         assertThat(rows.get(ROW).consents()).isEqualTo(Map.of(CONSENT_PATH, List.of("phs001.c1")));
+        assertThat(rowLocks.rowsInUse()).isZero();
+    }
+
+    /**
+     * Holds the calling request until the other request can go no further without it: until its thread has ended, which is what a request
+     * that met no lock does, or until its thread is parked in a timed wait, which is where a request waiting for the row lock stands.
+     */
+    private static void awaitFinishedOrParked(CompletableFuture<Thread> otherRequest) {
+        Thread other = otherRequest.orTimeout(10, TimeUnit.SECONDS).join();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (other.getState() != Thread.State.TERMINATED && other.getState() != Thread.State.TIMED_WAITING) {
+            if (System.nanoTime() > deadline) {
+                fail("The other request neither finished nor waited for the lock. Its state is " + other.getState());
+            }
+            Thread.onSpinWait();
+        }
+    }
+
+    /**
+     * The late-arrival order. PSAMA answers the read's consent lookup with the wider consents and holds that answer back until the submit
+     * that follows it can go no further. Every later lookup is answered with the narrower consents, which are the ones the caller holds
+     * from then on.
+     *
+     * <p>A read that looks its consents up inside the lock of the row keeps the submit waiting for that lock, so the submit runs second and
+     * has the last word. A read that looked them up before it took the lock would let the submit run to its end first and would then run
+     * the query once more under the wider consents it still carries, leaving HPDS and the row under consents the caller no longer holds.
+     */
+    @ParameterizedTest
+    @EnumSource(Read.class)
+    void aReadHoldingAnEarlierWiderConsentAnswerDoesNotOverwriteALaterSubmitUnderNarrowerConsents(Read read) throws Exception {
+        aliceHasARow(Set.of("phs009.c1"), "AVAILABLE");
+        jobsHpdsHolds.put(ROW.toString(), PicSureStatus.AVAILABLE);
+        AtomicInteger lookups = new AtomicInteger();
+        CountDownLatch widerLookupArrived = new CountDownLatch(1);
+        CompletableFuture<Thread> submitRequest = new CompletableFuture<>();
+        when(psama.fetch(TOKEN)).thenAnswer(lookup -> {
+            if (lookups.incrementAndGet() == 1) {
+                widerLookupArrived.countDown();
+                awaitFinishedOrParked(submitRequest);
+                return Map.of(CONSENT_PATH, BOTH_CONSENTS);
+            }
+            return Map.of(CONSENT_PATH, ONE_CONSENT);
+        });
+        FutureTask<Object> reading = new FutureTask<>(() -> read.call(service, "auth", ROW, TOKEN, alice()));
+        FutureTask<QueryStatus> submitting = submit();
+
+        start(reading);
+        await(widerLookupArrived);
+        submitRequest.complete(start(submitting));
+        if (read == Read.STATUS) {
+            assertThat(((QueryStatus) resultOf(reading)).getStatus()).isEqualTo(PicSureStatus.PENDING);
+        } else {
+            assertAnsweredNotReady(reading);
+        }
+        resultOf(submitting);
+
+        Set<String> lastSentToHpds = consentsSentWith(queriesHpdsReceived.get(queriesHpdsReceived.size() - 1));
+        Set<String> lastSaved = consentsSavedWith(saves.get(saves.size() - 1));
+        assertThat(lastSentToHpds).as("the last query HPDS received runs under the narrower consents").isEqualTo(ONE_CONSENT);
+        assertThat(lastSaved).as("the last save records the narrower consents").isEqualTo(ONE_CONSENT);
+        assertThat(queriesHpdsReceived).extracting(QueryServiceOwnedReadConcurrencyTest::consentsSentWith)
+            .containsExactly(BOTH_CONSENTS, ONE_CONSENT);
+        assertThat(saves).extracting(SaveQueryRequest::trigger).containsExactly("CONSENT_CHANGE", "CONSENT_CHANGE");
+        assertThat(rows.get(ROW).consents()).isEqualTo(Map.of(CONSENT_PATH, List.of("phs001.c1")));
+        verify(hpds, never()).queryResult(any(), any());
+        verify(hpds, never()).queryResultSignedUrl(any(), any());
         assertThat(rowLocks.rowsInUse()).isZero();
     }
 

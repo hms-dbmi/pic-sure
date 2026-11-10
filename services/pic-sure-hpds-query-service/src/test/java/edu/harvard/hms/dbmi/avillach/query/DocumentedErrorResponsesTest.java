@@ -307,6 +307,88 @@ class DocumentedErrorResponsesTest {
         );
     }
 
+    private void hpdsHoldsNoJobForTheOwnedQuery() {
+        downstream
+            .stubFor(WireMock.post(urlPathEqualTo("/PIC-SURE/v3/query/" + ownedId + "/status")).willReturn(aResponse().withStatus(404)));
+    }
+
+    private void verifyNothingWasRunSavedOrServed() {
+        downstream.verify(0, WireMock.postRequestedFor(urlPathEqualTo("/PIC-SURE/v3/query")));
+        downstream.verify(0, WireMock.postRequestedFor(urlPathEqualTo(QUERIES)));
+        downstream.verify(0, WireMock.patchRequestedFor(urlPathMatching(QUERIES + "/.*")));
+        downstream.verify(0, WireMock.postRequestedFor(urlPathMatching("/PIC-SURE/.*/(result|signed-url)")));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("ownedResultReads")
+    void ownedResultOfAQueryStoredAsFailedIs400AndRunsNothing(String name, RequestFor request) throws Exception {
+        storeOwnedQuery(Map.of(CONSENT_PATH, List.of(GRANTED_CONSENT)), "ERROR");
+        hpdsAcceptsTheSubmit();
+        hpdsHoldsNoJobForTheOwnedQuery();
+
+        String body = mockMvc.perform(calledBy(request.build(ownedId), OWNER)).andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errorType").value("bad_request")).andExpect(jsonPath("$.message").value("Status : ERROR")).andReturn()
+            .getResponse().getContentAsString();
+
+        assertThat(body).doesNotContain(OWNER).doesNotContain(GRANTED_CONSENT);
+        verifyNothingWasRunSavedOrServed();
+    }
+
+    @Test
+    void ownedStatusOfAQueryStoredAsFailedReportsTheFailureAndRunsNothing() throws Exception {
+        storeOwnedQuery(Map.of(CONSENT_PATH, List.of(GRANTED_CONSENT)), "ERROR");
+        hpdsAcceptsTheSubmit();
+        hpdsHoldsNoJobForTheOwnedQuery();
+
+        String body = mockMvc.perform(calledBy(get("/hpds/auth/query/{id}/status", ownedId), OWNER)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("ERROR")).andExpect(jsonPath("$.picsureResultId").value(ownedId.toString()))
+            .andExpect(jsonPath("$.resourceResultId").value(ownedId.toString())).andReturn().getResponse().getContentAsString();
+
+        assertThat(body).doesNotContain(OWNER).doesNotContain(GRANTED_CONSENT).doesNotContain("consents");
+        verifyNothingWasRunSavedOrServed();
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("ownedResultReads")
+    void ownedResultRunAgainThatHpdsAnswersAsFailedIs400(String name, RequestFor request) throws Exception {
+        storeOwnedQuery(Map.of(CONSENT_PATH, List.of(GRANTED_CONSENT, "phs000002.c1")));
+        downstream.stubFor(
+            WireMock.post(urlPathEqualTo("/PIC-SURE/v3/query"))
+                .willReturn(okJson("{\"resourceResultId\":\"" + ownedId + "\",\"resourceStatus\":\"ERROR\",\"status\":\"ERROR\"}"))
+        );
+
+        mockMvc.perform(calledBy(request.build(ownedId), OWNER)).andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errorType").value("bad_request")).andExpect(jsonPath("$.message").value("Status : ERROR"));
+
+        downstream.verify(1, WireMock.postRequestedFor(urlPathEqualTo("/PIC-SURE/v3/query")));
+        downstream.verify(
+            1,
+            WireMock.postRequestedFor(urlPathEqualTo(QUERIES))
+                .withRequestBody(WireMock.matchingJsonPath("$.trigger", WireMock.equalTo("CONSENT_CHANGE")))
+                .withRequestBody(WireMock.matchingJsonPath("$.status", WireMock.equalTo("ERROR")))
+        );
+        downstream.verify(0, WireMock.postRequestedFor(urlPathMatching("/PIC-SURE/.*/(result|signed-url)")));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("ownedReads")
+    void ownedReadWhoseStatusRequestHpdsRefusesIs502AndRunsNothing(String name, RequestFor request) throws Exception {
+        storeOwnedQuery(Map.of(CONSENT_PATH, List.of(GRANTED_CONSENT)));
+        hpdsAcceptsTheSubmit();
+        downstream.stubFor(
+            WireMock.post(urlPathEqualTo("/PIC-SURE/v3/query/" + ownedId + "/status"))
+                .willReturn(aResponse().withStatus(403).withBody("what HPDS said"))
+        );
+
+        String body = mockMvc.perform(calledBy(request.build(ownedId), OWNER)).andExpect(status().isBadGateway())
+            .andExpect(jsonPath("$.errorType").value("upstream_unavailable"))
+            .andExpect(jsonPath("$.message").value("HPDS refused to report the status of the query")).andReturn().getResponse()
+            .getContentAsString();
+
+        assertThat(body).doesNotContain(OWNER).doesNotContain(GRANTED_CONSENT).doesNotContain("what HPDS said");
+        verifyNothingWasRunSavedOrServed();
+    }
+
     @Test
     void ownedStatusWriteRefusedForAnOlderRunIsStillA200() throws Exception {
         storeOwnedQuery(Map.of(CONSENT_PATH, List.of(GRANTED_CONSENT)));
@@ -462,11 +544,16 @@ class DocumentedErrorResponsesTest {
      * filters, the row id as the result id, the consents it ran under and a latest run.
      */
     private void storeOwnedQuery(Map<String, List<String>> consents) throws JsonProcessingException {
+        storeOwnedQuery(consents, "AVAILABLE");
+    }
+
+    /** Stubs the row of {@link #storeOwnedQuery(Map)} with the given stored status. */
+    private void storeOwnedQuery(Map<String, List<String>> consents, String status) throws JsonProcessingException {
         Map<String, Object> request =
             Map.of("query", Map.of("expectedResultType", "DATAFRAME", "picsureId", ownedId.toString(), "authorizationFilters", List.of()));
         Map<String, Object> row = Map.of(
             "picsureId", ownedId.toString(), "query", MAPPER.writeValueAsString(request), "resourceResultId", ownedId.toString(), "status",
-            "AVAILABLE", "version", "3", "userUuid", OWNER, "consents", consents, "runId", OWNED_RUN
+            status, "version", "3", "userUuid", OWNER, "consents", consents, "runId", OWNED_RUN
         );
         downstream.stubFor(WireMock.get(urlPathEqualTo(QUERIES + "/" + ownedId)).willReturn(okJson(MAPPER.writeValueAsString(row))));
     }
