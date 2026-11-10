@@ -359,8 +359,6 @@ class HpdsQueryControllerTest {
         ).andExpect(status().isGone()).andExpect(jsonPath("$.errorType").value("gone"));
     }
 
-    // --- the gateway's identity reaches the service ---
-
     private static GatewayUser theCaller(String userId) {
         return argThat((GatewayUser user) -> user != null && userId.equals(user.getUserId()));
     }
@@ -427,6 +425,23 @@ class HpdsQueryControllerTest {
             postRequestedFor(urlEqualTo("/PIC-SURE/v3/query"))
                 .withRequestBody(matchingJsonPath("$.query.picsureId", equalTo(id.toString())))
         );
+    }
+
+    @Test
+    void submitThatHpdsAnswersWithoutAJobIs502AndStoresNothing() throws Exception {
+        String caller = "5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11";
+        hpds.stubFor(WireMock.post(urlEqualTo("/PIC-SURE/v3/query")).willReturn(okJson("{\"resourceStatus\":\"Resource is locked.\"}")));
+        when(operationsClient.find(any())).thenReturn(Optional.empty());
+
+        String response = mockMvc
+            .perform(
+                post("/hpds/auth/query").header(GatewayUserResolver.HEADER_USER_ID, caller).header("Authorization", "Bearer caller-token")
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"query\":{\"expectedResultType\":\"DATAFRAME\"}}")
+            ).andExpect(status().isBadGateway()).andExpect(jsonPath("$.errorType").value("upstream_unavailable"))
+            .andExpect(jsonPath("$.message").value("HPDS did not accept the query")).andReturn().getResponse().getContentAsString();
+
+        assertThat(response).doesNotContain("locked").doesNotContain(caller);
+        verify(operationsClient, never()).save(any());
     }
 
     // --- /hpds/** requires an authenticated caller ---

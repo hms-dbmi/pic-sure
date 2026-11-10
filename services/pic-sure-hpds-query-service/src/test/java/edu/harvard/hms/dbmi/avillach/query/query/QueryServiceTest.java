@@ -16,7 +16,9 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -27,6 +29,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpStatus;
 import org.mockito.ArgumentCaptor;
@@ -51,6 +54,7 @@ import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
 import edu.harvard.hms.dbmi.avillach.query.config.SampleProperties;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
+import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
@@ -221,8 +225,6 @@ class QueryServiceTest {
         assertThat(out.getResourceID()).isEqualTo(request.getResourceUUID());
     }
 
-    // --- create for a caller the gateway identified by UUID on the auth backend ---
-
     private static final String TOKEN = "Bearer caller-token";
     private static final String CONSENT_PATH = "\\_consents\\";
     private static final UUID ALICE = UUID.fromString("5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11");
@@ -357,6 +359,204 @@ class QueryServiceTest {
         ownedService.query("auth", envelope(cohort()), TOKEN, user(ALICE));
 
         assertThat(onlySave().trigger()).isEqualTo("CONSENT_CHANGE");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"QUEUED", "PENDING", "AVAILABLE"})
+    void repeatedSubmitOfAQueuedRunningOrAvailableRowReturnsItsStatusWithoutCallingHpds(String status) {
+        UUID id = QueryIdentity.idFor(ALICE, cohort());
+        callerHoldsConsents("phs001.c1");
+        when(operationsClient.find(id)).thenReturn(Optional.of(ownedRow(id, ALICE, status, Map.of(CONSENT_PATH, List.of("phs001.c1")))));
+
+        QueryStatus out = ownedService.query("auth", envelope(cohort()), TOKEN, user(ALICE));
+
+        assertThat(out.getStatus()).isEqualTo(PicSureStatus.valueOf(status));
+        assertThat(out.getPicsureResultId()).isEqualTo(id);
+        verifyNoInteractions(hpds);
+        verify(operationsClient).find(id);
+        verifyNoMoreInteractions(operationsClient);
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = "ERROR")
+    void resubmitOfARowThatFailedOrNeverRanRunsAgainAndRecordsResubmit(String status) {
+        UUID id = QueryIdentity.idFor(ALICE, cohort());
+        Map<String, List<String>> consents = Map.of(CONSENT_PATH, List.of("phs001.c1"));
+        callerHoldsConsents("phs001.c1");
+        when(operationsClient.find(id)).thenReturn(Optional.of(ownedRow(id, ALICE, status, consents)));
+        hpdsAcceptsOwnedSubmits();
+
+        QueryStatus out = ownedService.query("auth", envelope(cohort()), TOKEN, user(ALICE));
+
+        verify(hpds).query(any(HpdsTarget.class), any(), eq(id));
+        SaveQueryRequest saved = onlySave();
+        assertThat(saved.trigger()).isEqualTo("RESUBMIT");
+        assertThat(saved.picsureId()).isEqualTo(id);
+        assertThat(saved.userUuid()).isEqualTo(ALICE);
+        assertThat(saved.consents()).isEqualTo(consents);
+        assertThat(saved.status()).isEqualTo("PENDING");
+        assertThat(out.getPicsureResultId()).isEqualTo(id);
+        assertThat(out.getStatus()).isEqualTo(PicSureStatus.PENDING);
+    }
+
+    @Test
+    void resubmitOfAFailedRowUnderChangedConsentsRecordsConsentChange() {
+        UUID id = QueryIdentity.idFor(ALICE, cohort());
+        callerHoldsConsents("phs001.c1");
+        when(operationsClient.find(id))
+            .thenReturn(Optional.of(ownedRow(id, ALICE, "ERROR", Map.of(CONSENT_PATH, List.of("phs001.c1", "phs001.c2")))));
+        hpdsAcceptsOwnedSubmits();
+
+        ownedService.query("auth", envelope(cohort()), TOKEN, user(ALICE));
+
+        assertThat(onlySave().trigger()).isEqualTo("CONSENT_CHANGE");
+    }
+
+    @Test
+    void repeatedSubmitReturnsTheStoredResultMetadata() {
+        UUID id = QueryIdentity.idFor(ALICE, cohort());
+        Map<String, List<String>> consents = Map.of(CONSENT_PATH, List.of("phs001.c1"));
+        String metadata = Base64.getEncoder().encodeToString("{\"picsureQueryId\":\"stored-query\"}".getBytes(StandardCharsets.UTF_8));
+        callerHoldsConsents("phs001.c1");
+        when(operationsClient.find(id)).thenReturn(
+            Optional.of(new StoredQuery(id, "{}", id.toString(), "AVAILABLE", "3", metadata, 1L, 2L, ALICE, consents, UUID.randomUUID()))
+        );
+
+        QueryStatus out = ownedService.query("auth", envelope(cohort()), TOKEN, user(ALICE));
+
+        assertThat(out.getResultMetadata()).containsExactly(Map.entry("picsureQueryId", "stored-query"));
+        verifyNoInteractions(hpds);
+    }
+
+    @Test
+    void consentAuthorizationSwitchedOnAfterARowWasSavedWithNoConsentsRunsAgainAsAConsentChange() {
+        UUID id = QueryIdentity.idFor(ALICE, cohort());
+        callerHoldsConsents("phs001.c1");
+        when(operationsClient.find(id)).thenReturn(Optional.of(ownedRow(id, ALICE, "AVAILABLE", Map.of())));
+        hpdsAcceptsOwnedSubmits();
+
+        ownedService.query("auth", envelope(cohort()), TOKEN, user(ALICE));
+
+        verify(hpds).query(any(HpdsTarget.class), any(), eq(id));
+        SaveQueryRequest saved = onlySave();
+        assertThat(saved.trigger()).isEqualTo("CONSENT_CHANGE");
+        assertThat(saved.consents()).isEqualTo(Map.of(CONSENT_PATH, List.of("phs001.c1")));
+    }
+
+    @Test
+    void consentAuthorizationSwitchedOffAfterARowWasSavedWithConsentsRunsAgainAsAConsentChange() {
+        QueryService consentOff = new QueryService(
+            operationsClient, hpds, selector, new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), false), sampleRules
+        );
+        UUID id = QueryIdentity.idFor(ALICE, cohort());
+        when(operationsClient.find(id))
+            .thenReturn(Optional.of(ownedRow(id, ALICE, "AVAILABLE", Map.of(CONSENT_PATH, List.of("phs001.c1")))));
+        hpdsAcceptsOwnedSubmits();
+
+        consentOff.query("auth", envelope(cohort()), null, user(ALICE));
+
+        verify(hpds).query(any(HpdsTarget.class), any(), eq(id));
+        SaveQueryRequest saved = onlySave();
+        assertThat(saved.trigger()).isEqualTo("CONSENT_CHANGE");
+        assertThat(saved.consents()).isNotNull().isEmpty();
+        verifyNoInteractions(psama);
+    }
+
+    @Test
+    void anUntypedBodyThatConvertsToAV3QueryIsStoredUnderItsCaller() {
+        Map<String, Object> untyped = Map.of("select", List.of("\\demographics\\AGE\\"), "expectedResultType", "DATAFRAME");
+        UUID id = QueryIdentity.idFor(ALICE, MAPPER.convertValue(untyped, Query.class));
+        callerHoldsConsents("phs001.c1");
+        hpdsAcceptsOwnedSubmits();
+
+        QueryStatus out = ownedService.query("auth", new GeneralQueryRequest().setQuery(untyped), TOKEN, user(ALICE));
+
+        verify(hpds).query(any(HpdsTarget.class), any(), eq(id));
+        SaveQueryRequest saved = onlySave();
+        assertThat(saved.picsureId()).isEqualTo(id);
+        assertThat(saved.userUuid()).isEqualTo(ALICE);
+        assertThat(saved.trigger()).isEqualTo("FIRST_SUBMIT");
+        assertThat(out.getPicsureResultId()).isEqualTo(id);
+    }
+
+    private static QueryStatus hpdsAnswer(PicSureStatus status, String resourceResultId, String resourceStatus) {
+        QueryStatus answer = new QueryStatus();
+        answer.setStatus(status);
+        answer.setResourceResultId(resourceResultId);
+        answer.setResourceStatus(resourceStatus);
+        return answer;
+    }
+
+    private void assertNotAcceptedByHpds(QueryStatus answer) {
+        callerHoldsConsents("phs001.c1");
+        when(hpds.query(any(HpdsTarget.class), any(), any(UUID.class))).thenReturn(answer);
+
+        assertThatThrownBy(() -> ownedService.query("auth", envelope(cohort()), TOKEN, user(ALICE)))
+            .isInstanceOfSatisfying(HpdsCommunicationException.class, fault -> {
+                assertThat(fault.getMessage()).isEqualTo("HPDS did not accept the query");
+                assertThat(fault.getCause()).isNull();
+            });
+
+        verify(operationsClient, never()).save(any());
+        verify(operationsClient, never()).update(any(), any());
+    }
+
+    @Test
+    void ownedSubmitThatHpdsAnswersAsLockedIs502AndSavesNothing() {
+        assertNotAcceptedByHpds(hpdsAnswer(null, null, "Resource is locked."));
+    }
+
+    @Test
+    void ownedSubmitThatHpdsAnswersWithNoStatusIs502AndSavesNothing() {
+        assertNotAcceptedByHpds(hpdsAnswer(null, QueryIdentity.idFor(ALICE, cohort()).toString(), null));
+    }
+
+    @Test
+    void ownedSubmitThatHpdsStoredUnderAnotherIdIs502AndSavesNothing() {
+        assertNotAcceptedByHpds(hpdsAnswer(PicSureStatus.PENDING, "0d9f6c1e-7a52-4b7e-8d0a-3f1b2c4d5e6f", null));
+    }
+
+    @Test
+    void ownedSubmitThatHpdsAnswersWithNoBodyIs502AndSavesNothing() {
+        assertNotAcceptedByHpds(null);
+    }
+
+    @Test
+    void ownedSubmitWithABodyThatIsNotAV3QueryIs400BeforeAnythingIsLookedUpSentOrSaved() {
+        Map<String, Object> notAQuery = Map.of("expectedResultType", "DATAFRAME", "numericFilters", Map.of());
+
+        assertThatThrownBy(() -> ownedService.query("auth", new GeneralQueryRequest().setQuery(notAQuery), TOKEN, user(ALICE)))
+            .isInstanceOfSatisfying(PicsureException.class, refused -> {
+                assertThat(refused.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(refused.getErrorType()).isEqualTo("bad_request");
+                assertThat(refused.getMessage()).isEqualTo("Incorrectly formatted request");
+            });
+
+        verifyNoInteractions(psama, hpds, operationsClient);
+    }
+
+    @Test
+    void ownedSubmitWithATextBodyIs400BeforeAnythingIsLookedUpSentOrSaved() {
+        assertThatThrownBy(() -> ownedService.query("auth", new GeneralQueryRequest().setQuery("q"), TOKEN, user(ALICE)))
+            .isInstanceOfSatisfying(PicsureException.class, refused -> assertThat(refused.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+
+        verifyNoInteractions(psama, hpds, operationsClient);
+    }
+
+    @Test
+    void anUppercaseCanonicalUuidIsOwnedUnderTheSameOwnerAsItsLowercaseForm() {
+        UUID id = QueryIdentity.idFor(ALICE, cohort());
+        callerHoldsConsents("phs001.c1");
+        hpdsAcceptsOwnedSubmits();
+        GatewayUser uppercase = new GatewayUser(ALICE.toString().toUpperCase(java.util.Locale.ROOT), null, null, null, Set.of());
+
+        QueryStatus out = ownedService.query("auth", envelope(cohort()), TOKEN, uppercase);
+
+        SaveQueryRequest saved = onlySave();
+        assertThat(saved.userUuid()).isEqualTo(ALICE);
+        assertThat(saved.picsureId()).isEqualTo(id);
+        assertThat(out.getPicsureResultId()).isEqualTo(id);
     }
 
     @Test
@@ -521,6 +721,8 @@ class QueryServiceTest {
         assertThatThrownBy(() -> ownedService.query("auth", envelope(cohort()), TOKEN, user(ALICE)))
             .isInstanceOfSatisfying(PicsureException.class, fault -> {
                 assertThat(fault.getStatus()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+                assertThat(fault.getErrorType()).isEqualTo("internal_server_error");
+                assertThat(fault.getMessage()).isEqualTo("The query could not be stored").doesNotContain(id.toString());
                 assertThat(fault.getMessage()).doesNotContain(BOB.toString()).doesNotContain(ALICE.toString()).doesNotContain("owner")
                     .doesNotContain("phs001");
             });
@@ -535,9 +737,12 @@ class QueryServiceTest {
         callerHoldsConsents("phs001.c1");
         when(operationsClient.find(id)).thenReturn(Optional.of(new StoredQuery(id, "{}", "rr-old", "AVAILABLE", "3", null)));
 
-        assertThatThrownBy(() -> ownedService.query("auth", envelope(cohort()), TOKEN, user(ALICE))).isInstanceOfSatisfying(
-            PicsureException.class, fault -> assertThat(fault.getStatus()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR)
-        );
+        assertThatThrownBy(() -> ownedService.query("auth", envelope(cohort()), TOKEN, user(ALICE)))
+            .isInstanceOfSatisfying(PicsureException.class, fault -> {
+                assertThat(fault.getStatus()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+                assertThat(fault.getErrorType()).isEqualTo("internal_server_error");
+                assertThat(fault.getMessage()).isEqualTo("The query could not be stored");
+            });
 
         verifyNoInteractions(hpds);
         verify(operationsClient, never()).save(any());
@@ -568,7 +773,11 @@ class QueryServiceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"auth0|alice", "OPEN_ACCESS:picsure.example.org", "5f0c1f0e6f0a4a579d6e0d1c6a3b9f11", " "})
+    @ValueSource(
+        strings = {"auth0|alice", "OPEN_ACCESS:picsure.example.org", "5f0c1f0e6f0a4a579d6e0d1c6a3b9f11", " ", "1-2-3-4-5",
+            " 5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11 ", "5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11\n", "5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f1",
+            "5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f1g"}
+    )
     void createByACallerWhoseIdIsNotAUuidKeepsTheLegacyPath(String userId) {
         UUID rowId = UUID.randomUUID();
         callerHoldsConsents("phs001.c1");

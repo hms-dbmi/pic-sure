@@ -208,7 +208,7 @@ class OperationsClientTest {
     }
 
     @Test
-    void saveRefusedForADifferentOwnerThrowsBadGatewayWithoutRepeatingWhatOperationsSaid() {
+    void saveRefusedForADifferentOwnerIsAServerFaultThatRepeatsNothingOperationsSaid() {
         UUID id = UUID.randomUUID();
         UUID owner = UUID.randomUUID();
         ops.stubFor(
@@ -221,10 +221,10 @@ class OperationsClientTest {
         SaveQueryRequest request = new SaveQueryRequest("{}", id.toString(), "QUEUED", "3", null, id, owner, Map.of(), "FIRST_SUBMIT");
 
         assertThatThrownBy(() -> client().save(request)).isInstanceOfSatisfying(PicsureException.class, e -> {
-            assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY);
-            assertThat(e.getErrorType()).isEqualTo("bad_gateway");
-            assertThat(e.getMessage()).doesNotContain("owner").doesNotContain("belongs").doesNotContain(owner.toString())
-                .doesNotContain(id.toString());
+            assertThat(e.getStatus()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+            assertThat(e.getErrorType()).isEqualTo("internal_server_error");
+            assertThat(e.getMessage()).isEqualTo("The query could not be stored").doesNotContain("owner").doesNotContain("belongs")
+                .doesNotContain(owner.toString()).doesNotContain(id.toString());
         });
     }
 

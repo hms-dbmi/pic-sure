@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.query.query;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -9,6 +10,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -40,6 +42,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.query.consent.ConsentAuthorizationService;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
+import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
 
@@ -73,6 +76,17 @@ public class QueryService {
     private static final String CURRENT_VERSION = "3";
     private static final String FIRST_SUBMIT = "FIRST_SUBMIT";
     private static final String CONSENT_CHANGE = "CONSENT_CHANGE";
+    private static final String RESUBMIT = "RESUBMIT";
+    /**
+     * The stored statuses under which a repeated submit reuses the row: HPDS accepted the job and it is waiting for a worker
+     * ({@code QUEUED}), running ({@code PENDING}) or finished with a result ({@code AVAILABLE}). A row stored as {@code ERROR}, or with no
+     * status, has no job worth waiting for, so a repeated submit runs it again.
+     */
+    private static final Set<PicSureStatus> REUSABLE_STATUSES =
+        EnumSet.of(PicSureStatus.QUEUED, PicSureStatus.PENDING, PicSureStatus.AVAILABLE);
+    /** The canonical text form of a UUID: 36 characters, hexadecimal digits in either case, hyphens after digits 8, 12, 16 and 20. */
+    private static final Pattern CANONICAL_UUID =
+        Pattern.compile("\\p{XDigit}{8}-\\p{XDigit}{4}-\\p{XDigit}{4}-\\p{XDigit}{4}-\\p{XDigit}{12}");
     private static final TypeReference<Map<String, Object>> METADATA_SHAPE = new TypeReference<>() {};
     /**
      * JSON property names the v1 {@code Query} model deserializes, read from the model through Jackson so the set follows the class. A
@@ -121,16 +135,20 @@ public class QueryService {
     /**
      * Submits a query for asynchronous execution and stores it.
      *
-     * <p>On {@code auth}, for a caller whose gateway user id is a UUID and a body that is a v3 query, the row belongs to that caller: <ol>
-     * <li>{@link SampleRules} run first.</li> <li>The caller's consents are fetched once and the query is scoped with them.</li> <li>The
-     * row id is derived from the caller's UUID and the query, and replaces any {@code picsureId} the body carried.</li> <li>With no row
-     * under that id, the query is sent to HPDS under the id and the row is saved with its owner, the consents and a first-submit run.</li>
-     * <li>With a row whose consents equal the caller's current ones, nothing is sent or saved and the stored status is returned.</li>
-     * <li>With a row whose consents differ, the query is sent again and the row is saved with the new consents and a consent-change
-     * run.</li> </ol> The stored body carries the derived id and no authorization filters. The row's result id is the row id.
+     * <p>On {@code auth}, for a caller whose gateway user id is a canonical UUID and a body that carries a query, the row belongs to that
+     * caller: <ol> <li>{@link SampleRules} run first.</li> <li>A query that cannot be read as a v3 query is refused.</li> <li>The caller's
+     * consents are fetched once and the query is scoped with them.</li> <li>The row id is derived from the caller's UUID and the query, and
+     * replaces any {@code picsureId} the body carried.</li> <li>With no row under that id, the query is sent to HPDS under the id and the
+     * row is saved with its owner, the consents and a first-submit run.</li> <li>With a row whose consents equal the caller's current ones
+     * and whose status is {@code QUEUED}, {@code PENDING} or {@code AVAILABLE}, nothing is sent or saved and the stored status is
+     * returned.</li> <li>With a row whose consents equal the caller's current ones and whose status is {@code ERROR} or absent, the query
+     * is sent again and the row is saved with a resubmit run.</li> <li>With a row whose consents differ, the query is sent again and the
+     * row is saved with the new consents and a consent-change run.</li> </ol> A row is saved only for an answer from HPDS that carries a
+     * status and names no result id other than the derived one. The stored body carries the derived id and no authorization filters. The
+     * row's result id is the row id.
      *
      * <p>Every other submit keeps the path without an owner: the {@code open} backend, a caller with no gateway user or one whose id is not
-     * a UUID, and a body that is not a v3 query. HPDS runs the query under a key it derives, and operations-service stores it under a
+     * a canonical UUID, and a body with no query. HPDS runs the query under a key it derives, and operations-service stores it under a
      * random id.
      *
      * @param backend the ingress {@code {backend}} segment
@@ -138,9 +156,11 @@ public class QueryService {
      * @param authorizationHeader the caller's {@code Authorization} header, needed by consent scoping on {@code auth}
      * @param user the caller as the gateway identified them, or null when there is none
      * @return the status of the query, with {@code picsureResultId} set to the id of its row
-     * @throws PicsureException 400 when the request is missing or breaks a sample rule; 403 {@code consent_denied} when the caller's
-     *         consents do not permit the query; 500 when the row under the derived id is not the caller's; whatever consent lookup, HPDS or
-     *         operations-service raise
+     * @throws PicsureException 400 when the request is missing, breaks a sample rule, or carries for a caller identified by UUID a query
+     *         that is not a v3 query; 403 {@code consent_denied} when the caller's consents do not permit the query; 500 when the row under
+     *         the derived id is not the caller's; whatever consent lookup, HPDS or operations-service raise
+     * @throws HpdsCommunicationException when HPDS answers a submit for a caller identified by UUID without a status, or with a result id
+     *         other than the derived one
      */
     public QueryStatus query(String backend, QueryRequest req, String authorizationHeader, GatewayUser user) {
         if (req == null) {
@@ -148,11 +168,10 @@ public class QueryService {
         }
         sampleRules.check(backend, req.getQuery());
         Optional<UUID> owner = ownerOf(backend, user);
-        Optional<Query> query = owner.flatMap(known -> asV3Query(req.getQuery()));
-        if (query.isEmpty()) {
+        if (owner.isEmpty() || req.getQuery() == null) {
             return createWithoutOwner(backend, req, authorizationHeader);
         }
-        return createOwned(backend, req, query.get(), authorizationHeader, owner.get());
+        return createOwned(backend, req, requireV3Query(req.getQuery()), authorizationHeader, owner.get());
     }
 
     private QueryStatus createWithoutOwner(String backend, QueryRequest req, String authorizationHeader) {
@@ -191,20 +210,21 @@ public class QueryService {
         Optional<StoredQuery> stored = operationsClient.find(id);
         if (stored.isPresent() && !owner.equals(stored.get().userUuid())) {
             logger.error("Stored query {} is not owned by the caller its id was derived for", id);
-            throw new PicsureException(HttpStatus.INTERNAL_SERVER_ERROR, "internal_server_error", "The query could not be stored");
+            throw OperationsClient.storedUnderAnotherOwner();
         }
-        if (stored.isPresent() && sameConsents(stored.get().consents(), consents)) {
+        boolean consentsUnchanged = stored.isPresent() && sameConsents(stored.get().consents(), consents);
+        if (consentsUnchanged && holdsAJob(stored.get())) {
             return storedStatus(stored.get(), req);
         }
 
-        QueryStatus results = hpds.query(target, req, id);
+        QueryStatus results = acceptedUnder(id, hpds.query(target, req, id));
         String metadataBase64 = buildMetadataBase64(results);
         String resultId = id.toString();
         operationsClient.save(
             new SaveQueryRequest(
                 serializeQuery(req.copy().setQuery(scoped.setPicsureId(id).setAuthorizationFilters(List.of()))), resultId,
                 statusName(results.getStatus()), CURRENT_VERSION, metadataBase64, id, owner, consents,
-                stored.isPresent() ? CONSENT_CHANGE : FIRST_SUBMIT
+                runTrigger(stored.isPresent(), consentsUnchanged)
             )
         );
         results.setPicsureResultId(id);
@@ -213,27 +233,65 @@ public class QueryService {
         return results;
     }
 
-    /** Returns the caller's UUID when the backend is {@code auth} and the gateway user id is one, and empty otherwise. */
+    /** Returns whether the row's stored status is one of {@link #REUSABLE_STATUSES}. */
+    private static boolean holdsAJob(StoredQuery stored) {
+        return REUSABLE_STATUSES.stream().anyMatch(reusable -> reusable.name().equals(stored.status()));
+    }
+
+    /** Names the run a save records: the first one of a row, one under changed consents, or a repeat under the same consents. */
+    private static String runTrigger(boolean rowExists, boolean consentsUnchanged) {
+        if (!rowExists) {
+            return FIRST_SUBMIT;
+        }
+        return consentsUnchanged ? RESUBMIT : CONSENT_CHANGE;
+    }
+
+    /**
+     * Returns HPDS's answer to a submit when it shows a job stored under the id this service derived.
+     *
+     * @param id the id the query was submitted under
+     * @param answer what HPDS answered, or null when it answered with no body
+     * @return the answer
+     * @throws HpdsCommunicationException when the answer is missing, carries no status, or names a result id other than {@code id}; the
+     *         message repeats nothing HPDS said
+     */
+    private static QueryStatus acceptedUnder(UUID id, QueryStatus answer) {
+        boolean accepted = answer != null && answer.getStatus() != null
+            && (answer.getResourceResultId() == null || id.toString().equalsIgnoreCase(answer.getResourceResultId()));
+        if (!accepted) {
+            throw new HpdsCommunicationException("HPDS did not accept the query");
+        }
+        return answer;
+    }
+
+    /**
+     * Returns the caller's UUID when the backend is {@code auth} and the gateway user id is a UUID in its canonical text form, and empty
+     * otherwise. Letter case is not part of the identity: an id in upper case names the same owner as its lower case form.
+     */
     private static Optional<UUID> ownerOf(String backend, GatewayUser user) {
         if (!HpdsBackendSelector.AUTH.equals(backend) || user == null || user.getUserId() == null) {
             return Optional.empty();
         }
-        try {
-            return Optional.of(UUID.fromString(user.getUserId()));
-        } catch (IllegalArgumentException notAUuid) {
+        if (!CANONICAL_UUID.matcher(user.getUserId()).matches()) {
             return Optional.empty();
         }
+        return Optional.of(UUID.fromString(user.getUserId()));
     }
 
-    /** Returns the body as a v3 query, or empty when it is absent or cannot be read as one. */
-    private static Optional<Query> asV3Query(Object queryBody) {
-        if (queryBody == null || queryBody instanceof Query) {
-            return Optional.ofNullable((Query) queryBody);
+    /**
+     * Returns the body as a v3 query.
+     *
+     * @param queryBody the query of a submit, never null
+     * @throws PicsureException 400 {@code bad_request} when the body cannot be read as a v3 query
+     */
+    private static Query requireV3Query(Object queryBody) {
+        if (queryBody instanceof Query typed) {
+            return typed;
         }
         try {
-            return Optional.ofNullable(MAPPER.convertValue(queryBody, Query.class));
+            return MAPPER.convertValue(queryBody, Query.class);
         } catch (IllegalArgumentException notAQuery) {
-            return Optional.empty();
+            throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Incorrectly formatted request");
         }
     }
 

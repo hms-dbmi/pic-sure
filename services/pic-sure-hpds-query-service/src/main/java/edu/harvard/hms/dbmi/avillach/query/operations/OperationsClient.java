@@ -51,13 +51,13 @@ public class OperationsClient {
      * {@code POST /operations/internal/queries} -&gt; 201 {@code { "picsureId": "<uuid>" } }.
      *
      * <p>A 409 means operations-service holds the row under an owner other than the one the request names. The id of an owned row is
-     * derived from its owner, so that can only follow from a fault on the server side. It is reported as a bad gateway whose message
-     * repeats nothing operations-service said.
+     * derived from its owner, so that can only follow from a fault on the server side. It is reported as
+     * {@link #storedUnderAnotherOwner()}, whose message repeats nothing operations-service said.
      *
      * @param request the query to store
      * @return the id the row is stored under
-     * @throws PicsureException BAD_GATEWAY when operations-service refuses the save, fails, or answers without an id; GATEWAY_TIMEOUT when
-     *         it cannot be reached in time
+     * @throws PicsureException INTERNAL_SERVER_ERROR when operations-service holds the row under another owner; BAD_GATEWAY when it refuses
+     *         the save for any other reason, fails, or answers without an id; GATEWAY_TIMEOUT when it cannot be reached in time
      */
     public UUID save(SaveQueryRequest request) {
         SavedQueryReference response = execute(() -> {
@@ -67,13 +67,23 @@ public class OperationsClient {
                 logger.error(
                     "operations-service refused to store query {} because the stored row has a different owner", request.picsureId()
                 );
-                throw badGateway("save", "the query could not be stored");
+                throw storedUnderAnotherOwner();
             }
         }, "save");
         if (response == null || response.picsureId() == null) {
             throw badGateway("save", "operations-service returned no picsureId");
         }
         return response.picsureId();
+    }
+
+    /**
+     * The fault for a row found under an id derived for one owner and stored under another owner, or under none. Whoever detects it, this
+     * client on a save or its caller on a read, the client receives the same answer.
+     *
+     * @return a 500 {@code internal_server_error} whose message names no owner and no id
+     */
+    public static PicsureException storedUnderAnotherOwner() {
+        return new PicsureException(HttpStatus.INTERNAL_SERVER_ERROR, "internal_server_error", "The query could not be stored");
     }
 
     /** {@code GET /operations/internal/queries/{id}} -&gt; 200 {@link StoredQuery}; 404 -&gt; {@link PicsureException} NOT_FOUND. */
