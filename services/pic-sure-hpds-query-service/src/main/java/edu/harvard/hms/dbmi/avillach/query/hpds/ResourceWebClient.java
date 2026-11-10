@@ -45,8 +45,8 @@ public class ResourceWebClient {
     public static final String QUERY_METADATA_FIELD = "queryMetadata";
     private static final ParameterizedTypeReference<PaginatedSearchResult<String>> VALUES_PAGE = new ParameterizedTypeReference<>() {};
     /**
-     * The result id sent to HPDS while no route assigns one. A route that derives the id of its result passes that id to {@link #outbound}
-     * in place of this constant.
+     * The result id sent to HPDS by a route that assigns none. A route that derives the id of its result passes that id to
+     * {@link #query(HpdsTarget, QueryRequest, UUID)} in place of this constant.
      */
     private static final UUID NO_SERVER_RESULT_ID = null;
 
@@ -83,7 +83,21 @@ public class ResourceWebClient {
      * @throws HpdsCommunicationException when HPDS answers 5xx or cannot be reached
      */
     public QueryStatus query(HpdsTarget target, QueryRequest req) {
-        return postJson(target, target.baseUrl() + "/query", outbound(req, NO_SERVER_RESULT_ID), QueryStatus.class);
+        return query(target, req, NO_SERVER_RESULT_ID);
+    }
+
+    /**
+     * Submits a query to HPDS for asynchronous execution under a result id this service assigned. HPDS receives the query with that id in
+     * place of any {@code picsureId} the request carried and stores the result under it.
+     *
+     * @param target the backend's API base URL and service token
+     * @param req the envelope holding the query
+     * @param serverResultId the id this service derived for the result, or null to have HPDS derive its own key
+     * @return the status HPDS answered with, or null when HPDS answered with no body
+     * @throws HpdsCommunicationException when HPDS answers 5xx or cannot be reached
+     */
+    public QueryStatus query(HpdsTarget target, QueryRequest req, UUID serverResultId) {
+        return postJson(target, target.baseUrl() + "/query", outbound(req, serverResultId), QueryStatus.class);
     }
 
     /**

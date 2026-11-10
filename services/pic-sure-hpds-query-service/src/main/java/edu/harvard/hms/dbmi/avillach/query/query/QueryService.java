@@ -4,7 +4,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -16,6 +18,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -31,7 +34,9 @@ import edu.harvard.dbmi.avillach.domain.SignedUrlResponse;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.QueryTranslator;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.query.consent.ConsentAuthorizationService;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
@@ -40,7 +45,11 @@ import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
 
 /**
  * Implements the create, sync, status, result, signed-url, and metadata query lifecycle without a local database. Persistence goes through
- * {@link OperationsClient} over HTTP; operations-service generates each {@code picsureId} and is the sole query store.
+ * {@link OperationsClient} over HTTP; operations-service is the sole query store.
+ *
+ * <p>A submit on {@code auth} by a caller the gateway identified by UUID is stored as a row that caller owns. This service derives the row
+ * id with {@link QueryIdentity} before anything is sent, HPDS stores the result under the same id, and the row keeps the consents the query
+ * ran under. Every other submit, and every synchronous query, is stored under a random id operations-service generates, with no owner.
  *
  * <p>Every query runs on HPDS v3 and every new row is stored as version {@code "3"}. {@link #queryStatus}, {@link #queryResult}, and
  * {@link #queryResultSignedUrl} dispatch to the backend selected by the ingress {@code {backend}} segment. A row stored before v3 (any
@@ -62,6 +71,9 @@ public class QueryService {
     private static final ObjectMapper V1_QUERY_MAPPER =
         JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
     private static final String CURRENT_VERSION = "3";
+    private static final String FIRST_SUBMIT = "FIRST_SUBMIT";
+    private static final String CONSENT_CHANGE = "CONSENT_CHANGE";
+    private static final TypeReference<Map<String, Object>> METADATA_SHAPE = new TypeReference<>() {};
     /**
      * JSON property names the v1 {@code Query} model deserializes, read from the model through Jackson so the set follows the class. A
      * stored pre-v3 {@code query} node that carries none of them is not a v1 query.
@@ -103,14 +115,47 @@ public class QueryService {
     }
 
     public QueryStatus query(String backend, QueryRequest req, String authorizationHeader) {
-        return create(backend, req, authorizationHeader);
+        return query(backend, req, authorizationHeader, null);
     }
 
-    private QueryStatus create(String backend, QueryRequest req, String authorizationHeader) {
+    /**
+     * Submits a query for asynchronous execution and stores it.
+     *
+     * <p>On {@code auth}, for a caller whose gateway user id is a UUID and a body that is a v3 query, the row belongs to that caller: <ol>
+     * <li>{@link SampleRules} run first.</li> <li>The caller's consents are fetched once and the query is scoped with them.</li> <li>The
+     * row id is derived from the caller's UUID and the query, and replaces any {@code picsureId} the body carried.</li> <li>With no row
+     * under that id, the query is sent to HPDS under the id and the row is saved with its owner, the consents and a first-submit run.</li>
+     * <li>With a row whose consents equal the caller's current ones, nothing is sent or saved and the stored status is returned.</li>
+     * <li>With a row whose consents differ, the query is sent again and the row is saved with the new consents and a consent-change
+     * run.</li> </ol> The stored body carries the derived id and no authorization filters. The row's result id is the row id.
+     *
+     * <p>Every other submit keeps the path without an owner: the {@code open} backend, a caller with no gateway user or one whose id is not
+     * a UUID, and a body that is not a v3 query. HPDS runs the query under a key it derives, and operations-service stores it under a
+     * random id.
+     *
+     * @param backend the ingress {@code {backend}} segment
+     * @param req the envelope holding the query; its query is replaced by the scoped one
+     * @param authorizationHeader the caller's {@code Authorization} header, needed by consent scoping on {@code auth}
+     * @param user the caller as the gateway identified them, or null when there is none
+     * @return the status of the query, with {@code picsureResultId} set to the id of its row
+     * @throws PicsureException 400 when the request is missing or breaks a sample rule; 403 {@code consent_denied} when the caller's
+     *         consents do not permit the query; 500 when the row under the derived id is not the caller's; whatever consent lookup, HPDS or
+     *         operations-service raise
+     */
+    public QueryStatus query(String backend, QueryRequest req, String authorizationHeader, GatewayUser user) {
         if (req == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing query data");
         }
         sampleRules.check(backend, req.getQuery());
+        Optional<UUID> owner = ownerOf(backend, user);
+        Optional<Query> query = owner.flatMap(known -> asV3Query(req.getQuery()));
+        if (query.isEmpty()) {
+            return createWithoutOwner(backend, req, authorizationHeader);
+        }
+        return createOwned(backend, req, query.get(), authorizationHeader, owner.get());
+    }
+
+    private QueryStatus createWithoutOwner(String backend, QueryRequest req, String authorizationHeader) {
         consentAuthorization.scopeQuery(backend, req, authorizationHeader);
         HpdsTarget target = selector.select(backend); // URL + service token
 
@@ -133,6 +178,99 @@ public class QueryService {
         return results;
     }
 
+    private QueryStatus createOwned(String backend, QueryRequest req, Query submitted, String authorizationHeader, UUID owner) {
+        Map<String, List<String>> consents = consentAuthorization.currentConsents(backend, authorizationHeader);
+        req.setQuery(submitted);
+        consentAuthorization.scopeWithConsents(backend, req, consents);
+        HpdsTarget target = selector.select(backend);
+
+        Query scoped = (Query) req.getQuery();
+        UUID id = QueryIdentity.idFor(owner, scoped);
+        req.setQuery(scoped.setPicsureId(id));
+
+        Optional<StoredQuery> stored = operationsClient.find(id);
+        if (stored.isPresent() && !owner.equals(stored.get().userUuid())) {
+            logger.error("Stored query {} is not owned by the caller its id was derived for", id);
+            throw new PicsureException(HttpStatus.INTERNAL_SERVER_ERROR, "internal_server_error", "The query could not be stored");
+        }
+        if (stored.isPresent() && sameConsents(stored.get().consents(), consents)) {
+            return storedStatus(stored.get(), req);
+        }
+
+        QueryStatus results = hpds.query(target, req, id);
+        String metadataBase64 = buildMetadataBase64(results);
+        String resultId = id.toString();
+        operationsClient.save(
+            new SaveQueryRequest(
+                serializeQuery(req.copy().setQuery(scoped.setPicsureId(id).setAuthorizationFilters(List.of()))), resultId,
+                statusName(results.getStatus()), CURRENT_VERSION, metadataBase64, id, owner, consents,
+                stored.isPresent() ? CONSENT_CHANGE : FIRST_SUBMIT
+            )
+        );
+        results.setPicsureResultId(id);
+        results.setResourceResultId(resultId);
+        results.setResourceID(req.getResourceUUID());
+        return results;
+    }
+
+    /** Returns the caller's UUID when the backend is {@code auth} and the gateway user id is one, and empty otherwise. */
+    private static Optional<UUID> ownerOf(String backend, GatewayUser user) {
+        if (!HpdsBackendSelector.AUTH.equals(backend) || user == null || user.getUserId() == null) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(UUID.fromString(user.getUserId()));
+        } catch (IllegalArgumentException notAUuid) {
+            return Optional.empty();
+        }
+    }
+
+    /** Returns the body as a v3 query, or empty when it is absent or cannot be read as one. */
+    private static Optional<Query> asV3Query(Object queryBody) {
+        if (queryBody == null || queryBody instanceof Query) {
+            return Optional.ofNullable((Query) queryBody);
+        }
+        try {
+            return Optional.ofNullable(MAPPER.convertValue(queryBody, Query.class));
+        } catch (IllegalArgumentException notAQuery) {
+            return Optional.empty();
+        }
+    }
+
+    /** Returns whether two consent maps name the same concept paths with the same values, whatever order the values are listed in. */
+    private static boolean sameConsents(Map<String, List<String>> stored, Map<String, List<String>> current) {
+        return stored != null && asSets(stored).equals(asSets(current));
+    }
+
+    private static Map<String, Set<String>> asSets(Map<String, List<String>> consents) {
+        Map<String, Set<String>> sets = new HashMap<>();
+        consents.forEach((conceptPath, values) -> sets.put(conceptPath, values == null ? Set.of() : new HashSet<>(values)));
+        return sets;
+    }
+
+    /** Builds the answer to a submit that reuses a stored row: the row's status, id, result id and result metadata. */
+    private QueryStatus storedStatus(StoredQuery stored, QueryRequest req) {
+        QueryStatus status = new QueryStatus();
+        status.setStatus(stored.status() == null ? null : PicSureStatus.valueOf(stored.status()));
+        status.setPicsureResultId(stored.picsureId());
+        status.setResourceResultId(stored.resourceResultId());
+        status.setResourceID(req.getResourceUUID());
+        status.setResultMetadata(storedResultMetadata(stored));
+        return status;
+    }
+
+    private Map<String, Object> storedResultMetadata(StoredQuery stored) {
+        if (stored.metadata() == null) {
+            return new HashMap<>();
+        }
+        try {
+            return MAPPER.readValue(decodeMetadata(stored.metadata()), METADATA_SHAPE);
+        } catch (JsonProcessingException | IllegalArgumentException e) {
+            logger.warn("Unable to read stored result metadata for {}", stored.picsureId(), e);
+            return new HashMap<>();
+        }
+    }
+
     public QuerySyncResponse querySync(String backend, QueryRequest req, String requestSource) {
         return querySync(backend, req, requestSource, null);
     }
@@ -146,6 +284,23 @@ public class QueryService {
      * turned on, and HPDS answers that one with 400 because its synchronous route does not serve the dataframe exports.
      */
     public QuerySyncResponse querySync(String backend, QueryRequest req, String requestSource, String authorizationHeader) {
+        return querySync(backend, req, requestSource, authorizationHeader, null);
+    }
+
+    /**
+     * Runs a query on HPDS's synchronous route as {@link #querySync(String, QueryRequest, String, String)} describes. A synchronous query
+     * is stored without an owner whoever sends it, so the caller's identity changes nothing here.
+     *
+     * @param backend the ingress {@code {backend}} segment
+     * @param req the envelope holding the query
+     * @param requestSource the {@code request-source} header to forward to HPDS, or null
+     * @param authorizationHeader the caller's {@code Authorization} header, needed by consent scoping on {@code auth}
+     * @param user the caller as the gateway identified them, or null when there is none; not read
+     * @return the result bytes and the HPDS query id header
+     */
+    public QuerySyncResponse querySync(
+        String backend, QueryRequest req, String requestSource, String authorizationHeader, GatewayUser user
+    ) {
         if (req == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing query data");
         }
@@ -207,6 +362,18 @@ public class QueryService {
     }
 
     public QueryStatus queryStatus(String backend, UUID picsureId, String authorizationHeader) {
+        return queryStatus(backend, picsureId, authorizationHeader, null);
+    }
+
+    /**
+     * Reads the status of a stored query from HPDS and records it on the row, upgrading a row stored before v3 first.
+     *
+     * @param backend the ingress {@code {backend}} segment
+     * @param picsureId the id of the stored query
+     * @param authorizationHeader the caller's {@code Authorization} header
+     * @param user the caller as the gateway identified them, or null when there is none; not read
+     */
+    public QueryStatus queryStatus(String backend, UUID picsureId, String authorizationHeader, GatewayUser user) {
         StoredQuery stored = upgradeToV3(backend, load(picsureId), authorizationHeader);
         QueryStatus status = hpds.queryStatus(selector.select(backend), stored.resourceResultId());
         status.setPicsureResultId(picsureId);
@@ -220,6 +387,18 @@ public class QueryService {
     }
 
     public ResponseEntity<byte[]> queryResult(String backend, UUID picsureId, String authorizationHeader) {
+        return queryResult(backend, picsureId, authorizationHeader, null);
+    }
+
+    /**
+     * Fetches the result bytes of a stored query, upgrading a row stored before v3 first.
+     *
+     * @param backend the ingress {@code {backend}} segment
+     * @param picsureId the id of the stored query
+     * @param authorizationHeader the caller's {@code Authorization} header
+     * @param user the caller as the gateway identified them, or null when there is none; not read
+     */
+    public ResponseEntity<byte[]> queryResult(String backend, UUID picsureId, String authorizationHeader, GatewayUser user) {
         StoredQuery stored = upgradeToV3(backend, load(picsureId), authorizationHeader);
         consentAuthorization.verifyReadAccess(backend, stored, authorizationHeader);
         return hpds.queryResult(selector.select(backend), stored.resourceResultId());
@@ -230,6 +409,18 @@ public class QueryService {
     }
 
     public SignedUrlResponse queryResultSignedUrl(String backend, UUID picsureId, String authorizationHeader) {
+        return queryResultSignedUrl(backend, picsureId, authorizationHeader, null);
+    }
+
+    /**
+     * Asks HPDS for a signed URL to the result of a stored query, upgrading a row stored before v3 first.
+     *
+     * @param backend the ingress {@code {backend}} segment
+     * @param picsureId the id of the stored query
+     * @param authorizationHeader the caller's {@code Authorization} header
+     * @param user the caller as the gateway identified them, or null when there is none; not read
+     */
+    public SignedUrlResponse queryResultSignedUrl(String backend, UUID picsureId, String authorizationHeader, GatewayUser user) {
         StoredQuery stored = upgradeToV3(backend, load(picsureId), authorizationHeader);
         consentAuthorization.verifyReadAccess(backend, stored, authorizationHeader);
         return hpds.queryResultSignedUrl(selector.select(backend), stored.resourceResultId());

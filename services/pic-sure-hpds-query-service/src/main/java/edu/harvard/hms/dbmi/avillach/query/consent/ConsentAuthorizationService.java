@@ -1,8 +1,11 @@
 package edu.harvard.hms.dbmi.avillach.query.consent;
 
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,8 +47,55 @@ public class ConsentAuthorizationService {
             return;
         }
         requireAuthorizationHeader(authorizationHeader);
-        Query query = request.getQuery() instanceof Query typed ? typed : MAPPER.convertValue(request.getQuery(), Query.class);
-        request.setQuery(filterBuilder.apply(query, client.fetch(authorizationHeader)));
+        request.setQuery(filterBuilder.apply(typed(request), client.fetch(authorizationHeader)));
+    }
+
+    /**
+     * Returns the consents the caller holds right now, in the form a query row stores them.
+     *
+     * @param backend the ingress {@code {backend}} segment
+     * @param authorizationHeader the caller's {@code Authorization} header
+     * @return the consents as consent concept path to consent values, ordered by path with each value list sorted; empty, and read from
+     *         nowhere, when consent authorization is off or the backend is not {@code auth}
+     * @throws PicsureException 403 {@code consent_denied} when the caller holds no consents; 502 {@code consent_lookup_failed} when the
+     *         header is missing or the lookup fails
+     */
+    public Map<String, List<String>> currentConsents(String backend, String authorizationHeader) {
+        if (!enabled || !"auth".equals(backend)) {
+            return Map.of();
+        }
+        requireAuthorizationHeader(authorizationHeader);
+        Map<String, Set<String>> held = client.fetch(authorizationHeader);
+        if (held == null || held.isEmpty()) {
+            throw new PicsureException(HttpStatus.FORBIDDEN, "consent_denied", "Consent does not permit this request");
+        }
+        Map<String, List<String>> sorted = new TreeMap<>();
+        held.forEach((conceptPath, values) -> sorted.put(conceptPath, values == null ? List.of() : values.stream().sorted().toList()));
+        return sorted;
+    }
+
+    /**
+     * Scopes the query of a request exactly as {@link #scopeQuery} does, with consents the caller of this method already fetched through
+     * {@link #currentConsents}. A route that also stores the consents uses it so that the filters it sends and the consents it stores come
+     * from one lookup.
+     *
+     * @param backend the ingress {@code {backend}} segment
+     * @param request the envelope whose query is replaced by the scoped one; left as it is when consent authorization is off or the backend
+     *        is not {@code auth}
+     * @param consents the caller's consents as {@link #currentConsents} returned them
+     * @throws PicsureException 403 {@code consent_denied} when the consents do not cover a filter the query needs
+     */
+    public void scopeWithConsents(String backend, QueryRequest request, Map<String, List<String>> consents) {
+        if (!enabled || !"auth".equals(backend)) {
+            return;
+        }
+        Map<String, Set<String>> held = new HashMap<>();
+        consents.forEach((conceptPath, values) -> held.put(conceptPath, new HashSet<>(values)));
+        request.setQuery(filterBuilder.apply(typed(request), held));
+    }
+
+    private static Query typed(QueryRequest request) {
+        return request.getQuery() instanceof Query typed ? typed : MAPPER.convertValue(request.getQuery(), Query.class);
     }
 
     public void verifyReadAccess(String backend, StoredQuery stored, String authorizationHeader) {

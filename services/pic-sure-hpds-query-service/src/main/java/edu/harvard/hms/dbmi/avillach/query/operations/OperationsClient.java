@@ -1,7 +1,10 @@
 package edu.harvard.hms.dbmi.avillach.query.operations;
 
+import java.util.Optional;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
@@ -35,6 +38,7 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
  */
 public class OperationsClient {
 
+    private static final Logger logger = LoggerFactory.getLogger(OperationsClient.class);
     private static final String QUERIES_PATH = "/operations/internal/queries";
 
     private final RestClient http;
@@ -43,10 +47,29 @@ public class OperationsClient {
         this.http = http;
     }
 
-    /** {@code POST /operations/internal/queries} -&gt; 201 {@code { "picsureId": "<uuid>" } }. */
+    /**
+     * {@code POST /operations/internal/queries} -&gt; 201 {@code { "picsureId": "<uuid>" } }.
+     *
+     * <p>A 409 means operations-service holds the row under an owner other than the one the request names. The id of an owned row is
+     * derived from its owner, so that can only follow from a fault on the server side. It is reported as a bad gateway whose message
+     * repeats nothing operations-service said.
+     *
+     * @param request the query to store
+     * @return the id the row is stored under
+     * @throws PicsureException BAD_GATEWAY when operations-service refuses the save, fails, or answers without an id; GATEWAY_TIMEOUT when
+     *         it cannot be reached in time
+     */
     public UUID save(SaveQueryRequest request) {
-        SavedQueryReference response =
-            execute(() -> http.post().uri(QUERIES_PATH).body(request).retrieve().body(SavedQueryReference.class), "save");
+        SavedQueryReference response = execute(() -> {
+            try {
+                return http.post().uri(QUERIES_PATH).body(request).retrieve().body(SavedQueryReference.class);
+            } catch (HttpClientErrorException.Conflict refused) {
+                logger.error(
+                    "operations-service refused to store query {} because the stored row has a different owner", request.picsureId()
+                );
+                throw badGateway("save", "the query could not be stored");
+            }
+        }, "save");
         if (response == null || response.picsureId() == null) {
             throw badGateway("save", "operations-service returned no picsureId");
         }
@@ -55,10 +78,22 @@ public class OperationsClient {
 
     /** {@code GET /operations/internal/queries/{id}} -&gt; 200 {@link StoredQuery}; 404 -&gt; {@link PicsureException} NOT_FOUND. */
     public StoredQuery get(UUID picsureId) {
+        return find(picsureId)
+            .orElseThrow(() -> new PicsureException(HttpStatus.NOT_FOUND, "not_found", "No stored query for picsureId " + picsureId));
+    }
+
+    /**
+     * {@code GET /operations/internal/queries/{id}} for a caller that expects the row may not exist yet.
+     *
+     * @param picsureId the id of the row
+     * @return the stored row, or empty when operations-service answers 404
+     * @throws PicsureException BAD_GATEWAY when operations-service fails; GATEWAY_TIMEOUT when it cannot be reached in time
+     */
+    public Optional<StoredQuery> find(UUID picsureId) {
         try {
-            return http.get().uri(QUERIES_PATH + "/{id}", picsureId).retrieve().body(StoredQuery.class);
+            return Optional.ofNullable(http.get().uri(QUERIES_PATH + "/{id}", picsureId).retrieve().body(StoredQuery.class));
         } catch (HttpClientErrorException.NotFound e) {
-            throw new PicsureException(HttpStatus.NOT_FOUND, "not_found", "No stored query for picsureId " + picsureId);
+            return Optional.empty();
         } catch (ResourceAccessException e) {
             throw gatewayTimeout("get", e);
         } catch (RestClientException e) {

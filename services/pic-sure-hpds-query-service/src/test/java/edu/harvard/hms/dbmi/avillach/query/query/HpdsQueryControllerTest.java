@@ -1,6 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.query.query;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
@@ -9,6 +11,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -19,28 +23,35 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 
+import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
+import edu.harvard.dbmi.avillach.domain.SignedUrlResponse;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureExceptionAdvice;
+import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.query.consent.ConsentAuthorizationService;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
@@ -87,6 +98,9 @@ class HpdsQueryControllerTest {
 
     @MockitoBean
     private ConsentAuthorizationService consentAuthorization;
+
+    @MockitoSpyBean
+    private QueryService queryService;
 
     @BeforeEach
     void resetStubs() {
@@ -343,6 +357,76 @@ class HpdsQueryControllerTest {
                 .header(GatewayUserResolver.HEADER_USER_EMAIL, "alice@harvard.edu").contentType(MediaType.APPLICATION_JSON)
                 .content(COUNT_BODY)
         ).andExpect(status().isGone()).andExpect(jsonPath("$.errorType").value("gone"));
+    }
+
+    // --- the gateway's identity reaches the service ---
+
+    private static GatewayUser theCaller(String userId) {
+        return argThat((GatewayUser user) -> user != null && userId.equals(user.getUserId()));
+    }
+
+    @Test
+    void submitSyncStatusResultAndSignedUrlPassTheGatewayUser() throws Exception {
+        String caller = "5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11";
+        String token = "Bearer caller-token";
+        UUID id = UUID.randomUUID();
+        doReturn(new QueryStatus()).when(queryService).query(any(), any(), any(), any());
+        doReturn(new QueryService.QuerySyncResponse("1".getBytes(), null)).when(queryService).querySync(any(), any(), any(), any(), any());
+        doReturn(new QueryStatus()).when(queryService).queryStatus(any(), any(), any(), any());
+        doReturn(ResponseEntity.ok(new byte[] {1})).when(queryService).queryResult(any(), any(), any(), any());
+        doReturn(new SignedUrlResponse("https://s3/x")).when(queryService).queryResultSignedUrl(any(), any(), any(), any());
+
+        mockMvc.perform(
+            post("/hpds/auth/query").header(GatewayUserResolver.HEADER_USER_ID, caller).header("Authorization", token)
+                .contentType(MediaType.APPLICATION_JSON).content(COUNT_BODY)
+        ).andExpect(status().isOk());
+        mockMvc.perform(
+            post("/hpds/auth/query/sync").header(GatewayUserResolver.HEADER_USER_ID, caller).header("Authorization", token)
+                .contentType(MediaType.APPLICATION_JSON).content(COUNT_BODY)
+        ).andExpect(status().isOk());
+        mockMvc.perform(
+            get("/hpds/auth/query/{id}/status", id).header(GatewayUserResolver.HEADER_USER_ID, caller).header("Authorization", token)
+        ).andExpect(status().isOk());
+        mockMvc.perform(
+            get("/hpds/auth/query/{id}/result", id).header(GatewayUserResolver.HEADER_USER_ID, caller).header("Authorization", token)
+        ).andExpect(status().isOk());
+        mockMvc.perform(
+            get("/hpds/auth/query/{id}/signed-url", id).header(GatewayUserResolver.HEADER_USER_ID, caller).header("Authorization", token)
+        ).andExpect(status().isOk());
+
+        verify(queryService).query(eq("auth"), any(), eq(token), theCaller(caller));
+        verify(queryService).querySync(eq("auth"), any(), isNull(), eq(token), theCaller(caller));
+        verify(queryService).queryStatus(eq("auth"), eq(id), eq(token), theCaller(caller));
+        verify(queryService).queryResult(eq("auth"), eq(id), eq(token), theCaller(caller));
+        verify(queryService).queryResultSignedUrl(eq("auth"), eq(id), eq(token), theCaller(caller));
+    }
+
+    @Test
+    void submitByACallerIdentifiedByUuidStoresARowOwnedByThatCaller() throws Exception {
+        UUID caller = UUID.fromString("5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11");
+        UUID fromTheClient = UUID.fromString("11111111-2222-4333-8444-555555555555");
+        hpds.stubFor(WireMock.post(urlEqualTo("/PIC-SURE/v3/query")).willReturn(okJson("{\"status\":\"PENDING\"}")));
+        when(operationsClient.find(any())).thenReturn(Optional.empty());
+
+        String response = mockMvc.perform(
+            post("/hpds/auth/query").header(GatewayUserResolver.HEADER_USER_ID, caller.toString())
+                .header("Authorization", "Bearer caller-token").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\":{\"expectedResultType\":\"DATAFRAME\",\"picsureId\":\"" + fromTheClient + "\"}}")
+        ).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+
+        ArgumentCaptor<SaveQueryRequest> saved = ArgumentCaptor.forClass(SaveQueryRequest.class);
+        verify(operationsClient).save(saved.capture());
+        UUID id = saved.getValue().picsureId();
+        assertThat(id).isNotNull().isNotEqualTo(fromTheClient);
+        assertThat(id.version()).isEqualTo(5);
+        assertThat(saved.getValue().userUuid()).isEqualTo(caller);
+        assertThat(saved.getValue().version()).isEqualTo("3");
+        assertThat(response).contains("\"picsureResultId\":\"" + id + "\"").doesNotContain(fromTheClient.toString())
+            .doesNotContain(caller.toString());
+        hpds.verify(
+            postRequestedFor(urlEqualTo("/PIC-SURE/v3/query"))
+                .withRequestBody(matchingJsonPath("$.query.picsureId", equalTo(id.toString())))
+        );
     }
 
     // --- /hpds/** requires an authenticated caller ---

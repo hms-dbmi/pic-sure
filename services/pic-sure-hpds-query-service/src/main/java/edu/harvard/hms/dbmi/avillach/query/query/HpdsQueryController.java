@@ -19,6 +19,7 @@ import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.domain.SignedUrlResponse;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
 import edu.harvard.hms.dbmi.avillach.query.config.BackendParameterConfig;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -194,10 +195,11 @@ public class HpdsQueryController {
                     )}
             )
         ) @RequestBody HpdsQueryRequest req, @RequestParam(name = "isInstitute", required = false) Boolean isInstitute,
-        @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
+        @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader,
+        @Parameter(hidden = true) GatewayUser user
     ) {
         rejectInstitutionalQuery(isInstitute);
-        return service.query(backend, req.toOutbound(), authorizationHeader);
+        return service.query(backend, req.toOutbound(), authorizationHeader, user);
     }
 
     @AuditEvent(type = "QUERY", action = "query.sync")
@@ -290,9 +292,10 @@ public class HpdsQueryController {
                     )}
             )
         ) @RequestBody HpdsQueryRequest req, @RequestHeader(name = "request-source", required = false) String requestSource,
-        @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
+        @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader,
+        @Parameter(hidden = true) GatewayUser user
     ) {
-        return syncResponse(service.querySync(backend, req.toOutbound(), requestSource, authorizationHeader));
+        return syncResponse(service.querySync(backend, req.toOutbound(), requestSource, authorizationHeader, user));
     }
 
     @AuditEvent(type = "QUERY", action = "query.status")
@@ -311,9 +314,10 @@ public class HpdsQueryController {
     )
     public QueryStatus status(
         @Parameter(ref = BackendParameterConfig.BACKEND_REFERENCE) @PathVariable("backend") String backend, @PathVariable("id") UUID id,
-        @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
+        @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader,
+        @Parameter(hidden = true) GatewayUser user
     ) {
-        return service.queryStatus(backend, id, authorizationHeader);
+        return service.queryStatus(backend, id, authorizationHeader, user);
     }
 
     @AuditEvent(type = "DATA_ACCESS", action = "query.result")
@@ -348,9 +352,10 @@ public class HpdsQueryController {
     )
     public ResponseEntity<byte[]> result(
         @Parameter(ref = BackendParameterConfig.BACKEND_REFERENCE) @PathVariable("backend") String backend, @PathVariable("id") UUID id,
-        @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
+        @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader,
+        @Parameter(hidden = true) GatewayUser user
     ) {
-        return service.queryResult(backend, id, authorizationHeader);
+        return service.queryResult(backend, id, authorizationHeader, user);
     }
 
     @AuditEvent(type = "DATA_ACCESS", action = "query.signed_url")
@@ -370,9 +375,10 @@ public class HpdsQueryController {
     )
     public SignedUrlResponse signedUrl(
         @Parameter(ref = BackendParameterConfig.BACKEND_REFERENCE) @PathVariable("backend") String backend, @PathVariable("id") UUID id,
-        @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
+        @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader,
+        @Parameter(hidden = true) GatewayUser user
     ) {
-        return service.queryResultSignedUrl(backend, id, authorizationHeader);
+        return service.queryResultSignedUrl(backend, id, authorizationHeader, user);
     }
 
     @AuditEvent(type = "QUERY", action = "query.metadata")
