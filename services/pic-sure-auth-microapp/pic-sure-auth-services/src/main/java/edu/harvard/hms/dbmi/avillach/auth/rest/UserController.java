@@ -59,10 +59,10 @@ public class UserController {
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(path = "/{userId}", produces = "application/json")
     public ResponseEntity<UserResponse> getUserById(
-        @Parameter(required = true, description = "The UUID of the user to fetch.") @PathVariable("userId") String userId,
+        @Parameter(required = true, description = "The UUID of the user to fetch.") @PathVariable("userId") UUID userId,
         HttpServletRequest request
     ) {
-        AuditAttributes.putMetadata(request, "target_user_id", userId);
+        AuditAttributes.putMetadata(request, "target_user_id", userId.toString());
         return PICSUREResponse.success(UserResponse.from(this.userService.getUserById(userId)));
     }
 

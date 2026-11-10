@@ -14,6 +14,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.env.Environment;
 
 import edu.harvard.hms.dbmi.avillach.gateway.config.RouteSurfaces;
+import edu.harvard.hms.dbmi.avillach.gateway.filter.McpCallerFilter;
 
 /**
  * Drift guard: every configured route must be covered by the default gateway-owned prefixes
@@ -48,6 +49,18 @@ class RouteOwnedPrefixDriftTest {
             assertThat(surfaces.isOwned(base)).as("owned prefix covers route path %s (id=%s)", base, route.get("id")).isTrue();
             assertThat(surfaces.isOwned(base + "/sub/path")).as("owned prefix covers under %s (id=%s)", base, route.get("id")).isTrue();
         }
+    }
+
+    /**
+     * The {@code mcp} route's Path predicate is the exact path {@link McpCallerFilter} and the header sanitizer treat as the MCP endpoint,
+     * so a change to one without the other fails here.
+     */
+    @Test
+    void mcpRoutePathIsTheMcpCallerFilterPath() {
+        Map<String, Object> mcpRoute = configuredRoutes().stream().filter(route -> "mcp".equals(route.get("id"))).findFirst()
+            .orElseThrow(() -> new AssertionError("no route with id mcp is configured"));
+
+        assertThat(pathPredicate(mcpRoute)).isEqualTo(McpCallerFilter.MCP_PATH);
     }
 
     /** The route's Path predicate stripped of its trailing {@code /**} (or {@code /*}); empty string for a {@code /**} catch-all. */

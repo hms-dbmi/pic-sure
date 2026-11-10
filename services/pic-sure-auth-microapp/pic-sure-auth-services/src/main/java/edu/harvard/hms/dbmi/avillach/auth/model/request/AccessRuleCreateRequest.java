@@ -30,8 +30,10 @@ import java.util.Set;
 public record AccessRuleCreateRequest(
     @Schema(
         description = "Name of the access rule.", example = "AR_ONLY_SEARCH", requiredMode = Schema.RequiredMode.REQUIRED
-    ) @NotBlank String name,
-    @Schema(description = "Free-text description of what the rule allows.", example = "Allows search requests only") String description,
+    ) @NotBlank @PlainText String name,
+    @Schema(
+        description = "Free-text description of what the rule allows.", example = "Allows search requests only"
+    ) @PlainText String description,
     @Schema(
         description = "How the value found at the rule's JSON path is compared, as one of the numbers GET /accessRule/allTypes lists.",
         example = "4", requiredMode = Schema.RequiredMode.REQUIRED

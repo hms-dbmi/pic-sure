@@ -26,7 +26,7 @@ public record UserCreateRequest(
     @Schema(
         description = "Email address of the user. When left out it is read from an email key in generalMetadata.",
         example = "researcher@example.org"
-    ) String email, @Schema(description = "Whether the user may sign in. Absent means true.") Boolean active,
+    ) @PlainText String email, @Schema(description = "Whether the user may sign in. Absent means true.") Boolean active,
     @Schema(
         description = "Profile metadata of the user. The value is one string holding a JSON object.",
         example = "{\"email\":\"researcher@example.org\"}"

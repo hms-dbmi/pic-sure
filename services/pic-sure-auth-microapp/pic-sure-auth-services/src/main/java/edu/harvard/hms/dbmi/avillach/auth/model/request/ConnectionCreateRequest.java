@@ -19,15 +19,15 @@ public record ConnectionCreateRequest(
     @Schema(
         description = "Business identifier of the connection. It must not already exist.", example = "fence",
         requiredMode = Schema.RequiredMode.REQUIRED
-    ) @NotBlank String id,
+    ) @NotBlank @PlainText String id,
     @Schema(
         description = "Label shown for the connection on the login and admin screens.", example = "FENCE",
         requiredMode = Schema.RequiredMode.REQUIRED
-    ) @NotBlank String label,
+    ) @NotBlank @PlainText String label,
     @Schema(
         description = "Prefix of the subject of every user who signs in through this connection.", example = "fence|",
         requiredMode = Schema.RequiredMode.REQUIRED
-    ) @NotBlank String subPrefix,
+    ) @NotBlank @PlainText String subPrefix,
     @Schema(
         description = "The fields a user record on this connection must carry. The value is one string holding a JSON array.",
         example = "[{\"label\":\"Email\",\"id\":\"email\"}]", requiredMode = Schema.RequiredMode.REQUIRED

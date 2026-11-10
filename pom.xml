@@ -16,6 +16,7 @@
         <module>services/pic-sure-gateway</module>
         <module>services/pic-sure-operations-service</module>
         <module>services/pic-sure-hpds-query-service</module>
+        <module>services/pic-sure-mcp</module>
         <!-- Consolidation Phase 4: imported services adopted onto the reactor -->
         <module>services/pic-sure-visualization-service</module>
         <module>services/pic-sure-auth-microapp</module>
@@ -59,7 +60,7 @@
                 </plugin>
                 <plugin>
                     <artifactId>maven-resources-plugin</artifactId>
-                    <version>3.3.1</version>
+                    <version>3.5.0</version>
                 </plugin>
                 <plugin>
                     <artifactId>maven-compiler-plugin</artifactId>
@@ -126,7 +127,7 @@
                 <plugin>
                     <groupId>org.codehaus.mojo</groupId>
                     <artifactId>flatten-maven-plugin</artifactId>
-                    <version>1.6.0</version>
+                    <version>1.8.0</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>

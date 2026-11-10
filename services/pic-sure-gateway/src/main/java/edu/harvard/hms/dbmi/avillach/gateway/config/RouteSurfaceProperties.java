@@ -19,7 +19,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record RouteSurfaceProperties(List<String> ownedPrefixes) {
 
     /** Default gateway-owned prefixes — must stay in lock-step with the routes in {@code application.yml}. */
-    public static final List<String> DEFAULT_OWNED_PREFIXES = List.of("/logging", "/dictionary", "/visualization", "/hpds", "/operations");
+    public static final List<String> DEFAULT_OWNED_PREFIXES =
+        List.of("/logging", "/dictionary", "/visualization", "/hpds", "/operations", "/mcp");
 
     public RouteSurfaceProperties {
         ownedPrefixes = (ownedPrefixes == null || ownedPrefixes.isEmpty()) ? DEFAULT_OWNED_PREFIXES : List.copyOf(ownedPrefixes);

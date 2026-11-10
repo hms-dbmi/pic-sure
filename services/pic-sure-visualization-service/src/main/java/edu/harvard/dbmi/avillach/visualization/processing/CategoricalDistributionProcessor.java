@@ -1,7 +1,7 @@
 package edu.harvard.dbmi.avillach.visualization.processing;
 
 import edu.harvard.dbmi.avillach.visualization.model.CategoricalDistributionData;
-import edu.harvard.dbmi.avillach.visualization.model.ObfuscatedCount;
+import edu.harvard.dbmi.avillach.domain.ObfuscatedCount;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;

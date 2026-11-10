@@ -10,7 +10,14 @@ hpds:
   open-url: http://localhost:1/PIC-SURE
   open-token: test-open-token
 
+# Full-context tests exercise the obfuscation path; disabled passthrough is covered by targeted overrides.
+aggregate:
+  obfuscation:
+    enabled: true
+
 picsure:
+  openapi:
+    title: PIC-SURE High Performance Data Store (HPDS) - Authorized Access
   query:
     operations:
       base-url: http://localhost:1

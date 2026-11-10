@@ -71,7 +71,7 @@ public class PrivilegeServiceTest {
         List<Privilege> privileges = Arrays.asList(new Privilege(), new Privilege());
         when(privilegeRepository.findAll()).thenReturn(privileges);
 
-        List<Privilege> result = privilegeService.deletePrivilegeByPrivilegeId(privilegeId.toString());
+        List<Privilege> result = privilegeService.deletePrivilegeByPrivilegeId(privilegeId);
 
         assertEquals(privileges, result);
         verify(privilegeRepository, times(1)).deleteById(privilegeId);
@@ -89,7 +89,7 @@ public class PrivilegeServiceTest {
         when(authentication.getName()).thenReturn("testUser");
 
         assertThrows(RuntimeException.class, () -> {
-            privilegeService.deletePrivilegeByPrivilegeId(privilegeId.toString());
+            privilegeService.deletePrivilegeByPrivilegeId(privilegeId);
         });
     }
 
@@ -113,7 +113,7 @@ public class PrivilegeServiceTest {
 
         when(privilegeRepository.findById(privilegeId)).thenReturn(Optional.of(privilege));
 
-        Privilege result = privilegeService.getPrivilegeById(privilegeId.toString());
+        Privilege result = privilegeService.getPrivilegeById(privilegeId);
 
         assertEquals(privilege, result);
         verify(privilegeRepository, times(1)).findById(privilegeId);
@@ -125,7 +125,7 @@ public class PrivilegeServiceTest {
 
         when(privilegeRepository.findById(privilegeId)).thenReturn(Optional.empty());
 
-        Privilege result = privilegeService.getPrivilegeById(privilegeId.toString());
+        Privilege result = privilegeService.getPrivilegeById(privilegeId);
 
         assertNull(result);
         verify(privilegeRepository, times(1)).findById(privilegeId);

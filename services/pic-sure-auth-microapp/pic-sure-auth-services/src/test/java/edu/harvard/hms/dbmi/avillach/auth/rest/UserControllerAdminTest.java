@@ -54,7 +54,7 @@ class UserControllerAdminTest {
     @Test
     void readingOneUserReturnsTheEntityJsonWithoutTheSecrets() throws Exception {
         User user = signedInUser();
-        when(userService.getUserById(user.getUuid().toString())).thenReturn(user);
+        when(userService.getUserById(user.getUuid())).thenReturn(user);
 
         mockMvc.perform(get("/user/{userId}", user.getUuid())).andExpect(status().isOk())
             .andExpect(content().string(FrozenWire.json(user, DROPPED))).andExpect(content().string(not(containsString("canary"))));
@@ -127,8 +127,7 @@ class UserControllerAdminTest {
     @Test
     void readingAnUnknownUserIs400InTheErrorEnvelope() throws Exception {
         UUID unknown = UUID.randomUUID();
-        when(userService.getUserById(unknown.toString()))
-            .thenThrow(new IllegalArgumentException("Cannot find user by input UUID: " + unknown));
+        when(userService.getUserById(unknown)).thenThrow(new IllegalArgumentException("Cannot find user by input UUID: " + unknown));
 
         mockMvc.perform(get("/user/{userId}", unknown)).andExpect(status().isBadRequest()).andExpect(
             content().string("{\"message\":\"Invalid request\",\"content\":\"Cannot find user by input UUID: " + unknown + "\"}")

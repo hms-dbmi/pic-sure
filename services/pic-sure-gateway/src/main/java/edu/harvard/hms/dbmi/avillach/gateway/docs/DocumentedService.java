@@ -11,8 +11,10 @@ import java.util.regex.Pattern;
  * @param docsPath the document's path on the upstream, including the service's context path when it has one; defaults to
  *        {@code /v3/api-docs}
  * @param publicPrefix the ingress path the documented paths hang off; becomes {@code servers[0].url}
+ * @param enabled whether the console lists and serves this document; defaults to true. A deployment switches a document off when the
+ *        feature it describes is off, such as the open access document without open access.
  */
-public record DocumentedService(String name, String title, String url, String docsPath, String publicPrefix) {
+public record DocumentedService(String name, String title, String url, String docsPath, String publicPrefix, Boolean enabled) {
 
     private static final Pattern NAME = Pattern.compile("[a-z0-9-]+");
 
@@ -31,6 +33,9 @@ public record DocumentedService(String name, String title, String url, String do
         }
         if (publicPrefix == null) {
             throw new IllegalArgumentException("docs service '" + name + "' has no public-prefix");
+        }
+        if (enabled == null) {
+            enabled = Boolean.TRUE;
         }
     }
 

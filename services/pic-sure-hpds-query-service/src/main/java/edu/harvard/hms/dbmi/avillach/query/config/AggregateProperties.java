@@ -14,41 +14,74 @@ public class AggregateProperties {
     /** Bearer token for the open HPDS backend and visualization service; same value as HPDS_OPEN_TOKEN. */
     private String hpdsOpenToken;
     /**
-     * Visualization service base URL. Blank means continuous obfuscation uses raw per-value counts without binning.
+     * Visualization service base URL, which bins open continuous charts. Blank disables open continuous charts, since unbinned counts would
+     * reveal every observed value.
      */
     private String visualizationUrl;
     private int connectTimeoutSec = 10;
     private int readTimeoutSec = 60;
-
     private final Obfuscation obfuscation = new Obfuscation();
 
     public static class Obfuscation {
-        private int threshold = 10; // ApplicationProperties.DEFAULT_OBFUSCATION_THRESHOLD
-        private int variance = 3; // ApplicationProperties.DEFAULT_OBFUSCATION_VARIANCE
-        private String salt; // null/blank => random UUID at startup (ObfuscationService)
+        /**
+         * Master switch for open-access obfuscation. True (the default) enforces the thresholds below at startup and obfuscates open
+         * results; false makes the open aggregate path a full passthrough: raw results, no allow-list, no suppression.
+         */
+        private boolean enabled = true;
+        /**
+         * Consent threshold for consent groups, studies and the total; must be at least 10 when obfuscation is enabled (startup fails
+         * otherwise). Consent buckets are this wide and the total rounds up to half of it.
+         */
+        private int consentThreshold = 10;
+        /** Chart buckets below this show "< chartThreshold"; others round up to half of it, with that as their band. */
+        private int chartThreshold = 10;
+        /** No chart is returned for a cohort smaller than this. */
+        private int chartMinimumCohort = 50;
+        /**
+         * When true, a studies-consents CROSS_COUNT returns only the obfuscated total to the client; the per-study and per-consent-group
+         * counts are still computed (so study sums and mismatch warnings run) but dropped from the response. Defends open access against
+         * reconstructing a consent group from its study and sibling counts.
+         */
+        private boolean crossCountTotalOnly = true;
 
-        public int getThreshold() {
-            return threshold;
+        public boolean isEnabled() {
+            return enabled;
         }
 
-        public void setThreshold(int t) {
-            this.threshold = t;
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
         }
 
-        public int getVariance() {
-            return variance;
+        public int getConsentThreshold() {
+            return consentThreshold;
         }
 
-        public void setVariance(int v) {
-            this.variance = v;
+        public void setConsentThreshold(int consentThreshold) {
+            this.consentThreshold = consentThreshold;
         }
 
-        public String getSalt() {
-            return salt;
+        public int getChartThreshold() {
+            return chartThreshold;
         }
 
-        public void setSalt(String s) {
-            this.salt = s;
+        public void setChartThreshold(int chartThreshold) {
+            this.chartThreshold = chartThreshold;
+        }
+
+        public int getChartMinimumCohort() {
+            return chartMinimumCohort;
+        }
+
+        public void setChartMinimumCohort(int chartMinimumCohort) {
+            this.chartMinimumCohort = chartMinimumCohort;
+        }
+
+        public boolean isCrossCountTotalOnly() {
+            return crossCountTotalOnly;
+        }
+
+        public void setCrossCountTotalOnly(boolean crossCountTotalOnly) {
+            this.crossCountTotalOnly = crossCountTotalOnly;
         }
     }
 

@@ -118,9 +118,9 @@ public class AccessRuleController {
     public ResponseEntity<List<AccessRuleResponse>> removeById(
         @Parameter(required = true, description = "The uuid of the access rule to delete.") @PathVariable(
             "accessRuleId"
-        ) final String accessRuleId, HttpServletRequest request
+        ) final UUID accessRuleId, HttpServletRequest request
     ) {
-        AuditAttributes.putMetadata(request, "access_rule_id", accessRuleId);
+        AuditAttributes.putMetadata(request, "access_rule_id", accessRuleId.toString());
         return PICSUREResponse.success(AccessRuleResponse.fromAll(this.accessRuleService.removeAccessRuleById(accessRuleId)));
     }
 

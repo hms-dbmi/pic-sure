@@ -1,9 +1,9 @@
-package edu.harvard.dbmi.avillach.visualization.model;
+package edu.harvard.dbmi.avillach.domain;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
- * One chart value as exchanged with aggregate-data-sharing and the frontend.
+ * One chart value as exchanged between the query service (aggregate-data-sharing), the visualization service, and the frontend.
  *
  * @param count the numeric value the bar renders at
  * @param display the human-readable label: the exact count, the obfuscated count with its variance, or the below-threshold marker

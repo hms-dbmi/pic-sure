@@ -55,6 +55,11 @@ spring:
               order: 100
               predicates:
                 - Path=/operations/**
+            - id: mcp
+              uri: ${MCP_SERVICE_URL:http://pic-sure-mcp:8080}
+              order: 100
+              predicates:
+                - Path=/mcp
 
 management:
   endpoints:
@@ -124,10 +129,16 @@ picsure:
           docs-path: /v3/api-docs
           public-prefix: ${picsure.gateway.docs.public-base}/dictionary
         - name: hpds-query-service
-          title: HPDS query service
+          title: Authorized Queries
           url: ${HPDS_QUERY_SERVICE_URL:http://pic-sure-hpds-query-service:8080}
-          docs-path: /v3/api-docs
+          docs-path: /v3/api-docs/auth
           public-prefix: ${picsure.gateway.docs.public-base}
+        - name: hpds-open-access
+          title: Open Queries
+          url: ${HPDS_QUERY_SERVICE_URL:http://pic-sure-hpds-query-service:8080}
+          docs-path: /v3/api-docs/open
+          public-prefix: ${picsure.gateway.docs.public-base}
+          enabled: ${picsure.gateway.security.open-access-enabled:false}
         - name: visualization
           title: Visualization service
           url: ${VISUALIZATION_URL:http://visualization}
@@ -138,6 +149,9 @@ picsure:
           url: ${PSAMA_URL:http://psama:8090}
           docs-path: /auth/v3/api-docs
           public-prefix: /psama
+    mcp:
+      service-token: ${MCP_SERVICE_TOKEN:}
+      previous-service-token: ${MCP_SERVICE_TOKEN_PREVIOUS:}
     security:
       open-access-enabled: ${GATEWAY_OPEN_ACCESS_ENABLED:false}
       max-body-bytes: ${GATEWAY_AUTH_MAX_BODY_BYTES:10485760}

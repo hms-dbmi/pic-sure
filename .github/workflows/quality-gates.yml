@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Set up Node
@@ -53,6 +53,7 @@ jobs:
             --baseline-from-ref "origin/${BASE_REF}" \
             --fail-on-new-clones 0 \
             --fail-on-empty \
+            --skip-comments \
             --reporters json --output "$RUNNER_TEMP/jscpd" --silent \
             . || status=$?
           if [ -f "$RUNNER_TEMP/jscpd/jscpd-report.json" ]; then

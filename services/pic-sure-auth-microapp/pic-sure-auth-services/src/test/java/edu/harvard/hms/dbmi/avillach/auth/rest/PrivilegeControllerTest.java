@@ -48,7 +48,7 @@ class PrivilegeControllerTest {
     @Test
     void readingOnePrivilegeReturnsTheEntityJson() throws Exception {
         Privilege privilege = fullPrivilege();
-        when(privilegeService.getPrivilegeById(privilege.getUuid().toString())).thenReturn(privilege);
+        when(privilegeService.getPrivilegeById(privilege.getUuid())).thenReturn(privilege);
 
         mockMvc.perform(get("/privilege/{privilegeId}", privilege.getUuid())).andExpect(status().isOk())
             .andExpect(content().string(FrozenWire.json(privilege))).andExpect(content().string(not(containsString("canary"))))
@@ -89,7 +89,7 @@ class PrivilegeControllerTest {
     void deletingAPrivilegeReturnsTheRemainingOnesAsABareArray() throws Exception {
         UUID deleted = UUID.randomUUID();
         List<Privilege> remaining = List.of(fullPrivilege());
-        when(privilegeService.deletePrivilegeByPrivilegeId(deleted.toString())).thenReturn(remaining);
+        when(privilegeService.deletePrivilegeByPrivilegeId(deleted)).thenReturn(remaining);
 
         mockMvc.perform(delete("/privilege/{privilegeId}", deleted)).andExpect(status().isOk())
             .andExpect(content().string(FrozenWire.json(remaining)));
@@ -98,7 +98,7 @@ class PrivilegeControllerTest {
     @Test
     void readingAnUnknownPrivilegeIs400InTheErrorEnvelope() throws Exception {
         UUID unknown = UUID.randomUUID();
-        when(privilegeService.getPrivilegeById(unknown.toString())).thenReturn(null);
+        when(privilegeService.getPrivilegeById(unknown)).thenReturn(null);
 
         mockMvc.perform(get("/privilege/{privilegeId}", unknown)).andExpect(status().isBadRequest())
             .andExpect(content().string("{\"message\":\"Invalid request\",\"content\":\"Privilege not found\"}"));

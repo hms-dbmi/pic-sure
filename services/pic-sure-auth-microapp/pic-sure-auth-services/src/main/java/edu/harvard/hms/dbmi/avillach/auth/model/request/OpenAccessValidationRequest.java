@@ -65,4 +65,11 @@ public record OpenAccessValidationRequest(
         }
         return map;
     }
+
+    /** The API key is a secret (a key or session token), so it never appears in logs, including Spring's request-body debug line. */
+    @Override
+    public String toString() {
+        return "OpenAccessValidationRequest[apiKey=" + (apiKey == null ? null : "[REDACTED]") + ", ipAddress=" + ipAddress + ", request="
+            + request + ", responseVersion=" + responseVersion + "]";
+    }
 }

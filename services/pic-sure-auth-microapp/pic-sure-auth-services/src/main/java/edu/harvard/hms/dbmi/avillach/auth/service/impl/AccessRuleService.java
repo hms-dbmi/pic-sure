@@ -192,8 +192,8 @@ public class AccessRuleService {
     }
 
     @Transactional
-    public List<AccessRule> removeAccessRuleById(String accessRuleId) {
-        this.accessRuleRepo.deleteById(UUID.fromString(accessRuleId));
+    public List<AccessRule> removeAccessRuleById(UUID accessRuleId) {
+        this.accessRuleRepo.deleteById(accessRuleId);
         return this.accessRuleRepo.findAll();
     }
 

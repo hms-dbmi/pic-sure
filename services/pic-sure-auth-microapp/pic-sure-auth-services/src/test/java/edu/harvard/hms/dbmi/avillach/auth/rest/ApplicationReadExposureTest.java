@@ -41,7 +41,7 @@ class ApplicationReadExposureTest {
     @Test
     void readingOneApplicationNeverSerializesItsToken() throws Exception {
         UUID applicationId = UUID.randomUUID();
-        when(applicationService.getApplicationByID(applicationId.toString())).thenReturn(Optional.of(applicationWithToken(applicationId)));
+        when(applicationService.getApplicationByID(applicationId)).thenReturn(Optional.of(applicationWithToken(applicationId)));
 
         mockMvc.perform(get("/application/{applicationId}", applicationId)).andExpect(status().isOk())
             .andExpect(jsonPath("$.uuid").value(applicationId.toString())).andExpect(jsonPath("$.name").value("picsure"))

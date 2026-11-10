@@ -27,9 +27,9 @@ public record UserMetadataMappingUpdateRequest(
     ) @Valid ConnectionRef connection,
     @Schema(
         description = "New JSON path evaluated against the general metadata of the admin-created user.", example = "$.email"
-    ) String generalMetadataJsonPath,
+    ) @PlainText String generalMetadataJsonPath,
     @Schema(
         description = "New JSON path evaluated against the profile the identity provider returns at login.", example = "$.email"
-    ) String auth0MetadataJsonPath
+    ) @PlainText String auth0MetadataJsonPath
 ) {
 }

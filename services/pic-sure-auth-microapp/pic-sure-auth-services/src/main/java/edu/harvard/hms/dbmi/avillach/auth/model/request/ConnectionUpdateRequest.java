@@ -21,11 +21,11 @@ public record ConnectionUpdateRequest(
     @Schema(
         description = "UUID of the connection to update.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6",
         requiredMode = Schema.RequiredMode.REQUIRED
-    ) @NotNull UUID uuid, @Schema(description = "New business identifier of the connection.", example = "fence") String id,
-    @Schema(description = "New label shown for the connection on the login and admin screens.", example = "FENCE") String label,
+    ) @NotNull UUID uuid, @Schema(description = "New business identifier of the connection.", example = "fence") @PlainText String id,
+    @Schema(description = "New label shown for the connection on the login and admin screens.", example = "FENCE") @PlainText String label,
     @Schema(
         description = "New prefix of the subject of every user who signs in through this connection.", example = "fence|"
-    ) String subPrefix,
+    ) @PlainText String subPrefix,
     @Schema(
         description = "New set of fields a user record on this connection must carry. The value is one string holding a JSON array.",
         example = "[{\"label\":\"Email\",\"id\":\"email\"}]"

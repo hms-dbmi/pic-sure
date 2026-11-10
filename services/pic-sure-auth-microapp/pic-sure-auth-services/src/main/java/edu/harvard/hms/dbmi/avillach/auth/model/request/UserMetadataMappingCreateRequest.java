@@ -23,10 +23,10 @@ public record UserMetadataMappingCreateRequest(
     @Schema(
         description = "JSON path evaluated against the general metadata of the admin-created user.", example = "$.email",
         requiredMode = Schema.RequiredMode.REQUIRED
-    ) @NotBlank String generalMetadataJsonPath,
+    ) @NotBlank @PlainText String generalMetadataJsonPath,
     @Schema(
         description = "JSON path evaluated against the profile the identity provider returns at login.", example = "$.email",
         requiredMode = Schema.RequiredMode.REQUIRED
-    ) @NotBlank String auth0MetadataJsonPath
+    ) @NotBlank @PlainText String auth0MetadataJsonPath
 ) {
 }

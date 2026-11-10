@@ -1,7 +1,7 @@
 package edu.harvard.dbmi.avillach.visualization.controller;
 
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
-import edu.harvard.dbmi.avillach.visualization.model.ContinuousBinningRequest;
+import edu.harvard.dbmi.avillach.domain.ContinuousBinningRequest;
 import edu.harvard.dbmi.avillach.visualization.model.DistributionRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;

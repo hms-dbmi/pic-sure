@@ -23,6 +23,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.UUID;
 
 
 /**
@@ -48,7 +49,7 @@ public class PrivilegeController {
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(path = "/{privilegeId}", produces = "application/json")
     public ResponseEntity<PrivilegeResponse> getPrivilegeById(
-        @Parameter(description = "The UUID of the privilege to fetch.") @PathVariable("privilegeId") String privilegeId
+        @Parameter(description = "The UUID of the privilege to fetch.") @PathVariable("privilegeId") UUID privilegeId
     ) {
         Privilege privilegeById = this.privilegeService.getPrivilegeById(privilegeId);
 
@@ -111,9 +112,9 @@ public class PrivilegeController {
     public ResponseEntity<List<PrivilegeResponse>> removeById(
         @Parameter(required = true, description = "The uuid of the privilege to delete.") @PathVariable(
             "privilegeId"
-        ) final String privilegeId, HttpServletRequest request
+        ) final UUID privilegeId, HttpServletRequest request
     ) {
-        AuditAttributes.putMetadata(request, "privilege_id", privilegeId);
+        AuditAttributes.putMetadata(request, "privilege_id", privilegeId.toString());
         return ResponseEntity.ok(PrivilegeResponse.fromAll(this.privilegeService.deletePrivilegeByPrivilegeId(privilegeId)));
     }
 

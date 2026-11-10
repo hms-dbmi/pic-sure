@@ -24,9 +24,11 @@ import java.util.Set;
 public record ApplicationCreateRequest(
     @Schema(
         description = "Unique name of the application.", example = "PICSURE", requiredMode = Schema.RequiredMode.REQUIRED
-    ) @NotBlank String name,
-    @Schema(description = "Free-text description of the application.", example = "The PIC-SURE API application") String description,
-    @Schema(description = "URL the application is served from.", example = "/picsureui") String url,
+    ) @NotBlank @PlainText String name,
+    @Schema(
+        description = "Free-text description of the application.", example = "The PIC-SURE API application"
+    ) @PlainText String description,
+    @Schema(description = "URL the application is served from.", example = "/picsureui") @PlainText String url,
     @Schema(
         description = "Whether the application is enabled. Stored and returned; nothing in the auth service enforces it. Absent means true."
     ) Boolean enable,

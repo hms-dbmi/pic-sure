@@ -3,6 +3,8 @@ package edu.harvard.dbmi.avillach.visualization.service;
 import edu.harvard.dbmi.avillach.visualization.error.ConsentDeniedException;
 import edu.harvard.dbmi.avillach.visualization.error.HpdsUpstreamException;
 import edu.harvard.dbmi.avillach.visualization.error.VisualizationException;
+import edu.harvard.dbmi.avillach.domain.ObfuscatedCount;
+import edu.harvard.dbmi.avillach.domain.BinRange;
 import edu.harvard.dbmi.avillach.visualization.model.*;
 import edu.harvard.dbmi.avillach.visualization.processing.BinningService;
 import edu.harvard.dbmi.avillach.visualization.processing.CategoricalAggregationService;
@@ -201,7 +203,9 @@ public class VisualizationService {
         return count;
     }
 
-    public Map<String, Map<String, Integer>> binContinuousData(Map<String, Map<String, Integer>> continuousData) {
-        return binningService.binContinuousData(continuousData);
+    public Map<String, Map<String, Integer>> binContinuousData(
+        Map<String, Map<String, Integer>> continuousData, Map<String, BinRange> ranges, Integer maxBins
+    ) {
+        return binningService.binContinuousData(continuousData, ranges, maxBins);
     }
 }

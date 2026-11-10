@@ -10,7 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import edu.harvard.dbmi.avillach.visualization.model.ObfuscatedCount;
+import edu.harvard.dbmi.avillach.domain.ObfuscatedCount;
 import edu.harvard.dbmi.avillach.visualization.model.VisualizationResponse;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import java.net.ConnectException;

@@ -1,16 +1,17 @@
 package edu.harvard.dbmi.avillach.dictionary.dashboard;
 
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.Hidden;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 
+/**
+ * Serves the study dashboard table the PIC-SURE frontend renders. Hidden from the OpenAPI document.
+ */
 @Controller
-@Tag(name = "Dashboard", description = "The study dashboard table")
+@Hidden
 public class DashboardController {
     private final DashboardService dashboardService;
 
@@ -19,8 +20,6 @@ public class DashboardController {
         this.dashboardService = dashboardService;
     }
 
-    @Operation(summary = "The dashboard table")
-    @ApiResponse(responseCode = "200", description = "The dashboard table rows")
     @AuditEvent(type = "OTHER", action = "dashboard.read")
     @GetMapping("/dashboard")
     public ResponseEntity<Dashboard> getDashboard() {

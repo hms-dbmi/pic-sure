@@ -9,8 +9,8 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * One application in the body of {@code PATCH /application}. {@code token} is absent, so an update cannot overwrite the application's bearer
- * token. A member left out leaves the stored value unchanged.
+ * One application in the body of {@code PATCH /application}. {@code token} is absent, so an update cannot overwrite the application's
+ * bearer token. A member left out leaves the stored value unchanged.
  *
  * @param uuid the UUID of the application to update
  * @param name the new name
@@ -27,9 +27,11 @@ public record ApplicationUpdateRequest(
     @Schema(
         description = "UUID of the application to update.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6",
         requiredMode = Schema.RequiredMode.REQUIRED
-    ) @NotNull UUID uuid, @Schema(description = "New unique name of the application.", example = "PICSURE") String name,
-    @Schema(description = "New free-text description of the application.", example = "The PIC-SURE API application") String description,
-    @Schema(description = "New URL the application is served from.", example = "/picsureui") String url,
+    ) @NotNull UUID uuid, @Schema(description = "New unique name of the application.", example = "PICSURE") @PlainText String name,
+    @Schema(
+        description = "New free-text description of the application.", example = "The PIC-SURE API application"
+    ) @PlainText String description,
+    @Schema(description = "New URL the application is served from.", example = "/picsureui") @PlainText String url,
     @Schema(
         description = "Whether the application is enabled. Stored and returned; nothing in the auth service enforces it."
     ) Boolean enable,

@@ -34,8 +34,7 @@ class ControllerAuditEventTest {
 
     private static final Map<String, String> EXPECTED = new TreeMap<>(
         Map.ofEntries(
-            Map.entry("HpdsQueryController.query", "QUERY query.submitted"),
-            Map.entry("HpdsQueryController.querySync", "QUERY query.sync"),
+            Map.entry("HpdsQueryController.query", "QUERY query.submitted"), Map.entry("HpdsQueryController.querySync", "QUERY query.sync"),
             Map.entry("HpdsQueryController.status", "QUERY query.status"),
             Map.entry("HpdsQueryController.result", "DATA_ACCESS query.result"),
             Map.entry("HpdsQueryController.signedUrl", "DATA_ACCESS query.signed_url"),

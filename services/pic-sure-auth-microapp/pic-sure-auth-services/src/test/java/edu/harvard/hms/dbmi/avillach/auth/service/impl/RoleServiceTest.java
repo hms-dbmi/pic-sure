@@ -61,21 +61,6 @@ public class RoleServiceTest {
     }
 
     @Test
-    public void testGetRoleById_String() {
-        UUID roleId = UUID.randomUUID();
-        Role role = new Role();
-        role.setUuid(roleId);
-
-        when(roleRepository.findById(roleId)).thenReturn(Optional.of(role));
-
-        Optional<Role> result = roleService.getRoleById(roleId.toString());
-
-        assertTrue(result.isPresent());
-        assertEquals(role, result.get());
-        verify(roleRepository, times(1)).findById(roleId);
-    }
-
-    @Test
     public void testGetRoleById_UUID() {
         UUID roleId = UUID.randomUUID();
         Role role = new Role();
@@ -113,7 +98,7 @@ public class RoleServiceTest {
         when(roleRepository.findById(roleId)).thenReturn(Optional.of(role));
         when(roleRepository.findAll()).thenReturn(Collections.singletonList(role));
 
-        Optional<List<Role>> result = roleService.removeRoleById(roleId.toString());
+        Optional<List<Role>> result = roleService.removeRoleById(roleId);
 
         assertTrue(result.isPresent());
         assertEquals(1, result.get().size());
@@ -127,7 +112,7 @@ public class RoleServiceTest {
 
         when(roleRepository.findById(roleId)).thenReturn(Optional.empty());
 
-        Optional<List<Role>> result = roleService.removeRoleById(roleId.toString());
+        Optional<List<Role>> result = roleService.removeRoleById(roleId);
 
         assertFalse(result.isPresent());
         verify(roleRepository, never()).deleteById(any());

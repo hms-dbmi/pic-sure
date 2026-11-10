@@ -5,7 +5,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import edu.harvard.dbmi.avillach.visualization.model.AccessType;
-import edu.harvard.dbmi.avillach.visualization.model.ObfuscatedCount;
+import edu.harvard.dbmi.avillach.domain.ObfuscatedCount;
 import edu.harvard.dbmi.avillach.visualization.model.VisualizationResponse;
 import edu.harvard.dbmi.avillach.visualization.processing.BinningService;
 import edu.harvard.dbmi.avillach.visualization.processing.CategoricalAggregationService;

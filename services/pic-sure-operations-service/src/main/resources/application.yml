@@ -22,6 +22,8 @@ spring:
           time_zone: UTC
 
 picsure:
+  openapi:
+    title: PIC-SURE Operations Service
   operations:
     # Shared secret enforced by InternalTokenFilter on /internal/**, which hpds-query-service calls to save, read
     # and update queries. Fail-closed: left blank, InternalTokenFilter rejects every

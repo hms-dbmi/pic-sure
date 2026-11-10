@@ -21,6 +21,7 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import edu.harvard.hms.dbmi.avillach.openapi.OpenApiConfiguration;
 import edu.harvard.hms.dbmi.avillach.openapi.OpenApiDocumentAssertions;
 
@@ -52,7 +53,7 @@ class OpenApiDocumentTest {
             .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON)).andReturn().getResponse().getContentAsString();
         JsonNode document = objectMapper.readTree(body);
 
-        assertThat(document.path("info").path("title").asText()).isEqualTo("dictionary");
+        assertThat(document.path("info").path("title").asText()).isEqualTo("Dictionary");
         assertThat(document.path("info").path("version").asText()).isNotBlank();
         assertThat(document.path("components").path("securitySchemes").has(OpenApiConfiguration.BEARER_SCHEME)).isTrue();
         assertThat(document.path("security").get(0).has(OpenApiConfiguration.BEARER_SCHEME)).isTrue();
@@ -119,10 +120,13 @@ class OpenApiDocumentTest {
         JsonNode document = document();
 
         for (String path : List.of("/concepts/detail/{dataset}", "/concepts/tree/{dataset}", "/concepts/hierarchy/{dataset}")) {
-            JsonNode body = requestSchema(document, "post", path);
-            assertThat(body.path("type").asText()).as(path).isEqualTo("string");
-            assertThat(body.path("description").asText()).as(path).contains("raw string body");
-            assertThat(body.path("example").asText()).as(path).isEqualTo("\\demographics\\AGE\\");
+            JsonNode content = document.path("paths").path(path).path("post").path("requestBody").path("content");
+            assertThat(content.has("text/plain")).as("%s text/plain body", path).isTrue();
+            for (JsonNode body : List.of(requestSchema(document, "post", path), content.path("text/plain").path("schema"))) {
+                assertThat(body.path("type").asText()).as(path).isEqualTo("string");
+                assertThat(body.path("description").asText()).as(path).contains("raw string body");
+                assertThat(body.path("example").asText()).as(path).startsWith("\\Synthea\\");
+            }
         }
         JsonNode bulk = requestSchema(document, "post", "/concepts/detail");
         assertThat(bulk.path("type").asText()).isEqualTo("array");
@@ -132,31 +136,53 @@ class OpenApiDocumentTest {
     }
 
     @Test
-    void facetsDashboardAndDrawerAreDocumented() throws Exception {
+    void everyVisibleOperationExplainsHowToCallIt() throws Exception {
+        JsonNode document = document();
+
+        document.path("paths").properties().forEach(path -> path.getValue().properties().forEach(operation -> {
+            assertThat(operation.getValue().path("description").asText()).as("%s %s", operation.getKey(), path.getKey()).contains("curl");
+        }));
+        assertThat(document.path("paths").path("/concepts").path("post").path("description").asText())
+            .contains("page_number", "`last`", "`consents`");
+    }
+
+    @Test
+    void everyFilterExampleIsAFilter() throws Exception {
+        JsonNode document = document();
+
+        for (String path : List.of("/concepts", "/facets")) {
+            JsonNode examples = document.path("paths").path(path).path("post").path("requestBody").path("content").path("application/json")
+                .path("examples");
+            assertThat(examples.size()).as("%s examples", path).isGreaterThan(2);
+            examples.forEach(example -> objectMapper.convertValue(example.path("value"), Filter.class));
+        }
+    }
+
+    @Test
+    void facetsAreDocumented() throws Exception {
         JsonNode document = document();
 
         OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/facets", "Filter");
         OpenApiDocumentAssertions.assertBareArrayOf(document, "post", "/facets", "200", "FacetCategory");
         OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/facets/{facetCategory}/{facet}", "200", "Facet");
-        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/dashboard", "200", "Dashboard");
-        OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/dashboard-drawer", "200", "DashboardDrawer");
-        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/dashboard-drawer/{id}", "200", "DashboardDrawer");
         OpenApiDocumentAssertions.assertSchemaHasFields(document, "Filter", "facets", "search", "consents");
         OpenApiDocumentAssertions.assertSchemaHasFields(document, "FacetCategory", "name", "display", "description", "facets");
         OpenApiDocumentAssertions.assertSchemaHasFields(
             document, "Facet", "name", "display", "description", "fullName", "count", "children", "category", "meta"
         );
-        OpenApiDocumentAssertions.assertSchemaHasFields(document, "Dashboard", "columns", "rows");
-        OpenApiDocumentAssertions.assertSchemaHasFields(document, "DashboardColumn", "label", "dataElement");
-        OpenApiDocumentAssertions.assertSchemaHasFields(
-            document, "DashboardDrawer", "datasetId", "studyFullname", "studyAbbreviation", "consentGroups", "studySummary", "studyFocus",
-            "studyDesign", "sponsor"
-        );
-        OpenApiDocumentAssertions
-            .assertSchemaDocumented(document, "Filter", "Facet", "FacetCategory", "Dashboard", "DashboardColumn", "DashboardDrawer");
-        JsonNode rows = schema(document, "Dashboard").path("properties").path("rows");
-        assertThat(rows.path("description").asText()).contains("dataElement");
-        assertThat(rows.path("items").path("additionalProperties").path("type").asText()).isEqualTo("string");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "Filter", "Facet", "FacetCategory");
+    }
+
+    @Test
+    void dashboardAndDrawerAreHidden() throws Exception {
+        JsonNode document = document();
+
+        List<String> paths = new ArrayList<>();
+        document.path("paths").fieldNames().forEachRemaining(paths::add);
+        assertThat(paths).noneMatch(path -> path.startsWith("/dashboard"));
+        List<String> tags = new ArrayList<>();
+        document.path("tags").forEach(tag -> tags.add(tag.path("name").asText()));
+        assertThat(tags).doesNotContain("Dashboard", "Dashboard drawer");
     }
 
     @Test
@@ -179,8 +205,8 @@ class OpenApiDocumentTest {
 
         assertThat(names).containsExactlyInAnyOrder(
             "CategoricalConcept", "CategoricalMetadata", "Concept", "ConceptPage", "ConceptPageable", "ConceptSort", "ContinuousConcept",
-            "ContinuousMetadata", "Dashboard", "DashboardColumn", "DashboardDrawer", "Dataset", "Facet", "FacetCategory", "Filter",
-            "LegacyResponse", "LegacySearchCriteria", "LegacySearchQuery", "Metadata", "Result", "Results", "SearchResult"
+            "ContinuousMetadata", "Dataset", "Facet", "FacetCategory", "Filter", "LegacyResponse", "LegacySearchCriteria",
+            "LegacySearchQuery", "Metadata", "Result", "Results", "SearchResult"
         );
         assertThat(schema(document, "Metadata").path("description").asText()).isNotBlank();
         OpenApiDocumentAssertions.assertSchemaHasFields(document, "LegacyResponse", "results");

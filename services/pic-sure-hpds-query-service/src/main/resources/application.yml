@@ -30,6 +30,8 @@ consent:
       enabled: ${CONSENT_BASED_AUTHORIZATION_ENABLED:true}
 
 picsure:
+  openapi:
+    title: PIC-SURE High Performance Data Store (HPDS) - Authorized Access
   query:
     operations:
       # OPERATIONS_SERVICE_URL: base URL of pic-sure-operations-service (the sole pic-sure-DB owner). This service
@@ -50,15 +52,23 @@ aggregate:
   # reused here so the aggregate obfuscation path talks to the same open HPDS backend.
   hpds-open-url: ${HPDS_OPEN_URL:}
   hpds-open-token: ${HPDS_OPEN_TOKEN:}
-  # VISUALIZATION_URL: base URL of the visualization service. Blank = no binning configured
-  # (continuous cross-count obfuscation falls back to raw per-value counts).
+  # VISUALIZATION_URL: base URL of the visualization service, which bins open continuous charts.
+  # Blank = open continuous charts are disabled (unbinned counts would reveal every observed value).
   visualization-url: ${VISUALIZATION_URL:}
   connect-timeout-sec: 10
   read-timeout-sec: 60
   obfuscation:
-    threshold: ${AGGREGATE_OBFUSCATION_THRESHOLD:10}
-    variance: ${AGGREGATE_OBFUSCATION_VARIANCE:3}
-    salt: ${AGGREGATE_OBFUSCATION_SALT:}
+    # Master switch. False = open aggregate path is a full passthrough (raw results, no allow-list). When true the thresholds below are
+    # enforced at startup and must meet their minimums. Default on; set AGGREGATE_OBFUSCATION_ENABLED=false to passthrough.
+    enabled: ${AGGREGATE_OBFUSCATION_ENABLED:true}
+    # Consent groups, studies and the total: hidden below this (minimum 10 when enabled); consent buckets are this wide.
+    consent-threshold: ${AGGREGATE_OBFUSCATION_CONSENT_THRESHOLD:10}
+    # Chart buckets: hidden below this; otherwise rounded up to half of it.
+    chart-threshold: ${AGGREGATE_OBFUSCATION_CHART_THRESHOLD:10}
+    # No chart is returned for a cohort smaller than this.
+    chart-minimum-cohort: ${AGGREGATE_OBFUSCATION_CHART_MINIMUM_COHORT:50}
+    # True: a studies-consents CROSS_COUNT returns only the total; per-study and per-consent counts are computed but not sent.
+    cross-count-total-only: ${AGGREGATE_OBFUSCATION_CROSS_COUNT_TOTAL_ONLY:true}
 
 management:
   endpoints:

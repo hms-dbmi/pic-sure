@@ -19,10 +19,10 @@ import java.util.Set;
 public record RoleCreateRequest(
     @Schema(
         description = "Name of the role.", example = "PIC-SURE Top Admin", requiredMode = Schema.RequiredMode.REQUIRED
-    ) @NotBlank String name,
+    ) @NotBlank @PlainText String name,
     @Schema(
         description = "Free-text description of who holds the role.", example = "Manages users, roles and privileges"
-    ) String description,
+    ) @PlainText String description,
     @Schema(description = "Existing privileges the role grants, each named by UUID.") @Valid Set<EntityIdRef> privileges
 ) {
 }

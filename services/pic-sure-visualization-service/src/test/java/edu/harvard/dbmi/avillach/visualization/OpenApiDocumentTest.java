@@ -49,7 +49,7 @@ class OpenApiDocumentTest {
             .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON)).andReturn().getResponse().getContentAsString();
         JsonNode document = objectMapper.readTree(body);
 
-        assertThat(document.path("info").path("title").asText()).isEqualTo("pic-sure-visualization-service");
+        assertThat(document.path("info").path("title").asText()).isEqualTo("PIC-SURE Visualization Service");
         assertThat(document.path("info").path("version").asText()).isNotBlank();
         assertThat(document.path("components").path("securitySchemes").has(OpenApiConfiguration.BEARER_SCHEME)).isTrue();
         assertThat(document.path("security").get(0).has(OpenApiConfiguration.BEARER_SCHEME)).isTrue();

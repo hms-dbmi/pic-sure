@@ -22,10 +22,10 @@ public record RoleUpdateRequest(
     @Schema(
         description = "UUID of the role to update.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6",
         requiredMode = Schema.RequiredMode.REQUIRED
-    ) @NotNull UUID uuid, @Schema(description = "New name of the role.", example = "PIC-SURE Top Admin") String name,
+    ) @NotNull UUID uuid, @Schema(description = "New name of the role.", example = "PIC-SURE Top Admin") @PlainText String name,
     @Schema(
         description = "New free-text description of who holds the role.", example = "Manages users, roles and privileges"
-    ) String description,
+    ) @PlainText String description,
     @Schema(
         description = "Existing privileges the role should grant, each named by UUID. When present, it replaces the stored set."
     ) @Valid Set<EntityIdRef> privileges

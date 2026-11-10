@@ -16,9 +16,10 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * Buffers the request body for downstream routing, capped at GATEWAY_AUTH_MAX_BODY_BYTES. Over-cap requests receive HTTP 413 with the
- * additive error body {errorType:REQUEST_BODY_TOO_LARGE,...} returned BEFORE PSAMA is ever called; body content is NEVER logged; a
- * body-too-large metric is emitted.
+ * Buffers the request body for downstream routing, capped at GATEWAY_AUTH_MAX_BODY_BYTES. Over-cap requests, whether the declared
+ * Content-Length or the bytes actually read exceed the cap, receive HTTP 413 with the additive error body
+ * {errorType:REQUEST_BODY_TOO_LARGE,...} returned BEFORE PSAMA is ever called; body content is NEVER logged; a body-too-large metric is
+ * emitted.
  */
 public class BufferingFilter extends OncePerRequestFilter {
 
@@ -51,7 +52,11 @@ public class BufferingFilter extends OncePerRequestFilter {
     }
 
     private byte[] readBody(HttpServletRequest req) throws IOException {
-        ByteArrayOutputStream out = new ByteArrayOutputStream(Math.max(0, (int) req.getContentLengthLong()));
+        if (req.getContentLengthLong() > maxBytes) {
+            throw new BodyTooLargeException();
+        }
+        // Not pre-sized from Content-Length: an unauthenticated client can declare the cap, send nothing, and hold the allocation.
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
         try (InputStream in = req.getInputStream()) {
             byte[] buf = new byte[8192];
             int read, total = 0;

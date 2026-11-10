@@ -43,8 +43,8 @@ public class ApplicationService implements UserDetailsService {
      * @return a ResponseEntity representing the result of the operation
      */
     @Transactional
-    public Optional<Application> getApplicationByID(String applicationId) {
-        return applicationRepo.findById(UUID.fromString(applicationId));
+    public Optional<Application> getApplicationByID(UUID applicationId) {
+        return applicationRepo.findById(applicationId);
     }
 
     /**
@@ -145,8 +145,8 @@ public class ApplicationService implements UserDetailsService {
     }
 
     @Transactional
-    public List<Application> deleteApplicationById(String applicationId) {
-        Optional<Application> application = applicationRepo.findById(UUID.fromString(applicationId));
+    public List<Application> deleteApplicationById(UUID applicationId) {
+        Optional<Application> application = applicationRepo.findById(applicationId);
 
         if (application.isEmpty()) {
             logger.error("deleteApplicationById() cannot find the application by applicationId: {}", applicationId);
@@ -157,8 +157,8 @@ public class ApplicationService implements UserDetailsService {
         return this.applicationRepo.findAll();
     }
 
-    public String refreshApplicationToken(String applicationId) throws NullPointerException, IllegalArgumentException {
-        Optional<Application> application = applicationRepo.findById(UUID.fromString(applicationId));
+    public String refreshApplicationToken(UUID applicationId) throws NullPointerException, IllegalArgumentException {
+        Optional<Application> application = applicationRepo.findById(applicationId);
 
         if (application.isEmpty()) {
             logger.error("refreshApplicationToken() cannot find the application by applicationId: {}", applicationId);
@@ -183,13 +183,9 @@ public class ApplicationService implements UserDetailsService {
         }
 
         return this.jwtUtil.createJwtToken(
-                null, null,
-                new HashMap<>(
-                        Map.of(
-                                "user_id", AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX + "|" + application.getName()
-                        )
-                ),
-                AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX + "|" + application.getUuid().toString(), 365L * 1000 * 60 * 60 * 24);
+            null, null, new HashMap<>(Map.of("user_id", AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX + "|" + application.getName())),
+            AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX + "|" + application.getUuid().toString(), 365L * 1000 * 60 * 60 * 24
+        );
     }
 
     @Override
