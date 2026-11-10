@@ -65,6 +65,17 @@ class NamedDatasetRequestSchemaTest {
     }
 
     @Test
+    void theRequestBodyDeclaresNoLinkedQueries() {
+        List<String> names = new ArrayList<>();
+        document.path("components").path("schemas").path("NamedDatasetRequestDto").path("properties").fieldNames()
+            .forEachRemaining(names::add);
+
+        assertThat(names).containsExactlyInAnyOrder("queryId", "name", "archived", "metadata");
+        assertThat(document.at("/components/schemas/NamedDatasetDto/properties/queries/items/$ref").asText())
+            .isEqualTo("#/components/schemas/LinkedQueryDto");
+    }
+
+    @Test
     void noOperationAnywhereReferencesTheGatewayResolvedIdentity() {
         List<String> offenders = new ArrayList<>();
         document.path("paths").fields().forEachRemaining(

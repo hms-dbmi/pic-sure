@@ -20,6 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,6 +53,12 @@ class NamedDatasetControllerTest {
 
     @Autowired
     private QueryRepository queryRepo;
+
+    @Autowired
+    private NamedDatasetQueryRepository linkRepo;
+
+    @Autowired
+    private JdbcTemplate jdbc;
 
     @Test
     void listWithoutIdentityIsForbidden() throws Exception {
@@ -323,9 +330,9 @@ class NamedDatasetControllerTest {
             .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.errorType").value("unauthorized"));
     }
 
-    /** PUT that re-points the caller's own dataset at a queryId with no stored query returns 404 from the query lookup. */
+    /** PUT that names a queryId with no stored query returns 404 from the query lookup. */
     @Test
-    void updateRepointedToUnknownQueryReturns404() throws Exception {
+    void updateLinkingAnUnknownQueryReturns404() throws Exception {
         Query query = queryRepo.save(QueryFixtures.withRandomId().setQuery(QUERY_BODY));
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("mine").setQuery(query));
 
@@ -337,11 +344,11 @@ class NamedDatasetControllerTest {
     }
 
     /**
-     * PUT that re-points one of the caller's datasets at a query the caller already named fails the flush on a unique constraint over
-     * {@code queryId}, which the service translates to 409. No pre-check runs, so this proves the constraint-to-409 translation.
+     * PUT that names a second query of the variant the dataset already holds is refused with 409 and links nothing. The dataset here was
+     * stored without a join row, so the variant it holds is the one of the row its {@code queryId} names.
      */
     @Test
-    void updateRepointedOntoAlreadyNamedQueryReturns409() throws Exception {
+    void updateLinkingASecondQueryOfAVariantTheDatasetHoldsReturns409() throws Exception {
         Query first = queryRepo.save(QueryFixtures.withRandomId().setQuery(QUERY_BODY));
         Query second = queryRepo.save(QueryFixtures.withRandomId().setQuery(QUERY_BODY));
         namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("first").setQuery(first));
@@ -352,5 +359,208 @@ class NamedDatasetControllerTest {
                 .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"queryId\":\"" + first.getUuid() + "\",\"name\":\"second\"}")
         ).andExpect(status().isConflict()).andExpect(jsonPath("$.errorType").value("conflict"));
+
+        assertThat(joinRowsOf(onSecond.getUuid())).isEmpty();
+    }
+
+    private static final String ALICE_ID = "5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11";
+    private static final String BOB_ID = "7c1b1f0e-2a3b-4c4d-8e5f-0a1b2c3d4e5f";
+    private static final String FULL_DATAFRAME =
+        "{\"query\":{\"select\":[],\"phenotypicClause\":null,\"expectedResultType\":\"DATAFRAME\"}}";
+    private static final String SAMPLE_DATAFRAME =
+        "{\"query\":{\"select\":[],\"phenotypicClause\":null,\"expectedResultType\":\"DATAFRAME\",\"sample\":true}}";
+
+    private Query storedV3Query(String owner, String body) {
+        Query query = QueryFixtures.withRandomId().setQuery(body).setVersion("3");
+        query.setUserUuid(owner == null ? null : UUID.fromString(owner));
+        return queryRepo.save(query);
+    }
+
+    private JsonNode createAsAlice(Query query) throws Exception {
+        String body = mockMvc.perform(
+            post("/dataset/named").header(GatewayUserResolver.HEADER_USER_ID, ALICE_ID).header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"queryId\":\"" + query.getUuid() + "\",\"name\":\"cohort\"}")
+        ).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        return new ObjectMapper().readTree(body);
+    }
+
+    private org.springframework.test.web.servlet.ResultActions linkAsAlice(String datasetId, Query query) throws Exception {
+        return mockMvc.perform(
+            put("/dataset/named/{id}", datasetId).header(GatewayUserResolver.HEADER_USER_ID, ALICE_ID)
+                .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"queryId\":\"" + query.getUuid() + "\",\"name\":\"cohort\"}")
+        );
+    }
+
+    private List<java.util.Map<String, Object>> joinRowsOf(UUID dataset) {
+        return jdbc.queryForList(
+            "SELECT query_uuid, sample, result_type, created_at FROM named_dataset_query WHERE named_dataset_uuid = ? ORDER BY created_at",
+            dataset
+        );
+    }
+
+    @Test
+    void createStoresAJoinRowAndReturnsIt() throws Exception {
+        Query full = storedV3Query(ALICE_ID, FULL_DATAFRAME);
+
+        JsonNode created = createAsAlice(full);
+
+        assertThat(created.at("/query/uuid").asText()).isEqualTo(full.getUuid().toString());
+        assertThat(created.at("/queries")).hasSize(1);
+        assertThat(created.at("/queries/0/queryId").asText()).isEqualTo(full.getUuid().toString());
+        assertThat(created.at("/queries/0/sample").isBoolean()).isTrue();
+        assertThat(created.at("/queries/0/sample").asBoolean()).isFalse();
+        assertThat(created.at("/queries/0/resultType").asText()).isEqualTo("DATAFRAME");
+        List<java.util.Map<String, Object>> rows = joinRowsOf(UUID.fromString(created.at("/uuid").asText()));
+        assertThat(rows).hasSize(1);
+        assertThat(rows.getFirst().get("query_uuid")).isEqualTo(
+            java.nio.ByteBuffer.allocate(16).putLong(full.getUuid().getMostSignificantBits())
+                .putLong(full.getUuid().getLeastSignificantBits()).array()
+        );
+        assertThat(rows.getFirst().get("sample")).isEqualTo(false);
+        assertThat(rows.getFirst().get("result_type")).isEqualTo("DATAFRAME");
+        assertThat(rows.getFirst().get("created_at")).isNotNull();
+    }
+
+    @Test
+    void getReturnsLinkedQueries() throws Exception {
+        Query full = storedV3Query(ALICE_ID, FULL_DATAFRAME);
+        Query sample = storedV3Query(ALICE_ID, SAMPLE_DATAFRAME);
+        String datasetId = createAsAlice(full).at("/uuid").asText();
+
+        linkAsAlice(datasetId, sample).andExpect(status().isOk()).andExpect(jsonPath("$.query.uuid").value(full.getUuid().toString()))
+            .andExpect(jsonPath("$.queries", hasSize(2)));
+
+        for (String path : List.of("/dataset/named/" + datasetId, "/dataset/named")) {
+            String body = mockMvc.perform(
+                get(path).header(GatewayUserResolver.HEADER_USER_ID, ALICE_ID).header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE)
+            ).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            JsonNode response = new ObjectMapper().readTree(body);
+            JsonNode dataset = response.isArray() ? response.get(0) : response;
+            assertThat(dataset.at("/query/uuid").asText()).isEqualTo(full.getUuid().toString());
+            assertThat(dataset.at("/queries")).hasSize(2);
+            assertThat(dataset.at("/queries/0/queryId").asText()).isEqualTo(full.getUuid().toString());
+            assertThat(dataset.at("/queries/0/sample").asBoolean()).isFalse();
+            assertThat(dataset.at("/queries/0/resultType").asText()).isEqualTo("DATAFRAME");
+            assertThat(dataset.at("/queries/1/queryId").asText()).isEqualTo(sample.getUuid().toString());
+            assertThat(dataset.at("/queries/1/sample").asBoolean()).isTrue();
+            assertThat(dataset.at("/queries/1/resultType").asText()).isEqualTo("DATAFRAME");
+        }
+        assertThat(namedDatasetRepo.findById(UUID.fromString(datasetId)).orElseThrow().getQuery().getUuid()).isEqualTo(full.getUuid());
+    }
+
+    @Test
+    void getReturnsTheQueryIdRowOfADatasetStoredWithoutAJoinRow() throws Exception {
+        Query full = storedV3Query(null, FULL_DATAFRAME);
+        NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("from the old stack").setQuery(full));
+
+        mockMvc
+            .perform(
+                get("/dataset/named/{id}", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, ALICE_ID)
+                    .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE)
+            ).andExpect(status().isOk()).andExpect(jsonPath("$.queries", hasSize(1)))
+            .andExpect(jsonPath("$.queries[0].queryId").value(full.getUuid().toString()))
+            .andExpect(jsonPath("$.queries[0].sample").value(false)).andExpect(jsonPath("$.queries[0].resultType").value("DATAFRAME"));
+
+        assertThat(joinRowsOf(saved.getUuid())).isEmpty();
+    }
+
+    @Test
+    void getFillsInTheResultTypeOfABackfilledJoinRow() throws Exception {
+        Query full = storedV3Query(null, FULL_DATAFRAME);
+        NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("backfilled").setQuery(full));
+        linkRepo.saveAndFlush(new NamedDatasetQuery(saved.getUuid(), full.getUuid(), false, null, java.time.Instant.now()));
+
+        mockMvc
+            .perform(
+                get("/dataset/named/{id}", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, ALICE_ID)
+                    .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE)
+            ).andExpect(status().isOk()).andExpect(jsonPath("$.queries", hasSize(1)))
+            .andExpect(jsonPath("$.queries[0].resultType").value("DATAFRAME"));
+
+        assertThat(joinRowsOf(saved.getUuid())).extracting(row -> row.get("result_type")).containsExactly("DATAFRAME");
+    }
+
+    @Test
+    void putLinkingAnotherUsersQueryReturns403() throws Exception {
+        Query full = storedV3Query(ALICE_ID, FULL_DATAFRAME);
+        Query bobsSample = storedV3Query(BOB_ID, SAMPLE_DATAFRAME);
+        String datasetId = createAsAlice(full).at("/uuid").asText();
+
+        linkAsAlice(datasetId, bobsSample).andExpect(status().isForbidden()).andExpect(jsonPath("$.errorType").value("forbidden"));
+
+        assertThat(joinRowsOf(UUID.fromString(datasetId))).hasSize(1);
+    }
+
+    @Test
+    void putLinkingAnOwnerlessQueryReturns200() throws Exception {
+        Query full = storedV3Query(ALICE_ID, FULL_DATAFRAME);
+        Query ownerlessSample = storedV3Query(null, SAMPLE_DATAFRAME);
+        String datasetId = createAsAlice(full).at("/uuid").asText();
+
+        linkAsAlice(datasetId, ownerlessSample).andExpect(status().isOk()).andExpect(jsonPath("$.queries", hasSize(2)));
+
+        assertThat(joinRowsOf(UUID.fromString(datasetId))).hasSize(2);
+    }
+
+    @Test
+    void putLinkingASecondSampleOfTheSameResultTypeReturns409() throws Exception {
+        Query full = storedV3Query(ALICE_ID, FULL_DATAFRAME);
+        Query sample = storedV3Query(ALICE_ID, SAMPLE_DATAFRAME);
+        Query secondSample = storedV3Query(ALICE_ID, SAMPLE_DATAFRAME);
+        String datasetId = createAsAlice(full).at("/uuid").asText();
+        linkAsAlice(datasetId, sample).andExpect(status().isOk());
+
+        linkAsAlice(datasetId, secondSample).andExpect(status().isConflict()).andExpect(jsonPath("$.errorType").value("conflict"));
+
+        assertThat(joinRowsOf(UUID.fromString(datasetId))).hasSize(2);
+    }
+
+    @Test
+    void putNamingAQueryAlreadyLinkedRenamesAndLinksNothing() throws Exception {
+        Query full = storedV3Query(ALICE_ID, FULL_DATAFRAME);
+        Query sample = storedV3Query(ALICE_ID, SAMPLE_DATAFRAME);
+        String datasetId = createAsAlice(full).at("/uuid").asText();
+        linkAsAlice(datasetId, sample).andExpect(status().isOk());
+
+        mockMvc
+            .perform(
+                put("/dataset/named/{id}", datasetId).header(GatewayUserResolver.HEADER_USER_ID, ALICE_ID)
+                    .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE).contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"queryId\":\"" + sample.getUuid() + "\",\"name\":\"renamed\"}")
+            ).andExpect(status().isOk()).andExpect(jsonPath("$.name").value("renamed"))
+            .andExpect(jsonPath("$.query.uuid").value(full.getUuid().toString())).andExpect(jsonPath("$.queries", hasSize(2)));
+
+        assertThat(joinRowsOf(UUID.fromString(datasetId))).hasSize(2);
+    }
+
+    @Test
+    void getReturnsTheStoredQueryWithoutConsentValues() throws Exception {
+        String stored = """
+            {"query":{"select":["\\\\demographics\\\\AGE\\\\"],
+            "authorizationFilters":[{"conceptPath":"\\\\_consents\\\\","values":["phs000001.c1"]}],
+            "phenotypicClause":{"phenotypicClauses":[
+            {"phenotypicFilterType":"FILTER","conceptPath":"\\\\demographics\\\\SEX\\\\","values":["Male"]},
+            {"phenotypicFilterType":"FILTER","conceptPath":"\\\\_topmed_consents\\\\","values":["phs000002.c2"]}],"operator":"AND"},
+            "genomicFilters":[],"expectedResultType":"DATAFRAME"},"commonAreaUUID":"common-id"}
+            """;
+        Query query = storedV3Query(ALICE_ID, stored);
+        NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("scoped").setQuery(query));
+        ObjectMapper json = new ObjectMapper();
+
+        for (String path : List.of("/dataset/named", "/dataset/named/" + saved.getUuid())) {
+            String body = mockMvc.perform(
+                get(path).header(GatewayUserResolver.HEADER_USER_ID, ALICE_ID).header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE)
+            ).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            JsonNode response = json.readTree(body);
+            JsonNode dataset = response.isArray() ? response.get(0) : response;
+            JsonNode request = json.readTree(dataset.at("/query/query").asText());
+            assertThat(body).doesNotContain("phs000001.c1", "phs000002.c2");
+            assertThat(request.at("/query/authorizationFilters")).isEmpty();
+            assertThat(request.at("/query/phenotypicClause/phenotypicClauses")).hasSize(1);
+            assertThat(request.at("/query/phenotypicClause/phenotypicClauses/0/conceptPath").asText()).isEqualTo("\\demographics\\SEX\\");
+            assertThat(request.path("commonAreaUUID").asText()).isEqualTo("common-id");
+        }
+        assertThat(json.readTree(queryRepo.findById(query.getUuid()).orElseThrow().getQuery())).isEqualTo(json.readTree(stored));
     }
 }

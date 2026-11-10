@@ -90,7 +90,14 @@ class OpenApiDocumentTest {
         OpenApiDocumentAssertions.assertResponseSchema(document, "put", "/dataset/named/{id}", "200", "NamedDatasetDto");
         OpenApiDocumentAssertions.assertNoResponseBody(document, "delete", "/dataset/named/{id}", "204");
         OpenApiDocumentAssertions
-            .assertSchemaHasFields(document, "NamedDatasetDto", "uuid", "user", "name", "query", "archived", "metadata");
+            .assertSchemaHasFields(document, "NamedDatasetDto", "uuid", "user", "name", "query", "archived", "metadata", "queries");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "LinkedQueryDto", "queryId", "sample", "resultType");
+        assertThat(document.at("/components/schemas/NamedDatasetDto/properties/queries/type").asText()).isEqualTo("array");
+        assertThat(document.at("/components/schemas/NamedDatasetDto/properties/queries/items/$ref").asText())
+            .isEqualTo("#/components/schemas/LinkedQueryDto");
+        assertThat(document.at("/components/schemas/LinkedQueryDto/properties/sample/type").asText()).isEqualTo("boolean");
+        assertThat(document.at("/paths/~1dataset~1named~1{id}/put/responses").fieldNames()).toIterable()
+            .containsExactlyInAnyOrder("200", "401", "403", "404", "409");
         OpenApiDocumentAssertions.assertSchemaHasFields(document, "NamedDatasetQueryDto", "uuid", "query", "startTime", "status");
         OpenApiDocumentAssertions.assertSchemaHasFields(document, "NamedDatasetRequestDto", "queryId", "name", "archived", "metadata");
         assertThat(document.at("/components/schemas/NamedDatasetDto/properties/query/$ref").asText())
@@ -119,7 +126,8 @@ class OpenApiDocumentTest {
     @Test
     void namedDatasetAndConfigurationModelsAreDocumented() throws Exception {
         OpenApiDocumentAssertions.assertSchemaDocumented(
-            document(), "NamedDatasetDto", "NamedDatasetQueryDto", "NamedDatasetRequestDto", "ConfigurationDto", "ConfigurationRequestDto"
+            document(), "NamedDatasetDto", "NamedDatasetQueryDto", "LinkedQueryDto", "NamedDatasetRequestDto", "ConfigurationDto",
+            "ConfigurationRequestDto"
         );
     }
 

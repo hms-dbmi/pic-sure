@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.operations.dataset;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -12,6 +13,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
  * <p>The nested {@code query} object (rather than a flat {@code queryId}) is load-bearing: the frontend's {@code mapDataset()} reads
  * {@code query.query}, {@code query.uuid}, {@code query.startTime} and {@code query.status} off it, and derives its own {@code queryId}
  * from {@code query.uuid}. Flattening it makes the Manage Datasets page render "API Error" on an otherwise-200 response.
+ *
+ * <p>{@code queries} lists every query linked to the dataset, each with its variant. The nested {@code query} stays the row
+ * {@code named_dataset.queryId} names, whichever other queries are linked.
  */
 @Schema(description = "A saved query that a user has named, with the query it points at.")
 public record NamedDatasetDto(
@@ -33,6 +37,10 @@ public record NamedDatasetDto(
     ) Boolean archived,
     @Schema(
         description = "Free-form settings the client stored with the dataset, returned unchanged. The service defines no keys of its own: the keys are whatever the client sent."
-    ) Map<String, Object> metadata
+    ) Map<String, Object> metadata,
+    @Schema(
+        description = "Every query linked to the dataset, the earliest linked first. The query the query member holds is one of them. Clients written before this member existed ignore it.",
+        requiredMode = Schema.RequiredMode.REQUIRED
+    ) List<LinkedQueryDto> queries
 ) {
 }

@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.NullNode;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.StoredQueryConsentStripper;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.QueryTranslator;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.UntranslatableQueryException;
 import edu.harvard.hms.dbmi.avillach.operations.query.Query;
@@ -36,8 +37,18 @@ public class NamedDatasetMapper {
         "variantInfoFilters", "expectedResultType"
     );
 
-    public NamedDatasetDto toDto(NamedDataset e) {
-        return new NamedDatasetDto(e.getUuid(), e.getUser(), e.getName(), toQueryDto(e.getQuery()), e.getArchived(), e.getMetadata());
+    /**
+     * Builds the public shape of a named dataset.
+     *
+     * @param e the dataset, with the query its {@code queryId} names already loaded
+     * @param queries the dataset's linked queries, in the order they are to be returned
+     * @return the dataset with its nested query and its linked queries
+     * @throws PicsureException 500 when the stored body of the nested query cannot be converted to v3
+     */
+    public NamedDatasetDto toDto(NamedDataset e, List<LinkedQueryDto> queries) {
+        return new NamedDatasetDto(
+            e.getUuid(), e.getUser(), e.getName(), toQueryDto(e.getQuery()), e.getArchived(), e.getMetadata(), List.copyOf(queries)
+        );
     }
 
     /** {@code startTime} is converted to epoch millis here -- see {@link NamedDatasetQueryDto} for why the wire type is a number. */
@@ -50,25 +61,76 @@ public class NamedDatasetMapper {
         );
     }
 
-    /** Returns a v3 request wrapper without changing the stored query. */
+    /**
+     * The variant of a stored query: whether it is a sample query, and the result type it asks for.
+     *
+     * @param sample whether the query is a sample query
+     * @param resultType the result type the query asks for, or null when its body names none
+     */
+    public record QueryVariant(boolean sample, String resultType) {
+    }
+
+    /**
+     * Reads the variant of a stored query from its body, in the v3 form {@link #toDto} returns it in. A query stored before v3 is
+     * translated first, so it has the result type the translation gives it and is never a sample.
+     *
+     * @param q the stored query
+     * @return the variant; not a sample and with no result type when the row has no body or the body cannot be converted to v3
+     */
+    public QueryVariant variantOf(Query q) {
+        String stored = q.getQuery();
+        if (stored == null || stored.isBlank()) {
+            return new QueryVariant(false, null);
+        }
+        try {
+            JsonNode query = v3Request(q, stored).get("query");
+            JsonNode resultType = query.get("expectedResultType");
+            return new QueryVariant(
+                query.path("sample").asBoolean(false), resultType != null && resultType.isTextual() ? resultType.asText() : null
+            );
+        } catch (JsonProcessingException | UntranslatableQueryException | IllegalArgumentException e) {
+            return new QueryVariant(false, null);
+        }
+    }
+
+    /**
+     * Returns a v3 request wrapper without changing the stored query. The wrapper carries no consent value: it goes through
+     * {@link StoredQueryConsentStripper} after the conversion, so a query stored before v3 loses the consent filters its translation
+     * produced. Every other member of the stored body is returned as it is.
+     */
     private static String convertQuery(Query q) {
         String stored = q.getQuery();
         if (stored == null || stored.isBlank()) {
             return stored;
         }
         try {
-            ObjectNode request = requireObject(QUERY_MAPPER.readTree(stored));
-            request.remove("resourceCredentials");
-            JsonNode body = request.has("query") ? request.get("query") : request;
-            // Some historical requests JSON-encode their inner query a second time.
-            ObjectNode query = requireObject(body.isTextual() ? QUERY_MAPPER.readTree(body.textValue()) : body);
-            ObjectNode wrapper = request.has("query") ? request : QUERY_MAPPER.createObjectNode();
-            wrapper.set("query", toV3(query, isV3(q)));
+            ObjectNode wrapper = v3Request(q, stored);
+            StoredQueryConsentStripper.strip(wrapper);
             return QUERY_MAPPER.writeValueAsString(wrapper);
         } catch (JsonProcessingException | UntranslatableQueryException | IllegalArgumentException e) {
             log.warn("Unable to convert saved query {} to v3", q.getUuid());
             throw new PicsureException(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error", "Unable to convert saved query to v3");
         }
+    }
+
+    /**
+     * Parses a stored request body into a wrapper object whose {@code query} member is the query as a v3 object. The stored
+     * {@code resourceCredentials} are dropped and the other members beside the query are kept.
+     *
+     * @param q the row the body belongs to, which decides the stored format
+     * @param stored the body of the row, not blank
+     * @return the wrapper
+     * @throws IllegalArgumentException when the body or its query is not a JSON object, or is not a query this service recognizes
+     */
+    private static ObjectNode v3Request(Query q, String stored) throws JsonProcessingException, UntranslatableQueryException {
+        ObjectNode request = requireObject(QUERY_MAPPER.readTree(stored));
+        request.remove("resourceCredentials");
+        JsonNode body = request.has("query") ? request.get("query") : request;
+        // Some historical requests JSON-encode their inner query a second time.
+        ObjectNode query = requireObject(body.isTextual() ? QUERY_MAPPER.readTree(body.textValue()) : body);
+        ObjectNode wrapper = request.has("query") ? request : QUERY_MAPPER.createObjectNode();
+        wrapper.set("query", toV3(query, isV3(q)));
+        return wrapper;
     }
 
     private static ObjectNode toV3(ObjectNode query, boolean v3) throws JsonProcessingException, UntranslatableQueryException {

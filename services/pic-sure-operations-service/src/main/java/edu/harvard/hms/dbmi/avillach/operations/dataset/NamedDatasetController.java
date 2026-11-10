@@ -28,11 +28,21 @@ import jakarta.validation.Valid;
  * an authenticated caller for all of {@code /dataset/**} (the gateway must have supplied {@code X-User-Id}); {@link NamedDatasetService}
  * then email-scopes every operation, requiring and keying on the caller's email ({@code GatewayUser#getEmail()}), never {@code userId}.
  * This controller is a thin HTTP adapter -- identity validation lives in the service.
+ *
+ * <p>The one check made on the caller's user id is in {@code PUT /dataset/named/{id}}: a query can be linked to a dataset only by the user
+ * it belongs to, and query rows record their owner by user id.
  */
 @Tag(name = "Named datasets", description = "Saved queries a user names and reuses, scoped to the caller")
 @RestController
 @RequestMapping("/dataset/named")
 public class NamedDatasetController {
+
+    static final String UPDATE_DESCRIPTION = "Replaces the name, archived state and metadata of the dataset.\n\n"
+        + "When queryId names a query the dataset does not link yet, that query is linked as well and appears in queries. The query "
+        + "must have been submitted by the caller, or be a query stored without an owner. A dataset links at most one query for each "
+        + "pair of sample and result type, so a second query of a pair it already holds is refused. Linking does not change the query "
+        + "member of the dataset, which stays the query the dataset was created from.\n\n"
+        + "When queryId names a query the dataset already links, nothing is linked.";
 
     private final NamedDatasetService service;
 
@@ -77,13 +87,18 @@ public class NamedDatasetController {
         return service.getForUser(user, id);
     }
 
-    @Operation(summary = "Rename or re-point one of the caller's named datasets")
+    @Operation(summary = "Update one of the caller's named datasets, or link another query to it", description = UPDATE_DESCRIPTION)
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The updated named dataset"),
             @ApiResponse(responseCode = "401", description = "No caller email in the request"),
+            @ApiResponse(responseCode = "403", description = "The query to link belongs to another user"),
             @ApiResponse(
                 responseCode = "404", description = "No named dataset with that id for the caller, or the new queryId matches no query"
-            ), @ApiResponse(responseCode = "409", description = "The caller already named that query")}
+            ),
+            @ApiResponse(
+                responseCode = "409",
+                description = "The dataset already links a query with the same sample flag and result type as the query to link"
+            )}
     )
     @AuditEvent(type = "ACCESS", action = "named_dataset.modify")
     @PutMapping("/{id}")
