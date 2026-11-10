@@ -55,8 +55,8 @@ public class DictionaryClient {
     }
 
     /**
-     * Searches concepts for any of several terms in one request, and asks the dictionary to say which terms match each concept and how
-     * many concepts each term matches alone.
+     * Searches concepts for any of several terms in one request, and asks the dictionary to say which terms match each concept and how many
+     * concepts each term matches alone.
      *
      * @param terms the terms, each already free of {@code |}
      * @param facets the facets to narrow by, or null for none
@@ -65,7 +65,9 @@ public class DictionaryClient {
      * @param caller the caller's headers to replay
      * @return the page of concepts with its term breakdown, or null when the response had no body
      */
-    public DictionaryPage searchConceptTerms(List<String> terms, List<FacetFilter> facets, int pageNumber, int pageSize, CallerHeaders caller) {
+    public DictionaryPage searchConceptTerms(
+        List<String> terms, List<FacetFilter> facets, int pageNumber, int pageSize, CallerHeaders caller
+    ) {
         return restClient.post().uri(CONCEPTS_PATH + "?page_number={p}&page_size={s}&term_breakdown=true", pageNumber, pageSize)
             .headers(caller::applyTo).contentType(MediaType.APPLICATION_JSON).body(DictionaryFilter.open(String.join("|", terms), facets))
             .retrieve().body(DictionaryPage.class);

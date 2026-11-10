@@ -170,3 +170,5 @@ jobs:
         run: mvn -B -pl services/picsure-dictionary,services/picsure-dictionary/aggregate,services/picsure-dictionary/dictionaryweights spotless:check
       - name: Check formatting (ai-service)
         run: mvn -B -pl services/pic-sure-ai-service spotless:check
+      - name: Check formatting (mcp)
+        run: mvn -B -pl services/pic-sure-mcp spotless:check
