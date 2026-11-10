@@ -9,6 +9,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary.DictionaryService;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.io.CsvWriter;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.AsyncResult;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.CountV3Processor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.MultiValueQueryV3Processor;
@@ -19,10 +20,12 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.MockedConstruction;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.lang.reflect.RecordComponent;
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -50,6 +53,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -271,6 +275,84 @@ class QueryV3ServiceResultMapTest {
         assertEquals(AsyncResult.Status.ERROR, rejected.getStatus());
         assertSame(first, service.getResultFor(picsureId));
         assertEquals(AsyncResult.Status.RUNNING, first.getStatus());
+        assertEquals(0, smallQueue().size());
+    }
+
+    @Test
+    void invalidResubmitOfTheQueryOfARunningJobIsRejectedAndNotGivenThatJob() throws Exception {
+        UUID picsureId = UUID.randomUUID();
+        AsyncResult first = service.runQuery(query(picsureId, consents("phs1.c1")));
+        assertTrue(workerStarted.await(WAIT_SECONDS, TimeUnit.SECONDS));
+        doThrow(new IllegalArgumentException("invalid")).when(queryValidator).validate(any());
+
+        AsyncResult rejected = service.runQuery(query(picsureId, consents("phs1.c1")));
+
+        assertNotSame(first, rejected);
+        assertEquals(AsyncResult.Status.ERROR, rejected.getStatus());
+        assertSame(first, service.getResultFor(picsureId));
+        assertEquals(AsyncResult.Status.RUNNING, first.getStatus());
+    }
+
+    @Test
+    void invalidSubmitClosesTheWriterOfTheJobItDiscards() throws Exception {
+        doThrow(new IllegalArgumentException("invalid")).when(queryValidator).validate(any());
+        try (MockedConstruction<CsvWriter> writers = mockConstruction(CsvWriter.class, QueryV3ServiceResultMapTest::writesToItsFile)) {
+            AsyncResult rejected = service.runQuery(query(UUID.randomUUID(), consents("phs1.c1")));
+
+            assertEquals(AsyncResult.Status.ERROR, rejected.getStatus());
+            assertEquals(1, writers.constructed().size());
+            verify(writers.constructed().get(0)).close();
+            assertFalse(Files.exists(rejected.getTempFilePath()));
+        }
+    }
+
+    @Test
+    void submitWhoseJobCannotBeBuiltClosesTheWriterAndDeletesTheTemporaryFile() {
+        UUID picsureId = UUID.randomUUID();
+        when(multiValueProcessor.getHeaderRow(any())).thenThrow(new IllegalStateException("no header"));
+        try (MockedConstruction<CsvWriter> writers = mockConstruction(CsvWriter.class, QueryV3ServiceResultMapTest::writesToItsFile)) {
+            assertThrows(IllegalStateException.class, () -> service.runQuery(query(picsureId, consents("phs1.c1"))));
+
+            assertEquals(1, writers.constructed().size());
+            CsvWriter writer = writers.constructed().get(0);
+            verify(writer).close();
+            assertTrue(writer.getFile().getName().startsWith("result-"));
+            assertFalse(writer.getFile().exists());
+        }
+        assertNull(service.getResultFor(picsureId));
+    }
+
+    @Test
+    void submitWhoseJobCannotBeBuiltThrowsTheBuildFailureWhenTheWriterAlsoFailsToClose() {
+        IllegalStateException buildFailure = new IllegalStateException("no header");
+        when(multiValueProcessor.getHeaderRow(any())).thenThrow(buildFailure);
+        try (MockedConstruction<CsvWriter> writers = mockConstruction(CsvWriter.class, (writer, context) -> {
+            writesToItsFile(writer, context);
+            doThrow(new UncheckedIOException(new IOException("close failed"))).when(writer).close();
+        })) {
+            IllegalStateException thrown =
+                assertThrows(IllegalStateException.class, () -> service.runQuery(query(UUID.randomUUID(), consents("phs1.c1"))));
+
+            assertSame(buildFailure, thrown);
+            assertFalse(writers.constructed().get(0).getFile().exists());
+        }
+    }
+
+    @Test
+    void submitWhoseEnqueueFailsLeavesTheStoredJobInError() {
+        UUID picsureId = UUID.randomUUID();
+        ExecutorService realExecutor = smallExecutor();
+        ExecutorService failingExecutor = mock(ExecutorService.class);
+        doThrow(new IllegalStateException("queue failed")).when(failingExecutor).execute(any());
+        ReflectionTestUtils.setField(service, "smallTaskExecutor", failingExecutor);
+        try {
+            assertThrows(IllegalStateException.class, () -> service.runQuery(query(picsureId, consents("phs1.c1"))));
+        } finally {
+            ReflectionTestUtils.setField(service, "smallTaskExecutor", realExecutor);
+        }
+
+        AsyncResult stored = service.getResultFor(picsureId);
+        assertEquals(AsyncResult.Status.ERROR, stored.getStatus());
         assertEquals(0, smallQueue().size());
     }
 
@@ -555,6 +637,11 @@ class QueryV3ServiceResultMapTest {
     @SuppressWarnings("unchecked")
     private BlockingQueue<Runnable> smallQueue() {
         return (BlockingQueue<Runnable>) ReflectionTestUtils.getField(service, "smallTaskExecutionQueue");
+    }
+
+    /** Makes a constructed writer report the temporary file it was constructed with, as the real writer does. */
+    private static void writesToItsFile(CsvWriter writer, MockedConstruction.Context context) {
+        when(writer.getFile()).thenReturn((File) context.arguments().get(0));
     }
 
     private static Set<String> avroTempFiles() {

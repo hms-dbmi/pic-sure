@@ -101,8 +101,22 @@ public class QueryV3Service {
      * @throws IOException when the temporary result file cannot be created
      */
     public AsyncResult runQuery(Query query) throws IOException {
+        return runQuery(query, resultKeyFor(query));
+    }
+
+    /**
+     * Submits a query for asynchronous execution under a key the caller of this method chose, with everything else as
+     * {@link #runQuery(Query)} describes it. The write endpoint passes {@link #contentKeyFor(Query)}, so the {@code picsureId} of its body
+     * cannot name the key of another job.
+     *
+     * @param query the query to run
+     * @param resultKey the key the job is stored under
+     * @return the job stored under the key with its queue depth set, or an unstored job in {@code ERROR} for a rejected query
+     * @throws IOException when the temporary result file cannot be created
+     */
+    public AsyncResult runQuery(Query query, UUID resultKey) throws IOException {
         HpdsV3Processor processor = processorFor(query);
-        String queryId = resultKeyFor(query).toString();
+        String queryId = resultKey.toString();
 
         try {
             queryValidator.validate(query);
@@ -148,7 +162,7 @@ public class QueryV3Service {
 
     /**
      * Builds a pending job with its own temporary result file and its executor already chosen. The job is neither stored nor enqueued. When
-     * the build fails after the file was created, the file is deleted.
+     * the build fails after the file was created, the writer that holds the file open is closed and the file is deleted.
      *
      * @param query the submitted query
      * @param processor the processor for the query's result type
@@ -159,14 +173,34 @@ public class QueryV3Service {
     private AsyncResult newResult(Query query, HpdsV3Processor processor, String queryId) throws IOException {
         boolean pfb = ResultType.DATAFRAME_PFB.equals(query.expectedResultType());
         File file = File.createTempFile("result-" + System.nanoTime(), pfb ? ".avro" : ".sstmp");
+        ResultWriter writer = null;
         try {
-            ResultWriter writer = pfb ? new PfbWriter(file, queryId, dictionaryService) : new CsvWriter(file);
+            writer = pfb ? new PfbWriter(file, queryId, dictionaryService) : new CsvWriter(file);
             return new AsyncResult(query.generateId(), processor, writer).setStatus(AsyncResult.Status.PENDING)
                 .setQueuedTime(System.currentTimeMillis()).setId(queryId).setLoggingClient(loggingClient)
                 .setJobQueue(runsOnSmallExecutor(query) ? smallTaskExecutor : largeTaskExecutor);
         } catch (RuntimeException e) {
+            closeAfterFailedBuild(writer, e);
             Files.deleteIfExists(file.toPath());
             throw e;
+        }
+    }
+
+    /**
+     * Closes the writer of a job whose build failed, so its temporary file is not left open. A failure to close is attached to the build
+     * failure as a suppressed exception and never replaces it.
+     *
+     * @param writer the writer the failed build opened, or null when the build failed before it opened one
+     * @param buildFailure the exception the build failed with
+     */
+    private static void closeAfterFailedBuild(ResultWriter writer, RuntimeException buildFailure) {
+        if (writer == null) {
+            return;
+        }
+        try {
+            writer.close();
+        } catch (RuntimeException closeFailure) {
+            buildFailure.addSuppressed(closeFailure);
         }
     }
 
@@ -323,7 +357,19 @@ public class QueryV3Service {
      * @return the result key
      */
     public static UUID resultKeyFor(Query query) {
-        return query.picsureId() != null ? query.picsureId() : UUIDv5.UUIDFromString(query.toString());
+        return query.picsureId() != null ? query.picsureId() : contentKeyFor(query);
+    }
+
+    /**
+     * Returns the UUIDv5 hash of a query's content with its {@code picsureId} left out. Two queries that differ only in {@code picsureId}
+     * share this key, so the value a caller puts there cannot choose it. For a query without a {@code picsureId} it is the same key as
+     * {@link #resultKeyFor(Query)}.
+     *
+     * @param query the query
+     * @return the content key
+     */
+    public static UUID contentKeyFor(Query query) {
+        return UUIDv5.UUIDFromString(query.setPicsureId(null).toString());
     }
 
     public AsyncResult getResultFor(UUID queryId) {

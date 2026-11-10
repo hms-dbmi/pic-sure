@@ -213,7 +213,7 @@ public class PicSureV3Service {
         }
         AsyncResult result;
         try {
-            result = queryService.runQuery(query);
+            result = queryService.runQuery(query, QueryV3Service.contentKeyFor(query));
             while (AsyncResult.Status.RUNNING.equals(result.getStatus()) || AsyncResult.Status.PENDING.equals(result.getStatus())) {
                 Thread.sleep(10000); // Yea, this is not restful. Sorry.
             }

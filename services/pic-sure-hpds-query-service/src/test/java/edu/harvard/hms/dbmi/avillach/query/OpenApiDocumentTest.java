@@ -175,8 +175,23 @@ class OpenApiDocumentTest {
         );
         assertThat(operation(document, "get", STATUS).path("description").asText())
             .contains("| `QUEUED` |", "| `PENDING` |", "| `AVAILABLE` |", "| `ERROR` |", "Step 2");
-        assertThat(operation(document, "get", RESULT).path("description").asText()).contains("Step 3", "answers 400", "DATAFRAME_PFB");
-        assertThat(operation(document, "get", SIGNED_URL).path("description").asText()).contains("`signedUrl`", "answers 400");
+        assertThat(operation(document, "get", RESULT).path("description").asText())
+            .contains("Step 3", "still queued or running, this answers 409", "failed, it answers 400", "DATAFRAME_PFB");
+        assertThat(operation(document, "get", SIGNED_URL).path("description").asText())
+            .contains("`signedUrl`", "still queued or running, this answers 409", "failed, it answers 400");
+    }
+
+    @Test
+    void resultAndSignedUrlDocumentNotReadyUnder409AndAFailedQueryUnder400() throws Exception {
+        JsonNode document = document();
+
+        for (String path : List.of(RESULT, SIGNED_URL)) {
+            JsonNode responses = operation(document, "get", path).path("responses");
+            assertThat(responses.path("409").path("description").asText()).as("GET %s 409", path).contains("still queued or running");
+            assertThat(responses.path("400").path("description").asText()).as("GET %s 400", path).contains("a query that failed")
+                .doesNotContain("not ready");
+        }
+        assertThat(operation(document, "get", STATUS).path("responses").has("409")).isFalse();
     }
 
     @Test

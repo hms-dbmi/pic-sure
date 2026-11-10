@@ -44,7 +44,7 @@ public class FileSharingV3Service {
     public boolean createPhenotypicData(Query query, AsyncResult result) {
         boolean success = createAndWriteData(query, result, "phenotypic_data.csv");
         if (success) {
-            sendFileWrittenEvent(result.getId(), "phenotypic");
+            sendFileWrittenEvent(QueryV3Service.resultKeyFor(query).toString(), "phenotypic");
         }
         return success;
     }
@@ -60,7 +60,7 @@ public class FileSharingV3Service {
     public boolean createPatientList(Query query, AsyncResult result) {
         boolean success = createAndWriteData(query, result, "patients.txt");
         if (success) {
-            sendFileWrittenEvent(result.getId(), "patients");
+            sendFileWrittenEvent(QueryV3Service.resultKeyFor(query).toString(), "patients");
         }
         return success;
     }

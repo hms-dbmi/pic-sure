@@ -8,6 +8,7 @@ import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -42,10 +43,10 @@ import com.github.tomakehurst.wiremock.client.WireMock;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 
 /**
- * Reproduces every 403, 405, 502, and 504 the OpenAPI document declares, one case per endpoint, through the real controllers, services, and
- * HTTP clients. A single WireMock server stands in for HPDS ({@code /PIC-SURE}), the aggregate open backend ({@code /OPEN}), PSAMA's
- * consent lookup, and operations-service's internal query store, so each status comes from the production throw site rather than a mocked
- * bean. The 503 cases need an unconfigured backend and live in {@link UnconfiguredBackendResponsesTest}.
+ * Reproduces every 403, 405, 409, 502, and 504 the OpenAPI document declares, one case per endpoint, through the real controllers,
+ * services, and HTTP clients. A single WireMock server stands in for HPDS ({@code /PIC-SURE}), the aggregate open backend ({@code /OPEN}),
+ * PSAMA's consent lookup, and operations-service's internal query store, so each status comes from the production throw site rather than a
+ * mocked bean. The 503 cases need an unconfigured backend and live in {@link UnconfiguredBackendResponsesTest}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
@@ -163,6 +164,27 @@ class DocumentedErrorResponsesTest {
 
         mockMvc.perform(request.build(storedId)).andExpect(status().isBadGateway())
             .andExpect(jsonPath("$.errorType").value("upstream_unavailable"));
+    }
+
+    /** Endpoints that ask HPDS for the result of a stored query, where HPDS answers 409 while the job is still queued or running. */
+    static Stream<Arguments> resultReads() {
+        return Stream.of(
+            endpoint("result", id -> authorized(get("/hpds/auth/query/{id}/result", id))),
+            endpoint("signed-url", id -> authorized(get("/hpds/auth/query/{id}/signed-url", id)))
+        );
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("resultReads")
+    void hpdsResultNotReadyIs409(String name, RequestFor request) throws Exception {
+        downstream.stubFor(
+            WireMock.post(urlPathMatching("/PIC-SURE/.*query/rr-1/(result|signed-url)"))
+                .willReturn(aResponse().withStatus(409).withHeader("Content-Type", "text/plain").withBody("Status : RUNNING"))
+        );
+
+        mockMvc.perform(request.build(storedId)).andExpect(status().isConflict())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON)).andExpect(jsonPath("$.errorType").value("conflict"))
+            .andExpect(jsonPath("$.message").value("Status : RUNNING"));
     }
 
     /** The obfuscated sync endpoints call the open backend through {@code AggregateBackendClient}, not {@code ResourceWebClient}. */

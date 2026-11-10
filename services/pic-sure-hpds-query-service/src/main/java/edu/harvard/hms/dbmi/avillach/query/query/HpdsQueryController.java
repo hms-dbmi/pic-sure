@@ -93,7 +93,8 @@ public class HpdsQueryController {
 
     private static final String RESULT_DESCRIPTION = """
         Step 3 of collecting an asynchronous query: download the result once `GET /hpds/auth/query/{id}/status` reports \
-        `AVAILABLE`. Before that, this answers 400. `{id}` is the `picsureResultId` that `POST /hpds/auth/query` returned.
+        `AVAILABLE`. While the query is still queued or running, this answers 409. For a query that failed, it answers 400. \
+        `{id}` is the `picsureResultId` that `POST /hpds/auth/query` returned.
 
         | Result type | Body |
         |---|---|
@@ -108,7 +109,7 @@ public class HpdsQueryController {
     private static final String SIGNED_URL_DESCRIPTION = """
         An alternative to step 3 of collecting an asynchronous query. Once `GET /hpds/auth/query/{id}/status` reports \
         `AVAILABLE`, this copies the result to the deployment's storage bucket and returns a pre-signed download link in \
-        `signedUrl`. Before that, this answers 400.
+        `signedUrl`. While the query is still queued or running, this answers 409. For a query that failed, it answers 400.
 
         Download the link with any HTTP client and without the PIC-SURE token: the link carries its own authorization, and \
         storage rejects a request that sends both.
@@ -128,6 +129,9 @@ public class HpdsQueryController {
 
     private static final String METHOD_NOT_ALLOWED =
         "The request used a method this endpoint does not support, such as POST. The Allow header names GET.";
+
+    private static final String RESULT_NOT_READY =
+        "The query is still queued or running, so it has no result yet. Poll the status and ask again once it reports AVAILABLE.";
 
     private static final String COUNT_EXAMPLE = "1234";
 
@@ -332,10 +336,11 @@ public class HpdsQueryController {
                         description = "The CSV of a DATAFRAME or DATAFRAME_TIMESERIES query: a header row, then one row per patient."
                     )
                 )}
-        ), @ApiResponse(responseCode = "400", description = "Unknown backend or a result that is not ready yet."),
+        ), @ApiResponse(responseCode = "400", description = "Unknown backend, or a query that failed and has no result."),
             @ApiResponse(responseCode = "403", description = "Consent no longer covers this result."),
             @ApiResponse(responseCode = "404", description = "Unknown query id."),
             @ApiResponse(responseCode = "405", description = METHOD_NOT_ALLOWED),
+            @ApiResponse(responseCode = "409", description = RESULT_NOT_READY),
             @ApiResponse(responseCode = "422", description = "Query stored before v3 cannot be converted to v3."),
             @ApiResponse(responseCode = "502", description = "Consent lookup, query lookup, or HPDS call failed."),
             @ApiResponse(responseCode = "503", description = "Backend not configured."),
@@ -353,10 +358,11 @@ public class HpdsQueryController {
     @Operation(summary = "A signed URL for a completed query's result", description = SIGNED_URL_DESCRIPTION)
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The signed URL for the completed query's result."),
-            @ApiResponse(responseCode = "400", description = "Unknown backend or a result that is not ready yet."),
+            @ApiResponse(responseCode = "400", description = "Unknown backend, or a query that failed and has no result."),
             @ApiResponse(responseCode = "403", description = "Consent no longer covers this result."),
             @ApiResponse(responseCode = "404", description = "Unknown query id."),
             @ApiResponse(responseCode = "405", description = METHOD_NOT_ALLOWED),
+            @ApiResponse(responseCode = "409", description = RESULT_NOT_READY),
             @ApiResponse(responseCode = "422", description = "Query stored before v3 cannot be converted to v3."),
             @ApiResponse(responseCode = "502", description = "Consent lookup, query lookup, or HPDS call failed."),
             @ApiResponse(responseCode = "503", description = "Backend not configured."),
