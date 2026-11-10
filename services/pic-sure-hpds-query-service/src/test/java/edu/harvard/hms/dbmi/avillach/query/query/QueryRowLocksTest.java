@@ -136,6 +136,28 @@ class QueryRowLocksTest {
     }
 
     @Test
+    void aWaitingThreadGetsTheLockWhenTheWorkOfItsHolderThrows() throws Exception {
+        CountDownLatch holderIsInside = new CountDownLatch(1);
+        CountDownLatch holderMayFail = new CountDownLatch(1);
+        FutureTask<String> holder = start(new FutureTask<>(() -> locks.withLock(ROW, () -> {
+            holderIsInside.countDown();
+            await(holderMayFail);
+            throw new IllegalStateException("the work failed");
+        })));
+        await(holderIsInside);
+        FutureTask<String> waiter = new FutureTask<>(() -> locks.withLock(ROW, () -> "entered"));
+        Thread waiterThread = new Thread(waiter);
+        waiterThread.start();
+        awaitParked(waiterThread);
+
+        holderMayFail.countDown();
+
+        assertThatThrownBy(() -> resultOf(holder)).hasRootCauseInstanceOf(IllegalStateException.class);
+        assertThat(resultOf(waiter)).isEqualTo("entered");
+        assertThat(locks.rowsInUse()).isZero();
+    }
+
+    @Test
     void aWaitThatExpiresIsA503ThatNamesNoRow() throws Exception {
         QueryRowLocks impatient = locksWaiting(0);
         CountDownLatch holderIsInside = new CountDownLatch(1);
