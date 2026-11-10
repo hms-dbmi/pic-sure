@@ -221,7 +221,7 @@ class ToolUseLoopService implements ChatOrchestrator {
         state.maxFilters = maxFilters;
         state.currentSearch = ChatStateValidator.searchText(request.search());
         state.asksToSelect = ProposalRules.asksToSelect(request.message());
-        // Before the request's own state, as the provenance follow-up in TRACKER.md's conversation-history entry has it.
+        // Before the request's own state, as the provenance.
         EarlierTurns.learnInto(state, earlier);
         // Only the modeled fields, the ones CurrentState shows the model: a path in authorizationFilters was never shown to it.
         state.queryLocked = currentQuery != null && currentQuery.exceedsSizeLimit(maxFilters);
