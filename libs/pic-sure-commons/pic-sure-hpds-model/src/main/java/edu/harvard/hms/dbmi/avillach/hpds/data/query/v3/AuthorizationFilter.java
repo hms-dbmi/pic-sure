@@ -20,4 +20,17 @@ public record AuthorizationFilter(
      * the caller may read, one value per group, for example {@code phs000007.c1}.
      */
     public static final String CONSENTS_CONCEPT_PATH = "\\_consents\\";
+
+    /** The concept path that holds each participant's consent groups for genomic data. */
+    public static final String TOPMED_CONSENTS_CONCEPT_PATH = "\\_topmed_consents\\";
+
+    /** The concept path that holds each participant's consent groups for the harmonized data set. */
+    public static final String HARMONIZED_CONSENT_CONCEPT_PATH = "\\_harmonized_consent\\";
+
+    /**
+     * Every concept path the server writes an authorization filter on. A filter on one of these paths lists consent groups, so its values
+     * are consent values. {@code \_parent_consents\} is not one of them.
+     */
+    public static final Set<String> CONSENT_CONCEPT_PATHS =
+        Set.of(CONSENTS_CONCEPT_PATH, TOPMED_CONSENTS_CONCEPT_PATH, HARMONIZED_CONSENT_CONCEPT_PATH);
 }

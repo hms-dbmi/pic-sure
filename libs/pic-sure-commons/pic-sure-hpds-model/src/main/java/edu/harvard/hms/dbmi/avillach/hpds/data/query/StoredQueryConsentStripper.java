@@ -1,4 +1,4 @@
-package edu.harvard.hms.dbmi.avillach.query.consent;
+package edu.harvard.hms.dbmi.avillach.hpds.data.query;
 
 import java.util.List;
 
@@ -8,6 +8,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.AuthorizationFilter;
+
 /**
  * Removes consent values from a stored query request body, so that the body can be shown to a caller other than the one the query ran for.
  *
@@ -15,14 +17,14 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * the member is JSON text that holds a JSON object, that object is the query: the member stays text, and the text is rewritten only when a
  * rule below changed the object.
  *
- * <p>The consent concept paths are the ones in {@link ConsentFilterBuilder#CONSENT_PATHS}. The rules are the same whatever format the query
- * was stored in: <ul> <li>{@code authorizationFilters}, when the query has the member, becomes an empty list.</li> <li>Every filter in
- * {@code phenotypicClause} whose {@code conceptPath} is a consent concept path is removed, at any depth. A group that loses its last clause
- * this way is removed as well, and so is the group above it when that was its last clause. When nothing is left, {@code phenotypicClause}
- * becomes null. A group that was stored with no clauses is kept.</li> <li>Every entry of {@code categoryFilters} and
- * {@code numericFilters}, the filter maps of a query stored before v3, whose key is a consent concept path is removed.</li> </ul> Nothing
- * else changes. {@code select}, and the field lists of a query stored before v3, keep a consent concept path they name, because a path
- * names a column and carries no value. A filter on any other path stays, {@code \_parent_consents\} included.
+ * <p>The consent concept paths are the ones in {@link AuthorizationFilter#CONSENT_CONCEPT_PATHS}. The rules are the same whatever format
+ * the query was stored in: <ul> <li>{@code authorizationFilters}, when the query has the member, becomes an empty list.</li> <li>Every
+ * filter in {@code phenotypicClause} whose {@code conceptPath} is a consent concept path is removed, at any depth. A group that loses its
+ * last clause this way is removed as well, and so is the group above it when that was its last clause. When nothing is left,
+ * {@code phenotypicClause} becomes null. A group that was stored with no clauses is kept.</li> <li>Every entry of {@code categoryFilters}
+ * and {@code numericFilters}, the filter maps of a query stored before v3, whose key is a consent concept path is removed.</li> </ul>
+ * Nothing else changes. {@code select}, and the field lists of a query stored before v3, keep a consent concept path they name, because a
+ * path names a column and carries no value. A filter on any other path stays, {@code \_parent_consents\} included.
  *
  * <p>A body that is not a JSON object, and a body whose {@code query} member is neither an object nor text that holds one, has no query
  * these rules can read and is left as it is.
@@ -81,7 +83,7 @@ public final class StoredQueryConsentStripper {
         }
         for (String filterMap : PRE_V3_FILTER_MAPS) {
             if (query.get(filterMap) instanceof ObjectNode filters) {
-                filters.remove(ConsentFilterBuilder.CONSENT_PATHS);
+                filters.remove(AuthorizationFilter.CONSENT_CONCEPT_PATHS);
             }
         }
         if (pruneConsentFilters(query.get(PHENOTYPIC_CLAUSE))) {
@@ -115,6 +117,6 @@ public final class StoredQueryConsentStripper {
 
     private static boolean isConsentFilter(ObjectNode clause) {
         JsonNode conceptPath = clause.get(CONCEPT_PATH);
-        return conceptPath != null && conceptPath.isTextual() && ConsentFilterBuilder.CONSENT_PATHS.contains(conceptPath.asText());
+        return conceptPath != null && conceptPath.isTextual() && AuthorizationFilter.CONSENT_CONCEPT_PATHS.contains(conceptPath.asText());
     }
 }

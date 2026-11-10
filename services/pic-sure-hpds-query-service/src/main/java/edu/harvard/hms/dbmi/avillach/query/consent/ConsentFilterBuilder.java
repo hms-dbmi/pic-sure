@@ -16,15 +16,9 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 public class ConsentFilterBuilder {
 
     static final String CONSENT_PATH = AuthorizationFilter.CONSENTS_CONCEPT_PATH;
-    static final String GENOMIC_CONSENT_PATH = "\\_topmed_consents\\";
-    static final String HARMONIZED_CONSENT_PATH = "\\_harmonized_consent\\";
+    static final String GENOMIC_CONSENT_PATH = AuthorizationFilter.TOPMED_CONSENTS_CONCEPT_PATH;
+    static final String HARMONIZED_CONSENT_PATH = AuthorizationFilter.HARMONIZED_CONSENT_CONCEPT_PATH;
     private static final String HARMONIZED_DATASET_PREFIX = "\\DCC Harmonized data set\\";
-
-    /**
-     * Every concept path {@link #apply} can write an authorization filter on. A filter on one of these paths lists consent groups, so its
-     * values are consent values.
-     */
-    static final Set<String> CONSENT_PATHS = Set.of(CONSENT_PATH, GENOMIC_CONSENT_PATH, HARMONIZED_CONSENT_PATH);
 
     public Query apply(Query query, Map<String, Set<String>> consents) {
         List<AuthorizationFilter> filters = new ArrayList<>();
