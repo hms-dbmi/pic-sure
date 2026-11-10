@@ -5,6 +5,7 @@ import edu.harvard.dbmi.avillach.util.UUIDv5;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.AuthorizationFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary.DictionaryService;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.AsyncResult;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.CountV3Processor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.MultiValueQueryV3Processor;
@@ -17,8 +18,12 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -31,9 +36,11 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
@@ -52,6 +59,7 @@ class QueryV3ServiceResultMapTest {
     private final CountDownLatch releaseWorker = new CountDownLatch(1);
 
     private MultiValueQueryV3Processor multiValueProcessor;
+    private DictionaryService dictionaryService;
     private QueryValidator queryValidator;
     private QueryV3Service service;
 
@@ -65,9 +73,10 @@ class QueryV3ServiceResultMapTest {
             return null;
         }).when(multiValueProcessor).runQuery(any(), any());
         queryValidator = mock(QueryValidator.class);
+        dictionaryService = mock(DictionaryService.class);
         service = new QueryV3Service(
-            mock(TimeseriesV3Processor.class), mock(CountV3Processor.class), multiValueProcessor, null, queryValidator, SMALL_JOB_LIMIT, 1,
-            1, mock(PatientV3Processor.class), mock(LoggingClient.class)
+            mock(TimeseriesV3Processor.class), mock(CountV3Processor.class), multiValueProcessor, dictionaryService, queryValidator,
+            SMALL_JOB_LIMIT, 1, 1, mock(PatientV3Processor.class), mock(LoggingClient.class)
         );
     }
 
@@ -165,14 +174,143 @@ class QueryV3ServiceResultMapTest {
     @Test
     void submitForAnErroredIdReplacesIt() throws Exception {
         UUID picsureId = UUID.randomUUID();
-        doThrow(new IllegalArgumentException("invalid")).doNothing().when(queryValidator).validate(any());
+        doThrow(new IllegalStateException("processing failed")).doNothing().when(multiValueProcessor).runQuery(any(), any());
         AsyncResult first = service.runQuery(query(picsureId, consents("phs1.c1")));
-        assertEquals(AsyncResult.Status.ERROR, first.getStatus());
+        awaitStatus(first, AsyncResult.Status.ERROR);
 
         AsyncResult second = service.runQuery(query(picsureId, consents("phs1.c1")));
 
         assertNotSame(first, second);
         assertSame(second, service.getResultFor(picsureId));
+        finishAllJobs();
+        verify(multiValueProcessor, times(2)).runQuery(any(), any());
+    }
+
+    @Test
+    void submitForAJobInRetryReturnsTheSameJob() throws Exception {
+        UUID picsureId = UUID.randomUUID();
+        AsyncResult first = service.runQuery(query(picsureId, consents("phs1.c1")));
+        assertTrue(workerStarted.await(WAIT_SECONDS, TimeUnit.SECONDS));
+        first.setStatus(AsyncResult.Status.RETRY);
+
+        AsyncResult second = service.runQuery(query(picsureId, consents("phs1.c1")));
+
+        assertSame(first, second);
+        assertSame(first, service.getResultFor(picsureId));
+        assertEquals(0, smallQueue().size());
+    }
+
+    @Test
+    void validSubmitRunsAfterASubmitThatFailedValidationWithAnUnexpectedException() throws Exception {
+        releaseWorker.countDown();
+        UUID picsureId = UUID.randomUUID();
+        doThrow(new NullPointerException("filter has no type")).doNothing().when(queryValidator).validate(any());
+        assertThrows(NullPointerException.class, () -> service.runQuery(query(picsureId, consents("phs1.c1"))));
+
+        AsyncResult second = service.runQuery(query(picsureId, consents("phs1.c1")));
+
+        awaitStatus(second, AsyncResult.Status.SUCCESS);
+        assertSame(second, service.getResultFor(picsureId));
+        verify(multiValueProcessor, times(1)).runQuery(any(), any());
+    }
+
+    @Test
+    void submitThatFailsValidationWithAnUnexpectedExceptionStoresNothing() {
+        UUID picsureId = UUID.randomUUID();
+        doThrow(new NullPointerException("filter has no type")).when(queryValidator).validate(any());
+
+        assertThrows(NullPointerException.class, () -> service.runQuery(query(picsureId, consents("phs1.c1"))));
+
+        assertNull(service.getResultFor(picsureId));
+        assertNull(service.getStatusFor(picsureId.toString()));
+    }
+
+    @Test
+    void invalidSubmitForAnUnusedIdReturnsAnErrorAndStoresNothing() throws Exception {
+        UUID picsureId = UUID.randomUUID();
+        doThrow(new IllegalArgumentException("invalid")).when(queryValidator).validate(any());
+
+        AsyncResult rejected = service.runQuery(query(picsureId, consents("phs1.c1")));
+
+        assertEquals(AsyncResult.Status.ERROR, rejected.getStatus());
+        assertEquals(picsureId.toString(), rejected.getId());
+        assertNull(service.getResultFor(picsureId));
+        assertFalse(Files.exists(rejected.getTempFilePath()));
+        assertEquals(0, smallQueue().size());
+    }
+
+    @Test
+    void invalidResubmitKeepsTheFinishedResult() throws Exception {
+        releaseWorker.countDown();
+        UUID picsureId = UUID.randomUUID();
+        AsyncResult first = service.runQuery(query(picsureId, consents("phs1.c1")));
+        awaitStatus(first, AsyncResult.Status.SUCCESS);
+        doThrow(new IllegalArgumentException("invalid")).when(queryValidator).validate(any());
+
+        AsyncResult rejected = service.runQuery(query(picsureId, consents("phs1.c1")));
+
+        assertEquals(AsyncResult.Status.ERROR, rejected.getStatus());
+        assertSame(first, service.getResultFor(picsureId));
+        assertEquals(AsyncResult.Status.SUCCESS, first.getStatus());
+        assertTrue(Files.exists(first.getTempFilePath()));
+    }
+
+    @Test
+    void invalidResubmitKeepsTheRunningJob() throws Exception {
+        UUID picsureId = UUID.randomUUID();
+        AsyncResult first = service.runQuery(query(picsureId, consents("phs1.c1")));
+        assertTrue(workerStarted.await(WAIT_SECONDS, TimeUnit.SECONDS));
+        doThrow(new IllegalArgumentException("invalid")).when(queryValidator).validate(any());
+
+        AsyncResult rejected = service.runQuery(query(picsureId, consents("phs2.c1")));
+
+        assertEquals(AsyncResult.Status.ERROR, rejected.getStatus());
+        assertSame(first, service.getResultFor(picsureId));
+        assertEquals(AsyncResult.Status.RUNNING, first.getStatus());
+        assertEquals(0, smallQueue().size());
+    }
+
+    @Test
+    void submitThatTheExecutorRejectsLeavesAnErroredJob() throws Exception {
+        UUID picsureId = UUID.randomUUID();
+        smallExecutor().shutdown();
+
+        AsyncResult result = service.runQuery(query(picsureId, consents("phs1.c1")));
+
+        assertEquals(AsyncResult.Status.ERROR, result.getStatus());
+        assertSame(result, service.getResultFor(picsureId));
+    }
+
+    @Test
+    void slowJobConstructionDoesNotBlockAnotherSubmitOfTheSameId() throws Exception {
+        UUID picsureId = UUID.randomUUID();
+        Set<String> avroFilesBefore = avroTempFiles();
+        CountDownLatch dictionaryCalled = new CountDownLatch(1);
+        CountDownLatch releaseDictionary = new CountDownLatch(1);
+        when(dictionaryService.getConcepts(any())).thenAnswer(invocation -> {
+            dictionaryCalled.countDown();
+            releaseDictionary.await(WAIT_SECONDS, TimeUnit.SECONDS);
+            return List.of();
+        }).thenReturn(List.of());
+        ExecutorService callers = Executors.newFixedThreadPool(2);
+        try {
+            Future<AsyncResult> slow = callers.submit(() -> service.runQuery(pfbQuery(picsureId)));
+            assertTrue(dictionaryCalled.await(WAIT_SECONDS, TimeUnit.SECONDS));
+
+            Future<AsyncResult> fast = callers.submit(() -> service.runQuery(pfbQuery(picsureId)));
+            AsyncResult stored = fast.get(5, TimeUnit.SECONDS);
+            assertFalse(slow.isDone());
+            releaseDictionary.countDown();
+
+            assertSame(stored, slow.get(WAIT_SECONDS, TimeUnit.SECONDS));
+            assertSame(stored, service.getResultFor(picsureId));
+            Set<String> avroFilesCreated = avroTempFiles();
+            avroFilesCreated.removeAll(avroFilesBefore);
+            assertEquals(Set.of(stored.getTempFilePath().getFileName().toString()), avroFilesCreated);
+        } finally {
+            releaseDictionary.countDown();
+            callers.shutdownNow();
+        }
         finishAllJobs();
         verify(multiValueProcessor, times(1)).runQuery(any(), any());
     }
@@ -278,6 +416,16 @@ class QueryV3ServiceResultMapTest {
     @SuppressWarnings("unchecked")
     private BlockingQueue<Runnable> smallQueue() {
         return (BlockingQueue<Runnable>) ReflectionTestUtils.getField(service, "smallTaskExecutionQueue");
+    }
+
+    private static Set<String> avroTempFiles() {
+        String[] names =
+            new File(System.getProperty("java.io.tmpdir")).list((dir, name) -> name.startsWith("result-") && name.endsWith(".avro"));
+        return new HashSet<>(Arrays.asList(names == null ? new String[0] : names));
+    }
+
+    private static Query pfbQuery(UUID picsureId) {
+        return new Query(List.of("\\demographics\\AGE\\"), consents("phs1.c1"), null, List.of(), ResultType.DATAFRAME_PFB, picsureId, null);
     }
 
     private static List<AuthorizationFilter> consents(String... values) {

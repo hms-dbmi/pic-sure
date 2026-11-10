@@ -18,10 +18,9 @@ import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 public class QueryV3Service {
@@ -84,115 +83,154 @@ public class QueryV3Service {
     /**
      * Submits a query for asynchronous execution under the key from {@link #resultKeyFor(Query)}.
      *
-     * <p>A job that is still queued or running under that key is returned as it is, and nothing new is enqueued, when it was built with the
-     * same authorization filters as this submit. In every other case a new job takes over the key and is enqueued: the key is unused, the
-     * stored job finished or failed, or the stored job was built with different authorization filters. A replaced job that is still queued
-     * or running is not cancelled. It runs to its end, but no lookup by key reaches it again.
+     * <p>The query is validated before the result map is read or changed. A query the validator rejects with an
+     * {@link IllegalArgumentException} gets a job in {@code ERROR} that is returned but never stored, so whatever the key held stays as it
+     * was. Any other validation failure is thrown to the caller, and also leaves the key untouched.
+     *
+     * <p>A valid submit returns the job that is still queued or running under the key, and enqueues nothing, when that job was built with
+     * the same authorization filters. In every other case a new job takes over the key and is enqueued: the key is unused, the stored job
+     * finished or failed, or the stored job was built with different authorization filters. A replaced job that is still queued or running
+     * is not cancelled. It runs to its end, but no lookup by key reaches it again.
+     *
+     * <p>The new job and its temporary file are built before the result map is locked, so a slow build never holds up another submit. When
+     * two submits race, the map keeps one job and the other is discarded together with its file.
      *
      * @param query the query to run
-     * @return the job stored under the key, with its queue depth set
+     * @return the job stored under the key with its queue depth set, or an unstored job in {@code ERROR} for a rejected query
      * @throws IOException when the temporary result file cannot be created
      */
     public AsyncResult runQuery(Query query) throws IOException {
-        Submission submission = initializeResult(query);
-        AsyncResult result = submission.result();
-        if (!submission.created()) {
-            return withQueueDepth(result);
-        }
+        HpdsV3Processor processor = processorFor(query);
+        String queryId = resultKeyFor(query).toString();
 
         try {
             queryValidator.validate(query);
-            result.setJobQueue(runsOnSmallExecutor(query) ? smallTaskExecutor : largeTaskExecutor);
-
-            result.enqueue();
-
-            if (loggingClient != null && loggingClient.isEnabled()) {
-                try {
-                    loggingClient.send(
-                        LoggingEvent.builder("QUERY").action("query.enqueued")
-                            .metadata(
-                                Map.of(
-                                    "query_id", result.getId(), "result_type", String.valueOf(query.expectedResultType()), "field_count",
-                                    String.valueOf(query.select().size()), "queue", runsOnSmallExecutor(query) ? "small" : "large"
-                                )
-                            ).build()
-                    );
-                } catch (Exception e) {
-                    log.warn("Failed to send audit log event", e);
-                }
-            }
         } catch (IllegalArgumentException e) {
-            result.setStatus(AsyncResult.Status.ERROR);
-            return result;
+            AsyncResult rejected = newResult(query, processor, queryId).setStatus(AsyncResult.Status.ERROR);
+            discard(rejected);
+            return rejected;
         }
-        return withQueueDepth(result);
+
+        AsyncResult stored = results.get(queryId);
+        if (isReusableFor(stored, query)) {
+            return withQueueDepth(stored);
+        }
+
+        AsyncResult candidate = newResult(query, processor, queryId);
+        stored = results.compute(queryId, (key, existing) -> isReusableFor(existing, query) ? existing : candidate);
+        if (stored != candidate) {
+            discard(candidate);
+            return withQueueDepth(stored);
+        }
+
+        enqueue(candidate);
+        sendEnqueuedEvent(candidate);
+        return withQueueDepth(candidate);
     }
 
     /**
-     * The outcome of looking a submit up in the result map.
-     *
-     * @param result the job now stored under the submit's key
-     * @param created true when this submit created the job and must enqueue it, false when it found a job already in flight
-     */
-    private record Submission(AsyncResult result, boolean created) {
-    }
-
-    /**
-     * Finds or creates the job for a query in one atomic step on the result map, so concurrent submits of one key create one job.
+     * Picks the processor for a query's result type.
      *
      * @param query the submitted query
-     * @return the stored job and whether this call created it
-     * @throws IOException when the temporary result file cannot be created
+     * @return the processor that computes the result
+     * @throws RuntimeException when the result type has no asynchronous processor
      */
-    private Submission initializeResult(Query query) throws IOException {
-
-        HpdsV3Processor p = switch (query.expectedResultType()) {
+    private HpdsV3Processor processorFor(Query query) {
+        return switch (query.expectedResultType()) {
             case PATIENTS -> patientProcessor;
             case DATAFRAME_TIMESERIES -> timeseriesProcessor;
             case COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT -> countProcessor;
             case DATAFRAME_PFB, DATAFRAME -> multiValueQueryProcessor;
             default -> throw new RuntimeException("UNSUPPORTED RESULT TYPE");
         };
-
-        String queryId = resultKeyFor(query).toString();
-        AtomicBoolean created = new AtomicBoolean(false);
-        AsyncResult result;
-        try {
-            result = results.compute(queryId, (key, existing) -> {
-                if (existing != null && isInFlight(existing) && hasSameAuthorizationFilters(existing.getQuery(), query)) {
-                    return existing;
-                }
-                created.set(true);
-                return newResult(query, p, key);
-            });
-        } catch (UncheckedIOException e) {
-            throw e.getCause();
-        }
-        return new Submission(result, created.get());
     }
 
     /**
-     * Builds a pending job with its own temporary result file.
+     * Builds a pending job with its own temporary result file and its executor already chosen. The job is neither stored nor enqueued. When
+     * the build fails after the file was created, the file is deleted.
      *
      * @param query the submitted query
      * @param processor the processor for the query's result type
      * @param queryId the key the job is stored under
-     * @return the new job, not yet enqueued
-     * @throws UncheckedIOException when the temporary result file cannot be created
+     * @return the new job
+     * @throws IOException when the temporary result file cannot be created
      */
-    private AsyncResult newResult(Query query, HpdsV3Processor processor, String queryId) {
-        ResultWriter writer;
+    private AsyncResult newResult(Query query, HpdsV3Processor processor, String queryId) throws IOException {
+        boolean pfb = ResultType.DATAFRAME_PFB.equals(query.expectedResultType());
+        File file = File.createTempFile("result-" + System.nanoTime(), pfb ? ".avro" : ".sstmp");
         try {
-            if (ResultType.DATAFRAME_PFB.equals(query.expectedResultType())) {
-                writer = new PfbWriter(File.createTempFile("result-" + System.nanoTime(), ".avro"), queryId, dictionaryService);
-            } else {
-                writer = new CsvWriter(File.createTempFile("result-" + System.nanoTime(), ".sstmp"));
-            }
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            ResultWriter writer = pfb ? new PfbWriter(file, queryId, dictionaryService) : new CsvWriter(file);
+            return new AsyncResult(query.generateId(), processor, writer).setStatus(AsyncResult.Status.PENDING)
+                .setQueuedTime(System.currentTimeMillis()).setId(queryId).setLoggingClient(loggingClient)
+                .setJobQueue(runsOnSmallExecutor(query) ? smallTaskExecutor : largeTaskExecutor);
+        } catch (RuntimeException e) {
+            Files.deleteIfExists(file.toPath());
+            throw e;
         }
-        return new AsyncResult(query.generateId(), processor, writer).setStatus(AsyncResult.Status.PENDING)
-            .setQueuedTime(System.currentTimeMillis()).setId(queryId).setLoggingClient(loggingClient);
+    }
+
+    /**
+     * Closes the writer of a job that will never run and deletes its temporary file.
+     *
+     * @param unused a job that is not stored and not enqueued
+     */
+    private static void discard(AsyncResult unused) {
+        try {
+            unused.closeWriter();
+            Files.deleteIfExists(unused.getTempFilePath());
+        } catch (IOException | RuntimeException e) {
+            log.warn("Could not remove the temporary file of an unused job", e);
+        }
+    }
+
+    /**
+     * Hands a stored job to its executor. A job the executor does not accept, for any reason, is left in {@code ERROR}, so a stored job is
+     * always either enqueued or in a terminal state.
+     *
+     * @param result the stored job
+     */
+    private static void enqueue(AsyncResult result) {
+        try {
+            result.enqueue();
+        } catch (RuntimeException | Error e) {
+            result.setStatus(AsyncResult.Status.ERROR);
+            throw e;
+        }
+    }
+
+    /**
+     * Sends the audit event for an enqueued job. A failure to send is logged and never reaches the caller.
+     *
+     * @param result the enqueued job
+     */
+    private void sendEnqueuedEvent(AsyncResult result) {
+        try {
+            if (loggingClient != null && loggingClient.isEnabled()) {
+                Query query = result.getQuery();
+                loggingClient.send(
+                    LoggingEvent.builder("QUERY").action("query.enqueued")
+                        .metadata(
+                            Map.of(
+                                "query_id", result.getId(), "result_type", String.valueOf(query.expectedResultType()), "field_count",
+                                String.valueOf(query.select().size()), "queue", runsOnSmallExecutor(query) ? "small" : "large"
+                            )
+                        ).build()
+                );
+            }
+        } catch (Exception e) {
+            log.warn("Failed to send audit log event", e);
+        }
+    }
+
+    /**
+     * Tells whether a submit can take the stored job instead of creating one.
+     *
+     * @param stored the job under the submit's key, or null when the key is unused
+     * @param submitted the query of the new submit
+     * @return true when the stored job is still queued or running and was built with the submit's authorization filters
+     */
+    private static boolean isReusableFor(AsyncResult stored, Query submitted) {
+        return stored != null && isInFlight(stored) && hasSameAuthorizationFilters(stored.getQuery(), submitted);
     }
 
     /**
@@ -227,6 +265,7 @@ public class QueryV3Service {
      */
     public AsyncResult getStatusFor(String queryId) {
         AsyncResult asyncResult = results.get(queryId);
+        // note: code copied from this method in QueryService was removed, it was obviously not working
         return asyncResult == null ? null : withQueueDepth(asyncResult);
     }
 

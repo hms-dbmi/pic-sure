@@ -95,11 +95,12 @@ public record Query(
      * Returns this query with a non-null {@link #id()}, generating one only when absent.
      *
      * <p>Semantics: the v3 {@code id} is a per-query-instance RANDOM identifier, not a stable content-derived key. It is assigned at most
-     * once — an existing id (e.g. one carried through from v1 translation by {@code QueryTranslator}) is never replaced — and is used for
-     * correlation only: HPDS log lines and file-sharing result lookup. It is deliberately NOT a dedup/caching key: HPDS derives its
-     * result-cache key separately as a UUIDv5 content hash of the query (see {@code QueryV3Service.initializeResult} in pic-sure-hpds),
-     * matching v1's {@code QueryDecorator#setId} behavior. Two identical query bodies submitted without ids therefore get different
-     * {@code id}s but the same content-hash cache key.
+     * once. An existing id (e.g. one carried through from v1 translation by {@code QueryTranslator}) is never replaced. It is used for
+     * correlation only, and it is deliberately NOT the key a result is stored or looked up under. HPDS derives that key separately (see
+     * {@code QueryV3Service.resultKeyFor} in pic-sure-hpds): the query's {@link #picsureId()} when it has one, otherwise a UUIDv5 hash of
+     * the query's content. Status, result, signed URL and file sharing requests all find the job by that key. The hash is taken over the
+     * query as submitted, {@code id} included, so two identical bodies submitted without a {@code picsureId} and without an {@code id}
+     * share one key, while a body that already carries an {@code id} hashes to a key of its own.
      *
      * @return this query or a copy of this query with the UUID set
      */

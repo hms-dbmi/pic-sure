@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.service;
 
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
+import edu.harvard.dbmi.avillach.util.UUIDv5;
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.upload.SignUrlService;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -27,7 +29,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -161,14 +163,27 @@ class PicSureV3ServiceStatusTest {
     }
 
     @Test
-    void syncWithoutPicsureIdStillReturnsAnIdInQueryMetadata() {
+    void syncWithoutPicsureIdReturnsTheContentHashOfTheQueryInQueryMetadata() {
+        UUID id = UUID.randomUUID();
+        when(countProcessor.runCounts(any())).thenReturn(7);
+
+        ResponseEntity<?> response = sync(Map.of("expectedResultType", "COUNT", "id", id.toString()));
+
+        ArgumentCaptor<Query> counted = ArgumentCaptor.forClass(Query.class);
+        verify(countProcessor).runCounts(counted.capture());
+        assertEquals(id, counted.getValue().id());
+        assertNull(counted.getValue().picsureId());
+        String contentHash = UUIDv5.UUIDFromString(counted.getValue().toString()).toString();
+        assertEquals(contentHash, response.getHeaders().getFirst("queryMetadata"));
+    }
+
+    @Test
+    void syncWithoutPicsureIdOrIdReturnsAVersion5UuidInQueryMetadata() {
         when(countProcessor.runCounts(any())).thenReturn(7);
 
         ResponseEntity<?> response = sync(Map.of("expectedResultType", "COUNT"));
 
-        String header = response.getHeaders().getFirst("queryMetadata");
-        assertNotNull(header);
-        assertNotNull(UUID.fromString(header));
+        assertEquals(5, UUID.fromString(response.getHeaders().getFirst("queryMetadata")).version());
     }
 
     private ResponseEntity<?> sync(Map<String, Object> queryBody) {

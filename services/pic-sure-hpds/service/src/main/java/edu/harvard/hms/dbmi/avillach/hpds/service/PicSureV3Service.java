@@ -211,24 +211,17 @@ public class PicSureV3Service {
         if (!List.of(ResultType.DATAFRAME_TIMESERIES, ResultType.PATIENTS).contains(query.expectedResultType())) {
             return ResponseEntity.status(400).body("The write endpoint only writes time series dataframes. Fix result type.");
         }
-        String hpdsQueryID;
+        AsyncResult result;
         try {
-            QueryStatus queryStatus = convertToQueryStatus(queryService.runQuery(query));
-            String status = queryStatus.getResourceStatus();
-            hpdsQueryID = queryStatus.getResourceResultId();
-            while ("RUNNING".equalsIgnoreCase(status) || "PENDING".equalsIgnoreCase(status)) {
+            result = queryService.runQuery(query);
+            while (AsyncResult.Status.RUNNING.equals(result.getStatus()) || AsyncResult.Status.PENDING.equals(result.getStatus())) {
                 Thread.sleep(10000); // Yea, this is not restful. Sorry.
-                status = convertToQueryStatus(queryService.getStatusFor(hpdsQueryID)).getResourceStatus();
             }
         } catch (IOException | InterruptedException e) {
             log.warn("Error waiting for response", e);
             return ResponseEntity.internalServerError().build();
         }
 
-        AsyncResult result = queryService.getResultFor(UUID.fromString(hpdsQueryID));
-        if (result == null) {
-            return ResponseEntity.status(404).build();
-        }
         if (AsyncResult.Status.ERROR.equals(result.getStatus())) {
             return ResponseEntity.status(500).build();
         }
@@ -239,11 +232,11 @@ public class PicSureV3Service {
         boolean success = false;
         Query queryCopy = query.generateId();
         if ("phenotypic".equals(datatype)) {
-            success = fileSharingService.createPhenotypicData(queryCopy);
+            success = fileSharingService.createPhenotypicData(queryCopy, result);
         } else if ("genomic".equals(datatype)) {
             success = fileSharingService.createGenomicData(queryCopy);
         } else if ("patients".equals(datatype)) {
-            success = ResultType.PATIENTS.equals(queryCopy.expectedResultType()) && fileSharingService.createPatientList(queryCopy);
+            success = ResultType.PATIENTS.equals(queryCopy.expectedResultType()) && fileSharingService.createPatientList(queryCopy, result);
         }
         return success ? ResponseEntity.ok().build() : ResponseEntity.internalServerError().build();
     }
