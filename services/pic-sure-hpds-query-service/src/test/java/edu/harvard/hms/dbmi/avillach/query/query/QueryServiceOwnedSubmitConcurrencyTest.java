@@ -82,7 +82,7 @@ class QueryServiceOwnedSubmitConcurrencyTest {
     /** What the operations-service stand-in does with a save. A test replaces it to hold one save back until another has happened. */
     volatile Function<SaveQueryRequest, UUID> saving = this::store;
 
-    private static QueryRowLocks locksWaiting(int seconds) {
+    static QueryRowLocks locksWaiting(int seconds) {
         QueryRowLockProperties properties = new QueryRowLockProperties();
         properties.setWaitSec(seconds);
         return new QueryRowLocks(properties);
@@ -148,17 +148,17 @@ class QueryServiceOwnedSubmitConcurrencyTest {
         return new FutureTask<>(() -> service.query("auth", new GeneralQueryRequest().setQuery(cohort()), TOKEN, user(caller)));
     }
 
-    private static Thread start(FutureTask<?> task) {
+    static Thread start(FutureTask<?> task) {
         Thread thread = new Thread(task);
         thread.start();
         return thread;
     }
 
-    private static <T> T resultOf(FutureTask<T> task) throws Exception {
+    static <T> T resultOf(FutureTask<T> task) throws Exception {
         return task.get(PATIENCE_SECONDS, TimeUnit.SECONDS);
     }
 
-    private static void await(CountDownLatch latch) {
+    static void await(CountDownLatch latch) {
         try {
             assertThat(latch.await(PATIENCE_SECONDS, TimeUnit.SECONDS)).as("the latch opened in time").isTrue();
         } catch (InterruptedException interrupted) {
@@ -171,7 +171,7 @@ class QueryServiceOwnedSubmitConcurrencyTest {
      * Holds the calling request until the other request has gone as far as it can: until it has opened the latch, which it does when it
      * makes the same call, or until its thread is parked in a timed wait, which is where a request waiting for the row lock stands.
      */
-    private static void awaitOpenedOrParked(CountDownLatch openedByTheOtherRequest, CompletableFuture<Thread> otherRequest) {
+    static void awaitOpenedOrParked(CountDownLatch openedByTheOtherRequest, CompletableFuture<Thread> otherRequest) {
         Thread other = otherRequest.orTimeout(PATIENCE_SECONDS, TimeUnit.SECONDS).join();
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(PATIENCE_SECONDS);
         while (openedByTheOtherRequest.getCount() > 0 && other.getState() != Thread.State.TIMED_WAITING) {

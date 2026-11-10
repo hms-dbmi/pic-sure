@@ -30,7 +30,8 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
  * <p>A persistence failure must never be swallowed: any 5xx, timeout, or malformed response from operations-service is surfaced as a
  * {@link PicsureException} (BAD_GATEWAY or GATEWAY_TIMEOUT) rather than returning a null/partial result. Only {@link #get(UUID)} has a
  * documented 404 contract (NOT_FOUND); a 404 from {@link #update(UUID, UpdateQueryRequest)} falls into the generic bad-gateway handling
- * below, since no NOT_FOUND semantics are specified for that call yet.
+ * below, since no NOT_FOUND semantics are specified for that call yet. A 409 from an update is a failure on
+ * {@link #update(UUID, UpdateQueryRequest)} and an expected answer on {@link #updateLatestRun(UUID, UpdateQueryRequest)}.
  *
  * <p>NOT a {@code @Component}: it is registered exactly once, by {@code OperationsClientConfig}, wired to the specific
  * {@code operationsRestClient} bean -- the context also contains a second, differently-configured {@code RestClient} bean for HPDS (see
@@ -116,6 +117,31 @@ public class OperationsClient {
         execute(() -> {
             http.patch().uri(QUERIES_PATH + "/{id}", picsureId).body(request).retrieve().toBodilessEntity();
             return null;
+        }, "update");
+    }
+
+    /**
+     * {@code PATCH /operations/internal/queries/{id}} for a change that belongs to one run of the row, such as the status a poller read for
+     * it. The request names the run the caller loaded with the row, and operations-service applies the change only while that run is still
+     * the latest run of the row.
+     *
+     * <p>A 409 means the row has been run again since the caller read it. That is not a failure of the caller's request: the newer run owns
+     * the row now and nothing was changed.
+     *
+     * @param picsureId the id of the row
+     * @param request the fields to change, with the id of the run they belong to
+     * @return true when operations-service applied the change, false when it answered 409 and changed nothing
+     * @throws PicsureException BAD_GATEWAY when operations-service refuses the update for any other reason or fails; GATEWAY_TIMEOUT when
+     *         it cannot be reached in time
+     */
+    public boolean updateLatestRun(UUID picsureId, UpdateQueryRequest request) {
+        return execute(() -> {
+            try {
+                http.patch().uri(QUERIES_PATH + "/{id}", picsureId).body(request).retrieve().toBodilessEntity();
+                return true;
+            } catch (HttpClientErrorException.Conflict rowHasANewerRun) {
+                return false;
+            }
         }, "update");
     }
 

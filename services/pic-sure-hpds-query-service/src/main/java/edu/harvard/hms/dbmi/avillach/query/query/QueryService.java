@@ -10,6 +10,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -56,12 +58,19 @@ import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
  * by one caller run one after the other and the row always records the consents of the job HPDS holds. Every other submit, and every
  * synchronous query, is stored under a random id operations-service generates, with no owner, and takes no lock.
  *
+ * <p>A status, result or signed-url read of a row that has an owner answers only that owner. The read takes the lock of the row, fetches
+ * the caller's consents inside it and compares them with the ones the row records. When they differ, or HPDS no longer holds the job, the
+ * read runs the stored query again under the consents it just fetched and saves the row with them, so the row keeps recording the consents
+ * of the job HPDS holds. A result or a signed URL is fetched only after that check found equal consents and a finished job, and the fetch
+ * runs after the lock is released. A read of a row without an owner takes no lock, never runs a v3 query again and keeps the check against
+ * the authorization filters saved in the row's body.
+ *
  * <p>Every query runs on HPDS v3 and every new row is stored as version {@code "3"}. {@link #queryStatus}, {@link #queryResult}, and
  * {@link #queryResultSignedUrl} dispatch to the backend selected by the ingress {@code {backend}} segment. A row stored before v3 (any
  * version for which {@link #isV3(StoredQuery)} is false) is first upgraded in place: its body is translated to v3, scoped by the caller's
  * current consents, re-run on HPDS v3, and written back under the same {@code picsureId} as version {@code "3"}. The v1 result it pointed
- * at no longer exists, so a result or signed-url call that triggers the upgrade receives HPDS's not-ready response and the client polls
- * status as for a new query. {@link #queryMetadata} never upgrades; it only translates the stored body for display.
+ * at no longer exists, so a result or signed-url call that triggers the upgrade is answered 409 {@code result_not_ready} and the client
+ * polls status as for a new query. {@link #queryMetadata} never upgrades; it only translates the stored body for display.
  */
 @Service
 public class QueryService {
@@ -79,6 +88,14 @@ public class QueryService {
     private static final String FIRST_SUBMIT = "FIRST_SUBMIT";
     private static final String CONSENT_CHANGE = "CONSENT_CHANGE";
     private static final String RESUBMIT = "RESUBMIT";
+    private static final String LOST_RESULT = "LOST_RESULT";
+    private static final String RESULT_NOT_READY = "result_not_ready";
+    private static final String RESULT_NOT_READY_MESSAGE =
+        "The result is not ready. Poll the status of the query and ask again once it reports AVAILABLE.";
+    /** The message HPDS itself answers a result request with when the job failed, so the caller reads one message for that case. */
+    private static final String FAILED_RESULT_MESSAGE = "Status : ERROR";
+    private static final String NOT_THE_OWNER_MESSAGE = "Only the user who submitted this query can read it";
+    private static final String STORED_QUERY_UNREADABLE_MESSAGE = "The stored query could not be run again";
     /**
      * The stored statuses under which a repeated submit reuses the row: HPDS accepted the job and it is waiting for a worker
      * ({@code QUEUED}), running ({@code PENDING}) or finished with a result ({@code AVAILABLE}). A row stored as {@code ERROR}, or with no
@@ -248,15 +265,33 @@ public class QueryService {
         if (consentsUnchanged && holdsAJob(stored.get())) {
             return storedStatus(stored.get(), req);
         }
+        return runAndSave(target, req, owner, id, consents, runTrigger(stored.isPresent(), consentsUnchanged));
+    }
 
+    /**
+     * Sends the query of an owned row to HPDS under the row id and saves the row with the consents the query was scoped with and a run
+     * named by the trigger. The caller of this method holds the lock of the row and fetched the consents inside it.
+     *
+     * @param target the HPDS backend to run on
+     * @param req the envelope whose query is the v3 query to run, already scoped with {@code consents} and carrying {@code id}
+     * @param owner the UUID of the row's owner
+     * @param id the row id, which is also the id HPDS stores the result under
+     * @param consents the consents the query was scoped with, which the row records
+     * @param trigger why the query runs, as a run trigger name
+     * @return HPDS's answer, with the row id as its PIC-SURE id and its result id
+     * @throws HpdsCommunicationException when HPDS does not accept the query; nothing is saved
+     */
+    private QueryStatus runAndSave(
+        HpdsTarget target, QueryRequest req, UUID owner, UUID id, Map<String, List<String>> consents, String trigger
+    ) {
+        Query scoped = (Query) req.getQuery();
         QueryStatus results = acceptedUnder(id, hpds.query(target, req, id));
         String metadataBase64 = buildMetadataBase64(results);
         String resultId = id.toString();
         operationsClient.save(
             new SaveQueryRequest(
                 serializeQuery(req.copy().setQuery(scoped.setPicsureId(id).setAuthorizationFilters(List.of()))), resultId,
-                statusName(results.getStatus()), CURRENT_VERSION, metadataBase64, id, owner, consents,
-                runTrigger(stored.isPresent(), consentsUnchanged)
+                statusName(results.getStatus()), CURRENT_VERSION, metadataBase64, id, owner, consents, trigger
             )
         );
         results.setPicsureResultId(id);
@@ -456,19 +491,63 @@ public class QueryService {
     }
 
     /**
-     * Reads the status of a stored query from HPDS and records it on the row, upgrading a row stored before v3 first.
+     * Reports the status of a stored query.
+     *
+     * <p>A row without an owner is read as it was before rows had owners: a row stored before v3 is upgraded first, HPDS is asked for the
+     * status of the result, and that status is recorded on the row. Nothing about the caller is checked and no lock is taken.
+     *
+     * <p>A row with an owner is read only by that owner, on {@code auth}. Any other caller is refused as soon as the row is loaded, before
+     * a lock is taken or anything else is looked up. For the owner, the request takes the {@link QueryRowLocks} lock of the row and runs
+     * {@link #checkOwnedRow} inside it. When that check ran the query again, the answer of the new submit is returned. Otherwise the status
+     * HPDS reports is recorded for the run the row was loaded with and returned, still inside the lock. A write that operations-service
+     * refuses because the row has a newer run by then is dropped, and the status is returned all the same.
      *
      * @param backend the ingress {@code {backend}} segment
      * @param picsureId the id of the stored query
      * @param authorizationHeader the caller's {@code Authorization} header
-     * @param user the caller as the gateway identified them, or null when there is none; not read
+     * @param user the caller as the gateway identified them, or null when there is none
+     * @return the status of the job HPDS holds for the query, with {@code picsureResultId} set to the id of the row
+     * @throws PicsureException 404 {@code not_found} when no row has the id; 403 {@code forbidden} when the row has an owner and the caller
+     *         is not that owner; 403 {@code consent_denied} when the owner holds no consents, or the consents do not cover a query that has
+     *         to run again; 400 {@code sample_disabled} when a sample query has to run again while sampling is turned off; 503
+     *         {@code service_unavailable} when another request holds the row for longer than the configured wait; whatever consent lookup,
+     *         HPDS or operations-service raise
+     * @throws HpdsCommunicationException when HPDS fails, answers for an owned row without a status, or does not accept a query that is run
+     *         again
      */
     public QueryStatus queryStatus(String backend, UUID picsureId, String authorizationHeader, GatewayUser user) {
-        StoredQuery stored = upgradeToV3(backend, load(picsureId), authorizationHeader);
+        StoredQuery loaded = load(picsureId);
+        if (loaded.userUuid() != null) {
+            UUID owner = requireOwner(backend, loaded, user);
+            return rowLocks.withLock(picsureId, () -> ownedStatus(backend, picsureId, authorizationHeader, owner));
+        }
+        StoredQuery stored = upgradeToV3(backend, loaded, authorizationHeader);
         QueryStatus status = hpds.queryStatus(selector.select(backend), stored.resourceResultId());
         status.setPicsureResultId(picsureId);
         operationsClient.update(picsureId, new UpdateQueryRequest(statusName(status.getStatus()), null, null, null, null));
         status.setResourceID(resourceUuidFromStored(stored));
+        return status;
+    }
+
+    /**
+     * Answers a status request for an owned row. The caller of this method holds the lock of the row.
+     *
+     * @param id the id of the row
+     * @param owner the caller's UUID, already checked against the owner of the row
+     */
+    private QueryStatus ownedStatus(String backend, UUID id, String authorizationHeader, UUID owner) {
+        CheckedJob job = checkOwnedRow(backend, id, authorizationHeader, owner);
+        if (job.startedByThisRead()) {
+            return job.status();
+        }
+        QueryStatus status = job.status();
+        status.setPicsureResultId(id);
+        UpdateQueryRequest statusOfTheRun =
+            new UpdateQueryRequest(statusName(status.getStatus()), null, null, null, null, job.row().runId());
+        if (!operationsClient.updateLatestRun(id, statusOfTheRun)) {
+            logger.info("Did not record a status on stored query {} because the query has been run again since the row was read", id);
+        }
+        status.setResourceID(resourceUuidFromStored(job.row()));
         return status;
     }
 
@@ -481,17 +560,38 @@ public class QueryService {
     }
 
     /**
-     * Fetches the result bytes of a stored query, upgrading a row stored before v3 first.
+     * Fetches the result bytes of a stored query.
+     *
+     * <p>A row without an owner is read as it was before rows had owners: a row stored before v3 is upgraded first, the caller's consents
+     * must still cover the authorization filters saved in the row's body, and the result is fetched from HPDS. Nothing is ever run again
+     * for such a row.
+     *
+     * <p>A row with an owner is read only by that owner, on {@code auth}, and {@link #fetchOwnedResult} decides whether there is a result
+     * to fetch.
      *
      * @param backend the ingress {@code {backend}} segment
      * @param picsureId the id of the stored query
      * @param authorizationHeader the caller's {@code Authorization} header
-     * @param user the caller as the gateway identified them, or null when there is none; not read
+     * @param user the caller as the gateway identified them, or null when there is none
+     * @return the fully buffered result, with the content type HPDS gave it
+     * @throws PicsureException 404 {@code not_found} when no row has the id, or HPDS holds no result for a row without an owner; 403
+     *         {@code forbidden} when the row has an owner and the caller is not that owner; 403 {@code consent_denied} when the caller
+     *         holds no consents or, for a row without an owner, no longer holds the saved ones; 409 {@code result_not_ready} when the query
+     *         is queued or running, or was run again by this request; 400 {@code bad_request} when the query failed; 400
+     *         {@code sample_disabled} when a sample query has to run again while sampling is turned off; 503 {@code service_unavailable}
+     *         when another request holds the row for longer than the configured wait; whatever consent lookup, HPDS or operations-service
+     *         raise
+     * @throws HpdsCommunicationException when HPDS fails. A query is never run again because HPDS failed.
      */
     public ResponseEntity<byte[]> queryResult(String backend, UUID picsureId, String authorizationHeader, GatewayUser user) {
-        StoredQuery stored = upgradeToV3(backend, load(picsureId), authorizationHeader);
+        StoredQuery loaded = load(picsureId);
+        if (loaded.userUuid() != null) {
+            return fetchOwnedResult(backend, loaded, authorizationHeader, user, target -> hpds.queryResult(target, picsureId.toString()));
+        }
+        StoredQuery stored = upgradeToV3(backend, loaded, authorizationHeader);
         consentAuthorization.verifyReadAccess(backend, stored, authorizationHeader);
-        return hpds.queryResult(selector.select(backend), stored.resourceResultId());
+        HpdsTarget target = selector.select(backend);
+        return whenFinished(() -> hpds.queryResult(target, stored.resourceResultId()));
     }
 
     public SignedUrlResponse queryResultSignedUrl(String backend, UUID picsureId) {
@@ -503,17 +603,251 @@ public class QueryService {
     }
 
     /**
-     * Asks HPDS for a signed URL to the result of a stored query, upgrading a row stored before v3 first.
+     * Asks HPDS for a signed URL to the result of a stored query. The row is checked exactly as {@link #queryResult} checks it, and the
+     * same answers stand for a caller who is not the owner, a result that is not ready and a query that failed.
      *
      * @param backend the ingress {@code {backend}} segment
      * @param picsureId the id of the stored query
      * @param authorizationHeader the caller's {@code Authorization} header
-     * @param user the caller as the gateway identified them, or null when there is none; not read
+     * @param user the caller as the gateway identified them, or null when there is none
+     * @return the signed URL HPDS answered with
+     * @throws PicsureException as {@link #queryResult} does
+     * @throws HpdsCommunicationException when HPDS fails. A query is never run again because HPDS failed.
      */
     public SignedUrlResponse queryResultSignedUrl(String backend, UUID picsureId, String authorizationHeader, GatewayUser user) {
-        StoredQuery stored = upgradeToV3(backend, load(picsureId), authorizationHeader);
+        StoredQuery loaded = load(picsureId);
+        if (loaded.userUuid() != null) {
+            return fetchOwnedResult(
+                backend, loaded, authorizationHeader, user, target -> hpds.queryResultSignedUrl(target, picsureId.toString())
+            );
+        }
+        StoredQuery stored = upgradeToV3(backend, loaded, authorizationHeader);
         consentAuthorization.verifyReadAccess(backend, stored, authorizationHeader);
-        return hpds.queryResultSignedUrl(selector.select(backend), stored.resourceResultId());
+        HpdsTarget target = selector.select(backend);
+        return whenFinished(() -> hpds.queryResultSignedUrl(target, stored.resourceResultId()));
+    }
+
+    /**
+     * What a read of an owned row found once the caller's consents and the job HPDS holds were checked.
+     *
+     * @param row the row as it was loaded inside the lock
+     * @param target the HPDS backend the row's job runs on
+     * @param status the status of the job HPDS holds: the answer of the submit when this read ran the query again, and the answer of a
+     *        status request otherwise
+     * @param startedByThisRead whether this read ran the query again
+     */
+    private record CheckedJob(StoredQuery row, HpdsTarget target, QueryStatus status, boolean startedByThisRead) {
+    }
+
+    /**
+     * Returns the caller's UUID when the caller owns the row, and refuses the caller otherwise. The caller's identity is the one the
+     * gateway sent and nothing else. A caller with no gateway user, one whose id is not a canonical UUID, and any caller on a backend other
+     * than {@code auth} own no row. Nothing is looked up, sent, written or logged here.
+     *
+     * @param row a row that has an owner
+     * @param user the caller as the gateway identified them, or null when there is none
+     * @throws PicsureException 403 {@code forbidden} with a fixed message when the caller is not the owner of the row
+     */
+    private static UUID requireOwner(String backend, StoredQuery row, GatewayUser user) {
+        Optional<UUID> caller = ownerOf(backend, user);
+        if (caller.isEmpty() || !caller.get().equals(row.userUuid())) {
+            throw new PicsureException(HttpStatus.FORBIDDEN, "forbidden", NOT_THE_OWNER_MESSAGE);
+        }
+        return caller.get();
+    }
+
+    /**
+     * Checks an owned row against the caller's current consents and against HPDS, and runs the stored query again when either check calls
+     * for it. The caller of this method holds the lock of the row, so no other request reads, runs or saves the row in between: <ol>
+     * <li>The row is loaded again, so this request sees whatever the request that held the lock before it stored.</li> <li>The caller's
+     * consents are fetched.</li> <li>When they differ from the consents the row records, in either direction, the query is run again under
+     * them as a consent change. HPDS is not asked about the job it holds, because that job ran under other consents.</li> <li>Otherwise
+     * HPDS is asked for the status of the job stored under the row id. When HPDS holds none, the query is run again as a lost result.</li>
+     * <li>Otherwise the status HPDS reported is returned and nothing is run or written.</li> </ol> A failure of HPDS is not a lost result
+     * and runs nothing.
+     *
+     * @param id the id of the row
+     * @param owner the caller's UUID, already checked against the owner of the row
+     * @return the row, the job HPDS holds for it now, and whether this call started that job
+     * @throws PicsureException 403 {@code consent_denied} when the caller holds no consents; whatever {@link #runAgain} throws
+     * @throws HpdsCommunicationException when HPDS fails or answers the status request without a status
+     */
+    private CheckedJob checkOwnedRow(String backend, UUID id, String authorizationHeader, UUID owner) {
+        StoredQuery row = load(id);
+        Map<String, List<String>> consents = consentAuthorization.currentConsents(backend, authorizationHeader);
+        HpdsTarget target = selector.select(backend);
+        if (!sameConsents(row.consents(), consents)) {
+            return new CheckedJob(row, target, runAgain(backend, target, row, owner, consents, CONSENT_CHANGE), true);
+        }
+        Optional<QueryStatus> job = jobOf(target, id);
+        if (job.isEmpty()) {
+            return new CheckedJob(row, target, runAgain(backend, target, row, owner, consents, LOST_RESULT), true);
+        }
+        return new CheckedJob(row, target, job.get(), false);
+    }
+
+    /**
+     * Asks HPDS for the job stored under the id of an owned row.
+     *
+     * @return the status HPDS reports, or empty when HPDS answers 404 because it holds no job under the id
+     * @throws HpdsCommunicationException when HPDS fails, or answers without a status
+     * @throws PicsureException when HPDS refuses the request with any other 4xx
+     */
+    private Optional<QueryStatus> jobOf(HpdsTarget target, UUID id) {
+        QueryStatus status;
+        try {
+            status = hpds.queryStatus(target, id.toString());
+        } catch (PicsureException refused) {
+            if (refused.getStatus() == HttpStatus.NOT_FOUND) {
+                return Optional.empty();
+            }
+            throw refused;
+        }
+        if (status == null || status.getStatus() == null) {
+            throw new HpdsCommunicationException("HPDS did not report the status of the query");
+        }
+        return Optional.of(status);
+    }
+
+    /**
+     * Runs the stored query of an owned row again: rebuilds the request from the stored body, applies {@link SampleRules}, scopes the query
+     * with the consents the caller of this method fetched, sends it to HPDS under the row id and saves the row with those consents and a
+     * run named by the trigger. The caller of this method holds the lock of the row and fetched the consents inside it, so the filters HPDS
+     * receives and the consents the row records come from one consent lookup.
+     *
+     * @param row the row as it was loaded inside the lock
+     * @param owner the UUID of the row's owner
+     * @param consents the caller's current consents
+     * @param trigger why the query runs again, as a run trigger name
+     * @return HPDS's answer to the submit, with the row id as its PIC-SURE id and its result id
+     * @throws PicsureException 400 {@code sample_disabled} when the row is a sample query and sampling is turned off; 403
+     *         {@code consent_denied} when the consents do not cover a filter the query needs; 500 when the stored body cannot be read as a
+     *         v3 query; whatever HPDS or operations-service raise. Nothing is saved unless HPDS accepted the query.
+     * @throws HpdsCommunicationException when HPDS does not accept the query
+     */
+    private QueryStatus runAgain(
+        String backend, HpdsTarget target, StoredQuery row, UUID owner, Map<String, List<String>> consents, String trigger
+    ) {
+        UUID id = row.picsureId();
+        QueryRequest req = storedOwnedRequest(row);
+        sampleRules.check(backend, req.getQuery());
+        consentAuthorization.scopeWithConsents(backend, req, consents);
+        req.setQuery(((Query) req.getQuery()).setPicsureId(id));
+        QueryStatus started = runAndSave(target, req, owner, id, consents, trigger);
+        logger.info("Ran stored query {} again, trigger {}", id, trigger);
+        return started;
+    }
+
+    /**
+     * Rebuilds the request an owned row was submitted with from its stored body. Its query is a v3 {@link Query} with no authorization
+     * filters, which is how the body of an owned row is stored.
+     *
+     * @throws PicsureException 500 {@code internal_server_error} with a fixed message when the stored body is not a request that holds a v3
+     *         query
+     */
+    private QueryRequest storedOwnedRequest(StoredQuery row) {
+        return readOwnedRequest(row.query()).orElseThrow(() -> {
+            logger.error("The body of stored query {} cannot be read as a v3 query request", row.picsureId());
+            return new PicsureException(HttpStatus.INTERNAL_SERVER_ERROR, "internal_server_error", STORED_QUERY_UNREADABLE_MESSAGE);
+        });
+    }
+
+    /** Reads a stored body as a request that holds a v3 query and clears the query's authorization filters, or returns empty. */
+    private static Optional<QueryRequest> readOwnedRequest(String body) {
+        try {
+            QueryRequest req = MAPPER.readValue(body, QueryRequest.class);
+            Query query = req == null ? null : MAPPER.convertValue(req.getQuery(), Query.class);
+            return Optional.ofNullable(query).map(v3 -> req.setQuery(v3.setAuthorizationFilters(List.of())));
+        } catch (JsonProcessingException | IllegalArgumentException unreadable) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Fetches the result of an owned row, or its signed URL, when the row has one to give.
+     *
+     * <p>The caller must be the owner. The decision is then made by {@link #requireFinishedResult} inside the lock of the row. The fetch
+     * itself runs after the lock is released, so a download never keeps other requests for the row waiting.
+     *
+     * <p>Between the decision and the fetch another request for the row can run the query again, and HPDS can lose the result. HPDS then
+     * answers the fetch with 409, which is reported as not ready, or with 404. After a 404 the decision is made once more, which runs the
+     * query again unless another request already has, and this request is answered as not ready. What is served is always the result HPDS
+     * holds under the row id at the moment of the fetch.
+     *
+     * @param row the row as first loaded, which has an owner
+     * @param user the caller as the gateway identified them, or null when there is none
+     * @param fetch the HPDS call that returns the result or its signed URL
+     * @param <T> what the fetch returns
+     * @return what the fetch returned
+     * @throws PicsureException 403 {@code forbidden} when the caller is not the owner; 409 {@code result_not_ready} when HPDS no longer
+     *         holds a finished job by the time of the fetch; whatever {@link #requireFinishedResult} throws
+     * @throws HpdsCommunicationException when HPDS fails. The query is not run again.
+     */
+    private <T> T fetchOwnedResult(
+        String backend, StoredQuery row, String authorizationHeader, GatewayUser user, Function<HpdsTarget, T> fetch
+    ) {
+        UUID id = row.picsureId();
+        UUID owner = requireOwner(backend, row, user);
+        HpdsTarget target = requireFinishedResult(backend, id, authorizationHeader, owner);
+        try {
+            return fetch.apply(target);
+        } catch (PicsureException refused) {
+            if (refused.getStatus() != HttpStatus.NOT_FOUND) {
+                throw notReadyWhenUnfinished(refused);
+            }
+        }
+        requireFinishedResult(backend, id, authorizationHeader, owner);
+        throw resultNotReady();
+    }
+
+    /**
+     * Decides, while holding the lock of an owned row, whether its result may be fetched. It may when the caller's consents equal the ones
+     * the row records and HPDS holds a finished job under the row id. In every other case the request is answered here, and when
+     * {@link #checkOwnedRow} ran the query again the answer is that the result is not ready.
+     *
+     * @param id the id of the row
+     * @param owner the caller's UUID, already checked against the owner of the row
+     * @return the HPDS backend to fetch the result from
+     * @throws PicsureException 409 {@code result_not_ready} when the query was run again by this call, or its job is queued or running; 400
+     *         {@code bad_request} when its job failed; 503 {@code service_unavailable} when another request holds the row for longer than
+     *         the configured wait; whatever {@link #checkOwnedRow} throws
+     */
+    private HpdsTarget requireFinishedResult(String backend, UUID id, String authorizationHeader, UUID owner) {
+        return rowLocks.withLock(id, () -> {
+            CheckedJob job = checkOwnedRow(backend, id, authorizationHeader, owner);
+            if (job.startedByThisRead()) {
+                throw resultNotReady();
+            }
+            PicSureStatus status = job.status().getStatus();
+            if (status == PicSureStatus.ERROR) {
+                throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", FAILED_RESULT_MESSAGE);
+            }
+            if (status != PicSureStatus.AVAILABLE) {
+                throw resultNotReady();
+            }
+            return job.target();
+        });
+    }
+
+    /**
+     * Runs a fetch of a result from HPDS and reports the 409 HPDS answers for a job that is still queued or running as
+     * {@code result_not_ready}. Every other answer and failure passes through as it is.
+     */
+    private static <T> T whenFinished(Supplier<T> fetch) {
+        try {
+            return fetch.get();
+        } catch (PicsureException refused) {
+            throw notReadyWhenUnfinished(refused);
+        }
+    }
+
+    private static PicsureException notReadyWhenUnfinished(PicsureException refused) {
+        return refused.getStatus() == HttpStatus.CONFLICT ? resultNotReady() : refused;
+    }
+
+    /** The one answer for a result or signed URL that cannot be served yet: 409 {@code result_not_ready} with a fixed message. */
+    private static PicsureException resultNotReady() {
+        return new PicsureException(HttpStatus.CONFLICT, RESULT_NOT_READY, RESULT_NOT_READY_MESSAGE);
     }
 
     /**

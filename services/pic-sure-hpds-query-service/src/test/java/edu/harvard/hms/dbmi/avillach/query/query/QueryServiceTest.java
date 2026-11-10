@@ -24,11 +24,17 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
+import java.util.stream.Stream;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpStatus;
@@ -1358,6 +1364,785 @@ class QueryServiceTest {
         assertThat(filters).hasSize(1);
         assertThat(filters.get(0).path("conceptPath").asText()).isEqualTo("\\_consents\\");
         assertThat(filters.get(0).path("values").get(0).asText()).isEqualTo("phs000001.c1");
+    }
+
+    private static final Map<String, List<String>> BOTH_CONSENTS = Map.of(CONSENT_PATH, List.of("phs001.c1", "phs001.c2"));
+    private static final Map<String, List<String>> ONE_CONSENT = Map.of(CONSENT_PATH, List.of("phs001.c1"));
+    private static final String NOT_THE_OWNER_MESSAGE = "Only the user who submitted this query can read it";
+    private static final String NOT_READY_MESSAGE =
+        "The result is not ready. Poll the status of the query and ask again once it reports AVAILABLE.";
+
+    /** The three reads of a stored query, so that one test can run against each of them. */
+    enum Read {
+        STATUS {
+            @Override
+            Object call(QueryService service, String backend, UUID id, String authorizationHeader, GatewayUser caller) {
+                return service.queryStatus(backend, id, authorizationHeader, caller);
+            }
+        },
+        RESULT {
+            @Override
+            Object call(QueryService service, String backend, UUID id, String authorizationHeader, GatewayUser caller) {
+                return service.queryResult(backend, id, authorizationHeader, caller);
+            }
+        },
+        SIGNED_URL {
+            @Override
+            Object call(QueryService service, String backend, UUID id, String authorizationHeader, GatewayUser caller) {
+                return service.queryResultSignedUrl(backend, id, authorizationHeader, caller);
+            }
+        };
+
+        abstract Object call(QueryService service, String backend, UUID id, String authorizationHeader, GatewayUser caller);
+    }
+
+    /**
+     * Stores a row as an owned submit of the query by Alice leaves it: under the derived id, with a body that carries that id and no
+     * authorization filters, the row id as its result id, and a latest run.
+     */
+    private StoredQuery rowOwnedByAlice(Query query, String status, Map<String, List<String>> consents) {
+        UUID id = QueryIdentity.idFor(ALICE, query);
+        QueryRequest stored = envelope(query.setPicsureId(id).setAuthorizationFilters(List.of()));
+        stored.setResourceUUID(UUID.randomUUID());
+        try {
+            StoredQuery row = new StoredQuery(
+                id, MAPPER.writeValueAsString(stored), id.toString(), status, "3", null, 1L, null, ALICE, consents, UUID.randomUUID()
+            );
+            when(operationsClient.get(id)).thenReturn(row);
+            return row;
+        } catch (JsonProcessingException unwritable) {
+            throw new IllegalStateException(unwritable);
+        }
+    }
+
+    private void hpdsHoldsTheJob(UUID id, PicSureStatus status) {
+        QueryStatus job = hpdsStatus(id.toString());
+        job.setStatus(status);
+        when(hpds.queryStatus(any(HpdsTarget.class), eq(id.toString()))).thenReturn(job);
+    }
+
+    private void hpdsHasLostTheJob(UUID id) {
+        when(hpds.queryStatus(any(HpdsTarget.class), eq(id.toString())))
+            .thenThrow(new PicsureException(HttpStatus.NOT_FOUND, "not_found", "Not Found"));
+    }
+
+    private void hpdsServesTheResult(UUID id) {
+        when(hpds.queryResult(any(HpdsTarget.class), eq(id.toString())))
+            .thenReturn(org.springframework.http.ResponseEntity.ok(new byte[] {7}));
+        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), eq(id.toString()))).thenReturn(new SignedUrlResponse("https://s3/owned"));
+    }
+
+    private void verifyNoResultWasFetched() {
+        verify(hpds, never()).queryResult(any(), any());
+        verify(hpds, never()).queryResultSignedUrl(any(), any());
+    }
+
+    private void verifyNothingWasRunOrWritten() {
+        verify(hpds, never()).query(any(), any());
+        verify(hpds, never()).query(any(), any(), any());
+        verify(operationsClient, never()).save(any());
+        verify(operationsClient, never()).update(any(), any());
+        verify(operationsClient, never()).updateLatestRun(any(), any());
+    }
+
+    private static void assertNamesNoConsentOrUser(String text) {
+        assertThat(text).doesNotContain("phs001").doesNotContain("_consents").doesNotContain(ALICE.toString())
+            .doesNotContain(BOB.toString());
+    }
+
+    private static void assertResultNotReady(Throwable thrown) {
+        assertThat(thrown).isInstanceOfSatisfying(PicsureException.class, notReady -> {
+            assertThat(notReady.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+            assertThat(notReady.getErrorType()).isEqualTo("result_not_ready");
+            assertThat(notReady.getMessage()).isEqualTo(NOT_READY_MESSAGE);
+        });
+    }
+
+    private void assertRerunUnder(UUID id, Map<String, List<String>> consents, String trigger) {
+        verify(hpds, times(1)).query(any(HpdsTarget.class), any(), eq(id));
+        verify(hpds, never()).query(any(HpdsTarget.class), any());
+        Query sent = (Query) queriesSentToHpds.get(0);
+        assertThat(sent.picsureId()).isEqualTo(id);
+        assertThat(sent.select()).isEqualTo(cohort().select());
+        assertThat(sent.authorizationFilters())
+            .containsExactly(new AuthorizationFilter(CONSENT_PATH, Set.copyOf(consents.get(CONSENT_PATH))));
+        SaveQueryRequest saved = onlySave();
+        assertThat(saved.picsureId()).isEqualTo(id);
+        assertThat(saved.userUuid()).isEqualTo(ALICE);
+        assertThat(saved.consents()).isEqualTo(consents);
+        assertThat(saved.trigger()).isEqualTo(trigger);
+        assertThat(saved.resourceResultId()).isEqualTo(id.toString());
+        assertThat(saved.status()).isEqualTo("PENDING");
+        assertThat(saved.version()).isEqualTo("3");
+        verify(psama, times(1)).fetch(TOKEN);
+        verify(operationsClient, never()).update(any(), any());
+        verify(operationsClient, never()).updateLatestRun(any(), any());
+    }
+
+    static Stream<Arguments> callersWhoAreNotAlice() {
+        return Stream.of(
+            Arguments.of("another user", user(BOB)), Arguments.of("no gateway user", null),
+            Arguments.of("a user with no id", new GatewayUser(null, null, null, null, Set.of())),
+            Arguments.of("a subject that is not a UUID", new GatewayUser("auth0|alice", ALICE.toString(), null, null, Set.of())),
+            Arguments.of("the open access identity", new GatewayUser("OPEN_ACCESS:picsure.example.org", null, null, null, Set.of())),
+            Arguments.of("Alice's id without hyphens", new GatewayUser(ALICE.toString().replace("-", ""), null, null, null, Set.of()))
+        );
+    }
+
+    private void assertRefusedAsNotTheOwner(Read read, GatewayUser caller) {
+        QueryRowLocks locks = mock(QueryRowLocks.class);
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", BOTH_CONSENTS);
+
+        assertThatThrownBy(() -> read.call(serviceLockingWith(locks, true), "auth", row.picsureId(), TOKEN, caller))
+            .isInstanceOfSatisfying(PicsureException.class, refused -> {
+                assertThat(refused.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+                assertThat(refused.getErrorType()).isEqualTo("forbidden");
+                assertThat(refused.getMessage()).isEqualTo(NOT_THE_OWNER_MESSAGE).doesNotContain(row.picsureId().toString());
+                assertNamesNoConsentOrUser(refused.getMessage());
+            });
+
+        verify(operationsClient).get(row.picsureId());
+        verifyNoMoreInteractions(operationsClient);
+        verifyNoInteractions(locks, psama, hpds);
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("callersWhoAreNotAlice")
+    void statusByANonOwnerIs403(String name, GatewayUser caller) {
+        assertRefusedAsNotTheOwner(Read.STATUS, caller);
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("callersWhoAreNotAlice")
+    void resultByANonOwnerIs403(String name, GatewayUser caller) {
+        assertRefusedAsNotTheOwner(Read.RESULT, caller);
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("callersWhoAreNotAlice")
+    void signedUrlByANonOwnerIs403(String name, GatewayUser caller) {
+        assertRefusedAsNotTheOwner(Read.SIGNED_URL, caller);
+    }
+
+    @ParameterizedTest
+    @EnumSource(Read.class)
+    void ownedRowReadByItsOwnerThroughAnotherBackendIs403AndNothingIsLookedUpSentOrWritten(Read read) {
+        QueryRowLocks locks = mock(QueryRowLocks.class);
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", BOTH_CONSENTS);
+
+        assertThatThrownBy(() -> read.call(serviceLockingWith(locks, true), "open", row.picsureId(), TOKEN, user(ALICE)))
+            .isInstanceOfSatisfying(PicsureException.class, refused -> {
+                assertThat(refused.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+                assertThat(refused.getErrorType()).isEqualTo("forbidden");
+            });
+
+        verify(operationsClient).get(row.picsureId());
+        verifyNoMoreInteractions(operationsClient);
+        verifyNoInteractions(locks, psama, hpds);
+    }
+
+    @ParameterizedTest
+    @EnumSource(Read.class)
+    void readOfAnIdNoRowIsStoredUnderIs404AndNothingIsLookedUpOrSent(Read read) {
+        QueryRowLocks locks = mock(QueryRowLocks.class);
+        UUID unknown = QueryIdentity.idFor(ALICE, cohort());
+        PicsureException noSuchRow = new PicsureException(HttpStatus.NOT_FOUND, "not_found", "No stored query for picsureId " + unknown);
+        when(operationsClient.get(unknown)).thenThrow(noSuchRow);
+
+        assertThatThrownBy(() -> read.call(serviceLockingWith(locks, true), "auth", unknown, TOKEN, user(ALICE))).isSameAs(noSuchRow);
+
+        verifyNoInteractions(locks, psama, hpds);
+    }
+
+    @ParameterizedTest
+    @EnumSource(Read.class)
+    void ownedReadByACallerWithNoConsentsIs403AndNothingIsRerunOrServed(Read read) {
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", BOTH_CONSENTS);
+        when(psama.fetch(TOKEN)).thenReturn(Map.of());
+
+        assertThatThrownBy(() -> read.call(ownedService, "auth", row.picsureId(), TOKEN, user(ALICE)))
+            .isInstanceOfSatisfying(PicsureException.class, refused -> {
+                assertThat(refused.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+                assertThat(refused.getErrorType()).isEqualTo("consent_denied");
+                assertNamesNoConsentOrUser(refused.getMessage());
+            });
+
+        verifyNoInteractions(hpds);
+        verifyNothingWasRunOrWritten();
+    }
+
+    private void assertConsentChangeOnStatusReruns(Map<String, List<String>> stored, Map<String, List<String>> current) throws Exception {
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", stored);
+        UUID id = row.picsureId();
+        callerHoldsConsents(current.get(CONSENT_PATH).toArray(String[]::new));
+        hpdsAcceptsOwnedSubmits();
+
+        QueryStatus out = ownedService.queryStatus("auth", id, TOKEN, user(ALICE));
+
+        assertRerunUnder(id, current, "CONSENT_CHANGE");
+        assertThat(out.getStatus()).isEqualTo(PicSureStatus.PENDING);
+        assertThat(out.getPicsureResultId()).isEqualTo(id);
+        assertThat(out.getResourceResultId()).isEqualTo(id.toString());
+        assertThat(out.getResourceID()).isEqualTo(UUID.fromString(MAPPER.readTree(row.query()).path("resourceUUID").asText()));
+        assertNamesNoConsentOrUser(MAPPER.writeValueAsString(out));
+        verify(hpds, never()).queryStatus(any(), any());
+        verifyNoResultWasFetched();
+    }
+
+    @Test
+    void consentShrinkOnStatusRerunsAndRecordsARun() throws Exception {
+        assertConsentChangeOnStatusReruns(BOTH_CONSENTS, ONE_CONSENT);
+    }
+
+    @Test
+    void consentGrowOnStatusRerunsAndRecordsARun() throws Exception {
+        assertConsentChangeOnStatusReruns(ONE_CONSENT, BOTH_CONSENTS);
+    }
+
+    static Stream<Arguments> consentChanges() {
+        return Stream.of(Arguments.of("shrink", BOTH_CONSENTS, ONE_CONSENT), Arguments.of("grow", ONE_CONSENT, BOTH_CONSENTS));
+    }
+
+    private void assertConsentChangeAnswers409AndServesNothing(
+        Read read, Map<String, List<String>> stored, Map<String, List<String>> current
+    ) {
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", stored);
+        UUID id = row.picsureId();
+        callerHoldsConsents(current.get(CONSENT_PATH).toArray(String[]::new));
+        hpdsHoldsTheJob(id, PicSureStatus.AVAILABLE);
+        hpdsServesTheResult(id);
+        hpdsAcceptsOwnedSubmits();
+
+        assertThatThrownBy(() -> read.call(ownedService, "auth", id, TOKEN, user(ALICE))).satisfies(QueryServiceTest::assertResultNotReady);
+
+        assertRerunUnder(id, current, "CONSENT_CHANGE");
+        verifyNoResultWasFetched();
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("consentChanges")
+    void consentChangeOnResultAnswers409AndDoesNotServeTheOldResult(
+        String name, Map<String, List<String>> stored, Map<String, List<String>> current
+    ) {
+        assertConsentChangeAnswers409AndServesNothing(Read.RESULT, stored, current);
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("consentChanges")
+    void consentChangeOnSignedUrlAnswers409AndDoesNotServeTheOldResult(
+        String name, Map<String, List<String>> stored, Map<String, List<String>> current
+    ) {
+        assertConsentChangeAnswers409AndServesNothing(Read.SIGNED_URL, stored, current);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = Read.class, names = {"RESULT", "SIGNED_URL"})
+    void resultRunAgainAnswers409EvenWhenHpdsReportsTheNewRunAsFinishedAtOnce(Read read) {
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", BOTH_CONSENTS);
+        UUID id = row.picsureId();
+        callerHoldsConsents("phs001.c1");
+        hpdsServesTheResult(id);
+        when(hpds.query(any(HpdsTarget.class), any(), eq(id))).thenReturn(hpdsAnswer(PicSureStatus.AVAILABLE, id.toString(), null));
+
+        assertThatThrownBy(() -> read.call(ownedService, "auth", id, TOKEN, user(ALICE))).satisfies(QueryServiceTest::assertResultNotReady);
+
+        assertThat(onlySave().trigger()).isEqualTo("CONSENT_CHANGE");
+        verifyNoResultWasFetched();
+    }
+
+    @Test
+    void statusOnALostResultResubmitsAndReturnsRunning() throws Exception {
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", BOTH_CONSENTS);
+        UUID id = row.picsureId();
+        callerHoldsConsents("phs001.c2", "phs001.c1");
+        hpdsHasLostTheJob(id);
+        hpdsAcceptsOwnedSubmits();
+
+        QueryStatus out = ownedService.queryStatus("auth", id, TOKEN, user(ALICE));
+
+        assertRerunUnder(id, BOTH_CONSENTS, "LOST_RESULT");
+        assertThat(out.getStatus()).isEqualTo(PicSureStatus.PENDING);
+        assertThat(out.getPicsureResultId()).isEqualTo(id);
+        assertNamesNoConsentOrUser(MAPPER.writeValueAsString(out));
+    }
+
+    private void assertLostResultStartsOneRerunAndAnswers409(Read read) {
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", BOTH_CONSENTS);
+        UUID id = row.picsureId();
+        callerHoldsConsents("phs001.c1", "phs001.c2");
+        hpdsHasLostTheJob(id);
+        hpdsAcceptsOwnedSubmits();
+
+        assertThatThrownBy(() -> read.call(ownedService, "auth", id, TOKEN, user(ALICE))).satisfies(QueryServiceTest::assertResultNotReady);
+
+        assertRerunUnder(id, BOTH_CONSENTS, "LOST_RESULT");
+        verifyNoResultWasFetched();
+    }
+
+    @Test
+    void resultOnALostResultStartsOneRerunAndAnswers409() {
+        assertLostResultStartsOneRerunAndAnswers409(Read.RESULT);
+    }
+
+    @Test
+    void signedUrlOnALostResultStartsOneRerunAndAnswers409() {
+        assertLostResultStartsOneRerunAndAnswers409(Read.SIGNED_URL);
+    }
+
+    private void assertUnfinishedResultAnswers409(Read read, PicSureStatus unfinished) {
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", BOTH_CONSENTS);
+        callerHoldsConsents("phs001.c1", "phs001.c2");
+        hpdsHoldsTheJob(row.picsureId(), unfinished);
+        hpdsServesTheResult(row.picsureId());
+
+        assertThatThrownBy(() -> read.call(ownedService, "auth", row.picsureId(), TOKEN, user(ALICE)))
+            .satisfies(QueryServiceTest::assertResultNotReady);
+
+        verifyNoResultWasFetched();
+        verifyNothingWasRunOrWritten();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PicSureStatus.class, names = {"QUEUED", "PENDING"})
+    void resultOnARunningResultAnswers409ResultNotReady(PicSureStatus unfinished) {
+        assertUnfinishedResultAnswers409(Read.RESULT, unfinished);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PicSureStatus.class, names = {"QUEUED", "PENDING"})
+    void signedUrlOnARunningResultAnswers409ResultNotReady(PicSureStatus unfinished) {
+        assertUnfinishedResultAnswers409(Read.SIGNED_URL, unfinished);
+    }
+
+    private void assertErroredResultAnswers400(Read read) {
+        StoredQuery row = rowOwnedByAlice(cohort(), "ERROR", BOTH_CONSENTS);
+        callerHoldsConsents("phs001.c1", "phs001.c2");
+        hpdsHoldsTheJob(row.picsureId(), PicSureStatus.ERROR);
+        hpdsServesTheResult(row.picsureId());
+
+        assertThatThrownBy(() -> read.call(ownedService, "auth", row.picsureId(), TOKEN, user(ALICE)))
+            .isInstanceOfSatisfying(PicsureException.class, failed -> {
+                assertThat(failed.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(failed.getErrorType()).isEqualTo("bad_request");
+                assertThat(failed.getMessage()).isEqualTo("Status : ERROR");
+            });
+
+        verifyNoResultWasFetched();
+        verifyNothingWasRunOrWritten();
+    }
+
+    @Test
+    void resultOnAnErroredResultAnswers400() {
+        assertErroredResultAnswers400(Read.RESULT);
+    }
+
+    @Test
+    void signedUrlOnAnErroredResultAnswers400() {
+        assertErroredResultAnswers400(Read.SIGNED_URL);
+    }
+
+    @Test
+    void statusOfAnErroredOwnedRowReportsTheErrorAndDoesNotRerun() {
+        StoredQuery row = rowOwnedByAlice(cohort(), "PENDING", BOTH_CONSENTS);
+        callerHoldsConsents("phs001.c1", "phs001.c2");
+        hpdsHoldsTheJob(row.picsureId(), PicSureStatus.ERROR);
+
+        QueryStatus out = ownedService.queryStatus("auth", row.picsureId(), TOKEN, user(ALICE));
+
+        assertThat(out.getStatus()).isEqualTo(PicSureStatus.ERROR);
+        verify(hpds, never()).query(any(), any(), any());
+        verify(operationsClient, never()).save(any());
+        verify(operationsClient).updateLatestRun(eq(row.picsureId()), argThat((UpdateQueryRequest u) -> "ERROR".equals(u.status())));
+    }
+
+    @Test
+    void resultOfAnAvailableOwnedRowUnderUnchangedConsentsIsServedWithoutTheSavedFilterCheck() {
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", BOTH_CONSENTS);
+        callerHoldsConsents("phs001.c2", "phs001.c1");
+        hpdsHoldsTheJob(row.picsureId(), PicSureStatus.AVAILABLE);
+        hpdsServesTheResult(row.picsureId());
+
+        org.springframework.http.ResponseEntity<byte[]> out = ownedService.queryResult("auth", row.picsureId(), TOKEN, user(ALICE));
+
+        assertThat(out.getBody()).containsExactly(7);
+        verify(hpds).queryResult(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE/v3".equals(t.baseUrl())), eq(row.picsureId().toString()));
+        verify(psama, times(1)).fetch(TOKEN);
+        verifyNothingWasRunOrWritten();
+    }
+
+    @Test
+    void signedUrlOfAnAvailableOwnedRowUnderUnchangedConsentsIsServedWithoutTheSavedFilterCheck() {
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", BOTH_CONSENTS);
+        callerHoldsConsents("phs001.c2", "phs001.c1");
+        hpdsHoldsTheJob(row.picsureId(), PicSureStatus.AVAILABLE);
+        hpdsServesTheResult(row.picsureId());
+
+        SignedUrlResponse out = ownedService.queryResultSignedUrl("auth", row.picsureId(), TOKEN, user(ALICE));
+
+        assertThat(out.getSignedUrl()).isEqualTo("https://s3/owned");
+        verify(psama, times(1)).fetch(TOKEN);
+        verifyNothingWasRunOrWritten();
+    }
+
+    @Test
+    void resultIsServedFromWhatHpdsHoldsEvenWhenTheRowStillRecordsAnEarlierStatus() {
+        StoredQuery row = rowOwnedByAlice(cohort(), "PENDING", BOTH_CONSENTS);
+        callerHoldsConsents("phs001.c1", "phs001.c2");
+        hpdsHoldsTheJob(row.picsureId(), PicSureStatus.AVAILABLE);
+        hpdsServesTheResult(row.picsureId());
+
+        assertThat(ownedService.queryResult("auth", row.picsureId(), TOKEN, user(ALICE)).getBody()).containsExactly(7);
+    }
+
+    @Test
+    void statusPatchCarriesTheRunIdItLoaded() throws Exception {
+        StoredQuery row = rowOwnedByAlice(cohort(), "PENDING", BOTH_CONSENTS);
+        UUID id = row.picsureId();
+        callerHoldsConsents("phs001.c1", "phs001.c2");
+        hpdsHoldsTheJob(id, PicSureStatus.AVAILABLE);
+        when(operationsClient.updateLatestRun(any(), any())).thenReturn(true);
+
+        QueryStatus out = ownedService.queryStatus("auth", id, TOKEN, user(ALICE));
+
+        assertThat(out.getStatus()).isEqualTo(PicSureStatus.AVAILABLE);
+        assertThat(out.getPicsureResultId()).isEqualTo(id);
+        assertThat(out.getResourceID()).isEqualTo(UUID.fromString(MAPPER.readTree(row.query()).path("resourceUUID").asText()));
+        assertNamesNoConsentOrUser(MAPPER.writeValueAsString(out));
+        verify(operationsClient).updateLatestRun(id, new UpdateQueryRequest("AVAILABLE", null, null, null, null, row.runId()));
+        verify(operationsClient, never()).update(any(), any());
+        verify(operationsClient, never()).save(any());
+        verify(hpds, never()).query(any(), any(), any());
+        verify(psama, times(1)).fetch(TOKEN);
+    }
+
+    @Test
+    void statusWriteRefusedBecauseTheRowHasANewerRunDoesNotFailTheStatusCall() {
+        StoredQuery row = rowOwnedByAlice(cohort(), "PENDING", BOTH_CONSENTS);
+        callerHoldsConsents("phs001.c1", "phs001.c2");
+        hpdsHoldsTheJob(row.picsureId(), PicSureStatus.AVAILABLE);
+        when(operationsClient.updateLatestRun(any(), any())).thenReturn(false);
+
+        QueryStatus out = ownedService.queryStatus("auth", row.picsureId(), TOKEN, user(ALICE));
+
+        assertThat(out.getStatus()).isEqualTo(PicSureStatus.AVAILABLE);
+        verify(operationsClient).updateLatestRun(eq(row.picsureId()), any());
+        verify(operationsClient, never()).update(any(), any());
+        verify(operationsClient, never()).save(any());
+    }
+
+    @Test
+    void hpds5xxOnStatusIs502AndDoesNotRerun() {
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", BOTH_CONSENTS);
+        callerHoldsConsents("phs001.c1", "phs001.c2");
+        HpdsCommunicationException hpdsFailed = new HpdsCommunicationException("HPDS call failed");
+        when(hpds.queryStatus(any(HpdsTarget.class), any())).thenThrow(hpdsFailed);
+
+        for (Read read : Read.values()) {
+            assertThatThrownBy(() -> read.call(ownedService, "auth", row.picsureId(), TOKEN, user(ALICE))).isSameAs(hpdsFailed);
+        }
+
+        verifyNoResultWasFetched();
+        verifyNothingWasRunOrWritten();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = Read.class, names = {"RESULT", "SIGNED_URL"})
+    void hpds5xxOnTheResultOfAnAvailableRowIs502AndDoesNotRerun(Read read) {
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", BOTH_CONSENTS);
+        callerHoldsConsents("phs001.c1", "phs001.c2");
+        hpdsHoldsTheJob(row.picsureId(), PicSureStatus.AVAILABLE);
+        HpdsCommunicationException resultFileIsGone = new HpdsCommunicationException("HPDS result call failed");
+        when(hpds.queryResult(any(HpdsTarget.class), any())).thenThrow(resultFileIsGone);
+        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), any())).thenThrow(resultFileIsGone);
+
+        assertThatThrownBy(() -> read.call(ownedService, "auth", row.picsureId(), TOKEN, user(ALICE))).isSameAs(resultFileIsGone);
+
+        verify(hpds, times(1)).queryStatus(any(), any());
+        verifyNothingWasRunOrWritten();
+    }
+
+    @ParameterizedTest
+    @EnumSource(Read.class)
+    void hpdsStatusAnswerWithoutAStatusIs502AndDoesNotRerun(Read read) {
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", BOTH_CONSENTS);
+        callerHoldsConsents("phs001.c1", "phs001.c2");
+        when(hpds.queryStatus(any(HpdsTarget.class), any())).thenReturn(hpdsAnswer(null, null, "Resource is locked."));
+
+        assertThatThrownBy(() -> read.call(ownedService, "auth", row.picsureId(), TOKEN, user(ALICE)))
+            .isInstanceOf(HpdsCommunicationException.class).hasMessage("HPDS did not report the status of the query");
+
+        verifyNoResultWasFetched();
+        verifyNothingWasRunOrWritten();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = Read.class, names = {"RESULT", "SIGNED_URL"})
+    void resultThatHpdsLosesBetweenTheDecisionAndTheFetchIsRerunAndAnswers409(Read read) {
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", BOTH_CONSENTS);
+        UUID id = row.picsureId();
+        callerHoldsConsents("phs001.c1", "phs001.c2");
+        PicsureException lost = new PicsureException(HttpStatus.NOT_FOUND, "not_found", "Not Found");
+        when(hpds.queryStatus(any(HpdsTarget.class), eq(id.toString())))
+            .thenReturn(hpdsAnswer(PicSureStatus.AVAILABLE, id.toString(), null)).thenThrow(lost);
+        when(hpds.queryResult(any(HpdsTarget.class), any())).thenThrow(lost);
+        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), any())).thenThrow(lost);
+        hpdsAcceptsOwnedSubmits();
+
+        assertThatThrownBy(() -> read.call(ownedService, "auth", id, TOKEN, user(ALICE))).satisfies(QueryServiceTest::assertResultNotReady);
+
+        verify(hpds, times(1)).query(any(HpdsTarget.class), any(), eq(id));
+        SaveQueryRequest saved = onlySave();
+        assertThat(saved.trigger()).isEqualTo("LOST_RESULT");
+        assertThat(saved.consents()).isEqualTo(BOTH_CONSENTS);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = Read.class, names = {"RESULT", "SIGNED_URL"})
+    void resultThatIsRunAgainBetweenTheDecisionAndTheFetchAnswers409WithoutAnotherRerun(Read read) {
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", BOTH_CONSENTS);
+        callerHoldsConsents("phs001.c1", "phs001.c2");
+        hpdsHoldsTheJob(row.picsureId(), PicSureStatus.AVAILABLE);
+        PicsureException unfinished = new PicsureException(HttpStatus.CONFLICT, "conflict", "Status : RUNNING");
+        when(hpds.queryResult(any(HpdsTarget.class), any())).thenThrow(unfinished);
+        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), any())).thenThrow(unfinished);
+
+        assertThatThrownBy(() -> read.call(ownedService, "auth", row.picsureId(), TOKEN, user(ALICE)))
+            .satisfies(QueryServiceTest::assertResultNotReady);
+
+        verifyNothingWasRunOrWritten();
+    }
+
+    private static Query sampleCohort() {
+        return new Query(List.of("\\demographics\\AGE\\"), List.of(), null, List.of(), ResultType.DATAFRAME, null, null, true);
+    }
+
+    @ParameterizedTest
+    @EnumSource(Read.class)
+    void sampleRowRerunWithFlagOffIs400SampleDisabled(Read read) {
+        StoredQuery changed = rowOwnedByAlice(sampleCohort(), "AVAILABLE", ONE_CONSENT);
+        callerHoldsConsents("phs001.c1", "phs001.c2");
+        hpdsAcceptsOwnedSubmits();
+
+        assertThatThrownBy(() -> read.call(ownedService, "auth", changed.picsureId(), TOKEN, user(ALICE)))
+            .isInstanceOfSatisfying(PicsureException.class, refused -> {
+                assertThat(refused.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(refused.getErrorType()).isEqualTo("sample_disabled");
+            });
+
+        verifyNoResultWasFetched();
+        verifyNothingWasRunOrWritten();
+    }
+
+    @ParameterizedTest
+    @EnumSource(Read.class)
+    void sampleRowWhoseResultIsLostWithFlagOffIs400SampleDisabled(Read read) {
+        StoredQuery lost = rowOwnedByAlice(sampleCohort(), "AVAILABLE", BOTH_CONSENTS);
+        callerHoldsConsents("phs001.c1", "phs001.c2");
+        hpdsHasLostTheJob(lost.picsureId());
+        hpdsAcceptsOwnedSubmits();
+
+        assertThatThrownBy(() -> read.call(ownedService, "auth", lost.picsureId(), TOKEN, user(ALICE)))
+            .isInstanceOfSatisfying(PicsureException.class, refused -> assertThat(refused.getErrorType()).isEqualTo("sample_disabled"));
+
+        verifyNoResultWasFetched();
+        verifyNothingWasRunOrWritten();
+    }
+
+    @Test
+    void sampleRowRerunWithFlagOnSendsTheSampleFlagAgain() {
+        sampleProperties.setEnabled(true);
+        StoredQuery row = rowOwnedByAlice(sampleCohort(), "AVAILABLE", ONE_CONSENT);
+        callerHoldsConsents("phs001.c1", "phs001.c2");
+        hpdsAcceptsOwnedSubmits();
+
+        ownedService.queryStatus("auth", row.picsureId(), TOKEN, user(ALICE));
+
+        assertThat(((Query) queriesSentToHpds.get(0)).sample()).isTrue();
+        assertThat(onlySave().trigger()).isEqualTo("CONSENT_CHANGE");
+    }
+
+    @Test
+    void sampleRowThatNeedsNoRerunIsReadWithFlagOff() {
+        StoredQuery row = rowOwnedByAlice(sampleCohort(), "AVAILABLE", BOTH_CONSENTS);
+        callerHoldsConsents("phs001.c1", "phs001.c2");
+        hpdsHoldsTheJob(row.picsureId(), PicSureStatus.AVAILABLE);
+        hpdsServesTheResult(row.picsureId());
+
+        assertThat(ownedService.queryStatus("auth", row.picsureId(), TOKEN, user(ALICE)).getStatus()).isEqualTo(PicSureStatus.AVAILABLE);
+        assertThat(ownedService.queryResult("auth", row.picsureId(), TOKEN, user(ALICE)).getBody()).containsExactly(7);
+    }
+
+    @ParameterizedTest
+    @EnumSource(Read.class)
+    void rerunThatHpdsAnswersWithoutAJobIs502AndSavesNothing(Read read) {
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", BOTH_CONSENTS);
+        callerHoldsConsents("phs001.c1");
+        when(hpds.query(any(HpdsTarget.class), any(), any(UUID.class))).thenReturn(hpdsAnswer(null, null, "Resource is locked."));
+
+        assertThatThrownBy(() -> read.call(ownedService, "auth", row.picsureId(), TOKEN, user(ALICE)))
+            .isInstanceOf(HpdsCommunicationException.class).hasMessage("HPDS did not accept the query");
+
+        verify(operationsClient, never()).save(any());
+        verifyNoResultWasFetched();
+    }
+
+    @ParameterizedTest
+    @EnumSource(Read.class)
+    void rerunThatHpdsRejectsSavesNothing(Read read) {
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", BOTH_CONSENTS);
+        callerHoldsConsents("phs001.c1");
+        PicsureException rejected = new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "HPDS refused the query");
+        when(hpds.query(any(HpdsTarget.class), any(), any(UUID.class))).thenThrow(rejected);
+
+        assertThatThrownBy(() -> read.call(ownedService, "auth", row.picsureId(), TOKEN, user(ALICE))).isSameAs(rejected);
+
+        verify(operationsClient, never()).save(any());
+        verifyNoResultWasFetched();
+    }
+
+    @ParameterizedTest
+    @EnumSource(Read.class)
+    void ownedReadWithConsentAuthorizationOffLooksUpNoConsentsAndRerunsNothing(Read read) {
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", Map.of());
+        hpdsHoldsTheJob(row.picsureId(), PicSureStatus.AVAILABLE);
+        hpdsServesTheResult(row.picsureId());
+
+        assertThat(read.call(consentOffService(), "auth", row.picsureId(), null, user(ALICE))).isNotNull();
+
+        verifyNoInteractions(psama);
+        verify(hpds, never()).query(any(), any(), any());
+        verify(operationsClient, never()).save(any());
+    }
+
+    @Test
+    void ownedRowStoredWithConsentsIsRunAgainWithoutFiltersOnceConsentAuthorizationIsOff() {
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", BOTH_CONSENTS);
+        hpdsAcceptsOwnedSubmits();
+
+        consentOffService().queryStatus("auth", row.picsureId(), null, user(ALICE));
+
+        assertThat(((Query) queriesSentToHpds.get(0)).authorizationFilters()).isEmpty();
+        SaveQueryRequest saved = onlySave();
+        assertThat(saved.consents()).isNotNull().isEmpty();
+        assertThat(saved.trigger()).isEqualTo("CONSENT_CHANGE");
+    }
+
+    @Test
+    void ownedReadsLookUpConsentsAskHpdsAndWriteInsideTheLockOfTheirRowAndFetchTheResultOutsideIt() {
+        StoredQuery row = rowOwnedByAlice(cohort(), "PENDING", BOTH_CONSENTS);
+        UUID id = row.picsureId();
+        List<String> stepsOutsideTheLock = new ArrayList<>();
+        List<String> stepsInsideTheLock = new ArrayList<>();
+        Consumer<String> step = name -> (rowLocks.rowsInUse() == 1 ? stepsInsideTheLock : stepsOutsideTheLock).add(name);
+        when(psama.fetch(TOKEN)).thenAnswer(lookup -> {
+            step.accept("consent lookup");
+            return Map.of(CONSENT_PATH, Set.of("phs001.c1", "phs001.c2"));
+        });
+        when(hpds.queryStatus(any(HpdsTarget.class), any())).thenAnswer(ask -> {
+            step.accept("hpds status");
+            return hpdsAnswer(PicSureStatus.AVAILABLE, id.toString(), null);
+        });
+        when(operationsClient.updateLatestRun(any(), any())).thenAnswer(write -> {
+            step.accept("status write");
+            return true;
+        });
+        when(hpds.queryResult(any(HpdsTarget.class), any())).thenAnswer(fetch -> {
+            step.accept("result fetch");
+            return org.springframework.http.ResponseEntity.ok(new byte[] {7});
+        });
+        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), any())).thenAnswer(fetch -> {
+            step.accept("signed url fetch");
+            return new SignedUrlResponse("https://s3/owned");
+        });
+
+        ownedService.queryStatus("auth", id, TOKEN, user(ALICE));
+        ownedService.queryResult("auth", id, TOKEN, user(ALICE));
+        ownedService.queryResultSignedUrl("auth", id, TOKEN, user(ALICE));
+
+        assertThat(stepsInsideTheLock).containsExactly(
+            "consent lookup", "hpds status", "status write", "consent lookup", "hpds status", "consent lookup", "hpds status"
+        );
+        assertThat(stepsOutsideTheLock).containsExactly("result fetch", "signed url fetch");
+        assertThat(rowLocks.rowsInUse()).isZero();
+    }
+
+    @ParameterizedTest
+    @EnumSource(Read.class)
+    void rerunSubmitsAndSavesInsideTheLockOfItsRow(Read read) {
+        StoredQuery row = rowOwnedByAlice(cohort(), "AVAILABLE", BOTH_CONSENTS);
+        callerHoldsConsents("phs001.c1");
+        List<Integer> rowsLockedDuringSubmitAndSave = new ArrayList<>();
+        when(hpds.query(any(HpdsTarget.class), any(), any(UUID.class))).thenAnswer(submit -> {
+            rowsLockedDuringSubmitAndSave.add(rowLocks.rowsInUse());
+            return hpdsStatus(submit.getArgument(2).toString());
+        });
+        when(operationsClient.save(any())).thenAnswer(save -> {
+            rowsLockedDuringSubmitAndSave.add(rowLocks.rowsInUse());
+            return row.picsureId();
+        });
+
+        try {
+            read.call(ownedService, "auth", row.picsureId(), TOKEN, user(ALICE));
+        } catch (PicsureException notReady) {
+            assertResultNotReady(notReady);
+        }
+
+        assertThat(rowsLockedDuringSubmitAndSave).containsExactly(1, 1);
+        assertThat(rowLocks.rowsInUse()).isZero();
+    }
+
+    @Test
+    void ownerlessRowKeepsVerifyReadAccess() {
+        QueryRowLocks locks = mock(QueryRowLocks.class);
+        QueryService ownerless = new QueryService(operationsClient, hpds, selector, consent, sampleRules, locks);
+        UUID id = UUID.randomUUID();
+        StoredQuery stored = new StoredQuery(id, "{}", "rr-2", "AVAILABLE", "3", null);
+        when(operationsClient.get(id)).thenReturn(stored);
+        when(hpds.queryStatus(any(HpdsTarget.class), eq("rr-2"))).thenReturn(hpdsAnswer(PicSureStatus.AVAILABLE, "rr-2", null));
+        when(hpds.queryResult(any(HpdsTarget.class), eq("rr-2"))).thenReturn(org.springframework.http.ResponseEntity.ok(new byte[] {1}));
+        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), eq("rr-2"))).thenReturn(new SignedUrlResponse("https://s3/x"));
+
+        assertThat(ownerless.queryStatus("auth", id, TOKEN, user(BOB)).getStatus()).isEqualTo(PicSureStatus.AVAILABLE);
+        verify(consent, never()).verifyReadAccess(any(), any(), any());
+        assertThat(ownerless.queryResult("auth", id, TOKEN, user(BOB)).getBody()).containsExactly(1);
+        assertThat(ownerless.queryResultSignedUrl("auth", id, TOKEN, null).getSignedUrl()).isEqualTo("https://s3/x");
+
+        verify(consent, times(2)).verifyReadAccess("auth", stored, TOKEN);
+        verify(consent, never()).currentConsents(any(), any());
+        verify(operationsClient).update(id, new UpdateQueryRequest("AVAILABLE", null, null, null, null));
+        verify(operationsClient, never()).updateLatestRun(any(), any());
+        verify(operationsClient, never()).save(any());
+        verify(hpds, never()).query(any(), any(), any());
+        verifyNoInteractions(locks);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = Read.class, names = {"RESULT", "SIGNED_URL"})
+    void ownerlessResultThatIsStillRunningAnswers409ResultNotReady(Read read) {
+        UUID id = UUID.randomUUID();
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, "{}", "rr-2", "PENDING", "3", null));
+        PicsureException unfinished = new PicsureException(HttpStatus.CONFLICT, "conflict", "Status : RUNNING");
+        when(hpds.queryResult(any(HpdsTarget.class), eq("rr-2"))).thenThrow(unfinished);
+        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), eq("rr-2"))).thenThrow(unfinished);
+
+        assertThatThrownBy(() -> read.call(service, "auth", id, TOKEN, user(BOB))).satisfies(QueryServiceTest::assertResultNotReady);
+
+        verifyNothingWasRunOrWritten();
+    }
+
+    @ParameterizedTest
+    @EnumSource(Read.class)
+    void ownerlessRowWhoseResultHpdsLostKeepsThe404AndIsNotRerun(Read read) {
+        UUID id = UUID.randomUUID();
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, "{}", "rr-2", "AVAILABLE", "3", null));
+        PicsureException lost = new PicsureException(HttpStatus.NOT_FOUND, "not_found", "Not Found");
+        when(hpds.queryStatus(any(HpdsTarget.class), eq("rr-2"))).thenThrow(lost);
+        when(hpds.queryResult(any(HpdsTarget.class), eq("rr-2"))).thenThrow(lost);
+        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), eq("rr-2"))).thenThrow(lost);
+
+        assertThatThrownBy(() -> read.call(service, "auth", id, TOKEN, user(BOB))).isSameAs(lost);
+
+        verifyNothingWasRunOrWritten();
     }
 
     // --- metadata ---

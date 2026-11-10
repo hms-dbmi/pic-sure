@@ -23,6 +23,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.client.RestClient;
 
@@ -196,6 +198,51 @@ class OperationsClientTest {
 
         assertThatThrownBy(() -> client().update(id, new UpdateQueryRequest("AVAILABLE", null, null, null, null, UUID.randomUUID())))
             .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
+    }
+
+    @Test
+    void updateOfTheLatestRunIsSentWithItsRunIdAndReportedAsApplied() {
+        UUID id = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        ops.stubFor(patch(urlEqualTo("/operations/internal/queries/" + id)).willReturn(aResponse().withStatus(204)));
+
+        boolean applied = client().updateLatestRun(id, new UpdateQueryRequest("AVAILABLE", null, null, null, null, runId));
+
+        assertThat(applied).isTrue();
+        ops.verify(
+            patchRequestedFor(urlEqualTo("/operations/internal/queries/" + id)).withRequestBody(
+                equalToJson(
+                    "{\"status\":\"AVAILABLE\",\"resourceResultId\":null,\"metadata\":null,\"query\":null,\"version\":null,\"runId\":\""
+                        + runId + "\"}"
+                )
+            )
+        );
+    }
+
+    @Test
+    void updateOfARunThatIsNoLongerTheLatestIsReportedAsNotAppliedAndDoesNotThrow() {
+        UUID id = UUID.randomUUID();
+        ops.stubFor(
+            patch(urlEqualTo("/operations/internal/queries/" + id)).willReturn(
+                aResponse().withStatus(409).withHeader("Content-Type", "application/json")
+                    .withBody("{\"errorType\":\"conflict\",\"message\":\"stale\",\"requestId\":null}")
+            )
+        );
+
+        boolean applied = client().updateLatestRun(id, new UpdateQueryRequest("AVAILABLE", null, null, null, null, UUID.randomUUID()));
+
+        assertThat(applied).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {400, 404, 500})
+    void updateOfTheLatestRunThatFailsForAnyOtherReasonThrowsBadGateway(int answer) {
+        UUID id = UUID.randomUUID();
+        ops.stubFor(patch(urlEqualTo("/operations/internal/queries/" + id)).willReturn(aResponse().withStatus(answer)));
+
+        assertThatThrownBy(
+            () -> client().updateLatestRun(id, new UpdateQueryRequest("AVAILABLE", null, null, null, null, UUID.randomUUID()))
+        ).isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
     }
 
     @Test

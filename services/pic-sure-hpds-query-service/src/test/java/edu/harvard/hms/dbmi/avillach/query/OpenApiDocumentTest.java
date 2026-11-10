@@ -195,6 +195,42 @@ class OpenApiDocumentTest {
     }
 
     @Test
+    void resultAndSignedUrlNameTheNotReadyErrorTypeAndEveryCaseThatAnswersIt() throws Exception {
+        JsonNode document = document();
+
+        for (String path : List.of(RESULT, SIGNED_URL)) {
+            JsonNode operation = operation(document, "get", path);
+            assertThat(operation.path("description").asText()).as("GET %s description", path)
+                .contains("answers 409 with error type `result_not_ready`", "run again", "consents changed", "no longer holds the result");
+            assertThat(operation.path("responses").path("409").path("description").asText()).as("GET %s 409", path)
+                .contains("`result_not_ready`", "ran it again", "Poll the status");
+            assertThat(operation.path("responses").path("400").path("description").asText()).as("GET %s 400", path)
+                .contains("`sample_disabled`");
+        }
+    }
+
+    @Test
+    void storedQueryReadsDocumentTheOwnerCheckTheConsentCheckAndTheWaitForTheRow() throws Exception {
+        JsonNode document = document();
+
+        for (String path : List.of(STATUS, RESULT, SIGNED_URL)) {
+            JsonNode operation = operation(document, "get", path);
+            assertThat(operation.path("description").asText()).as("GET %s description", path)
+                .contains("Only the user who submitted the query");
+            JsonNode responses = operation.path("responses");
+            assertThat(responses.path("403").path("description").asText()).as("GET %s 403", path)
+                .contains("not the user who submitted the query", "`forbidden`", "holds no consents", "`consent_denied`");
+            assertThat(responses.path("503").path("description").asText()).as("GET %s 503", path)
+                .contains("Backend not configured", "another request for the same query", "`service_unavailable`");
+            assertThat(responses.path("502").path("description").asText()).as("GET %s 502", path).contains("query save");
+        }
+        assertThat(operation(document, "get", STATUS).path("description").asText())
+            .contains("consents changed", "no longer holds the result", "run again", "keep polling");
+        assertThat(operation(document, "get", STATUS).path("responses").path("400").path("description").asText())
+            .contains("Unknown backend", "`sample_disabled`");
+    }
+
+    @Test
     void searchOperationsExplainTheirUse() throws Exception {
         JsonNode document = document();
 

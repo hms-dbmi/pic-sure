@@ -36,6 +36,12 @@ import io.swagger.v3.oas.annotations.tags.Tag;
  * A status, result, or signed-url read of a row stored before v3 first upgrades that row in place (translated, re-scoped by the caller's
  * consents, and re-run), and answers 422 when the stored query cannot be translated.
  *
+ * <p>A query submitted on {@code auth} by a caller the gateway identified by UUID belongs to that caller. Status, result and signed-url
+ * answer 403 for anyone else, whoever holds the id. For the owner, each of the three compares the caller's current consents with the ones
+ * the query last ran under, and runs the query again when they differ or when HPDS no longer holds the result. Result and signed-url then
+ * answer 409 {@code result_not_ready}, as they do while a query is queued or running. A query stored without an owner keeps the checks it
+ * had before queries had owners.
+ *
  * <p>Submit and sync bind their body to {@link HpdsQueryRequest}, a v3 {@code Query} under the query key, and pass {@link QueryService} the
  * outbound envelope built by {@link HpdsQueryRequest#toOutbound()}, which is what HPDS receives and what the operations service stores.
  * Status, result, signed-url and metadata are GET requests with no body: they read the stored query by id, and a POST to them answers 405.
@@ -90,12 +96,21 @@ public class HpdsQueryController {
         | `ERROR` | Failed | Stop polling. This query will not produce a result; fix it and submit it again |
 
         Poll every few seconds at first, backing off to about every 10 seconds for a long-running query.
+
+        Only the user who submitted the query can read its status. Each call compares the caller's current consents with the \
+        ones the query last ran under. When the consents changed, or the server no longer holds the result, the query is run \
+        again and this returns the status of the new run, so keep polling until it reports `AVAILABLE`.
         """;
 
     private static final String RESULT_DESCRIPTION = """
         Step 3 of collecting an asynchronous query: download the result once `GET /hpds/auth/query/{id}/status` reports \
-        `AVAILABLE`. While the query is still queued or running, this answers 409. For a query that failed, it answers 400. \
-        `{id}` is the `picsureResultId` that `POST /hpds/auth/query` returned.
+        `AVAILABLE`. While the query is still queued or running, this answers 409 with error type `result_not_ready`. For a \
+        query that failed, it answers 400. `{id}` is the `picsureResultId` that `POST /hpds/auth/query` returned.
+
+        Only the user who submitted the query can download its result. Each call compares the caller's current consents with \
+        the ones the query last ran under. When the consents changed, or the server no longer holds the result, the query is \
+        run again and this call also answers 409 with error type `result_not_ready`. Poll the status until it reports \
+        `AVAILABLE` again, then repeat the download.
 
         | Result type | Body |
         |---|---|
@@ -110,7 +125,13 @@ public class HpdsQueryController {
     private static final String SIGNED_URL_DESCRIPTION = """
         An alternative to step 3 of collecting an asynchronous query. Once `GET /hpds/auth/query/{id}/status` reports \
         `AVAILABLE`, this copies the result to the deployment's storage bucket and returns a pre-signed download link in \
-        `signedUrl`. While the query is still queued or running, this answers 409. For a query that failed, it answers 400.
+        `signedUrl`. While the query is still queued or running, this answers 409 with error type `result_not_ready`. For a \
+        query that failed, it answers 400.
+
+        Only the user who submitted the query can ask for the link. Each call compares the caller's current consents with the \
+        ones the query last ran under. When the consents changed, or the server no longer holds the result, the query is run \
+        again and this call also answers 409 with error type `result_not_ready`. Poll the status until it reports `AVAILABLE` \
+        again, then ask for the link again. A link issued earlier stays valid until it expires.
 
         Download the link with any HTTP client and without the PIC-SURE token: the link carries its own authorization, and \
         storage rejects a request that sends both.
@@ -134,8 +155,32 @@ public class HpdsQueryController {
     private static final String METHOD_NOT_ALLOWED =
         "The request used a method this endpoint does not support, such as POST. The Allow header names GET.";
 
-    private static final String RESULT_NOT_READY =
-        "The query is still queued or running, so it has no result yet. Poll the status and ask again once it reports AVAILABLE.";
+    private static final String RESULT_NOT_READY = "The result is not ready (error type `result_not_ready`): the query is still queued or "
+        + "running, or this request ran it again because the caller's consents changed or the server no longer held the result. Poll "
+        + "the status and ask again once it reports AVAILABLE.";
+
+    private static final String RERUN_SAMPLE_DISABLED =
+        " or a sample query that has to run again while sample datasets are turned off (error type `sample_disabled`).";
+
+    private static final String STATUS_BAD_REQUEST = "Unknown backend," + RERUN_SAMPLE_DISABLED;
+
+    private static final String RESULT_BAD_REQUEST = "Unknown backend, a query that failed and has no result," + RERUN_SAMPLE_DISABLED;
+
+    private static final String NOT_THE_OWNER_OR_NO_CONSENTS = "The caller is not the user who submitted the query (error type "
+        + "`forbidden`), or holds no consents, or holds consents that do not permit the query (error type `consent_denied`).";
+
+    private static final String STATUS_FORBIDDEN =
+        NOT_THE_OWNER_OR_NO_CONSENTS + " Also when consent does not permit re-running a query stored before v3.";
+
+    private static final String RESULT_FORBIDDEN =
+        NOT_THE_OWNER_OR_NO_CONSENTS + " Also when consent no longer covers the result of a query stored without an owner.";
+
+    private static final String READ_UNAVAILABLE = "Backend not configured, or another request for the same query was still in progress "
+        + "when this one stopped waiting for it (error type `service_unavailable`). Ask again.";
+
+    private static final String STATUS_BAD_GATEWAY = "Consent lookup, query lookup, HPDS call, status update, or query save failed.";
+
+    private static final String RESULT_BAD_GATEWAY = "Consent lookup, query lookup, HPDS call, or query save failed.";
 
     private static final String COUNT_EXAMPLE = "1234";
 
@@ -301,18 +346,30 @@ public class HpdsQueryController {
         return syncResponse(service.querySync(backend, req.toOutbound(), requestSource, authorizationHeader, user));
     }
 
+    /**
+     * Reports the status of a stored query. A query that has an owner answers only that owner, and is run again first when the owner's
+     * consents changed or HPDS no longer holds the result; the status returned is then the new run's.
+     *
+     * @param backend the ingress {@code {backend}} segment
+     * @param id the id of the stored query
+     * @param authorizationHeader the caller's {@code Authorization} header, used to look up the caller's consents
+     * @param user the caller as the gateway identified them
+     * @return the status of the query
+     * @throws PicsureException 403 {@code forbidden} for a caller who is not the owner, 403 {@code consent_denied} for an owner with no
+     *         consents, 503 {@code service_unavailable} when another request holds the query for too long, and the other documented answers
+     */
     @AuditEvent(type = "QUERY", action = "query.status")
     @GetMapping("/query/{id}/status")
     @Operation(summary = "Status of a submitted query", description = STATUS_DESCRIPTION)
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The status of the query."),
-            @ApiResponse(responseCode = "400", description = "Unknown backend."),
-            @ApiResponse(responseCode = "403", description = "Consent does not permit re-running a query stored before v3."),
+            @ApiResponse(responseCode = "400", description = STATUS_BAD_REQUEST),
+            @ApiResponse(responseCode = "403", description = STATUS_FORBIDDEN),
             @ApiResponse(responseCode = "404", description = "Unknown query id."),
             @ApiResponse(responseCode = "405", description = METHOD_NOT_ALLOWED),
             @ApiResponse(responseCode = "422", description = "Query stored before v3 cannot be converted to v3."),
-            @ApiResponse(responseCode = "502", description = "Consent lookup, query lookup, HPDS call, or status update failed."),
-            @ApiResponse(responseCode = "503", description = "Backend not configured."),
+            @ApiResponse(responseCode = "502", description = STATUS_BAD_GATEWAY),
+            @ApiResponse(responseCode = "503", description = READ_UNAVAILABLE),
             @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
     )
     public QueryStatus status(
@@ -323,6 +380,20 @@ public class HpdsQueryController {
         return service.queryStatus(backend, id, authorizationHeader, user);
     }
 
+    /**
+     * Returns the result of a stored query. A query that has an owner answers only that owner, and only when the owner's consents equal the
+     * ones the query last ran under and HPDS holds a finished result. When the query is queued or running, or had to be run again, the
+     * answer is 409 {@code result_not_ready}.
+     *
+     * @param backend the ingress {@code {backend}} segment
+     * @param id the id of the stored query
+     * @param authorizationHeader the caller's {@code Authorization} header, used to look up the caller's consents
+     * @param user the caller as the gateway identified them
+     * @return the result bytes with the content type HPDS gave them
+     * @throws PicsureException 403 {@code forbidden} for a caller who is not the owner, 403 {@code consent_denied} for a caller with no
+     *         consents, 409 {@code result_not_ready} while there is no finished result, 400 for a query that failed, 503
+     *         {@code service_unavailable} when another request holds the query for too long, and the other documented answers
+     */
     @AuditEvent(type = "DATA_ACCESS", action = "query.result")
     @GetMapping(value = "/query/{id}/result", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
     @Operation(summary = "Result bytes of a completed query", description = RESULT_DESCRIPTION)
@@ -343,14 +414,14 @@ public class HpdsQueryController {
                         description = "The CSV of a DATAFRAME or DATAFRAME_TIMESERIES query: a header row, then one row per patient."
                     )
                 )}
-        ), @ApiResponse(responseCode = "400", description = "Unknown backend, or a query that failed and has no result."),
-            @ApiResponse(responseCode = "403", description = "Consent no longer covers this result."),
+        ), @ApiResponse(responseCode = "400", description = RESULT_BAD_REQUEST),
+            @ApiResponse(responseCode = "403", description = RESULT_FORBIDDEN),
             @ApiResponse(responseCode = "404", description = "Unknown query id."),
             @ApiResponse(responseCode = "405", description = METHOD_NOT_ALLOWED),
             @ApiResponse(responseCode = "409", description = RESULT_NOT_READY),
             @ApiResponse(responseCode = "422", description = "Query stored before v3 cannot be converted to v3."),
-            @ApiResponse(responseCode = "502", description = "Consent lookup, query lookup, or HPDS call failed."),
-            @ApiResponse(responseCode = "503", description = "Backend not configured."),
+            @ApiResponse(responseCode = "502", description = RESULT_BAD_GATEWAY),
+            @ApiResponse(responseCode = "503", description = READ_UNAVAILABLE),
             @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
     )
     public ResponseEntity<byte[]> result(
@@ -361,19 +432,29 @@ public class HpdsQueryController {
         return service.queryResult(backend, id, authorizationHeader, user);
     }
 
+    /**
+     * Returns a signed URL to the result of a stored query, under the same checks and with the same answers as {@link #result}.
+     *
+     * @param backend the ingress {@code {backend}} segment
+     * @param id the id of the stored query
+     * @param authorizationHeader the caller's {@code Authorization} header, used to look up the caller's consents
+     * @param user the caller as the gateway identified them
+     * @return the signed URL
+     * @throws PicsureException as {@link #result} does
+     */
     @AuditEvent(type = "DATA_ACCESS", action = "query.signed_url")
     @GetMapping(value = "/query/{id}/signed-url", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "A signed URL for a completed query's result", description = SIGNED_URL_DESCRIPTION)
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The signed URL for the completed query's result."),
-            @ApiResponse(responseCode = "400", description = "Unknown backend, or a query that failed and has no result."),
-            @ApiResponse(responseCode = "403", description = "Consent no longer covers this result."),
+            @ApiResponse(responseCode = "400", description = RESULT_BAD_REQUEST),
+            @ApiResponse(responseCode = "403", description = RESULT_FORBIDDEN),
             @ApiResponse(responseCode = "404", description = "Unknown query id."),
             @ApiResponse(responseCode = "405", description = METHOD_NOT_ALLOWED),
             @ApiResponse(responseCode = "409", description = RESULT_NOT_READY),
             @ApiResponse(responseCode = "422", description = "Query stored before v3 cannot be converted to v3."),
-            @ApiResponse(responseCode = "502", description = "Consent lookup, query lookup, or HPDS call failed."),
-            @ApiResponse(responseCode = "503", description = "Backend not configured."),
+            @ApiResponse(responseCode = "502", description = RESULT_BAD_GATEWAY),
+            @ApiResponse(responseCode = "503", description = READ_UNAVAILABLE),
             @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
     )
     public SignedUrlResponse signedUrl(

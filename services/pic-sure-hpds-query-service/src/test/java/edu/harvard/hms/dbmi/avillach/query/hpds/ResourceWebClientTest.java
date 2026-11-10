@@ -221,6 +221,35 @@ class ResourceWebClientTest {
     }
 
     @Test
+    void hpds409And404SurfaceWithTheirStatus() {
+        hpds.stubFor(post(urlEqualTo("/PIC-SURE/v3/query/lost/status")).willReturn(aResponse().withStatus(404)));
+        hpds.stubFor(post(urlEqualTo("/PIC-SURE/v3/query/lost/result")).willReturn(aResponse().withStatus(404)));
+        hpds.stubFor(post(urlEqualTo("/PIC-SURE/v3/query/lost/signed-url")).willReturn(aResponse().withStatus(404)));
+        hpds.stubFor(
+            post(urlEqualTo("/PIC-SURE/v3/query/running/result")).willReturn(aResponse().withStatus(409).withBody("Status : RUNNING"))
+        );
+        hpds.stubFor(
+            post(urlEqualTo("/PIC-SURE/v3/query/running/signed-url")).willReturn(aResponse().withStatus(409).withBody("Status : PENDING"))
+        );
+
+        assertThatThrownBy(() -> client().queryStatus(target(), "lost"))
+            .isInstanceOfSatisfying(PicsureException.class, lost -> assertThat(lost.getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
+        assertThatThrownBy(() -> client().queryResult(target(), "lost"))
+            .isInstanceOfSatisfying(PicsureException.class, lost -> assertThat(lost.getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
+        assertThatThrownBy(() -> client().queryResultSignedUrl(target(), "lost"))
+            .isInstanceOfSatisfying(PicsureException.class, lost -> assertThat(lost.getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
+        assertThatThrownBy(() -> client().queryResult(target(), "running")).isInstanceOfSatisfying(PicsureException.class, unfinished -> {
+            assertThat(unfinished.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+            assertThat(unfinished.getMessage()).isEqualTo("Status : RUNNING");
+        });
+        assertThatThrownBy(() -> client().queryResultSignedUrl(target(), "running"))
+            .isInstanceOfSatisfying(PicsureException.class, unfinished -> {
+                assertThat(unfinished.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                assertThat(unfinished.getMessage()).isEqualTo("Status : PENDING");
+            });
+    }
+
+    @Test
     void hpdsLockedResourceSurfacesAsForbidden() {
         hpds.stubFor(post(urlEqualTo("/PIC-SURE/v3/query")).willReturn(aResponse().withStatus(403).withBody("Resource is locked")));
 

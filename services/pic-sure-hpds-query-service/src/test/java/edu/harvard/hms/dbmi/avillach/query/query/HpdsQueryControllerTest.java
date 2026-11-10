@@ -1,6 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.query.query;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.anyUrl;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
@@ -15,6 +17,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -23,6 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -30,6 +34,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -442,6 +448,35 @@ class HpdsQueryControllerTest {
 
         assertThat(response).doesNotContain("locked").doesNotContain(caller);
         verify(operationsClient, never()).save(any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"status", "result", "signed-url"})
+    void aCallerWhoIsNotTheOwnerIsRefusedWhateverTheQueryStringTheOtherHeadersOrTheBodyClaim(String read) throws Exception {
+        String owner = "5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11";
+        String caller = "0b6d6a0e-3c56-4c0b-9a38-0b1f5c1f3a77";
+        UUID id = UUID.randomUUID();
+        when(operationsClient.get(id)).thenReturn(
+            new StoredQuery(id, "{}", id.toString(), "AVAILABLE", "3", null, 1L, null, UUID.fromString(owner), Map.of(), UUID.randomUUID())
+        );
+
+        String response = mockMvc
+            .perform(
+                get("/hpds/auth/query/{id}/" + read, id).header(GatewayUserResolver.HEADER_USER_ID, caller)
+                    .header(GatewayUserResolver.HEADER_USER_SUBJECT, owner).header(GatewayUserResolver.HEADER_USER_EMAIL, owner)
+                    .header("Authorization", "Bearer caller-token").queryParam("userUuid", owner).queryParam("userId", owner)
+                    .queryParam("user", owner).queryParam("owner", owner).queryParam("X-User-Id", owner)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"userUuid\":\"" + owner + "\",\"userId\":\"" + owner + "\",\"owner\":\"" + owner + "\"}")
+            ).andExpect(status().isForbidden()).andExpect(jsonPath("$.errorType").value("forbidden")).andReturn().getResponse()
+            .getContentAsString();
+
+        assertThat(response).doesNotContain(owner).doesNotContain(caller).doesNotContain(id.toString());
+        verifyNoInteractions(consentAuthorization);
+        verify(operationsClient, never()).save(any());
+        verify(operationsClient, never()).update(any(), any());
+        verify(operationsClient, never()).updateLatestRun(any(), any());
+        hpds.verify(0, anyRequestedFor(anyUrl()));
     }
 
     // --- /hpds/** requires an authenticated caller ---
