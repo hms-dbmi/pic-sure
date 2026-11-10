@@ -12,10 +12,14 @@ import org.springframework.stereotype.Component;
  *
  * <p>A row describes its job as long as every submit to HPDS is followed by a save of the row with the consents the submit ran under. The
  * two come apart when HPDS acts on a submit and the save after it fails, or when the answer to a submit is lost after HPDS acted on it.
- * {@code QueryService} therefore marks a row id here immediately before it sends the row's query to HPDS and removes the mark only once the
- * row is saved. While a row id is marked, the consents and the status the row records say nothing about the job HPDS holds. A request for
- * the row must not compare its caller's consents with the recorded ones and serve or reuse what HPDS holds. It runs the query again under
- * the consents it just fetched and saves the row, which removes the mark.
+ * {@code QueryService} therefore marks the id of a stored row here immediately before it sends the row's query to HPDS and removes the mark
+ * only once the row is saved. While a row id is marked, the consents and the status the row records say nothing about the job HPDS holds. A
+ * request for the row must not compare its caller's consents with the recorded ones and serve or reuse what HPDS holds. It runs the query
+ * again under the consents it just fetched and saves the row, which removes the mark.
+ *
+ * <p>Only an id that already has a stored row is ever marked. A first submit, which finds no row under its id, marks nothing, because a
+ * mark is read only for a row that was loaded and an id without a row has no recorded consents to mistrust. This also bounds the set by the
+ * number of stored rows, where a mark per failed first submit would let a caller add one for every distinct query.
  *
  * <p>A mark is read and changed only by a thread that holds the {@link QueryRowLocks} lock of that row, so a request never sees the mark of
  * a submit that is still on its way to its save.

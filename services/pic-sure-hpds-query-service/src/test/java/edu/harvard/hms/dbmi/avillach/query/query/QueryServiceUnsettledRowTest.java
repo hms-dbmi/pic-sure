@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.query.query;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -90,9 +91,11 @@ class QueryServiceUnsettledRowTest {
     PsamaConsentClient psama = mock(PsamaConsentClient.class);
     QueryRowLocks rowLocks = new QueryRowLocks(new QueryRowLockProperties());
     List<Integer> rowsLockedWhenAMarkWasReadOrChanged = new ArrayList<>();
+    List<UUID> idsEverMarked = new ArrayList<>();
     UnsettledQueryRows unsettledRows = new UnsettledQueryRows() {
         @Override
         public boolean markUnsettled(UUID rowId) {
+            idsEverMarked.add(rowId);
             rowsLockedWhenAMarkWasReadOrChanged.add(rowLocks.rowsInUse());
             return super.markUnsettled(rowId);
         }
@@ -629,6 +632,104 @@ class QueryServiceUnsettledRowTest {
         assertThat(consentsHpdsReceived).containsExactly(WIDE, NARROW);
         assertThat(saves).extracting(SaveQueryRequest::trigger).containsExactly("LOST_RESULT");
         assertThat(unsettledRows.isUnsettled(ROW)).isFalse();
+    }
+
+    /** The ways a first submit can end without a row being stored under its id. */
+    enum NoRowStored {
+        HPDS_FAILS, HPDS_TAKES_THE_QUERY_AND_ITS_ANSWER_IS_LOST, HPDS_ANSWERS_WITH_NO_BODY, HPDS_ANSWERS_UNDER_ANOTHER_ID, EVERY_SAVE_FAILS
+    }
+
+    private void aFirstSubmitEndsWith(NoRowStored ending) {
+        switch (ending) {
+            case HPDS_FAILS -> submitting = submit -> {
+                throw new HpdsCommunicationException("HPDS call failed: http://hpds/PIC-SURE/v3/query");
+            };
+            case HPDS_TAKES_THE_QUERY_AND_ITS_ANSWER_IS_LOST -> submitting = this::acceptAndLoseTheAnswer;
+            case HPDS_ANSWERS_WITH_NO_BODY -> submitting = this::answerWithNoBody;
+            case HPDS_ANSWERS_UNDER_ANOTHER_ID -> submitting = this::answerUnderAnotherId;
+            case EVERY_SAVE_FAILS -> savesToFail = EVERY_SAVE;
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(NoRowStored.class)
+    void aFirstSubmitThatStoresNoRowLeavesNoMark(NoRowStored ending) {
+        callerHolds(NARROW);
+        aFirstSubmitEndsWith(ending);
+
+        assertThatThrownBy(this::submit).isInstanceOf(RuntimeException.class);
+
+        assertThat(rows).as("no row is stored under the id").isEmpty();
+        assertThat(unsettledRows.isUnsettled(ROW)).as("an id with no row is not marked").isFalse();
+        assertThat(idsEverMarked).isEmpty();
+    }
+
+    @Test
+    void firstSubmitsOfManyQueriesThatHpdsFailsLeaveNoMarks() {
+        callerHolds(NARROW);
+        aFirstSubmitEndsWith(NoRowStored.HPDS_FAILS);
+
+        for (int query = 0; query < 25; query++) {
+            Query distinct =
+                new Query(List.of("\\demographics\\AGE\\" + query + "\\"), List.of(), null, List.of(), ResultType.DATAFRAME, null, null);
+            assertThatThrownBy(() -> service.query("auth", new GeneralQueryRequest().setQuery(distinct), TOKEN, alice()))
+                .isInstanceOf(HpdsCommunicationException.class);
+        }
+
+        assertThat(consentsHpdsReceived).hasSize(25);
+        assertThat(idsEverMarked).isEmpty();
+    }
+
+    @Test
+    void aSubmitOfAnExistingRowThatHpdsFailsStillMarksTheRow() {
+        aliceHasARow(NARROW, "ERROR");
+        callerHolds(NARROW);
+        aFirstSubmitEndsWith(NoRowStored.HPDS_TAKES_THE_QUERY_AND_ITS_ANSWER_IS_LOST);
+
+        assertThatThrownBy(this::submit).isInstanceOf(HpdsCommunicationException.class);
+
+        assertThat(unsettledRows.isUnsettled(ROW)).as("the row exists and may not describe the job HPDS took").isTrue();
+        assertThat(idsEverMarked).containsExactly(ROW);
+    }
+
+    @Test
+    void aFirstSubmitWhoseSaveFailsIsFollowedByAFirstSubmitUnderTheConsentsOfTheNextRequest() {
+        statusOfANewJob = PicSureStatus.AVAILABLE;
+        callerHolds(NARROW);
+        savesToFail = EVERY_SAVE;
+        assertThatThrownBy(this::submit).isSameAs(saveFailure);
+        savesToFail = 0;
+        assertThat(jobsHpdsHolds.get(ROW.toString()).consents()).as("HPDS took the query under the narrow consents").isEqualTo(NARROW);
+        assertThat(rows).as("the row was never stored").isEmpty();
+        assertThat(unsettledRows.isUnsettled(ROW)).isFalse();
+        callerHolds(WIDE);
+
+        QueryStatus second = submit();
+
+        assertThat(second.getStatus()).isEqualTo(PicSureStatus.AVAILABLE);
+        assertThat(consentsHpdsReceived).containsExactly(NARROW, WIDE);
+        assertThat(saves).extracting(SaveQueryRequest::trigger).containsExactly("FIRST_SUBMIT");
+        assertThat(jobsHpdsHolds.get(ROW.toString()).consents()).as("HPDS holds the job of the second submit").isEqualTo(WIDE);
+        assertThat(rows.get(ROW).consents()).as("the row records the consents of the second submit").isEqualTo(recorded(WIDE));
+        assertThat(unsettledRows.isUnsettled(ROW)).isFalse();
+        assertThat(resultServed()).isEqualTo("built under [phs001.c1, phs001.c2]");
+        assertThat(consentsHpdsReceived).as("the read ran nothing again").hasSize(2);
+    }
+
+    @ParameterizedTest
+    @EnumSource(Read.class)
+    void aReadOfAnIdWhoseFirstSubmitStoredNoRowAnswers404AndRunsNothing(Read read) {
+        callerHolds(NARROW);
+        aFirstSubmitEndsWith(NoRowStored.HPDS_TAKES_THE_QUERY_AND_ITS_ANSWER_IS_LOST);
+        assertThatThrownBy(this::submit).isInstanceOf(HpdsCommunicationException.class);
+        doThrow(new PicsureException(HttpStatus.NOT_FOUND, "not_found", "Query not found")).when(operationsClient).get(ROW);
+
+        assertThatThrownBy(() -> call(read))
+            .isInstanceOfSatisfying(PicsureException.class, unknown -> assertThat(unknown.getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
+
+        assertThat(consentsHpdsReceived).as("only the first submit reached HPDS").hasSize(1);
+        verifyNothingWasServed();
+        verify(hpds, never()).queryStatus(any(), any());
     }
 
     @Test

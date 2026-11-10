@@ -66,11 +66,13 @@ import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
  * <p>What is guaranteed for an owned row. A result or a signed URL is fetched only after a check, made inside the lock of the row on that
  * same call, found all four of these: the consents PSAMA returned for the caller on that call equal the ones the row records, the row is
  * not marked in {@link UnsettledQueryRows}, the row is not stored as failed, and HPDS reports a finished job under the row id. The consents
- * a row records are those of the last submit HPDS answered and whose save succeeded. Every submit of an owned row marks the row in
- * {@link UnsettledQueryRows} before the query is sent and removes the mark only after the row is saved. A save that still fails after its
- * retries, a submit whose answer is lost, and any other failure in between leave the row marked, and the next read or submit of that row
- * runs the query again under the consents it just fetched instead of trusting the row. A row stored as failed is answered from the row
- * alone, and nothing HPDS holds under its id is served, because HPDS leaves the job of an earlier run in place when it rejects a query.
+ * a row records are those of the last submit HPDS answered and whose save succeeded. Every submit of a row that is already stored marks the
+ * row in {@link UnsettledQueryRows} before the query is sent and removes the mark only after the row is saved. A save that still fails
+ * after its retries, a submit whose answer is lost, and any other failure in between leave the row marked, and the next read or submit of
+ * that row runs the query again under the consents it just fetched instead of trusting the row. A first submit, which finds no row under
+ * its id, marks nothing. Until its save succeeds there is no row to trust: a read of the id answers 404, and the next submit finds no row
+ * either and sends the query again under the consents it just fetched. A row stored as failed is answered from the row alone, and nothing
+ * HPDS holds under its id is served, because HPDS leaves the job of an earlier run in place when it rejects a query.
  *
  * <p>What is not guaranteed. The locks and the marks live in the memory of one process. When this service stops between the moment HPDS
  * takes a query and the save of the row, or after a failed save and before the next request for that row, the row records consents other
@@ -113,8 +115,9 @@ public class QueryService {
     private static final String STATUS_REFUSED_MESSAGE = "HPDS refused to report the status of the query";
     /**
      * How many times the save of an owned row is tried once HPDS has answered its submit. The second try follows a stale pooled connection
-     * or a single dropped request, and the third a short interruption of operations-service. A longer outage is not waited for: the row
-     * stays marked in {@link UnsettledQueryRows} and the next request for it runs the query again.
+     * or a single dropped request, and the third a short interruption of operations-service. A longer outage is not waited for: a row that
+     * was stored before the submit stays marked in {@link UnsettledQueryRows}, a first submit leaves no row, and either way the next
+     * request for the id runs the query again.
      */
     private static final int SAVE_ATTEMPTS = 3;
     /** How long a save waits before its second and before its third try, in milliseconds. The lock of the row is held meanwhile. */
@@ -188,14 +191,15 @@ public class QueryService {
      * step below. A second submit of the same query by the same caller waits here until the first has saved its row.</li> <li>The caller's
      * consents are fetched once and the query is scoped with them, so HPDS receives the filters built from those consents, and none when
      * consent authorization is off.</li> <li>With no row under that id, the query is sent to HPDS under the id and the row is saved with
-     * its owner, the consents and a first-submit run.</li> <li>With a row whose consents equal the caller's current ones and whose status
-     * is {@code QUEUED}, {@code PENDING} or {@code AVAILABLE}, nothing is sent or saved and the stored status is returned, unless the row
-     * is marked in {@link UnsettledQueryRows}. A marked row does not describe the job HPDS holds, so the query is sent again and the row is
-     * saved with a lost-result run.</li> <li>With a row whose consents equal the caller's current ones and whose status is {@code ERROR} or
-     * absent, the query is sent again and the row is saved with a resubmit run.</li> <li>With a row whose consents differ, the query is
-     * sent again and the row is saved with the new consents and a consent-change run.</li> </ol> A row is saved only for an answer from
-     * HPDS that carries a status and names no result id other than the derived one. The stored body carries the derived id and no
-     * authorization filters. The row's result id is the row id.
+     * its owner, the consents and a first-submit run. Nothing is marked in {@link UnsettledQueryRows} for an id that has no row.</li>
+     * <li>With a row whose consents equal the caller's current ones and whose status is {@code QUEUED}, {@code PENDING} or
+     * {@code AVAILABLE}, nothing is sent or saved and the stored status is returned, unless the row is marked in
+     * {@link UnsettledQueryRows}. A marked row does not describe the job HPDS holds, so the query is sent again and the row is saved with a
+     * lost-result run.</li> <li>With a row whose consents equal the caller's current ones and whose status is {@code ERROR} or absent, the
+     * query is sent again and the row is saved with a resubmit run.</li> <li>With a row whose consents differ, the query is sent again and
+     * the row is saved with the new consents and a consent-change run.</li> </ol> A row is saved only for an answer from HPDS that carries
+     * a status and names no result id other than the derived one. The stored body carries the derived id and no authorization filters. The
+     * row's result id is the row id.
      *
      * <p>Every other submit keeps the path without an owner: the {@code open} backend, a caller with no gateway user or one whose id is not
      * a canonical UUID, and a body with no query. HPDS runs the query under a key it derives, and operations-service stores it under a
@@ -321,16 +325,16 @@ public class QueryService {
      * Sends the query of an owned row to HPDS under the row id and saves the row with the consents the query was scoped with and a run
      * named by the trigger. The caller of this method holds the lock of the row and fetched the consents inside it.
      *
-     * <p>The row is marked in {@link UnsettledQueryRows} from just before the query is sent until the row is saved, as
-     * {@link #submitMarkingTheRow} and {@link #saveAfterSubmit} describe. When this method throws, the row stays marked unless HPDS showed
-     * that it kept nothing of the submit.
+     * <p>A row that is already stored is marked in {@link UnsettledQueryRows} from just before the query is sent until the row is saved, as
+     * {@link #submitMarkingTheRow} and {@link #saveAfterSubmit} describe. When this method throws, that row stays marked unless HPDS showed
+     * that it kept nothing of the submit. A first submit has no row yet and is sent by {@link #submitWithoutARow}, which marks nothing.
      *
      * @param target the HPDS backend to run on
      * @param req the envelope whose query is the v3 query to run, already scoped with {@code consents} and carrying {@code id}
      * @param owner the UUID of the row's owner
      * @param id the row id, which is also the id HPDS stores the result under
      * @param consents the consents the query was scoped with, which the row records
-     * @param trigger why the query runs, as a run trigger name
+     * @param trigger why the query runs, as a run trigger name; {@link #FIRST_SUBMIT} exactly when no row is stored under {@code id}
      * @return HPDS's answer, with the row id as its PIC-SURE id and its result id
      * @throws HpdsCommunicationException when HPDS does not accept the query; nothing is saved
      * @throws PicsureException when HPDS refuses the query, or when the row cannot be saved
@@ -339,7 +343,7 @@ public class QueryService {
         HpdsTarget target, QueryRequest req, UUID owner, UUID id, Map<String, List<String>> consents, String trigger
     ) {
         Query scoped = (Query) req.getQuery();
-        QueryStatus results = submitMarkingTheRow(target, req, id);
+        QueryStatus results = FIRST_SUBMIT.equals(trigger) ? submitWithoutARow(target, req, id) : submitMarkingTheRow(target, req, id);
         String metadataBase64 = buildMetadataBase64(results);
         String resultId = id.toString();
         saveAfterSubmit(
@@ -361,8 +365,31 @@ public class QueryService {
     }
 
     /**
-     * Marks an owned row in {@link UnsettledQueryRows} and then sends its query to HPDS under the row id. The mark is set first because
-     * from the moment the query is on its way HPDS may hold a job the row does not record.
+     * Sends the query of a first submit to HPDS under the id its row will be stored under. No row is stored under the id yet, and nothing
+     * is marked in {@link UnsettledQueryRows}, whatever HPDS answers and whether or not the save that follows succeeds.
+     *
+     * <p>A mark tells a later request not to trust the consents a stored row records, and it is only ever read for a row that was loaded
+     * first. While no row is stored there is nothing to trust: a status, result or signed-url read of the id answers 404, and the next
+     * submit finds no row, fetches the caller's consents inside the lock and sends the query again as a first submit. HPDS then returns the
+     * job it already holds under the id only when that job is still queued or running and was built from the same query with the same
+     * authorization filters, and replaces it otherwise, so the row that submit saves describes the job HPDS holds. A mark for an id without
+     * a row would also never be removed unless the same query was submitted again, and a caller could leave one behind for every distinct
+     * query HPDS failed to answer.
+     *
+     * @param target the HPDS backend to run on
+     * @param req the envelope whose query carries {@code id}
+     * @param id the id derived for the owner and the query, under which no row is stored
+     * @return HPDS's answer, which shows a job stored under {@code id}
+     * @throws HpdsCommunicationException when HPDS fails or its answer does not show such a job
+     * @throws PicsureException when HPDS refuses the query with a 4xx
+     */
+    private QueryStatus submitWithoutARow(HpdsTarget target, QueryRequest req, UUID id) {
+        return acceptedUnder(id, hpds.query(target, req, id));
+    }
+
+    /**
+     * Marks a stored owned row in {@link UnsettledQueryRows} and then sends its query to HPDS under the row id. The mark is set first
+     * because from the moment the query is on its way HPDS may hold a job the row does not record.
      *
      * <p>The mark this call set is taken back only when HPDS showed that it kept nothing of the submit: <ul> <li>HPDS answered 4xx. HPDS
      * raises no 4xx of its own on a submit, so the request was turned away before the job map was read or changed.</li> <li>HPDS answered
@@ -373,7 +400,7 @@ public class QueryService {
      *
      * @param target the HPDS backend to run on
      * @param req the envelope whose query carries {@code id}
-     * @param id the row id
+     * @param id the id of a row that is already stored
      * @return HPDS's answer, which shows a job stored under {@code id}
      * @throws HpdsCommunicationException when HPDS fails or its answer does not show such a job
      * @throws PicsureException when HPDS refuses the query with a 4xx
@@ -407,7 +434,8 @@ public class QueryService {
      * have been stored, so a later try can add a second run for the one submit.
      *
      * @param row the row to save
-     * @throws PicsureException the failure of the last try. The row is then still marked in {@link UnsettledQueryRows}.
+     * @throws PicsureException the failure of the last try. A row that was stored before the submit is then still marked in
+     *         {@link UnsettledQueryRows}.
      */
     private void saveAfterSubmit(SaveQueryRequest row) {
         for (int attempt = 1;; attempt++) {
