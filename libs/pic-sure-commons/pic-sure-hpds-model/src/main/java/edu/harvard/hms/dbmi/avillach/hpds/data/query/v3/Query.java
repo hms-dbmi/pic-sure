@@ -22,7 +22,9 @@ public record Query(
         requiredMode = Schema.RequiredMode.REQUIRED
     ) ResultType expectedResultType,
     @Schema(
-        description = "An externally passed UUID to assign to this query.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6"
+        description = "The id the result of this query is stored under. PIC-SURE assigns it. A value a client sends is discarded "
+            + "before the query runs.",
+        example = "8694e3d4-5cb4-410f-8431-993445e6d3f6"
     ) UUID picsureId,
     @Schema(description = "An internally generated UUID identifying this query.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6") UUID id,
     @JsonInclude(JsonInclude.Include.NON_DEFAULT) @Schema(
@@ -39,7 +41,7 @@ public record Query(
      * @param phenotypicClause the phenotypic filters
      * @param genomicFilters the genomic filters
      * @param expectedResultType the result to compute
-     * @param picsureId the externally passed id of this query
+     * @param picsureId the id the result of this query is stored under, assigned by the service that submits the query to HPDS
      * @param id the internally generated id of this query
      */
     public Query(
@@ -66,6 +68,18 @@ public record Query(
         );
     }
 
+    /**
+     * Returns a copy of this query stored under another result id. Every other component is kept as it is.
+     *
+     * @param picsureId the id the result is stored under, or null for a query that carries none
+     * @return the copy
+     */
+    public Query setPicsureId(UUID picsureId) {
+        return new Query(
+            this.select, this.authorizationFilters, this.phenotypicClause, this.genomicFilters, this.expectedResultType, picsureId, this.id,
+            this.sample
+        );
+    }
 
     @Override
     public List<GenomicFilter> genomicFilters() {

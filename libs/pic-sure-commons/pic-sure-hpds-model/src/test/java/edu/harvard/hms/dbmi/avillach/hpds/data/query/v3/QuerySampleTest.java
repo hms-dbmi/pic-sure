@@ -49,6 +49,35 @@ public class QuerySampleTest {
     }
 
     @Test
+    public void setPicsureIdReplacesTheIdAndKeepsEveryOtherComponent() {
+        UUID id = UUID.randomUUID();
+        UUID other = UUID.randomUUID();
+        List<AuthorizationFilter> filters = List.of(new AuthorizationFilter("\\_consents\\", Set.of("phs000001.c1")));
+        List<GenomicFilter> genomic = List.of(new GenomicFilter("Gene_with_variant", List.of("APOE"), null, null));
+        PhenotypicClause clause = new PhenotypicFilter(PhenotypicFilterType.REQUIRED, "\\demographics\\SEX\\", null, null, null, null);
+        Query query = new Query(List.of("\\demographics\\AGE\\"), filters, clause, genomic, ResultType.DATAFRAME, PICSURE_ID, id, true);
+
+        assertEquals(
+            new Query(List.of("\\demographics\\AGE\\"), filters, clause, genomic, ResultType.DATAFRAME, other, id, true),
+            query.setPicsureId(other)
+        );
+        assertEquals(
+            new Query(List.of("\\demographics\\AGE\\"), filters, clause, genomic, ResultType.DATAFRAME, null, id, true),
+            query.setPicsureId(null)
+        );
+    }
+
+    @Test
+    public void aQueryWhosePicsureIdWasRemovedEqualsTheSameQueryReadWithoutOne() throws JsonProcessingException {
+        ObjectMapper mapper = new ObjectMapper();
+        Query sentWithout = mapper.readValue("{\"expectedResultType\":\"COUNT\"}", Query.class);
+        Query sentWith = mapper.readValue("{\"expectedResultType\":\"COUNT\",\"picsureId\":\"" + PICSURE_ID + "\"}", Query.class);
+
+        assertEquals(sentWithout, sentWith.setPicsureId(null));
+        assertEquals(sentWithout.toString(), sentWith.setPicsureId(null).toString());
+    }
+
+    @Test
     public void generateIdKeepsSample() {
         Query copy = sampleQuery(null).generateId();
 

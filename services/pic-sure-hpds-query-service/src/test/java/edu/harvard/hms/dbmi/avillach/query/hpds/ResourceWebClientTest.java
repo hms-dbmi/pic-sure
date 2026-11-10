@@ -5,13 +5,19 @@ import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
+import static com.github.tomakehurst.wiremock.client.WireMock.notContaining;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.util.List;
+import java.util.UUID;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -29,6 +35,8 @@ import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.SignedUrlResponse;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
 
 class ResourceWebClientTest {
@@ -82,6 +90,44 @@ class ResourceWebClientTest {
         var status = client().query(target(), req());
 
         assertThat(status.getResourceResultId()).isEqualTo("rr-1");
+    }
+
+    private static final String CLIENT_ID = "8694e3d4-5cb4-410f-8431-993445e6d3f6";
+
+    private static GeneralQueryRequest requestWithClientPicsureId(UUID resourceUuid) {
+        Query query = new Query(List.of(), List.of(), null, List.of(), ResultType.COUNT, UUID.fromString(CLIENT_ID), null);
+        GeneralQueryRequest request = new GeneralQueryRequest().setQuery(query);
+        request.setResourceUUID(resourceUuid);
+        return request;
+    }
+
+    @Test
+    void queryPostsTheQueryWithoutItsPicsureIdAndLeavesTheCallersEnvelopeAlone() {
+        hpds.stubFor(post(urlEqualTo("/PIC-SURE/v3/query")).willReturn(okJson("{\"resourceResultId\":\"rr-1\",\"status\":\"PENDING\"}")));
+        UUID resourceUuid = UUID.randomUUID();
+        GeneralQueryRequest request = requestWithClientPicsureId(resourceUuid);
+
+        client().query(target(), request);
+
+        hpds.verify(
+            postRequestedFor(urlEqualTo("/PIC-SURE/v3/query"))
+                .withRequestBody(matchingJsonPath("$.query.expectedResultType", equalTo("COUNT")))
+                .withRequestBody(matchingJsonPath("$.resourceUUID", equalTo(resourceUuid.toString())))
+                .withRequestBody(notContaining(CLIENT_ID))
+        );
+        assertThat(((Query) request.getQuery()).picsureId()).hasToString(CLIENT_ID);
+    }
+
+    @Test
+    void querySyncPostsTheQueryWithoutItsPicsureId() {
+        hpds.stubFor(post(urlEqualTo("/PIC-SURE/v3/query/sync")).willReturn(aResponse().withStatus(200).withBody("7")));
+
+        client().querySync(target(), requestWithClientPicsureId(null), null);
+
+        hpds.verify(
+            postRequestedFor(urlEqualTo("/PIC-SURE/v3/query/sync"))
+                .withRequestBody(matchingJsonPath("$.query.expectedResultType", equalTo("COUNT"))).withRequestBody(notContaining(CLIENT_ID))
+        );
     }
 
     @Test
