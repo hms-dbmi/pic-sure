@@ -128,6 +128,9 @@ public class HpdsQueryController {
         + "`sample` set to true, which this endpoint never runs (error type `sample_disabled` while sample datasets are turned off),"
         + UNREADABLE_BODY;
 
+    private static final String SUBMIT_UNAVAILABLE = "Backend not configured, or an earlier submit of the same query by the same caller "
+        + "was still in progress when this one stopped waiting for it (error type `service_unavailable`). Submit again.";
+
     private static final String METHOD_NOT_ALLOWED =
         "The request used a method this endpoint does not support, such as POST. The Allow header names GET.";
 
@@ -169,7 +172,7 @@ public class HpdsQueryController {
             @ApiResponse(responseCode = "403", description = "Consent does not permit this query."),
             @ApiResponse(responseCode = "410", description = "Institutional (federated) queries are no longer supported."),
             @ApiResponse(responseCode = "502", description = "Consent lookup, HPDS call, or query save failed."),
-            @ApiResponse(responseCode = "503", description = "Backend not configured."),
+            @ApiResponse(responseCode = "503", description = SUBMIT_UNAVAILABLE),
             @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
     )
     public QueryStatus query(

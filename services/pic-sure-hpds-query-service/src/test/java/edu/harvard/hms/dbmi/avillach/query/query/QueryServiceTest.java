@@ -51,6 +51,7 @@ import edu.harvard.hms.dbmi.avillach.query.consent.ConsentAuthorizationService;
 import edu.harvard.hms.dbmi.avillach.query.consent.ConsentFilterBuilder;
 import edu.harvard.hms.dbmi.avillach.query.consent.PsamaConsentClient;
 import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
+import edu.harvard.hms.dbmi.avillach.query.config.QueryRowLockProperties;
 import edu.harvard.hms.dbmi.avillach.query.config.SampleProperties;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
@@ -74,7 +75,8 @@ class QueryServiceTest {
     ConsentAuthorizationService consent = mock(ConsentAuthorizationService.class);
     SampleProperties sampleProperties = new SampleProperties();
     SampleRules sampleRules = new SampleRules(sampleProperties);
-    QueryService service = new QueryService(operationsClient, hpds, selector, consent, sampleRules);
+    QueryRowLocks rowLocks = new QueryRowLocks(new QueryRowLockProperties());
+    QueryService service = new QueryService(operationsClient, hpds, selector, consent, sampleRules, rowLocks);
 
     private static HpdsProperties props() {
         HpdsProperties p = new HpdsProperties();
@@ -184,7 +186,7 @@ class QueryServiceTest {
     @Test
     void createScopesBeforeCallingHpdsOrPersistence() {
         ConsentAuthorizationService consent = mock(ConsentAuthorizationService.class);
-        QueryService scopedService = new QueryService(operationsClient, hpds, selector, consent, sampleRules);
+        QueryService scopedService = new QueryService(operationsClient, hpds, selector, consent, sampleRules, rowLocks);
         QueryRequest request = req();
         when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-3"));
         when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
@@ -232,7 +234,7 @@ class QueryServiceTest {
 
     PsamaConsentClient psama = mock(PsamaConsentClient.class);
     QueryService ownedService = new QueryService(
-        operationsClient, hpds, selector, new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), true), sampleRules
+        operationsClient, hpds, selector, new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), true), sampleRules, rowLocks
     );
     List<Object> queriesSentToHpds = new ArrayList<>();
 
@@ -447,7 +449,8 @@ class QueryServiceTest {
     @Test
     void consentAuthorizationSwitchedOffAfterARowWasSavedWithConsentsRunsAgainAsAConsentChange() {
         QueryService consentOff = new QueryService(
-            operationsClient, hpds, selector, new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), false), sampleRules
+            operationsClient, hpds, selector, new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), false), sampleRules,
+            rowLocks
         );
         UUID id = QueryIdentity.idFor(ALICE, cohort());
         when(operationsClient.find(id))
@@ -692,7 +695,8 @@ class QueryServiceTest {
     @Test
     void ownedSubmitWithConsentAuthorizationOffSavesAnEmptyConsentMapAndReusesTheRow() {
         QueryService consentOff = new QueryService(
-            operationsClient, hpds, selector, new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), false), sampleRules
+            operationsClient, hpds, selector, new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), false), sampleRules,
+            rowLocks
         );
         UUID id = QueryIdentity.idFor(ALICE, cohort());
         hpdsAcceptsOwnedSubmits();
@@ -714,7 +718,8 @@ class QueryServiceTest {
 
     private QueryService consentOffService() {
         return new QueryService(
-            operationsClient, hpds, selector, new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), false), sampleRules
+            operationsClient, hpds, selector, new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), false), sampleRules,
+            rowLocks
         );
     }
 
@@ -898,7 +903,7 @@ class QueryServiceTest {
         when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-legacy"));
         when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
         QueryService consentOff = new QueryService(
-            operationsClient, hpds, selector, new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), false), sampleRules
+            operationsClient, hpds, selector, new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), false), sampleRules, rowLocks
         );
 
         consentOff.query("auth", envelope(null), TOKEN, user(ALICE));
@@ -917,6 +922,58 @@ class QueryServiceTest {
         ownedService.querySync("auth", envelope(count), "UI", TOKEN, user(ALICE));
 
         assertSavedWithoutAnOwner("hpds-sync-id");
+    }
+
+    private QueryService serviceLockingWith(QueryRowLocks locks, boolean consentAuthorizationOn) {
+        return new QueryService(
+            operationsClient, hpds, selector, new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), consentAuthorizationOn),
+            sampleRules, locks
+        );
+    }
+
+    @Test
+    void ownedSubmitLooksUpSendsAndSavesNothingOutsideTheLockOfItsRow() {
+        QueryRowLocks neverRunsTheWork = mock(QueryRowLocks.class);
+
+        serviceLockingWith(neverRunsTheWork, true).query("auth", envelope(cohort()), TOKEN, user(ALICE));
+
+        verify(neverRunsTheWork).withLock(eq(QueryIdentity.idFor(ALICE, cohort())), any());
+        verifyNoInteractions(psama, hpds, operationsClient);
+    }
+
+    @Test
+    void ownedSubmitThatIsRefusedForItsBodyOrByASampleRuleTakesNoRowLock() {
+        QueryRowLocks locks = mock(QueryRowLocks.class);
+        QueryService refusing = serviceLockingWith(locks, true);
+
+        assertThatThrownBy(() -> refusing.query("auth", new GeneralQueryRequest().setQuery("not a query"), TOKEN, user(ALICE)))
+            .isInstanceOf(PicsureException.class);
+        assertThatThrownBy(() -> refusing.query("auth", sampleRequest(ResultType.DATAFRAME), TOKEN, user(ALICE)))
+            .isInstanceOf(PicsureException.class);
+
+        verifyNoInteractions(locks, psama, hpds, operationsClient);
+    }
+
+    @Test
+    void submitsWithoutAnOwnerAndSynchronousQueriesTakeNoRowLock() {
+        QueryRowLocks locks = mock(QueryRowLocks.class);
+        QueryService unowned = serviceLockingWith(locks, true);
+        callerHoldsConsents("phs001.c1");
+        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-legacy"));
+        when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
+        when(hpds.querySync(any(HpdsTarget.class), any(), any()))
+            .thenReturn(new ResourceWebClient.QuerySyncResult("7".getBytes(), "hpds-sync-id"));
+        Query count = new Query(List.of(), List.of(), null, List.of(), ResultType.COUNT, null, null);
+
+        unowned.query("open", envelope(cohort()), TOKEN, user(ALICE));
+        unowned.query("auth", envelope(cohort()), TOKEN, null);
+        unowned.query("auth", envelope(cohort()), TOKEN, new GatewayUser("auth0|alice", null, null, null, Set.of()));
+        serviceLockingWith(locks, false).query("auth", envelope(null), TOKEN, user(ALICE));
+        unowned.querySync("auth", envelope(count), "UI", TOKEN, user(ALICE));
+
+        verify(hpds, times(4)).query(any(HpdsTarget.class), any());
+        verify(hpds).querySync(any(HpdsTarget.class), any(), any());
+        verifyNoInteractions(locks);
     }
 
     // --- sync ---
@@ -948,7 +1005,7 @@ class QueryServiceTest {
     @Test
     void syncScopesThenCallsHpdsBeforePersisting() {
         ConsentAuthorizationService consent = mock(ConsentAuthorizationService.class);
-        QueryService scopedService = new QueryService(operationsClient, hpds, selector, consent, sampleRules);
+        QueryService scopedService = new QueryService(operationsClient, hpds, selector, consent, sampleRules, rowLocks);
         QueryRequest request = req();
         when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
         when(hpds.querySync(any(HpdsTarget.class), any(), any()))

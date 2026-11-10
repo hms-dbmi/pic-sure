@@ -40,6 +40,8 @@ picsure:
       # QUERY_SERVICE_INTERNAL_TOKEN: shared secret sent as X-PIC-SURE-INTERNAL-TOKEN on every operations-service
       # call, checked by that service's InternalTokenFilter. Fail-closed on the operations-service side if unset.
       internal-token: ${QUERY_SERVICE_INTERNAL_TOKEN:}
+    row-lock:
+      wait-sec: 60
   # The X-Application-Token gate for /actuator/** (ActuatorSecurityConfig + the shared
   # ActuatorSecurityHelper in pic-sure-spring-commons). Shallow health/liveness/readiness stay open regardless.
   actuator:

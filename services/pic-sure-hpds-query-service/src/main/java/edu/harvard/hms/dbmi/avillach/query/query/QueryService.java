@@ -52,7 +52,9 @@ import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
  *
  * <p>A submit on {@code auth} by a caller the gateway identified by UUID is stored as a row that caller owns. This service derives the row
  * id with {@link QueryIdentity} before anything is sent, HPDS stores the result under the same id, and the row keeps the consents the query
- * ran under. Every other submit, and every synchronous query, is stored under a random id operations-service generates, with no owner.
+ * ran under. Such a submit holds the {@link QueryRowLocks} lock of its row from the consent lookup to the save, so two submits of one query
+ * by one caller run one after the other and the row always records the consents of the job HPDS holds. Every other submit, and every
+ * synchronous query, is stored under a random id operations-service generates, with no owner, and takes no lock.
  *
  * <p>Every query runs on HPDS v3 and every new row is stored as version {@code "3"}. {@link #queryStatus}, {@link #queryResult}, and
  * {@link #queryResultSignedUrl} dispatch to the backend selected by the ingress {@code {backend}} segment. A row stored before v3 (any
@@ -107,16 +109,18 @@ public class QueryService {
     private final HpdsBackendSelector selector;
     private final ConsentAuthorizationService consentAuthorization;
     private final SampleRules sampleRules;
+    private final QueryRowLocks rowLocks;
 
     public QueryService(
         OperationsClient operationsClient, ResourceWebClient hpds, HpdsBackendSelector selector,
-        ConsentAuthorizationService consentAuthorization, SampleRules sampleRules
+        ConsentAuthorizationService consentAuthorization, SampleRules sampleRules, QueryRowLocks rowLocks
     ) {
         this.operationsClient = operationsClient;
         this.hpds = hpds;
         this.selector = selector;
         this.consentAuthorization = consentAuthorization;
         this.sampleRules = sampleRules;
+        this.rowLocks = rowLocks;
     }
 
     public record QuerySyncResponse(byte[] body, String queryMetadata) {
@@ -137,16 +141,18 @@ public class QueryService {
      *
      * <p>On {@code auth}, for a caller whose gateway user id is a canonical UUID and a body that carries a query, the row belongs to that
      * caller: <ol> <li>{@link SampleRules} run first.</li> <li>A query that cannot be read as a v3 query is refused.</li> <li>The
-     * authorization filters the body carried are dropped.</li> <li>The caller's consents are fetched once and the query is scoped with
-     * them, so HPDS receives the filters built from those consents, and none when consent authorization is off.</li> <li>The row id is
-     * derived from the caller's UUID and the query, and replaces any {@code picsureId} the body carried.</li> <li>With no row under that
-     * id, the query is sent to HPDS under the id and the row is saved with its owner, the consents and a first-submit run.</li> <li>With a
-     * row whose consents equal the caller's current ones and whose status is {@code QUEUED}, {@code PENDING} or {@code AVAILABLE}, nothing
-     * is sent or saved and the stored status is returned.</li> <li>With a row whose consents equal the caller's current ones and whose
-     * status is {@code ERROR} or absent, the query is sent again and the row is saved with a resubmit run.</li> <li>With a row whose
-     * consents differ, the query is sent again and the row is saved with the new consents and a consent-change run.</li> </ol> A row is
-     * saved only for an answer from HPDS that carries a status and names no result id other than the derived one. The stored body carries
-     * the derived id and no authorization filters. The row's result id is the row id.
+     * authorization filters the body carried are dropped.</li> <li>The row id is derived from the caller's UUID and the query, and replaces
+     * any {@code picsureId} the body carried.</li> <li>The request takes the {@link QueryRowLocks} lock of that id and holds it for every
+     * step below. A second submit of the same query by the same caller waits here until the first has saved its row.</li> <li>The caller's
+     * consents are fetched once and the query is scoped with them, so HPDS receives the filters built from those consents, and none when
+     * consent authorization is off.</li> <li>With no row under that id, the query is sent to HPDS under the id and the row is saved with
+     * its owner, the consents and a first-submit run.</li> <li>With a row whose consents equal the caller's current ones and whose status
+     * is {@code QUEUED}, {@code PENDING} or {@code AVAILABLE}, nothing is sent or saved and the stored status is returned.</li> <li>With a
+     * row whose consents equal the caller's current ones and whose status is {@code ERROR} or absent, the query is sent again and the row
+     * is saved with a resubmit run.</li> <li>With a row whose consents differ, the query is sent again and the row is saved with the new
+     * consents and a consent-change run.</li> </ol> A row is saved only for an answer from HPDS that carries a status and names no result
+     * id other than the derived one. The stored body carries the derived id and no authorization filters. The row's result id is the row
+     * id.
      *
      * <p>Every other submit keeps the path without an owner: the {@code open} backend, a caller with no gateway user or one whose id is not
      * a canonical UUID, and a body with no query. HPDS runs the query under a key it derives, and operations-service stores it under a
@@ -159,7 +165,8 @@ public class QueryService {
      * @return the status of the query, with {@code picsureResultId} set to the id of its row
      * @throws PicsureException 400 when the request is missing, breaks a sample rule, or carries for a caller identified by UUID a query
      *         that is not a v3 query; 403 {@code consent_denied} when the caller's consents do not permit the query; 500 when the row under
-     *         the derived id is not the caller's; whatever consent lookup, HPDS or operations-service raise
+     *         the derived id is not the caller's; 503 {@code service_unavailable} when another submit of the same query by the same caller
+     *         holds the row for longer than the configured wait; whatever consent lookup, HPDS or operations-service raise
      * @throws HpdsCommunicationException when HPDS answers a submit for a caller identified by UUID without a status, or with a result id
      *         other than the derived one
      */
@@ -198,14 +205,38 @@ public class QueryService {
         return results;
     }
 
+    /**
+     * Derives the row id of an owned submit and runs {@link #submitOwned} while holding the lock of that row. The id comes from the owner
+     * and the query without authorization filters, so it is known before the caller's consents are looked up, and the lookup happens inside
+     * the lock.
+     *
+     * @param submitted the query of the request as a v3 query, with whatever authorization filters the client sent
+     * @param owner the caller's UUID
+     * @throws PicsureException 503 {@code service_unavailable} when another request holds the lock of the row for longer than the
+     *         configured wait; whatever {@link #submitOwned} throws
+     */
     private QueryStatus createOwned(String backend, QueryRequest req, Query submitted, String authorizationHeader, UUID owner) {
+        Query unscoped = submitted.setAuthorizationFilters(List.of());
+        UUID id = QueryIdentity.idFor(owner, unscoped);
+        return rowLocks.withLock(id, () -> submitOwned(backend, req, unscoped, authorizationHeader, owner, id));
+    }
+
+    /**
+     * Looks up the caller's consents, scopes the query with them, and either answers from the row stored under the id or sends the query to
+     * HPDS and saves the row. The caller of this method holds the lock of the row, so the consents, the stored row, the query HPDS receives
+     * and the saved row all belong to one request at a time.
+     *
+     * @param unscoped the query with no authorization filters, which is what the id was derived from
+     * @param owner the caller's UUID
+     * @param id the id {@link QueryIdentity} derived for the owner and the query
+     */
+    private QueryStatus submitOwned(String backend, QueryRequest req, Query unscoped, String authorizationHeader, UUID owner, UUID id) {
         Map<String, List<String>> consents = consentAuthorization.currentConsents(backend, authorizationHeader);
-        req.setQuery(submitted.setAuthorizationFilters(List.of()));
+        req.setQuery(unscoped);
         consentAuthorization.scopeWithConsents(backend, req, consents);
         HpdsTarget target = selector.select(backend);
 
         Query scoped = (Query) req.getQuery();
-        UUID id = QueryIdentity.idFor(owner, scoped);
         req.setQuery(scoped.setPicsureId(id));
 
         Optional<StoredQuery> stored = operationsClient.find(id);
