@@ -712,6 +712,99 @@ class QueryServiceTest {
         verifyNoInteractions(psama);
     }
 
+    private QueryService consentOffService() {
+        return new QueryService(
+            operationsClient, hpds, selector, new ConsentAuthorizationService(psama, new ConsentFilterBuilder(), false), sampleRules
+        );
+    }
+
+    private static Query cohortWithClientFilters(String conceptPath, String value) {
+        return cohort().setAuthorizationFilters(List.of(new AuthorizationFilter(conceptPath, Set.of(value))));
+    }
+
+    @Test
+    void ownedSubmitWithConsentAuthorizationOffSendsAndStoresNoClientAuthorizationFilters() throws Exception {
+        UUID id = QueryIdentity.idFor(ALICE, cohort());
+        hpdsAcceptsOwnedSubmits();
+
+        QueryStatus out = consentOffService().query("auth", envelope(cohortWithClientFilters("\\client\\", "narrow")), null, user(ALICE));
+
+        verify(hpds).query(any(HpdsTarget.class), any(), eq(id));
+        assertThat(queriesSentToHpds).hasSize(1);
+        assertThat(((Query) queriesSentToHpds.get(0)).authorizationFilters()).isEmpty();
+        SaveQueryRequest saved = onlySave();
+        assertThat(MAPPER.readTree(saved.query()).get("query").get("authorizationFilters")).isEmpty();
+        assertThat(saved.query()).doesNotContain("client").doesNotContain("narrow");
+        assertThat(saved.picsureId()).isEqualTo(id);
+        assertThat(out.getPicsureResultId()).isEqualTo(id);
+        verifyNoInteractions(psama);
+    }
+
+    @Test
+    void ownedSubmitsWithConsentAuthorizationOffThatDifferOnlyInClientAuthorizationFiltersAreOneRow() {
+        QueryService consentOff = consentOffService();
+        UUID id = QueryIdentity.idFor(ALICE, cohort());
+        hpdsAcceptsOwnedSubmits();
+
+        QueryStatus first = consentOff.query("auth", envelope(cohortWithClientFilters("\\client\\", "narrow")), null, user(ALICE));
+
+        assertThat(first.getPicsureResultId()).isEqualTo(id);
+        assertThat(onlySave().picsureId()).isEqualTo(id);
+        assertThat(((Query) queriesSentToHpds.get(0)).authorizationFilters()).isEmpty();
+
+        when(operationsClient.find(id)).thenReturn(Optional.of(ownedRow(id, ALICE, "AVAILABLE", Map.of())));
+        QueryStatus second = consentOff.query("auth", envelope(cohortWithClientFilters("\\other\\", "wide")), null, user(ALICE));
+
+        assertThat(second.getPicsureResultId()).isEqualTo(id);
+        assertThat(second.getStatus()).isEqualTo(PicSureStatus.AVAILABLE);
+        assertThat(queriesSentToHpds).hasSize(1);
+        verify(hpds, times(1)).query(any(HpdsTarget.class), any(), any(UUID.class));
+        verify(operationsClient, times(1)).save(any());
+    }
+
+    @Test
+    void ownedSubmitWithConsentAuthorizationOnSendsTheServersFiltersInPlaceOfTheClients() {
+        callerHoldsConsents("phs001.c1", "phs001.c2");
+        hpdsAcceptsOwnedSubmits();
+
+        ownedService.query("auth", envelope(cohortWithClientFilters("\\client\\", "narrow")), TOKEN, user(ALICE));
+
+        assertThat(((Query) queriesSentToHpds.get(0)).authorizationFilters())
+            .containsExactly(new AuthorizationFilter(CONSENT_PATH, Set.of("phs001.c1", "phs001.c2")));
+        assertThat(onlySave().picsureId()).isEqualTo(QueryIdentity.idFor(ALICE, cohort()));
+    }
+
+    @Test
+    void createWithoutAnOwnerAndConsentAuthorizationOffForwardsAndStoresTheClientsAuthorizationFilters() throws Exception {
+        AuthorizationFilter fromTheClient = new AuthorizationFilter("\\client\\", Set.of("narrow"));
+        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-legacy"));
+        when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
+        GatewayUser notAUuid = new GatewayUser("auth0|alice", null, null, null, Set.of());
+
+        consentOffService().query("auth", envelope(cohortWithClientFilters("\\client\\", "narrow")), null, notAUuid);
+
+        ArgumentCaptor<QueryRequest> sent = ArgumentCaptor.forClass(QueryRequest.class);
+        verify(hpds).query(any(HpdsTarget.class), sent.capture());
+        assertThat(((Query) sent.getValue().getQuery()).authorizationFilters()).containsExactly(fromTheClient);
+        JsonNode storedFilters = MAPPER.readTree(onlySave().query()).get("query").get("authorizationFilters");
+        assertThat(storedFilters).hasSize(1);
+        assertThat(storedFilters.get(0).get("conceptPath").asText()).isEqualTo("\\client\\");
+        assertSavedWithoutAnOwner("rr-legacy");
+    }
+
+    @Test
+    void syncWithConsentAuthorizationOffForwardsTheClientsAuthorizationFilters() {
+        AuthorizationFilter fromTheClient = new AuthorizationFilter("\\client\\", Set.of("narrow"));
+        when(hpds.querySync(any(HpdsTarget.class), any(), any())).thenReturn(new ResourceWebClient.QuerySyncResult("7".getBytes(), null));
+        Query count = new Query(List.of(), List.of(fromTheClient), null, List.of(), ResultType.COUNT, null, null);
+
+        consentOffService().querySync("auth", envelope(count), "UI", null, user(ALICE));
+
+        ArgumentCaptor<QueryRequest> sent = ArgumentCaptor.forClass(QueryRequest.class);
+        verify(hpds).querySync(any(HpdsTarget.class), sent.capture(), any());
+        assertThat(((Query) sent.getValue().getQuery()).authorizationFilters()).containsExactly(fromTheClient);
+    }
+
     @Test
     void aRowUnderTheDerivedIdThatBelongsToSomeoneElseIsAServerFaultThatNamesNoOwner() {
         UUID id = QueryIdentity.idFor(ALICE, cohort());

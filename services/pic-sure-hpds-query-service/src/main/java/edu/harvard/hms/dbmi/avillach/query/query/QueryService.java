@@ -136,16 +136,17 @@ public class QueryService {
      * Submits a query for asynchronous execution and stores it.
      *
      * <p>On {@code auth}, for a caller whose gateway user id is a canonical UUID and a body that carries a query, the row belongs to that
-     * caller: <ol> <li>{@link SampleRules} run first.</li> <li>A query that cannot be read as a v3 query is refused.</li> <li>The caller's
-     * consents are fetched once and the query is scoped with them.</li> <li>The row id is derived from the caller's UUID and the query, and
-     * replaces any {@code picsureId} the body carried.</li> <li>With no row under that id, the query is sent to HPDS under the id and the
-     * row is saved with its owner, the consents and a first-submit run.</li> <li>With a row whose consents equal the caller's current ones
-     * and whose status is {@code QUEUED}, {@code PENDING} or {@code AVAILABLE}, nothing is sent or saved and the stored status is
-     * returned.</li> <li>With a row whose consents equal the caller's current ones and whose status is {@code ERROR} or absent, the query
-     * is sent again and the row is saved with a resubmit run.</li> <li>With a row whose consents differ, the query is sent again and the
-     * row is saved with the new consents and a consent-change run.</li> </ol> A row is saved only for an answer from HPDS that carries a
-     * status and names no result id other than the derived one. The stored body carries the derived id and no authorization filters. The
-     * row's result id is the row id.
+     * caller: <ol> <li>{@link SampleRules} run first.</li> <li>A query that cannot be read as a v3 query is refused.</li> <li>The
+     * authorization filters the body carried are dropped.</li> <li>The caller's consents are fetched once and the query is scoped with
+     * them, so HPDS receives the filters built from those consents, and none when consent authorization is off.</li> <li>The row id is
+     * derived from the caller's UUID and the query, and replaces any {@code picsureId} the body carried.</li> <li>With no row under that
+     * id, the query is sent to HPDS under the id and the row is saved with its owner, the consents and a first-submit run.</li> <li>With a
+     * row whose consents equal the caller's current ones and whose status is {@code QUEUED}, {@code PENDING} or {@code AVAILABLE}, nothing
+     * is sent or saved and the stored status is returned.</li> <li>With a row whose consents equal the caller's current ones and whose
+     * status is {@code ERROR} or absent, the query is sent again and the row is saved with a resubmit run.</li> <li>With a row whose
+     * consents differ, the query is sent again and the row is saved with the new consents and a consent-change run.</li> </ol> A row is
+     * saved only for an answer from HPDS that carries a status and names no result id other than the derived one. The stored body carries
+     * the derived id and no authorization filters. The row's result id is the row id.
      *
      * <p>Every other submit keeps the path without an owner: the {@code open} backend, a caller with no gateway user or one whose id is not
      * a canonical UUID, and a body with no query. HPDS runs the query under a key it derives, and operations-service stores it under a
@@ -199,7 +200,7 @@ public class QueryService {
 
     private QueryStatus createOwned(String backend, QueryRequest req, Query submitted, String authorizationHeader, UUID owner) {
         Map<String, List<String>> consents = consentAuthorization.currentConsents(backend, authorizationHeader);
-        req.setQuery(submitted);
+        req.setQuery(submitted.setAuthorizationFilters(List.of()));
         consentAuthorization.scopeWithConsents(backend, req, consents);
         HpdsTarget target = selector.select(backend);
 
