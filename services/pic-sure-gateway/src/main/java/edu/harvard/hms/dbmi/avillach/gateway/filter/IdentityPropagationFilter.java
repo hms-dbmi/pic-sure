@@ -47,12 +47,27 @@ public class IdentityPropagationFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(IdentityPropagationFilter.class);
 
-    public IdentityPropagationFilter() {}
+    private final ClientTypeAllowlist clientTypes;
+
+    /** Creates a filter that forwards the {@link ClientTypeAllowlist#DEFAULT} client types. */
+    public IdentityPropagationFilter() {
+        this(ClientTypeAllowlist.DEFAULT);
+    }
+
+    /**
+     * Creates a filter that forwards a client type only in the spelling this allowlist lists, and {@value ClientTypeAllowlist#UNKNOWN} for
+     * anything it does not list.
+     *
+     * @param clientTypes the client types the gateway accepts
+     */
+    public IdentityPropagationFilter(ClientTypeAllowlist clientTypes) {
+        this.clientTypes = clientTypes;
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse resp, FilterChain chain)
         throws ServletException, IOException {
-        IdentityHeadersRequest wrapped = new IdentityHeadersRequest(req);
+        IdentityHeadersRequest wrapped = new IdentityHeadersRequest(req, clientTypes);
         logForwardedIdentity(wrapped);
         chain.doFilter(wrapped, resp);
     }
@@ -83,7 +98,7 @@ public class IdentityPropagationFilter extends OncePerRequestFilter {
         private final Map<String, String> overrides = new LinkedHashMap<>();
         private final Set<String> ownedHeaders;
 
-        IdentityHeadersRequest(HttpServletRequest req) {
+        IdentityHeadersRequest(HttpServletRequest req, ClientTypeAllowlist clientTypes) {
             super(req);
             boolean verifiedMcp = VerifiedCaller.get(req).filter(McpCallerFilter.CALLER::equals).isPresent();
             ownedHeaders = withClientType(GATEWAY_OWNED_HEADERS);
@@ -94,12 +109,11 @@ public class IdentityPropagationFilter extends OncePerRequestFilter {
             put(GatewayUserResolver.HEADER_USER_PRIVILEGES, attr(req, GatewayUserResolver.HEADER_USER_PRIVILEGES));
             put(GatewayUserResolver.HEADER_ACCESS_TYPE, attr(req, GatewayUserResolver.HEADER_ACCESS_TYPE));
             put(HEADER_REQUEST_ID, resolveRequestId(req));
-            put(HEADER_CLIENT_TYPE, verifiedMcp ? McpCallerFilter.CALLER : clientTypeOrUnknown(req));
+            put(HEADER_CLIENT_TYPE, verifiedMcp ? McpCallerFilter.CALLER : clientTypeOrUnknown(req, clientTypes));
         }
 
-        private static String clientTypeOrUnknown(HttpServletRequest req) {
-            String clientType = req.getHeader(HEADER_CLIENT_TYPE);
-            return clientType == null || clientType.isBlank() ? ClientTypeAllowlist.UNKNOWN : clientType.trim();
+        private static String clientTypeOrUnknown(HttpServletRequest req, ClientTypeAllowlist clientTypes) {
+            return clientTypes.resolve(req.getHeader(HEADER_CLIENT_TYPE)).orElse(ClientTypeAllowlist.UNKNOWN);
         }
 
         private static Set<String> withClientType(Set<String> owned) {

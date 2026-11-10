@@ -18,6 +18,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
+import edu.harvard.hms.dbmi.avillach.commons.audit.ClientTypeAllowlist;
 import edu.harvard.hms.dbmi.avillach.commons.audit.VerifiedCaller;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.commons.request.RequestIdFilter;
@@ -353,5 +354,29 @@ class IdentityPropagationFilterTest {
         HttpServletRequest downstream = downstreamOf(request);
 
         assertThat(downstream.getHeader("X-Client-Type")).isEqualTo("FRONTEND");
+    }
+
+    @Test
+    void aClientTypeTheAllowlistDoesNotListIsForwardedAsUnknownWhenNothingUpstreamRejectedIt() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
+        request.addHeader("X-Client-Type", "curl-script");
+        AtomicReference<HttpServletRequest> captured = new AtomicReference<>();
+
+        new IdentityPropagationFilter()
+            .doFilter(request, new MockHttpServletResponse(), (req, resp) -> captured.set((HttpServletRequest) req));
+
+        assertThat(captured.get().getHeader("X-Client-Type")).isEqualTo("UNKNOWN");
+    }
+
+    @Test
+    void aClientTypeIsForwardedInTheSpellingTheAllowlistLists() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
+        request.addHeader("X-Client-Type", " partner_portal ");
+        AtomicReference<HttpServletRequest> captured = new AtomicReference<>();
+
+        new IdentityPropagationFilter(new ClientTypeAllowlist(List.of("Partner_Portal")))
+            .doFilter(request, new MockHttpServletResponse(), (req, resp) -> captured.set((HttpServletRequest) req));
+
+        assertThat(captured.get().getHeader("X-Client-Type")).isEqualTo("Partner_Portal");
     }
 }
