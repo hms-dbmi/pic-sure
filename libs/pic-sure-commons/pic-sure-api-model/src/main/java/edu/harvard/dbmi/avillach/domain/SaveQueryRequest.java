@@ -16,9 +16,13 @@ import io.swagger.v3.oas.annotations.media.Schema;
  * <p>{@code status} travels as the {@link PicSureStatus} constant name and {@code metadata} as base64 text, so the wire carries plain
  * strings and the operations service answers 400 for a name or an encoding it cannot read.
  *
- * <p>A request that carries {@code picsureId} is an upsert: the first one inserts the row under that id with its owner, and a later one
- * updates the consents, status and metadata of that row and never its body, version or owner. A request that carries {@code trigger} also
- * records one run of the query.
+ * <p>{@code picsureId}, {@code userUuid}, {@code consents} and {@code trigger} travel together. A request carries all four, with
+ * {@code consents} possibly an empty map, or none of them, and the operations service answers 400 for any other mix. A request with none is
+ * stored as a new row under a random id with no owner.
+ *
+ * <p>A request with all four is an upsert: the first one inserts the row under that id with its owner, and a later one updates the
+ * consents, status and metadata of that row and never its body, version or owner. Each one records one run of the query. A later one that
+ * names a different owner than the stored row has is answered with 409 and changes nothing.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 @Schema(description = "A query the query service asks the operations service to persist.")

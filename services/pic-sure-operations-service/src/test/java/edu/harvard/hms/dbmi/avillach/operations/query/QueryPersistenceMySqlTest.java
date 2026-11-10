@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.operations.query;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
@@ -8,6 +9,10 @@ import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +40,7 @@ import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
 /**
  * Runs the query persistence path against the schema the migrations build, on a real MySQL. Hibernate creates nothing here: the tables come
@@ -172,8 +178,7 @@ class QueryPersistenceMySqlTest {
 
         service.save(
             new SaveQueryRequest(
-                "{\"q\":2}", "other", "PENDING", "4", null, picsureId, UUID.randomUUID(), Map.of(CONSENTS, List.of("phs1.c1")),
-                "CONSENT_CHANGE"
+                "{\"q\":2}", "other", "PENDING", "4", null, picsureId, owner, Map.of(CONSENTS, List.of("phs1.c1")), "CONSENT_CHANGE"
             )
         );
 
@@ -233,6 +238,85 @@ class QueryPersistenceMySqlTest {
         assertThat(service.get(picsureId).userUuid()).isEqualTo(owner);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_run WHERE query_uuid = ?", Integer.class, bytes(picsureId)))
             .isEqualTo(2);
+    }
+
+    @Test
+    void concurrentFirstSavesByDifferentOwnersKeepTheWinnerAndRefuseTheLoser() throws Exception {
+        UUID picsureId = UUID.randomUUID();
+        List<SaveQueryRequest> requests = List.of(
+            owned(picsureId, UUID.randomUUID(), Map.of(CONSENTS, List.of("phs1.c1", "phs2.c1")), "FIRST_SUBMIT"),
+            owned(picsureId, UUID.randomUUID(), Map.of(CONSENTS, List.of("phs1.c1")), "FIRST_SUBMIT")
+        );
+
+        List<SaveOutcome> outcomes =
+            RacingFirstSaves.run(queryRepository, runRepository, transactionManager, picsureId, requests.get(0), requests.get(1));
+
+        ConcurrentSaveAssertions.assertOneOwnerWon(
+            picsureId, requests, outcomes, service.get(picsureId), runRepository.findByQueryUuidOrderBySubmittedAtAsc(picsureId)
+        );
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void updateThatReadTheRowBeforeAConsentChangeSaveDoesNotOverwriteIt() throws Exception {
+        UUID picsureId = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        service.save(owned(picsureId, owner, Map.of(CONSENTS, List.of("phs1.c1", "phs2.c1")), "FIRST_SUBMIT"));
+        UUID firstRun = service.get(picsureId).runId();
+
+        boolean savedWhileTheUpdateWasHeld = UpdateHeldAcrossASave.run(
+            queryRepository, runRepository, transactionManager, picsureId,
+            new UpdateQueryRequest("AVAILABLE", null, null, null, null, firstRun),
+            new SaveQueryRequest(
+                "{\"q\":1}", picsureId.toString(), "PENDING", "3", null, picsureId, owner, Map.of(CONSENTS, List.of("phs1.c1")),
+                "CONSENT_CHANGE"
+            )
+        );
+
+        ConcurrentSaveAssertions
+            .assertTheSecondRunStands(firstRun, service.get(picsureId), runRepository.findByQueryUuidOrderBySubmittedAtAsc(picsureId));
+        assertThat(savedWhileTheUpdateWasHeld).isFalse();
+    }
+
+    @Test
+    void concurrentResavesGetDistinctSubmitTimesAndTheRowKeepsTheLatestRunsConsents() throws Exception {
+        UUID picsureId = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        Clock stopped = Clock.fixed(Instant.now().truncatedTo(ChronoUnit.MILLIS), ZoneOffset.UTC);
+        service.save(owned(picsureId, owner, Map.of(CONSENTS, List.of("phs0.c1")), "FIRST_SUBMIT"));
+
+        for (int round = 1; round <= 10; round++) {
+            List<SaveOutcome> outcomes = RacingResaves.run(
+                queryRepository, runRepository, transactionManager, stopped,
+                owned(picsureId, owner, Map.of(CONSENTS, List.of("phs1.c1", "phs2.c1")), "CONSENT_CHANGE"),
+                owned(picsureId, owner, Map.of(CONSENTS, List.of("phs1.c1")), "CONSENT_CHANGE")
+            );
+
+            ConcurrentSaveAssertions.assertRunsAreOrdered(
+                round, outcomes, service.get(picsureId), runRepository.findByQueryUuidOrderBySubmittedAtAsc(picsureId),
+                runRepository.findFirstByQueryUuidOrderBySubmittedAtDesc(picsureId).orElseThrow()
+            );
+        }
+    }
+
+    @Test
+    void saveFromADifferentOwnerAndUpdateForAnOlderRunAreRefusedOnMySql() {
+        UUID picsureId = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        service.save(owned(picsureId, owner, Map.of(CONSENTS, List.of("phs1.c1", "phs2.c1")), "FIRST_SUBMIT"));
+        UUID olderRun = service.get(picsureId).runId();
+        service.save(owned(picsureId, owner, Map.of(CONSENTS, List.of("phs1.c1")), "CONSENT_CHANGE"));
+        StoredQuery before = service.get(picsureId);
+
+        assertThatThrownBy(() -> service.save(owned(picsureId, UUID.randomUUID(), Map.of(CONSENTS, List.of("phs9.c1")), "RESUBMIT")))
+            .isInstanceOfSatisfying(PicsureException.class, refusal -> assertThat(refusal.getStatus().value()).isEqualTo(409));
+        assertThatThrownBy(() -> service.update(picsureId, new UpdateQueryRequest("AVAILABLE", "rr-stale", null, null, null, olderRun)))
+            .isInstanceOfSatisfying(PicsureException.class, refusal -> assertThat(refusal.getStatus().value()).isEqualTo(409));
+
+        assertThat(service.get(picsureId)).isEqualTo(before);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_run WHERE query_uuid = ?", Integer.class, bytes(picsureId)))
+            .isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_run WHERE completed_at IS NOT NULL", Integer.class)).isZero();
     }
 
     private static SaveQueryRequest owned(UUID picsureId, UUID owner, Map<String, List<String>> consents, String trigger) {

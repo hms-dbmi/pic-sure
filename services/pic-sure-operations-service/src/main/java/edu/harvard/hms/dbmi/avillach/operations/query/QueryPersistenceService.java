@@ -1,16 +1,21 @@
 package edu.harvard.hms.dbmi.avillach.operations.query;
 
+import java.sql.SQLException;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -28,6 +33,7 @@ import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.operations.error.PicsureExceptions;
 
 /**
  * The sole read/write path onto the {@code query} table for the internal query API ({@link InternalQueryController}). Persists, loads and
@@ -39,22 +45,51 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
  * {@code byte[]} column; malformed base64 is likewise a caller error (400), not a 500.
  *
  * <p>It is also the only writer of the {@code query_run} table. A save that names a trigger appends one run, and a final status completes
- * the latest run. Runs are never deleted, and they are read only to find a row's latest run.
+ * the latest run. Runs are never deleted. This service reads only the latest run of a row; the repository can also list every run of a row,
+ * which the tests use.
+ *
+ * <p>A save onto a stored row and an update both lock the query row before they read anything else, so two writers of one row run one after
+ * the other and the second sees the run the first appended.
  */
 @Service
 public class QueryPersistenceService {
 
     private static final Logger LOG = LoggerFactory.getLogger(QueryPersistenceService.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
+    private static final int MYSQL_DUPLICATE_ENTRY = 1062;
+    private static final int OWNED_SAVE_MEMBERS = 4;
 
     private final QueryRepository repo;
     private final QueryRunRepository runs;
     private final TransactionTemplate transactions;
+    private final Clock clock;
 
+    /**
+     * Creates the service on the system clock.
+     *
+     * @param repo the query rows
+     * @param runs the runs of the query rows
+     * @param transactionManager the transaction manager each save opens its transactions on
+     */
+    @Autowired
     public QueryPersistenceService(QueryRepository repo, QueryRunRepository runs, PlatformTransactionManager transactionManager) {
+        this(repo, runs, transactionManager, Clock.systemUTC());
+    }
+
+    /**
+     * Creates the service on a given clock, so a test can decide what time every save and update reads.
+     *
+     * @param repo the query rows
+     * @param runs the runs of the query rows
+     * @param transactionManager the transaction manager each save opens its transactions on
+     * @param clock the source of the start, ready, submit and completion times
+     */
+    QueryPersistenceService(QueryRepository repo, QueryRunRepository runs, PlatformTransactionManager transactionManager, Clock clock) {
         this.repo = repo;
         this.runs = runs;
         this.transactions = new TransactionTemplate(transactionManager);
+        this.clock = clock;
     }
 
     /**
@@ -63,6 +98,7 @@ public class QueryPersistenceService {
      *
      * @param req the query body, status, version, metadata, and optionally the id, owner, consents and trigger to store
      * @return the id the row is stored under
+     * @throws PicsureException as the two-argument {@code save} does
      */
     public UUID save(SaveQueryRequest req) {
         return save(req.picsureId(), req);
@@ -73,59 +109,131 @@ public class QueryPersistenceService {
      * id, owner, consents, status and metadata. A later save of the same id updates that row in place: it takes the new consents, status
      * and metadata, restarts {@code startTime}, clears {@code readyTime}, and leaves the stored body, version, result id and owner as they
      * were. Consent values are stored sorted. When the request names a trigger, one {@code query_run} row is written in the same
-     * transaction.
+     * transaction as the row change, and neither is kept when the other fails.
      *
-     * <p>Two first saves of one id can both find no row and both insert. The insert that loses fails on the primary key, its transaction
-     * rolls back, and the save runs again as an update of the row the other one inserted. This method therefore opens its own transaction
-     * for each attempt and is not itself transactional. A caller that already holds a transaction joins it, and the second attempt then
-     * cannot succeed, because the failed insert has marked that transaction for rollback.
+     * <p>The request is either legacy-shaped, with none of {@code picsureId}, {@code userUuid}, {@code consents} and {@code trigger}, or
+     * fully owned, with all four. An empty consent map counts as present. Any other mix is refused before anything is read or written.
+     *
+     * <p>A stored row is only ever saved again by its owner. When the owner of the stored row and the owner in the request differ, or one
+     * of the two is absent, the save is refused, the row keeps every value it had and no run is written.
+     *
+     * <p>The save runs in up to three transactions of its own and is not itself transactional. The first locks the row and, when it is
+     * there, updates it. When it is not there, that transaction ends before the second one inserts the row, because on MySQL a locking read
+     * that finds nothing holds the gap the row would go into, and two first saves that each held it and then inserted would deadlock. Two
+     * first saves of one id can therefore both insert. The one that loses fails on the primary key, its transaction rolls back, and a third
+     * transaction locks the row the other one inserted and updates it under the rules above. Only a duplicate row id leads to that third
+     * transaction, and any other failure of the insert is thrown as it is. A caller that already holds a transaction joins it, and the
+     * third step then cannot succeed, because the failed insert has marked that transaction for rollback.
      *
      * @param picsureId the row id to store under, or null to have a random one assigned
      * @param req the query body, status, version, metadata, owner, consents and trigger to store
      * @return the id the row is stored under
-     * @throws PicsureException 400 when the status or trigger is not a known name or the metadata is not base64
+     * @throws PicsureException 400 when the request is neither legacy-shaped nor fully owned, when the status or trigger is not a known
+     *         name, or when the metadata is not base64; 409 when the row is stored under a different owner
      */
     public UUID save(UUID picsureId, SaveQueryRequest req) {
+        requireLegacyOrFullyOwned(req);
+        if (picsureId == null) {
+            return insertUnderARandomId(req);
+        }
+        UUID storedOnExistingRow = transactions.execute(status -> storeOnExistingRow(picsureId, req));
+        if (storedOnExistingRow != null) {
+            return storedOnExistingRow;
+        }
         try {
-            return transactions.execute(status -> upsert(picsureId, req));
-        } catch (DataIntegrityViolationException lostFirstInsert) {
-            if (picsureId == null) {
-                throw lostFirstInsert;
+            return transactions.execute(status -> insert(picsureId, req));
+        } catch (RowIdTakenException lostFirstInsert) {
+            UUID storedOnTheWinnersRow = transactions.execute(status -> storeOnExistingRow(picsureId, req));
+            if (storedOnTheWinnersRow == null) {
+                throw lostFirstInsert.duplicateKey();
             }
-            return transactions.execute(status -> {
-                Query winner = repo.findById(picsureId).orElseThrow(() -> lostFirstInsert);
-                return store(winner, req);
-            });
+            return storedOnTheWinnersRow;
         }
     }
 
-    private UUID upsert(UUID picsureId, SaveQueryRequest req) {
-        Query entity = picsureId == null ? null : repo.findById(picsureId).orElse(null);
-        if (entity == null) {
-            entity = new Query();
-            entity.setUuid(picsureId == null ? UUID.randomUUID() : picsureId);
-            entity.setQuery(stripResourceCredentials(req.query()));
-            entity.setResourceResultId(req.resourceResultId());
-            entity.setVersion(req.version());
-            entity.setUserUuid(req.userUuid());
+    /**
+     * Locks the row with the given id and stores the request onto it, or returns null without writing when no row has the id.
+     *
+     * @throws PicsureException 409 when the row is stored under a different owner than the request names
+     */
+    private UUID storeOnExistingRow(UUID picsureId, SaveQueryRequest req) {
+        Optional<Query> stored = repo.findLockedByUuid(picsureId);
+        if (stored.isEmpty()) {
+            return null;
         }
+        if (!Objects.equals(stored.get().getUserUuid(), req.userUuid())) {
+            throw PicsureExceptions.conflict("Query " + picsureId + " belongs to a different owner");
+        }
+        return store(stored.get(), req);
+    }
+
+    private UUID insertUnderARandomId(SaveQueryRequest req) {
+        try {
+            return transactions.execute(status -> insert(UUID.randomUUID(), req));
+        } catch (RowIdTakenException randomIdTaken) {
+            throw randomIdTaken.duplicateKey();
+        }
+    }
+
+    private UUID insert(UUID picsureId, SaveQueryRequest req) {
+        Query entity = new Query();
+        entity.setUuid(picsureId);
+        entity.setQuery(stripResourceCredentials(req.query()));
+        entity.setResourceResultId(req.resourceResultId());
+        entity.setVersion(req.version());
+        entity.setUserUuid(req.userUuid());
         return store(entity, req);
     }
 
     private UUID store(Query entity, SaveQueryRequest req) {
         RunTrigger trigger = parseTrigger(req.trigger());
         Map<String, List<String>> consents = sortedConsents(req.consents());
-        Instant now = Instant.now();
+        Instant now = clock.instant();
         entity.setReadyTime(null);
         entity.setConsents(consents);
         entity.setStatus(parseStatus(req.status()));
         entity.setMetadata(decodeMetadata(req.metadata()));
         entity.setStartTime(now);
-        UUID picsureId = repo.saveAndFlush(entity).getUuid();
+        UUID picsureId = flushRow(entity);
         if (trigger != null) {
             runs.saveAndFlush(new QueryRun(UUID.randomUUID(), picsureId, consents, trigger, submitTimeAfterLatestRun(picsureId, now)));
         }
         return picsureId;
+    }
+
+    /**
+     * Writes the row to the database now. The primary key is the only unique key of the {@code query} table, so a duplicate key on the
+     * insert of a new row means another save inserted the same id first, and it is reported as {@link RowIdTakenException}. Every other
+     * failure is thrown as it is.
+     */
+    private UUID flushRow(Query entity) {
+        boolean inserting = entity.isNew();
+        try {
+            return repo.saveAndFlush(entity).getUuid();
+        } catch (DataIntegrityViolationException e) {
+            if (inserting && isDuplicateKey(e)) {
+                throw new RowIdTakenException(e);
+            }
+            throw e;
+        }
+    }
+
+    /** Returns true when the database refused a write for a duplicate key: SQL state 23505, or MySQL error 1062. */
+    private static boolean isDuplicateKey(DataIntegrityViolationException e) {
+        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLException sql) {
+                return UNIQUE_VIOLATION_SQL_STATE.equals(sql.getSQLState()) || sql.getErrorCode() == MYSQL_DUPLICATE_ENTRY;
+            }
+        }
+        return false;
+    }
+
+    /** Refuses a request that carries some but not all of the id, owner, consents and trigger of an owned save. */
+    private static void requireLegacyOrFullyOwned(SaveQueryRequest req) {
+        long ownedMembers = Stream.of(req.picsureId(), req.userUuid(), req.consents(), req.trigger()).filter(Objects::nonNull).count();
+        if (ownedMembers != 0 && ownedMembers != OWNED_SAVE_MEMBERS) {
+            throw PicsureExceptions.badRequest("picsureId, userUuid, consents and trigger must be sent together or not at all");
+        }
     }
 
     /**
@@ -147,39 +255,52 @@ public class QueryPersistenceService {
     }
 
     /**
-     * Applies the non-null fields of the request to a stored row.
+     * Applies the non-null fields of the request to a stored row. The row is locked first, so the update sees every run a save committed
+     * before it and no save can append a run until the update ends.
      *
-     * <p>The status is written unless the request names a run that is not the row's latest one. That happens when a poller read the row,
-     * the query was run again, and the poller then reports the status of the run it read. Its status is dropped, and the other fields of
-     * the request are still applied. A status of {@code AVAILABLE} or {@code ERROR} that is written also completes the latest run, once: a
-     * run that already has a completion time keeps it and its status.
+     * <p>A request that names a run must name the row's latest run. When the row has a newer run, or no run at all, the update is refused
+     * and nothing is changed. That happens when a poller read the row, the query was run again, and the poller then reports on the run it
+     * read. A request that names no run is applied whatever the latest run is.
+     *
+     * <p>The first status of {@code AVAILABLE} stamps {@code readyTime}, and later ones leave it. A status of {@code AVAILABLE} or
+     * {@code ERROR} also completes the latest run, once: a run that already has a completion time keeps it and its status.
+     *
+     * <p>The body and version of a row that has an owner are never rewritten, because the id of an owned row is derived from its body. A
+     * request that carries either for an owned row is refused and nothing is changed. A row without an owner takes both, which is how a row
+     * stored before v3 is upgraded.
      *
      * @param picsureId the id of the row to update
      * @param req the fields to change
-     * @throws PicsureException 404 when no row has the id, 400 when the status is not a known name or the metadata is not base64
+     * @throws PicsureException 404 when no row has the id; 400 when the status is not a known name, the metadata is not base64, or the
+     *         request carries a body or version for a row that has an owner; 409 when the request names a run that is not the row's latest
      */
     @Transactional
     public void update(UUID picsureId, UpdateQueryRequest req) {
-        Query entity = load(picsureId);
-        if (req.status() != null) {
-            PicSureStatus newStatus = parseStatus(req.status());
-            Optional<QueryRun> latestRun = runs.findFirstByQueryUuidOrderBySubmittedAtDesc(picsureId);
-            if (namesLatestRun(req.runId(), latestRun)) {
-                Instant now = Instant.now();
-                if (newStatus == PicSureStatus.AVAILABLE && entity.getReadyTime() == null) {
-                    entity.setReadyTime(now); // first AVAILABLE transition only
-                }
-                entity.setStatus(newStatus);
-                if (newStatus == PicSureStatus.AVAILABLE || newStatus == PicSureStatus.ERROR) {
-                    latestRun.filter(run -> run.getCompletedAt() == null).ifPresent(run -> run.complete(newStatus, now));
-                }
+        Query entity = repo.findLockedByUuid(picsureId).orElseThrow(() -> notFound(picsureId));
+        PicSureStatus newStatus = parseStatus(req.status());
+        byte[] newMetadata = decodeMetadata(req.metadata());
+        if (entity.getUserUuid() != null && (req.query() != null || req.version() != null)) {
+            throw PicsureExceptions.badRequest("The query and version of an owned query cannot be changed");
+        }
+        Optional<QueryRun> latestRun = runs.findFirstByQueryUuidOrderBySubmittedAtDesc(picsureId);
+        if (req.runId() != null && !latestRun.map(QueryRun::getRunId).filter(req.runId()::equals).isPresent()) {
+            throw PicsureExceptions.conflict("The update names a run that is not the latest run of query " + picsureId);
+        }
+        if (newStatus != null) {
+            Instant now = clock.instant();
+            if (newStatus == PicSureStatus.AVAILABLE && entity.getReadyTime() == null) {
+                entity.setReadyTime(now);
+            }
+            entity.setStatus(newStatus);
+            if (newStatus == PicSureStatus.AVAILABLE || newStatus == PicSureStatus.ERROR) {
+                latestRun.filter(run -> run.getCompletedAt() == null).ifPresent(run -> run.complete(newStatus, now));
             }
         }
         if (req.resourceResultId() != null) {
             entity.setResourceResultId(req.resourceResultId());
         }
-        if (req.metadata() != null) {
-            entity.setMetadata(decodeMetadata(req.metadata()));
+        if (newMetadata != null) {
+            entity.setMetadata(newMetadata);
         }
         if (req.query() != null) {
             entity.setQuery(stripResourceCredentials(req.query()));
@@ -226,10 +347,6 @@ public class QueryPersistenceService {
             toEpochMillis(entity.getStartTime()), toEpochMillis(entity.getReadyTime()), entity.getUserUuid(), entity.getConsents(),
             latestRunId
         );
-    }
-
-    private static boolean namesLatestRun(UUID runId, Optional<QueryRun> latestRun) {
-        return runId == null || latestRun.map(run -> run.getRunId().equals(runId)).orElse(false);
     }
 
     /** Copies the consents into a map ordered by key with each value list sorted, or returns null when none were sent. */
@@ -307,5 +424,23 @@ public class QueryPersistenceService {
 
     private static PicsureException notFound(UUID id) {
         return new PicsureException(HttpStatus.NOT_FOUND, "not_found", "Query " + id + " not found");
+    }
+
+    /** Thrown out of the insert transaction when another save has already inserted a row under the same id. */
+    private static final class RowIdTakenException extends RuntimeException {
+
+        private static final long serialVersionUID = 1L;
+
+        private final DataIntegrityViolationException duplicateKey;
+
+        RowIdTakenException(DataIntegrityViolationException duplicateKey) {
+            super(duplicateKey);
+            this.duplicateKey = duplicateKey;
+        }
+
+        /** Returns the duplicate-key failure the database reported. */
+        DataIntegrityViolationException duplicateKey() {
+            return duplicateKey;
+        }
     }
 }

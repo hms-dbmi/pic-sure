@@ -180,4 +180,35 @@ class OperationsClientTest {
         assertThatThrownBy(() -> client().update(id, new UpdateQueryRequest("COMPLETE", null, null, null, null)))
             .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
     }
+
+    @Test
+    void updateRefusedForAStaleRunThrowsBadGateway() {
+        UUID id = UUID.randomUUID();
+        ops.stubFor(
+            patch(urlEqualTo("/operations/internal/queries/" + id)).willReturn(
+                aResponse().withStatus(409).withHeader("Content-Type", "application/json")
+                    .withBody("{\"errorType\":\"conflict\",\"message\":\"stale\",\"requestId\":null}")
+            )
+        );
+
+        assertThatThrownBy(() -> client().update(id, new UpdateQueryRequest("AVAILABLE", null, null, null, null, UUID.randomUUID())))
+            .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
+    }
+
+    @Test
+    void updateRefusedForTheBodyOfAnOwnedRowThrowsBadGateway() {
+        UUID id = UUID.randomUUID();
+        ops.stubFor(patch(urlEqualTo("/operations/internal/queries/" + id)).willReturn(aResponse().withStatus(400)));
+
+        assertThatThrownBy(() -> client().update(id, new UpdateQueryRequest("PENDING", "rr", null, "{\"query\":{}}", "3")))
+            .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
+    }
+
+    @Test
+    void saveRefusedForADifferentOwnerThrowsBadGateway() {
+        ops.stubFor(post(urlEqualTo("/operations/internal/queries")).willReturn(aResponse().withStatus(409)));
+
+        assertThatThrownBy(() -> client().save(new SaveQueryRequest("{}", null, "QUEUED", "3", null)))
+            .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
+    }
 }

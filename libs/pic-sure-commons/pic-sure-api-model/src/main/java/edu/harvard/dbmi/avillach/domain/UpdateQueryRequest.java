@@ -10,10 +10,12 @@ import io.swagger.v3.oas.annotations.media.Schema;
  * Request body for {@code PATCH /internal/queries/{picsureId}} on the operations service. Every component is optional and an absent or null
  * component leaves the stored value unchanged, so a caller sends only what moved: the status as a dispatch completes, or the result id once
  * HPDS assigns one. {@code query} and {@code version} are replaced together when the query service upgrades a row stored before v3 to the
- * v3 format. The query service and the operations service exchange it, and no client reads it.
+ * v3 format, and only a row without an owner takes them: for a row that has an owner the operations service answers 400 and changes
+ * nothing. The query service and the operations service exchange it, and no client reads it.
  *
- * <p>{@code runId} names the run the caller loaded with the row. When the row has a newer run by the time the update arrives, the status is
- * left as it is, so a poller that read an older run cannot overwrite the status of the current one.
+ * <p>{@code runId} names the run the caller loaded with the row. When the row has a newer run by the time the update arrives, or has no run
+ * at all, the operations service answers 409 and changes nothing, so a poller that read an older run cannot overwrite the current one and
+ * can tell that it did not.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 @Schema(description = "A partial update to a persisted query. A null or absent field leaves the stored value unchanged.")
@@ -28,11 +30,14 @@ public record UpdateQueryRequest(
         example = "eyJwaWNzdXJlUXVlcnlJZCI6Ijg2OTRlM2Q0LTVjYjQtNDEwZi04NDMxLTk5MzQ0NWU2ZDNmNiJ9"
     ) String metadata,
     @Schema(
-        description = "The serialized QueryRequest that replaces the stored one. Resource credentials are stripped before it is stored.",
+        description = "The serialized QueryRequest that replaces the stored one. Resource credentials are stripped before it is stored. Answered with 400 for a row that has an owner.",
         example = "{\"query\":{\"phenotypicClause\":null,\"expectedResultType\":\"COUNT\"}}"
-    ) String query, @Schema(description = "The query format version that replaces the stored one.", example = "3") String version,
+    ) String query,
     @Schema(
-        description = "The id of the run the caller read with the row. A status sent with an id other than the row's latest run is not written.",
+        description = "The query format version that replaces the stored one. Answered with 400 for a row that has an owner.", example = "3"
+    ) String version,
+    @Schema(
+        description = "The id of the run the caller read with the row. An update that names an id other than the row's latest run is answered with 409 and changes nothing.",
         example = "0b6d6a0e-3c56-4c0b-9a38-0b1f5c1f3a77"
     ) UUID runId
 ) {

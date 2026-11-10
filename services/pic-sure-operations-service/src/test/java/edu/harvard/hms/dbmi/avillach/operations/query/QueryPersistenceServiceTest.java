@@ -3,7 +3,9 @@ package edu.harvard.hms.dbmi.avillach.operations.query;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.List;
@@ -278,8 +280,8 @@ class QueryPersistenceServiceTest {
         UUID picsureId = UUID.randomUUID();
         UUID owner = UUID.randomUUID();
 
-        UUID saved =
-            service.save(owned(picsureId, owner, Map.of(CONSENTS, List.of("phs2.c1", "phs1.c2"), TOPMED, List.of("phs9.c1")), null));
+        UUID saved = service
+            .save(owned(picsureId, owner, Map.of(CONSENTS, List.of("phs2.c1", "phs1.c2"), TOPMED, List.of("phs9.c1")), "FIRST_SUBMIT"));
         entityManager.flush();
         entityManager.clear();
 
@@ -293,14 +295,14 @@ class QueryPersistenceServiceTest {
         assertThat(stored.resourceResultId()).isEqualTo(picsureId.toString());
         assertThat(stored.status()).isEqualTo("QUEUED");
         assertThat(stored.startTime()).isNotNull();
-        assertThat(stored.runId()).isNull();
+        assertThat(stored.runId()).isNotNull();
     }
 
     @Test
     void saveReadsTheIdFromTheRequest() {
         UUID picsureId = UUID.randomUUID();
 
-        UUID saved = service.save(owned(picsureId, UUID.randomUUID(), Map.of(), null));
+        UUID saved = service.save(owned(picsureId, UUID.randomUUID(), Map.of(), "FIRST_SUBMIT"));
 
         assertThat(saved).isEqualTo(picsureId);
         assertThat(repo.findById(picsureId)).isPresent();
@@ -314,11 +316,6 @@ class QueryPersistenceServiceTest {
         service.save(owned(picsureId, owner, Map.of(CONSENTS, List.of("phs1.c1")), "FIRST_SUBMIT"));
         entityManager.flush();
         entityManager.clear();
-
-        service.save(owned(picsureId, someoneElse, Map.of(CONSENTS, List.of("phs1.c1")), "RESUBMIT"));
-        entityManager.flush();
-        entityManager.clear();
-        assertThat(service.get(picsureId).userUuid()).isEqualTo(owner);
 
         Query loaded = repo.findById(picsureId).orElseThrow();
         loaded.setUserUuid(someoneElse);
@@ -438,21 +435,24 @@ class QueryPersistenceServiceTest {
     }
 
     @Test
-    void fiveRunsUnderOneConsentSetAreAllKeptInSubmitOrder() {
+    void fiveRunsSubmittedAtOneInstantAreKeptOneMillisecondApartInSubmitOrder() {
+        Instant instant = Instant.parse("2026-03-04T05:06:07.008Z");
+        QueryPersistenceService stoppedClock =
+            new QueryPersistenceService(repo, runRepo, transactionManager, Clock.fixed(instant, ZoneOffset.UTC));
         UUID picsureId = UUID.randomUUID();
         UUID owner = UUID.randomUUID();
         Map<String, List<String>> consents = Map.of(CONSENTS, List.of("phs1.c1"));
-        service.save(owned(picsureId, owner, consents, "FIRST_SUBMIT"));
-        for (int resubmit = 0; resubmit < 4; resubmit++) {
-            service.save(owned(picsureId, owner, consents, "LOST_RESULT"));
+        List<String> triggers = List.of("FIRST_SUBMIT", "RESUBMIT", "LOST_RESULT", "CONSENT_CHANGE", "RESUBMIT");
+        for (String trigger : triggers) {
+            stoppedClock.save(owned(picsureId, owner, consents, trigger));
         }
         entityManager.flush();
         entityManager.clear();
 
         List<QueryRun> runs = runRepo.findByQueryUuidOrderBySubmittedAtAsc(picsureId);
-        assertThat(runs).hasSize(5);
-        assertThat(runs).extracting(QueryRun::getSubmittedAt).doesNotHaveDuplicates();
-        assertThat(runs.getFirst().getTrigger()).isEqualTo(RunTrigger.FIRST_SUBMIT);
+        assertThat(runs).extracting(QueryRun::getSubmittedAt)
+            .containsExactly(instant, instant.plusMillis(1), instant.plusMillis(2), instant.plusMillis(3), instant.plusMillis(4));
+        assertThat(runs).extracting(run -> run.getTrigger().name()).containsExactlyElementsOf(triggers);
         assertThat(service.get(picsureId).runId()).isEqualTo(runs.getLast().getRunId());
     }
 
@@ -461,18 +461,18 @@ class QueryPersistenceServiceTest {
         UUID picsureId = UUID.randomUUID();
         UUID owner = UUID.randomUUID();
         Map<String, List<String>> consents = Map.of(CONSENTS, List.of("phs1.c1"));
-        service.save(owned(picsureId, owner, consents, null));
+        service.save(owned(picsureId, owner, consents, "FIRST_SUBMIT"));
         Instant ahead = Instant.now().plusSeconds(3600).truncatedTo(ChronoUnit.MILLIS);
         QueryRun aheadOfTheClock =
-            runRepo.saveAndFlush(new QueryRun(UUID.randomUUID(), picsureId, consents, RunTrigger.FIRST_SUBMIT, ahead));
+            runRepo.saveAndFlush(new QueryRun(UUID.randomUUID(), picsureId, consents, RunTrigger.LOST_RESULT, ahead));
 
         service.save(owned(picsureId, owner, consents, "RESUBMIT"));
         entityManager.flush();
         entityManager.clear();
 
         List<QueryRun> runs = runRepo.findByQueryUuidOrderBySubmittedAtAsc(picsureId);
-        assertThat(runs).hasSize(2);
-        assertThat(runs.getFirst().getRunId()).isEqualTo(aheadOfTheClock.getRunId());
+        assertThat(runs).hasSize(3);
+        assertThat(runs.get(1).getRunId()).isEqualTo(aheadOfTheClock.getRunId());
         assertThat(runs.getLast().getTrigger()).isEqualTo(RunTrigger.RESUBMIT);
         assertThat(runs.getLast().getSubmittedAt()).isEqualTo(ahead.plusMillis(1));
         assertThat(service.get(picsureId).runId()).isEqualTo(runs.getLast().getRunId());
@@ -527,61 +527,27 @@ class QueryPersistenceServiceTest {
     }
 
     @Test
-    void statusUpdateForAnOlderRunIsIgnored() {
+    void updateWithoutARunIdCompletesTheLatestRunOnATerminalStatus() {
         UUID picsureId = UUID.randomUUID();
         UUID owner = UUID.randomUUID();
         service.save(owned(picsureId, owner, Map.of(CONSENTS, List.of("phs1.c1", "phs2.c1")), "FIRST_SUBMIT"));
-        entityManager.flush();
-        entityManager.clear();
-        UUID olderRun = service.get(picsureId).runId();
-        service.save(
-            new SaveQueryRequest(
-                "{\"q\":1}", picsureId.toString(), "PENDING", "3", null, picsureId, owner, Map.of(CONSENTS, List.of("phs1.c1")),
-                "CONSENT_CHANGE"
-            )
-        );
-        entityManager.flush();
-        entityManager.clear();
-        UUID latestRun = service.get(picsureId).runId();
-        assertThat(latestRun).isNotEqualTo(olderRun);
-
-        service.update(picsureId, new UpdateQueryRequest("AVAILABLE", null, null, null, null, olderRun));
+        service.save(owned(picsureId, owner, Map.of(CONSENTS, List.of("phs1.c1")), "CONSENT_CHANGE"));
         entityManager.flush();
         entityManager.clear();
 
-        StoredQuery afterStalePoll = service.get(picsureId);
-        assertThat(afterStalePoll.status()).isEqualTo("PENDING");
-        assertThat(afterStalePoll.readyTime()).isNull();
-        assertThat(runRepo.findByQueryUuidOrderBySubmittedAtAsc(picsureId)).allSatisfy(run -> {
-            assertThat(run.getCompletedAt()).isNull();
-            assertThat(run.getStatus()).isNull();
-        });
-        entityManager.clear();
-
-        service.update(picsureId, new UpdateQueryRequest("AVAILABLE", null, null, null, null, latestRun));
+        service.update(picsureId, new UpdateQueryRequest("AVAILABLE", null, null, null, null));
         entityManager.flush();
         entityManager.clear();
 
-        StoredQuery afterCurrentPoll = service.get(picsureId);
-        assertThat(afterCurrentPoll.status()).isEqualTo("AVAILABLE");
-        assertThat(afterCurrentPoll.readyTime()).isNotNull();
-        assertThat(runRepo.findById(latestRun).orElseThrow().getStatus()).isEqualTo(PicSureStatus.AVAILABLE);
-        assertThat(runRepo.findById(olderRun).orElseThrow().getStatus()).isNull();
-    }
-
-    @Test
-    void statusUpdateNamingARunOnARowWithNoRunsIsIgnored() {
-        UUID picsureId = service.save(new SaveQueryRequest("{}", null, "QUEUED", null, null));
-        entityManager.flush();
-        entityManager.clear();
-
-        service.update(picsureId, new UpdateQueryRequest("AVAILABLE", "rr-kept", null, null, null, UUID.randomUUID()));
-        entityManager.flush();
-        entityManager.clear();
-
+        List<QueryRun> runs = runRepo.findByQueryUuidOrderBySubmittedAtAsc(picsureId);
+        assertThat(runs).hasSize(2);
+        assertThat(runs.getFirst().getStatus()).isNull();
+        assertThat(runs.getFirst().getCompletedAt()).isNull();
+        assertThat(runs.getLast().getStatus()).isEqualTo(PicSureStatus.AVAILABLE);
+        assertThat(runs.getLast().getCompletedAt()).isNotNull();
         StoredQuery stored = service.get(picsureId);
-        assertThat(stored.status()).isEqualTo("QUEUED");
-        assertThat(stored.resourceResultId()).isEqualTo("rr-kept");
+        assertThat(stored.status()).isEqualTo("AVAILABLE");
+        assertThat(stored.readyTime()).isNotNull();
     }
 
     @Test

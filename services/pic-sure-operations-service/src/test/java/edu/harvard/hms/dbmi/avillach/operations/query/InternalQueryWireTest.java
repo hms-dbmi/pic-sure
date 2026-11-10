@@ -66,17 +66,19 @@ class InternalQueryWireTest {
         mockMvc.perform(
             post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON).content(
                 "{\"query\":\"{\\\"q\\\":1}\",\"status\":\"QUEUED\",\"picsureId\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\","
-                    + "\"userUuid\":\"5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11\",\"consents\":{\"\\\\_consents\\\\\":[\"phs1.c1\"]}}"
+                    + "\"userUuid\":\"5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11\",\"consents\":{\"\\\\_consents\\\\\":[\"phs1.c1\"]},"
+                    + "\"trigger\":\"FIRST_SUBMIT\"}"
             )
         ).andExpect(status().isCreated()).andExpect(content().string("{\"picsureId\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\"}"));
     }
 
     @Test
-    void readOfAnOwnedRowAnswersWithOwnerSortedConsentsAndNullRunAfterTheTimestamps() throws Exception {
+    void readOfAnOwnedRowAnswersWithOwnerSortedConsentsAndRunAfterTheTimestamps() throws Exception {
         mockMvc.perform(
             post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON).content(
                 "{\"query\":\"{\\\"q\\\":1}\",\"status\":\"QUEUED\",\"picsureId\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\","
-                    + "\"userUuid\":\"5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11\",\"consents\":{\"\\\\_consents\\\\\":[\"phs2.c1\",\"phs1.c1\"]}}"
+                    + "\"userUuid\":\"5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11\",\"consents\":{\"\\\\_consents\\\\\":[\"phs2.c1\",\"phs1.c1\"]},"
+                    + "\"trigger\":\"FIRST_SUBMIT\"}"
             )
         ).andExpect(status().isCreated());
 
@@ -89,10 +91,10 @@ class InternalQueryWireTest {
                 "{\"picsureId\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\",\"query\":\"{\\\"q\\\":1}\",\"resourceResultId\":null,"
                     + "\"status\":\"QUEUED\",\"version\":null,\"metadata\":null,\"startTime\":"
             )
-            .endsWith(
+            .contains(
                 ",\"readyTime\":null,\"userUuid\":\"5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11\","
-                    + "\"consents\":{\"\\\\_consents\\\\\":[\"phs1.c1\",\"phs2.c1\"]},\"runId\":null}"
-            );
+                    + "\"consents\":{\"\\\\_consents\\\\\":[\"phs1.c1\",\"phs2.c1\"]},\"runId\":\""
+            ).matches(".*,\"runId\":\"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"}$");
     }
 
     @Test

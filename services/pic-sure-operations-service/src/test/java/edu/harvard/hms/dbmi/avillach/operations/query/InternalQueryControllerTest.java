@@ -48,6 +48,7 @@ class InternalQueryControllerTest {
     private String validToken;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final String OWNER = "5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11";
 
     @Test
     void missingTokenIsForbiddenWithTheExactErrorBody() throws Exception {
@@ -136,31 +137,88 @@ class InternalQueryControllerTest {
     void saveWithUnknownTriggerReturns400() throws Exception {
         mockMvc.perform(
             post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"query\":\"{\\\"q\\\":1}\",\"status\":\"QUEUED\",\"trigger\":\"NOT_A_TRIGGER\"}")
-        ).andExpect(status().isBadRequest());
+                .content(ownedSave("8694e3d4-5cb4-410f-8431-993445e6d3f6", OWNER, "QUEUED", "[\"phs1.c1\"]", "NOT_A_TRIGGER"))
+        ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("invalid_trigger"));
+        assertThat(queryRepo.count()).isZero();
     }
 
     @Test
-    void patchNamingAnOlderRunLeavesTheStatusAndPatchNamingTheLatestRunWritesIt() throws Exception {
+    void saveFromADifferentOwnerAnswers409AndEchoesNeitherOwnerNorConsents() throws Exception {
         String picsureId = "8694e3d4-5cb4-410f-8431-993445e6d3f6";
-        String owner = "5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11";
+        String stranger = "0d9a4c56-7f1e-4a8b-9a53-2f6f0f0c1b22";
         mockMvc.perform(
             post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON)
-                .content(ownedSave(picsureId, owner, "QUEUED", "[\"phs1.c1\",\"phs2.c1\"]", "FIRST_SUBMIT"))
+                .content(ownedSave(picsureId, OWNER, "QUEUED", "[\"phs1.c1\",\"phs2.c1\"]", "FIRST_SUBMIT"))
+        ).andExpect(status().isCreated());
+
+        mockMvc
+            .perform(
+                post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON)
+                    .content(ownedSave(picsureId, stranger, "PENDING", "[\"phs9.c1\"]", "RESUBMIT"))
+            ).andExpect(status().isConflict()).andExpect(jsonPath("$.errorType").value("conflict"))
+            .andExpect(jsonPath("$.message").value("Query " + picsureId + " belongs to a different owner"))
+            .andExpect(jsonPath("$.requestId").exists()).andExpect(
+                result -> assertThat(result.getResponse().getContentAsString()).doesNotContain(OWNER).doesNotContain(stranger)
+                    .doesNotContain("phs")
+            );
+
+        assertThat(runRepo.findByQueryUuidOrderBySubmittedAtAsc(UUID.fromString(picsureId))).hasSize(1);
+    }
+
+    @Test
+    void saveWithAnEmptyPicsureIdAndAnOwnerAnswers400AndStoresNothing() throws Exception {
+        mockMvc
+            .perform(
+                post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON)
+                    .content(ownedSave("", OWNER, "QUEUED", "[\"phs1.c1\"]", "FIRST_SUBMIT"))
+            ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("bad_request"))
+            .andExpect(jsonPath("$.message").value("picsureId, userUuid, consents and trigger must be sent together or not at all"))
+            .andExpect(result -> assertThat(result.getResponse().getContentAsString()).doesNotContain(OWNER).doesNotContain("phs"));
+
+        assertThat(queryRepo.count()).isZero();
+        assertThat(runRepo.count()).isZero();
+    }
+
+    @Test
+    void saveWithAnIdAndAnOwnerButNoConsentsOrTriggerAnswers400AndStoresNothing() throws Exception {
+        mockMvc.perform(
+            post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON).content(
+                "{\"query\":\"{\\\"q\\\":1}\",\"status\":\"QUEUED\",\"picsureId\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\",\"userUuid\":\""
+                    + OWNER + "\"}"
+            )
+        ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("bad_request"));
+
+        assertThat(queryRepo.count()).isZero();
+    }
+
+    @Test
+    void patchNamingAnOlderRunAnswers409AndPatchNamingTheLatestRunWritesTheStatus() throws Exception {
+        String picsureId = "8694e3d4-5cb4-410f-8431-993445e6d3f6";
+        mockMvc.perform(
+            post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON)
+                .content(ownedSave(picsureId, OWNER, "QUEUED", "[\"phs1.c1\",\"phs2.c1\"]", "FIRST_SUBMIT"))
         ).andExpect(status().isCreated());
         String olderRun = storedRunId(picsureId);
         mockMvc.perform(
             post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON)
-                .content(ownedSave(picsureId, owner, "PENDING", "[\"phs1.c1\"]", "CONSENT_CHANGE"))
+                .content(ownedSave(picsureId, OWNER, "PENDING", "[\"phs1.c1\"]", "CONSENT_CHANGE"))
         ).andExpect(status().isCreated());
         String latestRun = storedRunId(picsureId);
 
-        mockMvc.perform(
-            patch("/internal/queries/{picsureId}", picsureId).header(InternalTokenFilter.HEADER, validToken)
-                .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"AVAILABLE\",\"runId\":\"" + olderRun + "\"}")
-        ).andExpect(status().isNoContent());
+        mockMvc
+            .perform(
+                patch("/internal/queries/{picsureId}", picsureId).header(InternalTokenFilter.HEADER, validToken)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"status\":\"AVAILABLE\",\"resourceResultId\":\"rr-stale\",\"runId\":\"" + olderRun + "\"}")
+            ).andExpect(status().isConflict()).andExpect(jsonPath("$.errorType").value("conflict"))
+            .andExpect(jsonPath("$.message").value("The update names a run that is not the latest run of query " + picsureId))
+            .andExpect(jsonPath("$.requestId").exists()).andExpect(
+                result -> assertThat(result.getResponse().getContentAsString()).doesNotContain(OWNER).doesNotContain("phs")
+                    .doesNotContain(latestRun)
+            );
         mockMvc.perform(get("/internal/queries/{picsureId}", picsureId).header(InternalTokenFilter.HEADER, validToken))
-            .andExpect(jsonPath("$.status").value("PENDING")).andExpect(jsonPath("$.runId").value(latestRun));
+            .andExpect(jsonPath("$.status").value("PENDING")).andExpect(jsonPath("$.runId").value(latestRun))
+            .andExpect(jsonPath("$.resourceResultId").value(picsureId));
 
         mockMvc.perform(
             patch("/internal/queries/{picsureId}", picsureId).header(InternalTokenFilter.HEADER, validToken)
@@ -168,6 +226,25 @@ class InternalQueryControllerTest {
         ).andExpect(status().isNoContent());
         mockMvc.perform(get("/internal/queries/{picsureId}", picsureId).header(InternalTokenFilter.HEADER, validToken))
             .andExpect(jsonPath("$.status").value("AVAILABLE"));
+    }
+
+    @Test
+    void patchOfTheBodyOfAnOwnedRowAnswers400AndLeavesTheBody() throws Exception {
+        String picsureId = "8694e3d4-5cb4-410f-8431-993445e6d3f6";
+        mockMvc.perform(
+            post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON)
+                .content(ownedSave(picsureId, OWNER, "QUEUED", "[\"phs1.c1\"]", "FIRST_SUBMIT"))
+        ).andExpect(status().isCreated());
+
+        mockMvc
+            .perform(
+                patch("/internal/queries/{picsureId}", picsureId).header(InternalTokenFilter.HEADER, validToken)
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"{\\\"q\\\":2}\",\"version\":\"4\"}")
+            ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("bad_request"))
+            .andExpect(jsonPath("$.message").value("The query and version of an owned query cannot be changed"));
+
+        mockMvc.perform(get("/internal/queries/{picsureId}", picsureId).header(InternalTokenFilter.HEADER, validToken))
+            .andExpect(jsonPath("$.query").value("{\"q\":1}")).andExpect(jsonPath("$.version").value("3"));
     }
 
     @Test
