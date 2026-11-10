@@ -18,8 +18,10 @@ import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 public class QueryV3Service {
@@ -47,7 +49,7 @@ public class QueryV3Service {
     private final QueryValidator queryValidator;
     private final LoggingClient loggingClient;
 
-    HashMap<String, AsyncResult> results = new HashMap<>();
+    final ConcurrentHashMap<String, AsyncResult> results = new ConcurrentHashMap<>();
 
 
     @Autowired
@@ -79,8 +81,24 @@ public class QueryV3Service {
         smallTaskExecutor = createExecutor(smallTaskExecutionQueue, smallTaskThreads);
     }
 
+    /**
+     * Submits a query for asynchronous execution under the key from {@link #resultKeyFor(Query)}.
+     *
+     * <p>A job that is still queued or running under that key is returned as it is, and nothing new is enqueued, when it was built with the
+     * same authorization filters as this submit. In every other case a new job takes over the key and is enqueued: the key is unused, the
+     * stored job finished or failed, or the stored job was built with different authorization filters. A replaced job that is still queued
+     * or running is not cancelled. It runs to its end, but no lookup by key reaches it again.
+     *
+     * @param query the query to run
+     * @return the job stored under the key, with its queue depth set
+     * @throws IOException when the temporary result file cannot be created
+     */
     public AsyncResult runQuery(Query query) throws IOException {
-        AsyncResult result = initializeResult(query);
+        Submission submission = initializeResult(query);
+        AsyncResult result = submission.result();
+        if (!submission.created()) {
+            return withQueueDepth(result);
+        }
 
         try {
             queryValidator.validate(query);
@@ -107,10 +125,26 @@ public class QueryV3Service {
             result.setStatus(AsyncResult.Status.ERROR);
             return result;
         }
-        return getStatusFor(result.getId());
+        return withQueueDepth(result);
     }
 
-    private AsyncResult initializeResult(Query query) throws IOException {
+    /**
+     * The outcome of looking a submit up in the result map.
+     *
+     * @param result the job now stored under the submit's key
+     * @param created true when this submit created the job and must enqueue it, false when it found a job already in flight
+     */
+    private record Submission(AsyncResult result, boolean created) {
+    }
+
+    /**
+     * Finds or creates the job for a query in one atomic step on the result map, so concurrent submits of one key create one job.
+     *
+     * @param query the submitted query
+     * @return the stored job and whether this call created it
+     * @throws IOException when the temporary result file cannot be created
+     */
+    private Submission initializeResult(Query query) throws IOException {
 
         HpdsV3Processor p = switch (query.expectedResultType()) {
             case PATIENTS -> patientProcessor;
@@ -120,25 +154,90 @@ public class QueryV3Service {
             default -> throw new RuntimeException("UNSUPPORTED RESULT TYPE");
         };
 
-        String queryId = UUIDv5.UUIDFromString(query.toString()).toString();
-        ResultWriter writer;
-        if (ResultType.DATAFRAME_PFB.equals(query.expectedResultType())) {
-            writer = new PfbWriter(File.createTempFile("result-" + System.nanoTime(), ".avro"), queryId, dictionaryService);
-        } else {
-            writer = new CsvWriter(File.createTempFile("result-" + System.nanoTime(), ".sstmp"));
+        String queryId = resultKeyFor(query).toString();
+        AtomicBoolean created = new AtomicBoolean(false);
+        AsyncResult result;
+        try {
+            result = results.compute(queryId, (key, existing) -> {
+                if (existing != null && isInFlight(existing) && hasSameAuthorizationFilters(existing.getQuery(), query)) {
+                    return existing;
+                }
+                created.set(true);
+                return newResult(query, p, key);
+            });
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
         }
-
-        query = query.generateId();
-        AsyncResult result = new AsyncResult(query, p, writer).setStatus(AsyncResult.Status.PENDING)
-            .setQueuedTime(System.currentTimeMillis()).setId(queryId).setLoggingClient(loggingClient);
-        results.put(result.getId(), result);
-        return result;
+        return new Submission(result, created.get());
     }
 
+    /**
+     * Builds a pending job with its own temporary result file.
+     *
+     * @param query the submitted query
+     * @param processor the processor for the query's result type
+     * @param queryId the key the job is stored under
+     * @return the new job, not yet enqueued
+     * @throws UncheckedIOException when the temporary result file cannot be created
+     */
+    private AsyncResult newResult(Query query, HpdsV3Processor processor, String queryId) {
+        ResultWriter writer;
+        try {
+            if (ResultType.DATAFRAME_PFB.equals(query.expectedResultType())) {
+                writer = new PfbWriter(File.createTempFile("result-" + System.nanoTime(), ".avro"), queryId, dictionaryService);
+            } else {
+                writer = new CsvWriter(File.createTempFile("result-" + System.nanoTime(), ".sstmp"));
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return new AsyncResult(query.generateId(), processor, writer).setStatus(AsyncResult.Status.PENDING)
+            .setQueuedTime(System.currentTimeMillis()).setId(queryId).setLoggingClient(loggingClient);
+    }
+
+    /**
+     * Tells whether a job is still queued or running.
+     *
+     * @param result the stored job
+     * @return true for {@code PENDING}, {@code RUNNING} and {@code RETRY}
+     */
+    private static boolean isInFlight(AsyncResult result) {
+        return switch (result.getStatus()) {
+            case PENDING, RUNNING, RETRY -> true;
+            case SUCCESS, ERROR -> false;
+        };
+    }
+
+    /**
+     * Compares the authorization filters of two queries as sets, so the order of the filters does not matter.
+     *
+     * @param running the query of the stored job
+     * @param submitted the query of the new submit
+     * @return true when both carry the same filters
+     */
+    private static boolean hasSameAuthorizationFilters(Query running, Query submitted) {
+        return new HashSet<>(running.authorizationFilters()).equals(new HashSet<>(submitted.authorizationFilters()));
+    }
+
+    /**
+     * Looks up the job stored under an id and sets its queue depth.
+     *
+     * @param queryId the result key
+     * @return the job, or null when no job is stored under the id
+     */
     public AsyncResult getStatusFor(String queryId) {
         AsyncResult asyncResult = results.get(queryId);
+        return asyncResult == null ? null : withQueueDepth(asyncResult);
+    }
+
+    /**
+     * Sets a job's queue depth to the number of jobs waiting on the executor it belongs to.
+     *
+     * @param asyncResult the job
+     * @return the same job
+     */
+    private AsyncResult withQueueDepth(AsyncResult asyncResult) {
         int queueDepth = runsOnSmallExecutor(asyncResult.getQuery()) ? smallTaskExecutionQueue.size() : largeTaskExecutionQueue.size();
-        // note: code copied from this method in QueryService was removed, it was obviously not working
         return asyncResult.setQueueDepth(queueDepth);
     }
 
@@ -151,6 +250,17 @@ public class QueryV3Service {
      */
     private boolean runsOnSmallExecutor(Query query) {
         return query.sample() || query.select().size() <= SMALL_JOB_LIMIT;
+    }
+
+    /**
+     * Returns the key a query's result is stored under. A query that carries a {@code picsureId} is stored under that id, so the caller
+     * chooses the key. Any other query is stored under a UUIDv5 hash of its content.
+     *
+     * @param query the query
+     * @return the result key
+     */
+    public static UUID resultKeyFor(Query query) {
+        return query.picsureId() != null ? query.picsureId() : UUIDv5.UUIDFromString(query.toString());
     }
 
     public AsyncResult getResultFor(UUID queryId) {

@@ -28,7 +28,10 @@ public class FileSharingV3Service {
     private final VariantListV3Processor variantListProcessor;
     private final LoggingClient loggingClient;
 
-    public FileSharingV3Service(QueryV3Service queryService, FileSystemV3Service fileWriter, VariantListV3Processor variantListProcessor, LoggingClient loggingClient) {
+    public FileSharingV3Service(
+        QueryV3Service queryService, FileSystemV3Service fileWriter, VariantListV3Processor variantListProcessor,
+        LoggingClient loggingClient
+    ) {
         this.queryService = queryService;
         this.fileWriter = fileWriter;
         this.variantListProcessor = variantListProcessor;
@@ -63,13 +66,10 @@ public class FileSharingV3Service {
     private void sendFileWrittenEvent(String queryId, String dataType) {
         if (loggingClient != null && loggingClient.isEnabled()) {
             try {
-                loggingClient.send(LoggingEvent.builder("DATA_ACCESS")
-                    .action("data.file.written")
-                    .metadata(Map.of(
-                        "query_id", queryId,
-                        "data_type", dataType
-                    ))
-                    .build());
+                loggingClient.send(
+                    LoggingEvent.builder("DATA_ACCESS").action("data.file.written")
+                        .metadata(Map.of("query_id", queryId, "data_type", dataType)).build()
+                );
             } catch (Exception e) {
                 LOG.warn("Failed to send audit log event", e);
             }
@@ -77,7 +77,7 @@ public class FileSharingV3Service {
     }
 
     private boolean createAndWriteData(Query query, String fileName) {
-        AsyncResult result = queryService.getResultFor(query.id());
+        AsyncResult result = queryService.getResultFor(QueryV3Service.resultKeyFor(query));
         if (result == null || result.getStatus() != AsyncResult.Status.SUCCESS) {
             return false;
         }

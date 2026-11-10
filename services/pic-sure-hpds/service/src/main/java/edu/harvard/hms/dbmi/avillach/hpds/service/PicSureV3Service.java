@@ -3,7 +3,6 @@ package edu.harvard.hms.dbmi.avillach.hpds.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
 import edu.harvard.dbmi.avillach.domain.*;
-import edu.harvard.dbmi.avillach.util.UUIDv5;
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.audit.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
@@ -184,8 +183,20 @@ public class PicSureV3Service {
             result.open();
             return ResponseEntity.ok().contentType(result.getResponseType()).body(new InputStreamResource(result.getStream()));
         } else {
-            return ResponseEntity.status(400).body("Status : " + result.getStatus().name());
+            return notReadyResponse(result);
         }
+    }
+
+    /**
+     * Answers a result or signed URL request for a job that has no result to serve. A job that ended in {@code ERROR} is a 400, because
+     * asking again never helps. A job that is still queued or running is a 409, which tells the caller to keep polling the status.
+     *
+     * @param result a job whose status is not {@code SUCCESS}
+     * @return the response, with {@code Status : } and the job's status as its body
+     */
+    private ResponseEntity<String> notReadyResponse(AsyncResult result) {
+        int httpStatus = result.getStatus() == AsyncResult.Status.ERROR ? 400 : 409;
+        return ResponseEntity.status(httpStatus).body("Status : " + result.getStatus().name());
     }
 
     @AuditEvent(type = "DATA_ACCESS", action = "data.write")
@@ -253,15 +264,19 @@ public class PicSureV3Service {
             log.info("Presigned url: " + presignedGetUrl);
             return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(new SignedUrlResponse(presignedGetUrl));
         } else {
-            return ResponseEntity.status(400).body("Status : " + result.getStatus().name());
+            return notReadyResponse(result);
         }
     }
 
     @AuditEvent(type = "QUERY", action = "query.status")
     @PostMapping("/query/{resourceQueryId}/status")
-    public QueryStatus queryStatus(@PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest request) {
+    public ResponseEntity<QueryStatus> queryStatus(@PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest request) {
         AuditAttributes.putMetadata(httpRequest, "query_id", queryId.toString());
-        return convertToQueryStatus(queryService.getStatusFor(queryId.toString()));
+        AsyncResult result = queryService.getStatusFor(queryId.toString());
+        if (result == null) {
+            return ResponseEntity.status(404).build();
+        }
+        return ResponseEntity.ok(convertToQueryStatus(result));
     }
 
     @AuditEvent(type = "OTHER", action = "query.format")
@@ -359,7 +374,7 @@ public class PicSureV3Service {
     private ResponseEntity queryOkResponse(Object obj, Query incomingQuery, MediaType mediaType) {
         Query query = incomingQuery.generateId();
         HttpHeaders responseHeaders = new HttpHeaders();
-        responseHeaders.set(QUERY_METADATA_FIELD, UUIDv5.UUIDFromString(query.toString()).toString());
+        responseHeaders.set(QUERY_METADATA_FIELD, QueryV3Service.resultKeyFor(query).toString());
         return ResponseEntity.ok().contentType(mediaType).headers(responseHeaders).body(obj);
     }
 }
