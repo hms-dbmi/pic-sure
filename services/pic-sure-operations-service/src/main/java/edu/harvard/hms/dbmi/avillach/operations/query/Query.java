@@ -8,6 +8,8 @@ import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.zip.GZIPInputStream;
@@ -22,6 +24,8 @@ import jakarta.persistence.PostLoad;
 import jakarta.persistence.PostPersist;
 import jakarta.persistence.Transient;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.springframework.data.domain.Persistable;
 
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
@@ -33,6 +37,9 @@ import edu.harvard.dbmi.avillach.domain.PicSureStatus;
  * <p>The id is assigned by the caller, never generated: {@link QueryPersistenceService} sets it before the first save. Because an assigned
  * id is already present on an unsaved instance, the entity implements {@link Persistable} and tracks its own new state, so Spring Data
  * inserts a fresh instance and updates a loaded one. Saving an instance with a null id fails.
+ *
+ * <p>{@code userUuid} is the user the row belongs to. It is written by the insert and left out of every update, so a row never changes
+ * owner. Rows stored without an owner keep a null value. {@code consents} holds the consents of the latest run of the query.
  */
 @Entity(name = "query")
 public class Query implements Persistable<UUID> {
@@ -62,6 +69,13 @@ public class Query implements Persistable<UUID> {
     private byte[] metadata;
 
     private String version;
+
+    @Column(name = "user_uuid", columnDefinition = "BINARY(16)", updatable = false)
+    private UUID userUuid;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "consents")
+    private Map<String, List<String>> consents;
 
     public UUID getUuid() {
         return uuid;
@@ -167,6 +181,28 @@ public class Query implements Persistable<UUID> {
             throw new UncheckedIOException(e);
         }
         return this;
+    }
+
+    public UUID getUserUuid() {
+        return userUuid;
+    }
+
+    /**
+     * Sets the owner of a row that has not been inserted yet. The column is left out of updates, so a value set on a stored row is never
+     * written.
+     *
+     * @param userUuid the UUID of the user the row belongs to
+     */
+    public void setUserUuid(UUID userUuid) {
+        this.userUuid = userUuid;
+    }
+
+    public Map<String, List<String>> getConsents() {
+        return consents;
+    }
+
+    public void setConsents(Map<String, List<String>> consents) {
+        this.consents = consents;
     }
 
     public byte[] getMetadata() {

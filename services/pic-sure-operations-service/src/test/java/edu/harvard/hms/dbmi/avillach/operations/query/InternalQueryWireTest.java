@@ -62,6 +62,53 @@ class InternalQueryWireTest {
     }
 
     @Test
+    void saveWithAPicsureIdAnswers201WithThatId() throws Exception {
+        mockMvc.perform(
+            post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON).content(
+                "{\"query\":\"{\\\"q\\\":1}\",\"status\":\"QUEUED\",\"picsureId\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\","
+                    + "\"userUuid\":\"5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11\",\"consents\":{\"\\\\_consents\\\\\":[\"phs1.c1\"]}}"
+            )
+        ).andExpect(status().isCreated()).andExpect(content().string("{\"picsureId\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\"}"));
+    }
+
+    @Test
+    void readOfAnOwnedRowAnswersWithOwnerSortedConsentsAndNullRunAfterTheTimestamps() throws Exception {
+        mockMvc.perform(
+            post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON).content(
+                "{\"query\":\"{\\\"q\\\":1}\",\"status\":\"QUEUED\",\"picsureId\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\","
+                    + "\"userUuid\":\"5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11\",\"consents\":{\"\\\\_consents\\\\\":[\"phs2.c1\",\"phs1.c1\"]}}"
+            )
+        ).andExpect(status().isCreated());
+
+        String body = mockMvc.perform(
+            get("/internal/queries/{picsureId}", "8694e3d4-5cb4-410f-8431-993445e6d3f6").header(InternalTokenFilter.HEADER, validToken)
+        ).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+
+        assertThat(body)
+            .startsWith(
+                "{\"picsureId\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\",\"query\":\"{\\\"q\\\":1}\",\"resourceResultId\":null,"
+                    + "\"status\":\"QUEUED\",\"version\":null,\"metadata\":null,\"startTime\":"
+            )
+            .endsWith(
+                ",\"readyTime\":null,\"userUuid\":\"5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11\","
+                    + "\"consents\":{\"\\\\_consents\\\\\":[\"phs1.c1\",\"phs2.c1\"]},\"runId\":null}"
+            );
+    }
+
+    @Test
+    void readOfAnOwnerlessRowWritesNullOwnerConsentsAndRun() throws Exception {
+        Query saved = queryRepo.save(QueryFixtures.withRandomId());
+
+        mockMvc.perform(get("/internal/queries/{picsureId}", saved.getUuid()).header(InternalTokenFilter.HEADER, validToken))
+            .andExpect(status().isOk()).andExpect(
+                content().string(
+                    "{\"picsureId\":\"" + saved.getUuid() + "\",\"query\":\"\",\"resourceResultId\":null,\"status\":null,\"version\":null,"
+                        + "\"metadata\":null,\"startTime\":null,\"readyTime\":null,\"userUuid\":null,\"consents\":null,\"runId\":null}"
+                )
+            );
+    }
+
+    @Test
     void dispatchAnswersWithTheStoredQueryAsOneJsonString() throws Exception {
         Query saved = QueryFixtures.withRandomId();
         saved.setQuery("{\"resourceUUID\":\"r\",\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"query\":\"q\"}");

@@ -3,6 +3,8 @@ package edu.harvard.dbmi.avillach.domain;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.junit.Test;
@@ -18,6 +20,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class InternalQueryModelsTest {
 
     private static final UUID ID = UUID.fromString("8694e3d4-5cb4-410f-8431-993445e6d3f6");
+    private static final UUID OWNER = UUID.fromString("5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11");
+    private static final UUID RUN = UUID.fromString("0b6d6a0e-3c56-4c0b-9a38-0b1f5c1f3a77");
+    private static final Map<String, List<String>> CONSENTS = Map.of("\\_consents\\", List.of("phs1.c1", "phs2.c1"));
+    private static final String CONSENTS_JSON = "{\"\\\\_consents\\\\\":[\"phs1.c1\",\"phs2.c1\"]}";
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -46,9 +52,31 @@ public class InternalQueryModelsTest {
 
         assertEquals(
             "{\"picsureId\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\",\"query\":\"{}\",\"resourceResultId\":\"rr-1\","
-                + "\"status\":\"AVAILABLE\",\"version\":\"3\",\"metadata\":null,\"startTime\":1790777100000,\"readyTime\":null}",
+                + "\"status\":\"AVAILABLE\",\"version\":\"3\",\"metadata\":null,\"startTime\":1790777100000,\"readyTime\":null,"
+                + "\"userUuid\":null,\"consents\":null,\"runId\":null}",
             mapper.writeValueAsString(stored)
         );
+    }
+
+    @Test
+    public void storedQueryCarriesOwnerConsentsAndLatestRun() throws JsonProcessingException {
+        StoredQuery stored = new StoredQuery(ID, "{}", "rr-1", "AVAILABLE", "3", null, 1790777100000L, null, OWNER, CONSENTS, RUN);
+        String json = "{\"picsureId\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\",\"query\":\"{}\",\"resourceResultId\":\"rr-1\","
+            + "\"status\":\"AVAILABLE\",\"version\":\"3\",\"metadata\":null,\"startTime\":1790777100000,\"readyTime\":null,"
+            + "\"userUuid\":\"5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11\",\"consents\":" + CONSENTS_JSON
+            + ",\"runId\":\"0b6d6a0e-3c56-4c0b-9a38-0b1f5c1f3a77\"}";
+
+        assertEquals(json, mapper.writeValueAsString(stored));
+        assertEquals(stored, mapper.readValue(json, StoredQuery.class));
+    }
+
+    @Test
+    public void storedQueryWithoutOwnerLeavesOwnerConsentsAndRunNull() {
+        StoredQuery stored = new StoredQuery(ID, "{}", "rr-1", "AVAILABLE", "3", "YWJj", 1790777100000L, 1790777160000L);
+
+        assertNull(stored.userUuid());
+        assertNull(stored.consents());
+        assertNull(stored.runId());
     }
 
     @Test
@@ -73,7 +101,8 @@ public class InternalQueryModelsTest {
     @Test
     public void saveQueryRequestWritesEveryMemberAndIgnoresUnknownOnes() throws JsonProcessingException {
         assertEquals(
-            "{\"query\":\"{}\",\"resourceResultId\":null,\"status\":\"QUEUED\",\"version\":\"3\",\"metadata\":null}",
+            "{\"query\":\"{}\",\"resourceResultId\":null,\"status\":\"QUEUED\",\"version\":\"3\",\"metadata\":null,"
+                + "\"picsureId\":null,\"userUuid\":null,\"consents\":null,\"trigger\":null}",
             mapper.writeValueAsString(new SaveQueryRequest("{}", null, "QUEUED", "3", null))
         );
         assertEquals(
@@ -83,9 +112,30 @@ public class InternalQueryModelsTest {
     }
 
     @Test
+    public void saveQueryRequestCarriesIdOwnerConsentsAndTrigger() throws JsonProcessingException {
+        SaveQueryRequest request = new SaveQueryRequest("{}", "rr-1", "QUEUED", "3", null, ID, OWNER, CONSENTS, "FIRST_SUBMIT");
+        String json = "{\"query\":\"{}\",\"resourceResultId\":\"rr-1\",\"status\":\"QUEUED\",\"version\":\"3\",\"metadata\":null,"
+            + "\"picsureId\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\",\"userUuid\":\"5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11\","
+            + "\"consents\":" + CONSENTS_JSON + ",\"trigger\":\"FIRST_SUBMIT\"}";
+
+        assertEquals(json, mapper.writeValueAsString(request));
+        assertEquals(request, mapper.readValue(json, SaveQueryRequest.class));
+    }
+
+    @Test
+    public void updateQueryRequestCarriesTheRunId() throws JsonProcessingException {
+        UpdateQueryRequest request = new UpdateQueryRequest("AVAILABLE", null, null, null, null, RUN);
+        String json = "{\"status\":\"AVAILABLE\",\"resourceResultId\":null,\"metadata\":null,\"query\":null,\"version\":null,"
+            + "\"runId\":\"0b6d6a0e-3c56-4c0b-9a38-0b1f5c1f3a77\"}";
+
+        assertEquals(json, mapper.writeValueAsString(request));
+        assertEquals(request, mapper.readValue(json, UpdateQueryRequest.class));
+    }
+
+    @Test
     public void updateQueryRequestWritesEveryMemberAndIgnoresUnknownOnes() throws JsonProcessingException {
         assertEquals(
-            "{\"status\":\"AVAILABLE\",\"resourceResultId\":\"rr-1\",\"metadata\":null,\"query\":null,\"version\":null}",
+            "{\"status\":\"AVAILABLE\",\"resourceResultId\":\"rr-1\",\"metadata\":null,\"query\":null,\"version\":null,\"runId\":null}",
             mapper.writeValueAsString(new UpdateQueryRequest("AVAILABLE", "rr-1", null, null, null))
         );
         assertEquals(

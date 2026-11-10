@@ -44,7 +44,8 @@ public class InternalQueryController {
     }
 
     /**
-     * Persists a query and answers 201 with the id it was stored under, as {@code {"picsureId": "<uuid>"}}.
+     * Persists a query and answers 201 with the id it was stored under, as {@code {"picsureId": "<uuid>"}}. A request that carries a
+     * {@code picsureId} already stored updates that row and answers the same way.
      *
      * @param req the query to persist
      * @return the id of the persisted query

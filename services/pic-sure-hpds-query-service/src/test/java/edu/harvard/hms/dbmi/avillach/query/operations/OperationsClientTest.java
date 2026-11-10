@@ -67,10 +67,13 @@ class OperationsClientTest {
 
         assertThat(result).isEqualTo(id);
         ops.verify(
-            postRequestedFor(urlEqualTo("/operations/internal/queries")).withHeader("X-PIC-SURE-INTERNAL-TOKEN", equalTo("test-token"))
-                .withRequestBody(
-                    equalToJson("{\"query\":\"{}\",\"resourceResultId\":null,\"status\":\"QUEUED\",\"version\":\"v1\",\"metadata\":null}")
+            postRequestedFor(urlEqualTo("/operations/internal/queries")).withHeader(
+                "X-PIC-SURE-INTERNAL-TOKEN", equalTo("test-token")
+            ).withRequestBody(
+                equalToJson(
+                    "{\"query\":\"{}\",\"resourceResultId\":null,\"status\":\"QUEUED\",\"version\":\"v1\",\"metadata\":null,\"picsureId\":null,\"userUuid\":null,\"consents\":null,\"trigger\":null}"
                 )
+            )
         );
     }
 
@@ -87,7 +90,9 @@ class OperationsClientTest {
 
         ops.verify(
             postRequestedFor(urlEqualTo("/operations/internal/queries")).withRequestBody(
-                equalTo("{\"query\":\"{}\",\"resourceResultId\":null,\"status\":\"QUEUED\",\"version\":\"3\",\"metadata\":null}")
+                equalTo(
+                    "{\"query\":\"{}\",\"resourceResultId\":null,\"status\":\"QUEUED\",\"version\":\"3\",\"metadata\":null,\"picsureId\":null,\"userUuid\":null,\"consents\":null,\"trigger\":null}"
+                )
             )
         );
     }
@@ -161,7 +166,7 @@ class OperationsClientTest {
                 "X-PIC-SURE-INTERNAL-TOKEN", equalTo("test-token")
             ).withRequestBody(
                 equalToJson(
-                    "{\"status\":\"COMPLETE\",\"resourceResultId\":\"r-1\",\"metadata\":null,\"query\":\"{\\\"query\\\":{}}\",\"version\":\"3\"}"
+                    "{\"status\":\"COMPLETE\",\"resourceResultId\":\"r-1\",\"metadata\":null,\"query\":\"{\\\"query\\\":{}}\",\"version\":\"3\",\"runId\":null}"
                 )
             )
         );

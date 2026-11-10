@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.operations.query;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -17,6 +18,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 
@@ -38,6 +40,9 @@ class InternalQueryControllerTest {
 
     @Autowired
     private QueryRepository queryRepo;
+
+    @Autowired
+    private QueryRunRepository runRepo;
 
     @Value("${picsure.operations.internal-token}")
     private String validToken;
@@ -86,6 +91,99 @@ class InternalQueryControllerTest {
             .andExpect(status().isOk()).andExpect(jsonPath("$.picsureId").value(picsureId))
             .andExpect(jsonPath("$.query").value("{\"q\":1}")).andExpect(jsonPath("$.resourceResultId").value("rr-1"))
             .andExpect(jsonPath("$.status").value("QUEUED")).andExpect(jsonPath("$.version").value("7"));
+    }
+
+    @Test
+    void saveWithIdOwnerConsentsAndTriggerRoundTripsThroughGet() throws Exception {
+        String picsureId = "8694e3d4-5cb4-410f-8431-993445e6d3f6";
+        String owner = "5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11";
+
+        mockMvc.perform(
+            post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON)
+                .content(ownedSave(picsureId, owner, "QUEUED", "[\"phs2.c1\",\"phs1.c1\"]", "FIRST_SUBMIT"))
+        ).andExpect(status().isCreated()).andExpect(jsonPath("$.picsureId").value(picsureId));
+
+        String runId = runRepo.findByQueryUuidOrderBySubmittedAtAsc(UUID.fromString(picsureId)).getFirst().getRunId().toString();
+        JsonNode stored = storedRow(picsureId);
+        assertThat(stored.get("picsureId").asText()).isEqualTo(picsureId);
+        assertThat(stored.get("userUuid").asText()).isEqualTo(owner);
+        assertThat(stored.get("consents")).isEqualTo(MAPPER.readTree("{\"\\\\_consents\\\\\":[\"phs1.c1\",\"phs2.c1\"]}"));
+        assertThat(stored.get("runId").asText()).isEqualTo(runId);
+    }
+
+    @Test
+    void secondSaveOfTheSameIdAnswers201WithTheSameIdAndKeepsOneRow() throws Exception {
+        String picsureId = "8694e3d4-5cb4-410f-8431-993445e6d3f6";
+        String owner = "5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11";
+        mockMvc.perform(
+            post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON)
+                .content(ownedSave(picsureId, owner, "QUEUED", "[\"phs1.c1\",\"phs2.c1\"]", "FIRST_SUBMIT"))
+        ).andExpect(status().isCreated());
+
+        mockMvc.perform(
+            post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON)
+                .content(ownedSave(picsureId, owner, "PENDING", "[\"phs1.c1\"]", "CONSENT_CHANGE"))
+        ).andExpect(status().isCreated()).andExpect(jsonPath("$.picsureId").value(picsureId));
+
+        assertThat(queryRepo.count()).isEqualTo(1);
+        assertThat(runRepo.findByQueryUuidOrderBySubmittedAtAsc(UUID.fromString(picsureId))).hasSize(2);
+        JsonNode stored = storedRow(picsureId);
+        assertThat(stored.get("status").asText()).isEqualTo("PENDING");
+        assertThat(stored.get("consents")).isEqualTo(MAPPER.readTree("{\"\\\\_consents\\\\\":[\"phs1.c1\"]}"));
+    }
+
+    @Test
+    void saveWithUnknownTriggerReturns400() throws Exception {
+        mockMvc.perform(
+            post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\":\"{\\\"q\\\":1}\",\"status\":\"QUEUED\",\"trigger\":\"NOT_A_TRIGGER\"}")
+        ).andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void patchNamingAnOlderRunLeavesTheStatusAndPatchNamingTheLatestRunWritesIt() throws Exception {
+        String picsureId = "8694e3d4-5cb4-410f-8431-993445e6d3f6";
+        String owner = "5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11";
+        mockMvc.perform(
+            post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON)
+                .content(ownedSave(picsureId, owner, "QUEUED", "[\"phs1.c1\",\"phs2.c1\"]", "FIRST_SUBMIT"))
+        ).andExpect(status().isCreated());
+        String olderRun = storedRunId(picsureId);
+        mockMvc.perform(
+            post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON)
+                .content(ownedSave(picsureId, owner, "PENDING", "[\"phs1.c1\"]", "CONSENT_CHANGE"))
+        ).andExpect(status().isCreated());
+        String latestRun = storedRunId(picsureId);
+
+        mockMvc.perform(
+            patch("/internal/queries/{picsureId}", picsureId).header(InternalTokenFilter.HEADER, validToken)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"AVAILABLE\",\"runId\":\"" + olderRun + "\"}")
+        ).andExpect(status().isNoContent());
+        mockMvc.perform(get("/internal/queries/{picsureId}", picsureId).header(InternalTokenFilter.HEADER, validToken))
+            .andExpect(jsonPath("$.status").value("PENDING")).andExpect(jsonPath("$.runId").value(latestRun));
+
+        mockMvc.perform(
+            patch("/internal/queries/{picsureId}", picsureId).header(InternalTokenFilter.HEADER, validToken)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"AVAILABLE\",\"runId\":\"" + latestRun + "\"}")
+        ).andExpect(status().isNoContent());
+        mockMvc.perform(get("/internal/queries/{picsureId}", picsureId).header(InternalTokenFilter.HEADER, validToken))
+            .andExpect(jsonPath("$.status").value("AVAILABLE"));
+    }
+
+    @Test
+    void dispatchOfAnOwnedRowCarriesNoOwnerConsentsOrRun() throws Exception {
+        String picsureId = "8694e3d4-5cb4-410f-8431-993445e6d3f6";
+        String owner = "5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11";
+        mockMvc.perform(
+            post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON)
+                .content(ownedSave(picsureId, owner, "QUEUED", "[\"phs1.c1\"]", "FIRST_SUBMIT"))
+        ).andExpect(status().isCreated());
+
+        mockMvc.perform(get("/internal/queries/{picsureId}/dispatch", picsureId).header(InternalTokenFilter.HEADER, validToken))
+            .andExpect(status().isOk()).andExpect(
+                result -> assertThat(result.getResponse().getContentAsString()).doesNotContain("phs1.c1").doesNotContain("consents")
+                    .doesNotContain(owner).doesNotContain("runId")
+            );
     }
 
     @Test
@@ -168,5 +266,22 @@ class InternalQueryControllerTest {
     void sitesByDomainIsGone() throws Exception {
         mockMvc.perform(get("/internal/sites/by-domain/{domain}", "harvard.edu").header(InternalTokenFilter.HEADER, validToken))
             .andExpect(status().isNotFound());
+    }
+
+    private static String ownedSave(String picsureId, String owner, String status, String consentValues, String trigger) {
+        return "{\"query\":\"{\\\"q\\\":1}\",\"resourceResultId\":\"" + picsureId + "\",\"status\":\"" + status
+            + "\",\"version\":\"3\",\"picsureId\":\"" + picsureId + "\",\"userUuid\":\"" + owner + "\",\"consents\":{\"\\\\_consents\\\\\":"
+            + consentValues + "},\"trigger\":\"" + trigger + "\"}";
+    }
+
+    private String storedRunId(String picsureId) throws Exception {
+        return storedRow(picsureId).get("runId").asText();
+    }
+
+    private JsonNode storedRow(String picsureId) throws Exception {
+        return MAPPER.readTree(
+            mockMvc.perform(get("/internal/queries/{picsureId}", picsureId).header(InternalTokenFilter.HEADER, validToken))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()
+        );
     }
 }

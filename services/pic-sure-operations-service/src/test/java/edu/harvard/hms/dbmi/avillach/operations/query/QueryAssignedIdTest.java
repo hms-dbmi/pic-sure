@@ -101,6 +101,24 @@ class QueryAssignedIdTest {
     }
 
     @Test
+    void savingAnInsertedInstanceAgainUpdatesInsteadOfReinserting() {
+        Query entity = QueryFixtures.withRandomId();
+        entity.setResourceResultId("first");
+        repo.save(entity);
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(entity.isNew()).isFalse();
+        entity.setResourceResultId("second");
+        repo.save(entity);
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(repo.count()).isEqualTo(1);
+        assertThat(repo.findById(entity.getUuid()).orElseThrow().getResourceResultId()).isEqualTo("second");
+    }
+
+    @Test
     void savingWithoutAnIdFails() {
         assertThatThrownBy(() -> {
             repo.save(new Query());
