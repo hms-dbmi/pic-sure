@@ -114,7 +114,8 @@ class InMemoryTurnResultStoreTest {
     @Test
     void aResultTtlShorterThanTheConversationIdleTimeoutIsRefused() {
         assertThrows(
-            IllegalArgumentException.class, () -> new InMemoryTurnResultStore(Duration.ofMinutes(30), Duration.ofMinutes(60), 100, nanos::get)
+            IllegalArgumentException.class,
+            () -> new InMemoryTurnResultStore(Duration.ofMinutes(30), Duration.ofMinutes(60), 100, nanos::get)
         );
     }
 }

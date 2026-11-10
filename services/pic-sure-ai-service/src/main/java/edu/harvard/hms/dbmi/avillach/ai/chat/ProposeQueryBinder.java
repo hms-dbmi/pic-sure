@@ -17,7 +17,8 @@ final class ProposeQueryBinder {
     static final int MAX_FIELD_NAME_LENGTH = StrictArgumentBinder.MAX_FIELD_NAME_LENGTH;
 
     private static final StrictArgumentBinder BINDER = new StrictArgumentBinder(
-        ProposeQueryInput.Clause.class, false, IllegalArgumentException::new, " If there is nothing to filter on, leave phenotypicClause out."
+        ProposeQueryInput.Clause.class, false, IllegalArgumentException::new,
+        " If there is nothing to filter on, leave phenotypicClause out."
     );
 
     private ProposeQueryBinder() {}
@@ -25,7 +26,8 @@ final class ProposeQueryBinder {
     /**
      * Binds the request's current {@code query} to its input record, ignoring fields the record doesn't model. This is the researcher's own
      * query: the UI's full query object carries fields the model may not set ({@code authorizationFilters}, {@code expectedResultType},
-     * {@code picsureId}, ...), and those must not make a legitimate request fail. Everything the record models is still bound and type-checked.
+     * {@code picsureId}, ...), and those must not make a legitimate request fail. Everything the record models is still bound and
+     * type-checked.
      *
      * @param query the query object from the request
      * @return the bound input

@@ -25,9 +25,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.hms.dbmi.avillach.ai.mcp.ToolResult;
 
 /**
- * Runs a several-term {@code search_concepts} call ({@code |}-joined in {@code search}, or listed in {@code terms}) as one OR search, fetching
- * its pages in parallel up to a cap, and interleaves the results by the terms that matched them, so a term with many matches cannot fill
- * the page and hide another's. Only the model sees this; the researcher's table uses the combined ranking. Lives here, not in
+ * Runs a several-term {@code search_concepts} call ({@code |}-joined in {@code search}, or listed in {@code terms}) as one OR search,
+ * fetching its pages in parallel up to a cap, and interleaves the results by the terms that matched them, so a term with many matches
+ * cannot fill the page and hide another's. Only the model sees this; the researcher's table uses the combined ranking. Lives here, not in
  * {@code pic-sure-mcp}, because that tool is shared with other clients.
  */
 final class TermBalancedSearch {
@@ -39,10 +39,16 @@ final class TermBalancedSearch {
     static final int DEFAULT_PAGE_SIZE = 25;
     static final int MAX_PAGE_SIZE = 50;
 
-    /** Most terms one call may search; {@code pic-sure-mcp} refuses a longer {@code terms} list, so a longer one is passed through for it to refuse. */
+    /**
+     * Most terms one call may search; {@code pic-sure-mcp} refuses a longer {@code terms} list, so a longer one is passed through for it to
+     * refuse.
+     */
     static final int MAX_TERMS = 10;
 
-    /** Pages fetched after the first, so one search takes at most 1 + this many dictionary calls and sees at most that many pages of matches. */
+    /**
+     * Pages fetched after the first, so one search takes at most 1 + this many dictionary calls and sees at most that many pages of
+     * matches.
+     */
     static final int MAX_EXTRA_PAGES = 5;
 
     /** Added to a result that holds only the best-ranked matches, so the model does not report a term it could not see as sparse. */
@@ -50,8 +56,7 @@ final class TermBalancedSearch {
         + "listed for it. Do not say a term has few or no matches because of this list. Tell the researcher the search is very broad and "
         + "ask them to narrow it, or suggest more specific terms.";
 
-    private TermBalancedSearch() {
-    }
+    private TermBalancedSearch() {}
 
     /** @return the trimmed, non-blank terms of a {@code |}-joined search; empty for null */
     static List<String> terms(String search) {

@@ -35,9 +35,9 @@ final class EarlierTurns {
     }
 
     /**
-     * What the researcher took off their screen by hand: filters and selected variables the last query the service sent them had, but
-     * the request's query no longer does. Told only that their screen lacks them, the model added a filter back because an earlier
-     * message had asked for it.
+     * What the researcher took off their screen by hand: filters and selected variables the last query the service sent them had, but the
+     * request's query no longer does. Told only that their screen lacks them, the model added a filter back because an earlier message had
+     * asked for it.
      *
      * @param current the request's validated query, or null
      * @return e.g. {@code filters on `\a\`; selected variables `\a\`}, or null when nothing was removed or no query was ever sent
@@ -66,7 +66,8 @@ final class EarlierTurns {
         return paths;
     }
 
-    private record Removed(Set<String> filters, Set<String> selected) {}
+    private record Removed(Set<String> filters, Set<String> selected) {
+    }
 
     private static Removed removed(List<ConversationTurn> turns, ProposeQueryInput current, int maxFilters) {
         JsonNode sent = null;
