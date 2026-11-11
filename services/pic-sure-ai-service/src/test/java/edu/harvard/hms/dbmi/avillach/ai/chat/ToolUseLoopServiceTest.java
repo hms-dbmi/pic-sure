@@ -4,6 +4,8 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.stream.IntStream;
+import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -1792,6 +1794,22 @@ class ToolUseLoopServiceTest {
             new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8, store).handle(SECOND_REQUEST, CALLER);
 
         assertEquals(List.of(new FacetSelection("study", "demo")), response.facets());
+    }
+
+    @Test
+    void aFacetSeenOnlyInAnEarlierNarrowerCappedFacetSearchIsKnownInALaterTurn() {
+        ConversationStore store = ToolUseLoopService.newConversationStore();
+        // A narrower search returns at most 25 facets per category; the facet the researcher wants is the last one it returned.
+        String facets = IntStream.rangeClosed(1, 25).mapToObj(i -> "{\"name\":\"study" + i + "\"}").collect(Collectors.joining(","));
+        String capped = "{\"categories\":[{\"name\":\"study\",\"facets\":[" + facets + "]}]}";
+        firstTurn(store, capped, toolCallTurn("list_facets", "{\"search\":\"study\"}"), doneTurn("Here are some studies"));
+        String proposal = "{\"facets\":[{\"category\":\"study\",\"name\":\"study25\"}],\"search\":\"age\"}";
+        FakeModelClient model = FakeModelClient.returning(toolCallTurn("propose_query", proposal), doneTurn("Done"));
+
+        ChatResponse response =
+            new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8, store).handle(SECOND_REQUEST, CALLER);
+
+        assertEquals(List.of(new FacetSelection("study", "study25")), response.facets());
     }
 
     @Test
