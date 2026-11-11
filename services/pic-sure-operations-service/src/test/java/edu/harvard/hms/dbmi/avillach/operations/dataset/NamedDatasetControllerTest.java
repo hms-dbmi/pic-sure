@@ -482,6 +482,39 @@ class NamedDatasetControllerTest {
     }
 
     @Test
+    void createOnAnotherUsersQueryReturns403AndStoresNothing() throws Exception {
+        Query bobs = storedV3Query(BOB_ID, FULL_DATAFRAME);
+
+        mockMvc.perform(
+            post("/dataset/named").header(GatewayUserResolver.HEADER_USER_ID, ALICE_ID).header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"queryId\":\"" + bobs.getUuid() + "\",\"name\":\"cohort\"}")
+        ).andExpect(status().isForbidden()).andExpect(jsonPath("$.errorType").value("forbidden"));
+
+        assertThat(namedDatasetRepo.findByUser(ALICE)).isEmpty();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM named_dataset_query", Integer.class)).isZero();
+    }
+
+    @Test
+    void createOnAnOwnerlessQueryReturns201() throws Exception {
+        Query ownerless = storedV3Query(null, FULL_DATAFRAME);
+
+        JsonNode created = createAsAlice(ownerless);
+
+        assertThat(created.at("/query/uuid").asText()).isEqualTo(ownerless.getUuid().toString());
+        assertThat(joinRowsOf(UUID.fromString(created.at("/uuid").asText()))).hasSize(1);
+    }
+
+    @Test
+    void createOnTheCallersOwnQueryReturns201() throws Exception {
+        Query alices = storedV3Query(ALICE_ID, FULL_DATAFRAME);
+
+        JsonNode created = createAsAlice(alices);
+
+        assertThat(created.at("/query/uuid").asText()).isEqualTo(alices.getUuid().toString());
+        assertThat(joinRowsOf(UUID.fromString(created.at("/uuid").asText()))).hasSize(1);
+    }
+
+    @Test
     void putLinkingAnotherUsersQueryReturns403() throws Exception {
         Query full = storedV3Query(ALICE_ID, FULL_DATAFRAME);
         Query bobsSample = storedV3Query(BOB_ID, SAMPLE_DATAFRAME);

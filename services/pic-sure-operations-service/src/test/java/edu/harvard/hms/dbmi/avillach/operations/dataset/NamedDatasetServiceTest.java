@@ -324,6 +324,62 @@ class NamedDatasetServiceTest {
     }
 
     @Test
+    void creatingADatasetOnAnotherUsersQueryIs403AndWritesNothing() {
+        Query bobs = storedQuery(BOB_ID, FULL_DATAFRAME);
+        queryIsStored(bobs);
+
+        PicsureException ex = assertThrows(PicsureException.class, () -> service.create(ALICE, linkRequest(bobs)));
+
+        assertThat(ex.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(ex.getErrorType()).isEqualTo("forbidden");
+        assertNothingWasLinked();
+    }
+
+    @Test
+    void creatingADatasetOnAnOwnedQueryIs403ForACallerWhoseGatewayUserIdIsNotAUuid() {
+        GatewayUser subjectOnly = new GatewayUser("auth0|alice", "auth0|alice", ALICE_EMAIL, null, Set.of());
+        Query alices = storedQuery(ALICE_ID, FULL_DATAFRAME);
+        queryIsStored(alices);
+
+        PicsureException ex = assertThrows(PicsureException.class, () -> service.create(subjectOnly, linkRequest(alices)));
+
+        assertThat(ex.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertNothingWasLinked();
+    }
+
+    @Test
+    void creatingADatasetOnAnOwnerlessQueryIsAllowed() {
+        Query ownerless = storedQuery(null, FULL_DATAFRAME);
+        queryIsStored(ownerless);
+        when(repo.saveAndFlush(any())).thenAnswer(inv -> {
+            NamedDataset e = inv.getArgument(0);
+            e.setUuid(UUID.randomUUID());
+            return e;
+        });
+
+        NamedDatasetDto dto = service.create(ALICE, linkRequest(ownerless));
+
+        assertThat(dto.query().uuid()).isEqualTo(ownerless.getUuid());
+        assertThat(insertedJoinRow().getQueryUuid()).isEqualTo(ownerless.getUuid());
+    }
+
+    @Test
+    void creatingADatasetOnTheCallersOwnQueryIsAllowed() {
+        Query alices = storedQuery(ALICE_ID, FULL_DATAFRAME);
+        queryIsStored(alices);
+        when(repo.saveAndFlush(any())).thenAnswer(inv -> {
+            NamedDataset e = inv.getArgument(0);
+            e.setUuid(UUID.randomUUID());
+            return e;
+        });
+
+        NamedDatasetDto dto = service.create(ALICE, linkRequest(alices));
+
+        assertThat(dto.query().uuid()).isEqualTo(alices.getUuid());
+        assertThat(insertedJoinRow().getQueryUuid()).isEqualTo(alices.getUuid());
+    }
+
+    @Test
     void createDuplicateQueryAndUserThrows409() {
         UUID queryId = UUID.randomUUID();
         Query q = new Query();

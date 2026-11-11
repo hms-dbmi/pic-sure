@@ -47,6 +47,10 @@ import edu.harvard.hms.dbmi.avillach.operations.query.QueryRepository;
  * {@code queryId} only when the dataset has none and the new query is not a sample, so it stays on the query the dataset was created from.
  * A dataset the previous release created has no join row, so the query its {@code queryId} names always counts as linked.
  *
+ * <p>A query is linked, by {@link #create} or by {@link #update}, only when its row belongs to the caller or has no owner. The check is
+ * made when the link is written and at no other time: a read, and an update that names a query the dataset already links, return the
+ * dataset's queries without looking at who owns them.
+ *
  * <p>The join rows the migration created have no result type. A read derives it from the stored query body and, after its own transaction
  * has ended, stores it on the row. The variant key can refuse that write when another row of the dataset already has the same variant. The
  * read then leaves the row as it is and still answers with the derived type.
@@ -116,17 +120,20 @@ public class NamedDatasetService {
 
     /**
      * Names a query as a dataset of the caller. The dataset's {@code queryId} is set to the query, and a join row links the same query with
-     * the variant its body names.
+     * the variant its body names. The query row must belong to the caller, by the gateway user id, or have no owner. That is checked before
+     * anything is saved, so a refused request stores neither a dataset nor a join row.
      *
      * @param user the caller
      * @param req the query to name and the name, archived state and metadata to store
      * @return the created dataset
-     * @throws PicsureException 401 when the caller has no email, 404 when no query has the id, 409 when the caller already named the query
+     * @throws PicsureException 401 when the caller has no email, 404 when no query has the id, 403 when the query belongs to another user,
+     *         409 when the caller already named the query
      */
     public NamedDatasetDto create(GatewayUser user, NamedDatasetRequestDto req) {
         String email = requireEmail(user);
         View view = writes.execute(status -> {
             Query query = resolveQuery(req.queryId());
+            requireOwnedByCallerOrOwnerless(user, query);
             NamedDataset saved = saveOrConflict(mapper.toEntity(email, query, req), req.queryId(), email);
             NamedDatasetQuery link = insertOrConflict(saved, query, mapper.variantOf(query));
             return view(List.of(saved), List.of(link));

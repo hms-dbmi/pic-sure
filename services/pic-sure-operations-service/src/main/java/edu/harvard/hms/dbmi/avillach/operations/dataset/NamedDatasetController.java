@@ -29,8 +29,8 @@ import jakarta.validation.Valid;
  * then email-scopes every operation, requiring and keying on the caller's email ({@code GatewayUser#getEmail()}), never {@code userId}.
  * This controller is a thin HTTP adapter -- identity validation lives in the service.
  *
- * <p>The one check made on the caller's user id is in {@code PUT /dataset/named/{id}}: a query can be linked to a dataset only by the user
- * it belongs to, and query rows record their owner by user id.
+ * <p>The one check made on the caller's user id is on the query a request links, in {@code POST /dataset/named} and in {@code PUT
+ * /dataset/named/{id}}: a query can be linked to a dataset only by the user it belongs to, and query rows record their owner by user id.
  */
 @Tag(name = "Named datasets", description = "Saved queries a user names and reuses, scoped to the caller")
 @RestController
@@ -65,6 +65,7 @@ public class NamedDatasetController {
     @ApiResponses(
         {@ApiResponse(responseCode = "201", description = "The created named dataset"),
             @ApiResponse(responseCode = "401", description = "No caller email in the request"),
+            @ApiResponse(responseCode = "403", description = "The query belongs to another user"),
             @ApiResponse(responseCode = "404", description = "Query not found"),
             @ApiResponse(responseCode = "409", description = "The caller already named that query")}
     )

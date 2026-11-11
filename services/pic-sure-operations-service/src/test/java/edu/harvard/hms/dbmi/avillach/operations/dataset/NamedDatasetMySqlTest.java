@@ -166,6 +166,17 @@ class NamedDatasetMySqlTest {
     }
 
     @Test
+    void createOnAnotherUsersQueryIs403AndStoresNoRow() {
+        Query bobs = storedQuery(UUID.fromString("7c1b1f0e-2a3b-4c4d-8e5f-0a1b2c3d4e5f"), FULL_DATAFRAME);
+
+        assertThatThrownBy(() -> service.create(ALICE, new NamedDatasetRequestDto(bobs.getUuid(), "cohort", false, null)))
+            .isInstanceOfSatisfying(PicsureException.class, refused -> assertThat(refused.getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM named_dataset", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM named_dataset_query", Integer.class)).isZero();
+    }
+
+    @Test
     void secondRowForTheSameVariantIs409AndTheVariantKeyRefusesTheRowItself() {
         Query full = storedQuery(ALICE_ID, FULL_DATAFRAME);
         Query sample = storedQuery(ALICE_ID, SAMPLE_DATAFRAME);
