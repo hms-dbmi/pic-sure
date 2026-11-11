@@ -39,10 +39,9 @@ public class NamedDatasetController {
 
     static final String UPDATE_DESCRIPTION = "Replaces the name, archived state and metadata of the dataset.\n\n"
         + "When queryId names a query the dataset does not link yet, that query is linked as well and appears in queries. The query "
-        + "must have been submitted by the caller, or be a query stored without an owner. A dataset links at most one query for each "
-        + "pair of sample and result type, so a second query of a pair it already holds is refused. Linking does not change the query "
-        + "member of the dataset, which stays the query the dataset was created from.\n\n"
-        + "When queryId names a query the dataset already links, nothing is linked.";
+        + "must have been submitted by the caller, or be a query stored without an owner. The link is refused when the dataset already "
+        + "holds a query with the same sample flag and result type. Linking does not change the query member of the dataset, which "
+        + "stays the query the dataset was created from.\n\nWhen queryId names a query the dataset already links, nothing is linked.";
 
     private final NamedDatasetService service;
 

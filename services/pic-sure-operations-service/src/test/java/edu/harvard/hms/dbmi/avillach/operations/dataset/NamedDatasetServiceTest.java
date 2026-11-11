@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.sql.SQLIntegrityConstraintViolationException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -263,6 +265,19 @@ class NamedDatasetServiceTest {
         assertThat(dto.queries()).containsExactly(
             new LinkedQueryDto(backfilled.getUuid(), false, "DATAFRAME"), new LinkedQueryDto(typed.getUuid(), false, "DATAFRAME")
         );
+    }
+
+    @Test
+    void readAnswersWithTheDerivedResultTypeWhenTheWriteBackCannotGetItsLock() {
+        Query backfilled = storedQuery(null, FULL_DATAFRAME);
+        NamedDataset dataset = datasetPointingAt(backfilled);
+        callerOwns(dataset, joinRow(dataset, backfilled, false, null));
+        when(links.fillResultType(dataset.getUuid(), backfilled.getUuid(), "DATAFRAME"))
+            .thenThrow(new CannotAcquireLockException("Lock wait timeout exceeded; try restarting transaction"));
+
+        NamedDatasetDto dto = service.getForUser(ALICE, dataset.getUuid());
+
+        assertThat(dto.queries()).containsExactly(new LinkedQueryDto(backfilled.getUuid(), false, "DATAFRAME"));
     }
 
     @Test
@@ -653,6 +668,32 @@ class NamedDatasetServiceTest {
         PicsureException ex = assertThrows(PicsureException.class, () -> service.update(ALICE, dataset.getUuid(), linkRequest(sample)));
 
         assertThat(ex.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void joinRowRefusedBecauseTheDatasetWasDeletedMeanwhileIs404() {
+        Query full = storedQuery(ALICE_ID, FULL_DATAFRAME);
+        Query sample = storedQuery(ALICE_ID, SAMPLE_DATAFRAME);
+        NamedDataset dataset = datasetPointingAt(full);
+        callerOwns(dataset, joinRow(dataset, full, false, "DATAFRAME"));
+        queryIsStored(sample);
+        when(repo.saveAndFlush(any())).thenAnswer(returnsFirstArg());
+        when(links.saveAndFlush(any())).thenThrow(
+            new DataIntegrityViolationException(
+                "could not execute statement",
+                new SQLIntegrityConstraintViolationException(
+                    "Cannot add or update a child row: a foreign key constraint fails (`picsure`.`named_dataset_query`, CONSTRAINT"
+                        + " `fk_named_dataset_query_dataset` FOREIGN KEY (`named_dataset_uuid`) REFERENCES `named_dataset` (`uuid`)"
+                        + " ON DELETE CASCADE)",
+                    "23000", 1452
+                )
+            )
+        );
+
+        PicsureException ex = assertThrows(PicsureException.class, () -> service.update(ALICE, dataset.getUuid(), linkRequest(sample)));
+
+        assertThat(ex.getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(ex).hasMessage("NamedDataset " + dataset.getUuid() + " not found");
     }
 
     @Test

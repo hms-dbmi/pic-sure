@@ -12,7 +12,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
  * @param sample whether the query is a sample query
  * @param resultType the result type the query asks for, or null when its stored body names none
  */
-@Schema(description = "A query linked to a named dataset. A dataset links at most one query for each pair of sample and resultType.")
+@Schema(description = "A query linked to a named dataset. Linking a second query with the same sample and resultType is refused.")
 public record LinkedQueryDto(
     @Schema(
         description = "The PIC-SURE id of the linked query.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6",

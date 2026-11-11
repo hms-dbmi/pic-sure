@@ -2,19 +2,26 @@ package edu.harvard.hms.dbmi.avillach.operations.dataset;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
 
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -52,6 +59,9 @@ import edu.harvard.hms.dbmi.avillach.operations.query.QueryRepository;
  *
  * <p>The migration set in this module has no {@code query.version} column, which the entity maps. Deployed databases get it from a separate
  * baseline, so the test adds it after the scripts.
+ *
+ * <p>Some tests make an update wait for a row another connection has locked. They ask the database whether a transaction is waiting for a
+ * lock, which only the root account of the container may read.
  */
 @SpringBootTest(
     properties = {"spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQLDialect", "spring.jpa.hibernate.ddl-auto=none"}
@@ -68,6 +78,7 @@ class NamedDatasetMySqlTest {
         "{\"query\":{\"select\":[],\"phenotypicClause\":null,\"expectedResultType\":\"DATAFRAME\"}}";
     private static final String SAMPLE_DATAFRAME =
         "{\"query\":{\"select\":[],\"phenotypicClause\":null,\"expectedResultType\":\"DATAFRAME\",\"sample\":true}}";
+    private static final Duration LOCK_WAIT_LIMIT = Duration.ofSeconds(30);
 
     @Container
     static final MySQLContainer<?> MYSQL =
@@ -237,6 +248,119 @@ class NamedDatasetMySqlTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM named_dataset WHERE uuid = ?", Integer.class, bytes(dataset))).isZero();
         assertThat(joinRowsOf(dataset)).isEmpty();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query", Integer.class)).isEqualTo(2);
+    }
+
+    @Test
+    void linkingUpdateThatWaitedForADeleteOfItsDatasetIs404AndLeavesNoRows() throws Exception {
+        Query full = storedQuery(ALICE_ID, FULL_DATAFRAME);
+        Query sample = storedQuery(ALICE_ID, SAMPLE_DATAFRAME);
+        UUID dataset = service.create(ALICE, new NamedDatasetRequestDto(full.getUuid(), "cohort", false, null)).uuid();
+        CompletableFuture<NamedDatasetDto> linking;
+        try (Connection deleter = openTransaction()) {
+            assertThat(execute(deleter, "DELETE FROM named_dataset WHERE uuid = ?", bytes(dataset))).isEqualTo(1);
+            linking = updateThatWaitsForALock(dataset, new NamedDatasetRequestDto(sample.getUuid(), "cohort", false, null));
+            deleter.commit();
+        }
+
+        assertThatThrownBy(() -> linking.get(LOCK_WAIT_LIMIT.toSeconds(), TimeUnit.SECONDS)).extracting(Throwable::getCause)
+            .isInstanceOfSatisfying(PicsureException.class, refused -> {
+                assertThat(refused.getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
+                assertThat(refused).hasMessage("NamedDataset " + dataset + " not found");
+            });
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM named_dataset", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM named_dataset_query", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query", Integer.class)).isEqualTo(2);
+    }
+
+    @Test
+    void putRefusedByTheVariantKeyIs409AndKeepsTheNameArchivedFlagAndMetadata() throws Exception {
+        Query full = storedQuery(ALICE_ID, FULL_DATAFRAME);
+        Query sample = storedQuery(ALICE_ID, SAMPLE_DATAFRAME);
+        Query linkedMeanwhile = storedQuery(ALICE_ID, SAMPLE_DATAFRAME);
+        UUID dataset = service.create(ALICE, new NamedDatasetRequestDto(full.getUuid(), "cohort", false, Map.of("color", "blue"))).uuid();
+        Map<String, Object> before = nameArchivedFlagAndMetadataOf(dataset);
+        CompletableFuture<NamedDatasetDto> update;
+        try (Connection other = openTransaction()) {
+            execute(other, "SELECT uuid FROM named_dataset WHERE uuid = ? FOR UPDATE", bytes(dataset));
+            update =
+                updateThatWaitsForALock(dataset, new NamedDatasetRequestDto(sample.getUuid(), "renamed", true, Map.of("color", "red")));
+            execute(
+                other,
+                "INSERT INTO named_dataset_query (named_dataset_uuid, query_uuid, sample, result_type, created_at)"
+                    + " VALUES (?, ?, 1, 'DATAFRAME', '2026-02-03 04:05:06.789')",
+                bytes(dataset), bytes(linkedMeanwhile.getUuid())
+            );
+            other.commit();
+        }
+
+        assertThatThrownBy(() -> update.get(LOCK_WAIT_LIMIT.toSeconds(), TimeUnit.SECONDS)).extracting(Throwable::getCause)
+            .isInstanceOfSatisfying(PicsureException.class, refused -> {
+                assertThat(refused.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                assertThat(refused).hasMessageContaining("already links query " + sample.getUuid());
+            });
+        assertThat(nameArchivedFlagAndMetadataOf(dataset)).isEqualTo(before).containsEntry("name", "cohort");
+        assertThat(joinRowsOf(dataset)).extracting(row -> row.get("query_uuid"))
+            .containsExactlyInAnyOrder(bytes(full.getUuid()), bytes(linkedMeanwhile.getUuid()));
+    }
+
+    @Test
+    void putLinkingAnotherUsersQueryWithARenameIs403AndWritesNeitherTheJoinRowNorTheName() {
+        Query full = storedQuery(ALICE_ID, FULL_DATAFRAME);
+        Query bobs = storedQuery(UUID.fromString("7c1b1f0e-2a3b-4c4d-8e5f-0a1b2c3d4e5f"), SAMPLE_DATAFRAME);
+        UUID dataset = service.create(ALICE, new NamedDatasetRequestDto(full.getUuid(), "cohort", false, null)).uuid();
+        Map<String, Object> before = nameArchivedFlagAndMetadataOf(dataset);
+
+        assertThatThrownBy(() -> service.update(ALICE, dataset, new NamedDatasetRequestDto(bobs.getUuid(), "renamed", false, null)))
+            .isInstanceOfSatisfying(PicsureException.class, refused -> assertThat(refused.getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
+
+        assertThat(nameArchivedFlagAndMetadataOf(dataset)).isEqualTo(before).containsEntry("name", "cohort");
+        List<Map<String, Object>> rows = joinRowsOf(dataset);
+        assertThat(rows).hasSize(1);
+        assertThat(rows.getFirst().get("query_uuid")).isEqualTo(bytes(full.getUuid()));
+    }
+
+    /**
+     * Starts an update of one of Alice's datasets on another thread and returns once the database reports a transaction that waits for a
+     * lock. The caller holds that lock on a connection of its own, and the update goes on when the caller commits.
+     *
+     * @param dataset the id of the dataset to update
+     * @param request the update to send
+     * @return the running update, which has not finished
+     */
+    private CompletableFuture<NamedDatasetDto> updateThatWaitsForALock(UUID dataset, NamedDatasetRequestDto request) {
+        CompletableFuture<NamedDatasetDto> update = CompletableFuture.supplyAsync(() -> service.update(ALICE, dataset, request));
+        await().atMost(LOCK_WAIT_LIMIT).until(() -> update.isDone() || transactionsWaitingForALock() == 1);
+        assertThat(update).isNotDone();
+        return update;
+    }
+
+    private static int transactionsWaitingForALock() throws SQLException {
+        try (Connection root = DriverManager.getConnection(MYSQL.getJdbcUrl(), "root", MYSQL.getPassword())) {
+            ResultSet waiting =
+                root.createStatement().executeQuery("SELECT COUNT(*) FROM information_schema.innodb_trx WHERE trx_state = 'LOCK WAIT'");
+            waiting.next();
+            return waiting.getInt(1);
+        }
+    }
+
+    private static Connection openTransaction() throws SQLException {
+        Connection connection = DriverManager.getConnection(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
+        connection.setAutoCommit(false);
+        return connection;
+    }
+
+    private static int execute(Connection connection, String sql, byte[]... ids) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            for (int index = 0; index < ids.length; index++) {
+                statement.setBytes(index + 1, ids[index]);
+            }
+            return statement.execute() ? 0 : statement.getUpdateCount();
+        }
+    }
+
+    private Map<String, Object> nameArchivedFlagAndMetadataOf(UUID dataset) {
+        return jdbc
+            .queryForMap("SELECT name, CAST(archived AS UNSIGNED) AS archived, metadata FROM named_dataset WHERE uuid = ?", bytes(dataset));
     }
 
     private Query storedQuery(UUID owner, String body) {

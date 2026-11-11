@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -52,8 +53,9 @@ import edu.harvard.hms.dbmi.avillach.operations.query.QueryRepository;
  * dataset's queries without looking at who owns them.
  *
  * <p>The join rows the migration created have no result type. A read derives it from the stored query body and, after its own transaction
- * has ended, stores it on the row. The variant key can refuse that write when another row of the dataset already has the same variant. The
- * read then leaves the row as it is and still answers with the derived type.
+ * has ended, stores it on the row. That write is optional. The variant key refuses it when another row of the dataset already has the same
+ * variant, and the database can fail it for a reason of its own, such as a lock it waited too long for. Either way the read leaves the row
+ * as it is and still answers with the derived type.
  *
  * <p>None of the public methods is transactional. Each runs its reads and writes in one transaction of its own, and stores derived result
  * types afterward, one statement at a time, so a refused statement undoes nothing else.
@@ -62,6 +64,12 @@ import edu.harvard.hms.dbmi.avillach.operations.query.QueryRepository;
 public class NamedDatasetService {
 
     private static final Logger LOG = LoggerFactory.getLogger(NamedDatasetService.class);
+
+    /**
+     * The name the migration gives the foreign key from a join row to its named dataset. MySQL puts it in the error of an insert whose
+     * dataset no longer exists.
+     */
+    private static final String DATASET_FOREIGN_KEY = "fk_named_dataset_query_dataset";
 
     private final NamedDatasetRepository repo;
     private final NamedDatasetQueryRepository links;
@@ -154,9 +162,9 @@ public class NamedDatasetService {
      * @param id the id of the dataset
      * @param req the query to link and the name, archived state and metadata to store
      * @return the updated dataset
-     * @throws PicsureException 401 when the caller has no email, 404 when the caller has no dataset with the id or no query has the id to
-     *         link, 403 when the query to link belongs to another user, 409 when the dataset already holds a query of the same variant or
-     *         the caller already named the query the {@code queryId} would move to
+     * @throws PicsureException 401 when the caller has no email, 404 when the caller has no dataset with the id, the dataset is deleted
+     *         before the link is written, or no query has the id to link, 403 when the query to link belongs to another user, 409 when the
+     *         dataset already holds a query of the same variant or the caller already named the query the {@code queryId} would move to
      */
     public NamedDatasetDto update(GatewayUser user, UUID id, NamedDatasetRequestDto req) {
         String email = requireEmail(user);
@@ -279,17 +287,18 @@ public class NamedDatasetService {
 
     /**
      * Stores each derived result type on its join row, after the transaction that derived it has ended. A row another request filled in the
-     * meantime is left alone. When the variant key refuses the value, because another row of the dataset already has the same variant, the
-     * row keeps its null result type and the answer is returned all the same.
+     * meantime is left alone. The answer already carries the derived type, so a write that fails costs the caller nothing: the row keeps
+     * its null result type and the answer is returned all the same. The variant key refuses the value when another row of the dataset
+     * already has the same variant. A lock the statement waited too long for, or a database that takes no writes, fails it as well.
      */
     private List<NamedDatasetDto> afterStoringDerivedResultTypes(View view) {
         for (DerivedResultType derived : view.derived()) {
             try {
                 links.fillResultType(derived.dataset(), derived.query(), derived.resultType());
-            } catch (DataIntegrityViolationException sameVariantAlreadyStored) {
+            } catch (DataAccessException notStored) {
                 LOG.warn(
-                    "Named dataset {} already links a query with result type {}; the join row for query {} keeps no result type",
-                    derived.dataset(), derived.resultType(), derived.query()
+                    "The join row of named dataset {} for query {} keeps no result type, storing {} failed: {}", derived.dataset(),
+                    derived.query(), derived.resultType(), notStored.toString()
                 );
             }
         }
@@ -380,6 +389,9 @@ public class NamedDatasetService {
     /**
      * Inserts the join row that links a query to a dataset. The insert is flushed here so that a key the database refuses, which a second
      * request linking the same variant at the same moment runs into, is answered with 409.
+     *
+     * <p>The database also refuses the insert when the dataset was deleted after this request read it. That refusal names the foreign key
+     * to {@code named_dataset}, and it is answered with the 404 of a dataset the caller does not have.
      */
     private NamedDatasetQuery insertOrConflict(NamedDataset dataset, Query query, QueryVariant variant) {
         NamedDatasetQuery link = new NamedDatasetQuery(
@@ -389,10 +401,18 @@ public class NamedDatasetService {
             links.saveAndFlush(link);
             return link;
         } catch (DataIntegrityViolationException e) {
+            if (namesTheDatasetForeignKey(e)) {
+                throw notFound(dataset.getUuid());
+            }
             throw PicsureExceptions.conflict(
                 "NamedDataset " + dataset.getUuid() + " already links query " + query.getUuid() + " or another query of its variant"
             );
         }
+    }
+
+    private static boolean namesTheDatasetForeignKey(DataIntegrityViolationException refused) {
+        String databaseError = refused.getMostSpecificCause().getMessage();
+        return databaseError != null && databaseError.contains(DATASET_FOREIGN_KEY);
     }
 
     private static PicsureException notFound(UUID id) {

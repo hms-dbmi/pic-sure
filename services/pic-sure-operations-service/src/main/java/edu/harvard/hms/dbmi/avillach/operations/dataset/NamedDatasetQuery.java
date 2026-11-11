@@ -22,11 +22,11 @@ import org.springframework.data.domain.Persistable;
  * Persistence model for the {@code named_dataset_query} table: one row for each query linked to a named dataset. A dataset holds at most
  * one row for each variant, and a variant is the {@code sample} flag together with the result type.
  *
- * <p>{@code sample} and {@code resultType} are copies of what the stored query body says, taken when the row is written. The body of a
- * query row never changes, so the copies stay true. Rows the migration created from {@code named_dataset.queryId} have a null
- * {@code resultType}, because the migration cannot read the compressed body. {@link NamedDatasetService} fills it in the first time it
- * reads such a row. The variant key does not compare null result types, so the database accepts any number of rows with a null result type
- * for one dataset and one {@code sample} value.
+ * <p>{@code sample} and {@code resultType} are copies read from the stored query body when the row is linked. The body of a query row that
+ * has no owner is rewritten when the row is upgraded to v3, and that upgrade keeps both values, so the copies stay true. Rows the migration
+ * created from {@code named_dataset.queryId} have a null {@code resultType}, because the migration cannot read the compressed body.
+ * {@link NamedDatasetService} fills it in the first time it reads such a row. The variant key does not compare null result types, so the
+ * database accepts any number of rows with a null result type for one dataset and one {@code sample} value.
  *
  * <p>The table has a foreign key to {@code named_dataset} that deletes the rows of a deleted dataset, and one to {@code query} that refuses
  * to delete a linked query. Neither is mapped here: the service reads and writes the two ids as plain values.
