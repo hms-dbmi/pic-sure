@@ -1576,6 +1576,64 @@ class ToolUseLoopServiceTest {
         assertEquals(AGE_PATH, response.query().path("phenotypicClause").path("conceptPath").asText());
     }
 
+    private static final String BAD_PROPOSAL = "{\"query\":{\"phenotypicClause\":{\"operator\":\"AND\"}}}";
+    private static final String AGE_PROPOSAL = "{\"query\":" + AGE_QUERY + "}";
+
+    @Test
+    void aRepairRetryCountsAgainstTheIterationCapWithNoLoopOfItsOwn() {
+        // search (1), rejected proposal (2), repaired proposal (3): at a cap of 3 the repair is the call pending at the cap, so it never
+        // runs.
+        ModelTurnResult[] turns = {toolCallTurn("search_concepts", "{\"search\":\"age\"}"), toolCallTurn("propose_query", BAD_PROPOSAL),
+            toolCallTurn("propose_query", AGE_PROPOSAL), doneTurn("Here is what I found.")};
+        FakeModelClient capped = FakeModelClient.returning(turns);
+
+        ChatResponse atCap =
+            new ToolUseLoopService(capped, FakeToolGateway.returning(DICTIONARY_RESULT), PROPOSE_QUERY_TOOL, 3).handle(REQUEST, CALLER);
+
+        assertNull(atCap.query(), "the repair needed a fourth call, past the cap");
+        assertEquals(4, capped.callCount, "the cap plus one last call to answer, with no extra repair calls");
+        assertEquals(ToolUseLoopService.CAP_REACHED_RESULT, lastToolResult(capped, 4));
+
+        FakeModelClient roomy = FakeModelClient.returning(turns);
+        ChatResponse withRoom =
+            new ToolUseLoopService(roomy, FakeToolGateway.returning(DICTIONARY_RESULT), PROPOSE_QUERY_TOOL, 4).handle(REQUEST, CALLER);
+
+        assertEquals(AGE_PATH, withRoom.query().path("phenotypicClause").path("conceptPath").asText());
+        assertEquals(4, roomy.callCount);
+    }
+
+    @Test
+    void hittingTheCapWithARejectedProposalGivesAProseOnlyReply() {
+        FakeModelClient model = FakeModelClient.returning(
+            toolCallTurn("propose_query", BAD_PROPOSAL), toolCallTurn("search_concepts", "{\"search\":\"age\"}"),
+            doneTurn("I could not build that query.")
+        );
+
+        ChatResponse response =
+            new ToolUseLoopService(model, FakeToolGateway.returning(DICTIONARY_RESULT), PROPOSE_QUERY_TOOL, 2).handle(REQUEST, CALLER);
+
+        assertEquals("I could not build that query.", response.response());
+        assertNull(response.query());
+        assertNull(response.facets());
+        assertNull(response.search());
+    }
+
+    @Test
+    void aQueryMixingDatasetsIsAccepted() {
+        String twoDatasets = "{\"concepts\":[{\"conceptPath\":\"\\\\nhanes\\\\age\\\\\"},{\"conceptPath\":\"\\\\harmonized\\\\bmi\\\\\"}]}";
+        String mixed = "{\"query\":{\"select\":[\"\\\\harmonized\\\\bmi\\\\\"],\"phenotypicClause\":"
+            + "{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"\\\\nhanes\\\\age\\\\\"}}}";
+        FakeModelClient model = FakeModelClient
+            .returning(toolCallTurn("search_concepts", "{\"search\":\"age\"}"), toolCallTurn("propose_query", mixed), doneTurn("Done"));
+
+        ChatResponse response =
+            new ToolUseLoopService(model, FakeToolGateway.returning(twoDatasets), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
+
+        assertFalse(lastToolResult(model, 3).toLowerCase().contains("error"), lastToolResult(model, 3));
+        assertEquals("\\nhanes\\age\\", response.query().path("phenotypicClause").path("conceptPath").asText());
+        assertEquals("\\harmonized\\bmi\\", response.query().path("select").path(0).asText());
+    }
+
     @Test
     void theConversationAndRequestIdsTagLogLinesDuringTheTurnAndAreClearedAfterwards() {
         String[] seenDuringTool = new String[2];
