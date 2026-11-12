@@ -72,4 +72,15 @@ Users connect through the gateway's public `/mcp` route with their PIC-SURE toke
 claude mcp add --transport http picsure https://<picsure-host>/picsure/mcp --header "Authorization: Bearer $PICSURE_TOKEN"
 ```
 
-On a site with open access enabled the header can be left off, and the tools see the same open data an anonymous user of the UI sees.
+## Who may use it
+
+`/mcp` needs the `PIC_SURE_MCP` privilege. Two checks enforce it:
+
+1. The gateway introspects the token with PSAMA, whose `AR_MCP_REQUESTS` rule (`^/mcp$`) admits only users holding `PIC_SURE_MCP`.
+2. This service re-checks the `X-User-Privileges` header the gateway forwards (`McpAccessFilter`, on `/mcp` only, so the health probes stay open) and answers **403** when the privilege is missing. It validates no token itself, so it must be reachable only through the gateway.
+
+The privilege is granted deliberately, not to every user: the Baseline and BDC migrations give it to `Admin` and `PIC-SURE Top Admin` only. Add it to any other role that should connect a local agent.
+
+- **Open-access (unauthenticated) callers get 403.** They carry a user id but no privileges, so there is no tokenless MCP, and leaving the `Authorization` header off no longer works.
+- **`ASSISTED_SEARCH` does not grant MCP.** The assistant keeps counts inside the deployment boundary; a user who could also connect their own model here could pull the same counts onto a local machine.
+- **`pic-sure-ai-service` is admitted without the privilege.** Its `/mcp` calls carry the shared secret `X-PIC-SURE-AI-TOKEN`. The gateway verifies it (`AiServiceCallerFilter`, with `AI_SERVICE_TOKEN` and `AI_SERVICE_TOKEN_PREVIOUS` for rotation), asks PSAMA about the target `/ai/mcp` so the user must hold `ASSISTED_SEARCH` instead, and forwards `X-Client-Type: ai-service`, which this service accepts in place of the privilege. The gateway strips a client-supplied token or `ai-service` client type, so a client cannot claim it.

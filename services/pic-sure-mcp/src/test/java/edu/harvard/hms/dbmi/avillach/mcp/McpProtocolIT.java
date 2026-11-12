@@ -409,7 +409,8 @@ class McpProtocolIT {
     private HttpResponse<String> send(String accept, boolean afterInitialize, String body) throws Exception {
         HttpRequest.Builder request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/mcp"))
             .header("Content-Type", "application/json").header("Accept", accept).header("Authorization", BEARER)
-            .header("X-PICSURE-API-Key", API_KEY).header("X-Request-Id", requestId).POST(HttpRequest.BodyPublishers.ofString(body));
+            .header("X-User-Id", "user-it").header("X-User-Privileges", "PIC_SURE_MCP").header("X-PICSURE-API-Key", API_KEY)
+            .header("X-Request-Id", requestId).POST(HttpRequest.BodyPublishers.ofString(body));
         if (afterInitialize) {
             request.header("MCP-Protocol-Version", PROTOCOL_VERSION);
         }

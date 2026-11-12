@@ -56,7 +56,7 @@ class UnexpectedToolFailureEndToEndTest {
 
         String response = RestClient.create("http://localhost:" + port).post().uri("/mcp").contentType(MediaType.APPLICATION_JSON)
             .header("Accept", "application/json, text/event-stream").header("Authorization", "Bearer caller-token")
-            .header("X-Request-Id", "req-unexpected").body("""
+            .header("X-Request-Id", "req-unexpected").header("X-User-Id", "user-e2e").header("X-User-Privileges", "PIC_SURE_MCP").body("""
                 {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_concept",
                   "arguments":{"dataset":"phs1","conceptPath":"\\\\phs1\\\\sex\\\\"}}}""").retrieve().body(String.class);
         JsonNode json = objectMapper.readTree(response);
