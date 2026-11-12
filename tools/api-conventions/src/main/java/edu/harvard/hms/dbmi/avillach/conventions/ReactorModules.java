@@ -6,13 +6,16 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Stream;
+import java.util.Set;
 
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
@@ -38,6 +41,7 @@ public final class ReactorModules {
     private static final String MAIN_CLASSES = "target/classes";
     private static final String TEST_CLASSES = "target/test-classes";
     private static final String TOOLS_PREFIX = "tools/";
+    private static final Set<String> PRUNED_DIRECTORIES = Set.of(".jj", ".git", "target", "node_modules");
 
     private ReactorModules() {}
 
@@ -115,12 +119,27 @@ public final class ReactorModules {
     }
 
     private static List<Path> pomFiles(Path reactorRoot) {
-        try (Stream<Path> walk = Files.walk(reactorRoot)) {
-            return walk
-                .filter(path -> path.getFileName() != null && path.getFileName().toString().equals("pom.xml"))
-                .filter(path -> !reactorRoot.relativize(path).toString().contains("target/"))
-                .sorted()
-                .toList();
+        List<Path> poms = new ArrayList<>();
+        try {
+            // Pruned rather than filtered after the fact: version-control state (.jj lock files appear and vanish mid-walk) and build
+            // output are never reactor modules, and walking them can fail with NoSuchFileException.
+            Files.walkFileTree(reactorRoot, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                    String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
+                    return !dir.equals(reactorRoot) && PRUNED_DIRECTORIES.contains(name) ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                    if (file.getFileName().toString().equals("pom.xml")) {
+                        poms.add(file);
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+            poms.sort(null);
+            return poms;
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
