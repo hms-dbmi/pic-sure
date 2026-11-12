@@ -57,7 +57,7 @@ class OpenAccessFilterOrderTest {
         when(psama.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(true));
         List<FilterRegistrationBean<? extends Filter>> registrations = assembledRegistrations(psama);
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
-        request.addHeader("authorization", "Bearer picsure_testKeyValue123");
+        request.addHeader("authorization", "Bearer picsure_u_testKeyValue123");
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicReference<HttpServletRequest> downstreamRequest = new AtomicReference<>();
 
@@ -65,7 +65,7 @@ class OpenAccessFilterOrderTest {
 
         ArgumentCaptor<Map<String, Object>> payload = ArgumentCaptor.forClass(Map.class);
         verify(psama).validateOpenAccess(payload.capture());
-        assertThat(payload.getValue()).containsEntry("apiKey", "picsure_testKeyValue123");
+        assertThat(payload.getValue()).containsEntry("apiKey", "picsure_u_testKeyValue123");
         assertThat(downstreamRequest.get().getHeader("Authorization")).isNull();
         assertThat(downstreamRequest.get().getHeaders("Authorization").hasMoreElements()).isFalse();
         assertThat(Collections.list(downstreamRequest.get().getHeaderNames())).doesNotContain("Authorization", "authorization");
@@ -79,7 +79,7 @@ class OpenAccessFilterOrderTest {
         when(psama.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(true));
         List<FilterRegistrationBean<? extends Filter>> registrations = assembledRegistrations(psama);
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
-        request.addHeader("Authorization", "Bearer picsure_testKeyValue123");
+        request.addHeader("Authorization", "Bearer picsure_u_testKeyValue123");
         request.addHeader("Authorization", "Bearer eyJlogin.token");
         AtomicReference<HttpServletRequest> downstreamRequest = new AtomicReference<>();
 
@@ -89,7 +89,7 @@ class OpenAccessFilterOrderTest {
 
         ArgumentCaptor<Map<String, Object>> payload = ArgumentCaptor.forClass(Map.class);
         verify(psama).validateOpenAccess(payload.capture());
-        assertThat(payload.getValue()).containsEntry("apiKey", "picsure_testKeyValue123");
+        assertThat(payload.getValue()).containsEntry("apiKey", "picsure_u_testKeyValue123");
         assertThat(downstreamRequest.get().getHeaders("Authorization").hasMoreElements()).isFalse();
     }
 
@@ -99,7 +99,7 @@ class OpenAccessFilterOrderTest {
         List<FilterRegistrationBean<? extends Filter>> registrations = assembledRegistrations(psama);
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
         request.addHeader("Authorization", "Bearer eyJlogin.token");
-        request.addHeader("Authorization", "Bearer picsure_testKeyValue123");
+        request.addHeader("Authorization", "Bearer picsure_u_testKeyValue123");
         AtomicReference<HttpServletRequest> downstreamRequest = new AtomicReference<>();
 
         invokeInRegisteredOrder(

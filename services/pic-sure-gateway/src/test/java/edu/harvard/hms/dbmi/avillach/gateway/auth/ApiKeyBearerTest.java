@@ -28,7 +28,8 @@ class ApiKeyBearerTest {
     @NullSource
     @ValueSource(
         strings = {"", "Bearer", "Bearer ", "Bearer eyJhbGciOiJIUzI1NiJ9.login.token", "Bearerpicsure_u_key", "Bearer\tpicsure_u_key",
-            " Bearer picsure_u_key", "Basic picsure_u_key", "picsure_u_key", "Bearer PICSURE_u_key"}
+            " Bearer picsure_u_key", "Basic picsure_u_key", "picsure_u_key", "Bearer PICSURE_u_key", "Bearer picsure_U_key",
+            "Bearer picsure_x_key", "Bearer picsure_key", "Bearer picsure_", "Bearer picsure_u"}
     )
     void everythingElseIsNotAKey(String authorization) {
         assertThat(ApiKeyBearer.extract(authorization)).isNull();
