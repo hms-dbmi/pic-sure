@@ -6,6 +6,12 @@ prefix in front of the gateway applies) and acts as an MCP client against the ga
 replaying the caller's bearer JWT untouched on every call. It never mints, caches, or exchanges a
 credential of its own.
 
+> [!WARNING]
+> Deploy this service only behind the gateway; never expose it directly to clients. Conversation history and stored turn results are
+> keyed by the caller's identity, which the service reads from the `X-User-Id` and `X-Picsure-Access-Type` headers the gateway sets
+> after token introspection. The service does not authenticate the gateway itself, so anyone who can reach it directly could supply
+> another user's identity headers and read that user's stored replies.
+
 ## Model provider: only the Bedrock Converse shape, by design
 
 This service speaks exactly one wire shape to the reasoning model: Amazon Bedrock's Converse API
@@ -67,6 +73,7 @@ touching the dispatch loop, the controller, or anything else in the service).
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
+| `AI_ENABLED` | no, default `false` | `true` registers the chat endpoint. Left `false`, no chat endpoint exists, so `/ai/chat` and `/ai/chat/{requestId}` answer 404 while the service stays up: set it to `true` wherever the assistant should be offered. The UI is switched separately (`ENABLE_ASSISTED_SEARCH` for Explorer, `ENABLE_ASSISTED_SEARCH_DISCOVER` for Discover). |
 | `AI_MODEL_PROVIDER` | no, default `aws-sdk` | `aws-sdk` or `http` — which `ConverseModelClient` is active. |
 | `BEDROCK_REGION` | no, default `us-east-1` | AWS region, `aws-sdk` provider only. |
 | `BEDROCK_MODEL_ID` | no, default `openai.gpt-oss-120b-1:0` | Bedrock model id, `aws-sdk` provider only. The model must support Converse tool use and be in the deployment's IAM allowlist — see [Choosing a model](#choosing-a-model). |
@@ -77,6 +84,7 @@ touching the dispatch loop, the controller, or anything else in the service).
 | `AI_MODEL_HTTP_API_TOKEN` | yes, if `AI_MODEL_PROVIDER=http` | Bearer token sent as `Authorization`. |
 | `AI_MODEL_HTTP_MODEL_ID` | yes, if `AI_MODEL_PROVIDER=http` | Model id substituted into `/model/{modelId}/converse`. |
 | `AI_MAX_TOOL_ITERATIONS` | no, default `8` | Hard cap on tool-call round-trips per chat turn. Reaching it costs one more model call, asking the model to answer from what it has (see [Guarding against model behavior](#guarding-against-model-behavior)), so a turn makes at most this many plus one model calls. |
+| `AI_MAX_FILTERS` | no, default `100` | Most filters (subqueries count too) a query may hold and still be read or proposed by the model; at least 1. Over it, the researcher's query is withheld from the model and the model's own proposals are refused (see [Guarding against model behavior](#guarding-against-model-behavior)). The UI has no such limit: it only bounds what is resent to the model on every call, and the model is told the limit is its own. |
 | `AI_MCP_MODE` | no, default `gateway` | `gateway` (a real MCP client against `pic-sure-mcp`). |
 | `PICSURE_GATEWAY_URL` | yes, if `AI_MCP_MODE=gateway` | Base URL of the gateway's `/mcp` route. Same gateway URL `pic-sure-mcp` itself binds via `picsure.mcp.gateway-url` — one gateway URL, shared across both services' deploy config. |
 | `AI_MCP_CONNECT_TIMEOUT` | no, default `5s` | Connect timeout for gateway MCP calls. |
@@ -195,6 +203,7 @@ a check is ever returned.
 | Sends a `propose_query` with no `query`, `facets` or `search` at all | Refuses: "The proposal is empty" | refuse | `ProposeQueryTool.propose` |
 | Proposes facets without calling `list_facets` first | Calls `list_facets` itself (once a turn, with the proposal's search text), then checks the facets against it. If that lookup fails, the facets are checked against what is already known, so the model sees an unknown-facet refusal rather than a failure it did not cause | repair | `ToolUseLoopService.lookUpFacetsIfNeeded` |
 | Proposes a facet `list_facets` never returned | Refuses, listing the facets this turn has seen (including any the service looked up itself), so the model can fix the call without spending one on `list_facets` | refuse | `KnownFacets`, `ProposeQueryTool.unknownFacetMessage` |
+| Is shown, or proposes, a query over `AI_MAX_FILTERS` filters (subqueries count) or `ProposeQueryInput.MAX_SELECT` variables | A query it proposes is refused, and a researcher's query over the limit is withheld (`[too large to show...]`) and query proposals refused for that turn, though facets and search still work. Both messages, and the system prompt, say the limit is the assistant's own: the UI has no cap, the researcher can add as many as they like, and the model must not tell them they are limited. The limit only bounds what is resent to the model on every call | refuse | `ProposeQueryInput.exceedsSizeLimit`, `ProposeQueryTool.queryTooLarge`, `CurrentState.tooLarge` |
 | Narrows a `search_concepts` call by a facet `list_facets` never returned | Looks facets up once a turn if none were listed, then refuses the call without reaching the dictionary, listing the real facets | refuse | `ToolUseLoopService.refuseUnknownFacets`, `KnownFacets` |
 | Reads a facet-narrowed search but proposes (or claims on screen) only the search text | Adds the facets of the last matching search when every proposed term was in it, so the table shows what the model read. Facets the model sends itself, even an empty list, are kept | repair | `ProposalRules.withSearchFacets`, `SearchHistory.facetsForSearch` |
 | Calls `propose_query` for a lookup ("show me BMI"): a query with no filters or removals, and the researcher has no filters or selected variables either | Reads it as the search that found the variables (the proposal's own `search`, else the last search that matched). Refuses, telling the model to propose only `search`, only when there is no such search | repair | `ProposalRules.keepingFilters` |
@@ -203,7 +212,7 @@ a check is ever returned.
 | Asked for the whole `select`, sent only the variables it was adding about half the time ("select all race variables" came back without the BMI already selected), while it left out exactly the variable a researcher asked to remove | `propose_query` takes the selected variables as a change, not a list: `addSelect` and `removeSelect`, with every other selected variable kept. A `select` is read as `addSelect` (a counted query or a proposal written as reply text carries one). The result names the variables now selected, and says when a removal did not happen: a filtered variable stays (the UI shows every variable it filters on), and one that was not selected had nothing to remove | repair | `QueryChange`, `ProposalRules.apply` |
 | Leaves a filtered concept path out of `select` | Adds it back (the UI exports every variable it filters on) | repair | `ProposeQueryInput.withFilterPathsSelected` |
 | Proposes exactly what the researcher already has | Leaves `query`/`facets`/`search` out of the response | repair | `ToolUseLoopService.respond` |
-| Searches several terms (joined by `\|` in `search`, or listed in `terms`) and one term's matches fill the page, hiding the others' | Searches each term on its own (in parallel, up to 8 terms in `search`, or the tool's own limit of 5 in `terms`, so a later page is accepted too) and interleaves the results, with each term's total in `termTotals`. The researcher's table still uses the combined ranking | repair | `TermBalancedSearch` |
+| Searches several terms (joined by `\|` in `search`, or listed in `terms`) and one term's matches fill the page, hiding the others' | Searches the terms together as one OR search at the largest page size (up to 10 distinct terms, in `search` or `terms`; a longer list goes to the tool unchanged for it to refuse), fetches up to 5 more pages in parallel, and groups each page's concepts by the terms that matched them and interleaves the groups, with each term's total in `termTotals`. The researcher's table still uses the combined ranking | repair | `TermBalancedSearch` |
 | Proposes a search containing terms that matched nothing this turn (e.g. an abbreviation whose spelled-out form did match) | Drops those terms and says so in the result; refuses when no term matched | repair | `ProposalRules.acceptDroppingUnmatchedTerms`, `SearchHistory` |
 | Gets an empty category list from `list_facets` and invents studies or counts to fill the gap | Adds a note to the result saying there are none and to propose a search instead | prevent | `ToolUseLoopService.withNoCategoriesNote` |
 | Writes query JSON, or `query:`/`facets:`/`search:` labels, into its reply | Scrubs them out. If nothing is left, the reply becomes "I've prepared an updated search for you to review." (proposal attached) or the fallback text (nothing attached) | repair | `ReplyText.withoutQueryJson` |

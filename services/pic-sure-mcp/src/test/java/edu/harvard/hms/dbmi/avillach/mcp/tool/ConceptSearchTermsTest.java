@@ -176,8 +176,8 @@ class ConceptSearchTermsTest {
 
     @Test
     void badTermsAreRejectedWithoutCallingTheGateway() {
-        assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("a", "b", "c", "d", "e", "f"), null, null, null))
-            .isInstanceOf(ToolFailure.class).hasMessage("Argument 'terms' takes at most 5 terms.");
+        assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"), null, null, null))
+            .isInstanceOf(ToolFailure.class).hasMessage("Argument 'terms' takes at most 10 terms.");
         assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("bp", " "), null, null, null)).isInstanceOf(ToolFailure.class)
             .hasMessage("Argument 'terms[1]' is required.");
         assertThatThrownBy(() -> search.searchConcepts(context, null, Arrays.asList("bp", null), null, null, null))

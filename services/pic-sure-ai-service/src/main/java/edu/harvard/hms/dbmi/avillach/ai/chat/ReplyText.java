@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.ai.chat;
 
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -66,6 +67,21 @@ final class ReplyText {
         "(?i)\\b(?:added|included|applied|updated|changed|built|created|narrowed|modified|replaced|removed)\\b.*\\b(?:query|cohort)\\b"
             + "|\\b(?:the|your) (?:query|cohort) (?:now|(?:has been|was) (?:updated|changed))\\b"
     );
+    /** "Your selected variables now include...", "I added X to your selection". */
+    private static final Pattern SELECTION_CLAIM = Pattern.compile(
+        "(?i)\\b(?:selected variables|selection)\\b[^.!?\\n]*\\b(?:now (?:includes?|contains?|ha(?:s|ve))|(?:ha(?:s|ve) been|were|was) "
+            + "(?:added|updated|changed))\\b|\\b(?:added|included)\\b[^.!?\\n]*\\b(?:to|in|into) (?:your|the|their) "
+            + "(?:selected variables|selection|variable list)\\b"
+    );
+    /** "No filters or selected variables were changed" says the opposite of a claim, and so does "nothing was added to your selection". */
+    private static final Pattern NEGATION = Pattern.compile("(?i)\\b(?:no|none|not|nothing|never|unchanged)\\b|n't\\b");
+    /** The heading of a recap of the current state, "**Current state**", "Current screen state:" or "Current view:", with any text after it. */
+    private static final Pattern SCREEN_RECAP_HEADING =
+        Pattern.compile("(?i)^\\W*current (?:(?:screen|view)(?: state)?\\b(?:\\s*:.*|\\W*)|state(?:\\s*\\([^)\\n]*\\))?\\W*)");
+    /** One recap line: a part of the screen and its value, e.g. "- **facets:** none". */
+    private static final Pattern SCREEN_RECAP_LINE =
+        Pattern.compile("(?i)^\\W*(?:query|facets|search|filters|selected variables|variables)\\W*:.*");
+    private static final Pattern TRAILING_RULES = Pattern.compile("(?:\\n[ \\t]*(?:-{3,}|\\*{3,}|_{3,})?[ \\t]*)+$");
     /** An offer rather than a claim: "let me know if you'd like to add filters to your query". */
     private static final Pattern OFFER = Pattern.compile("(?i)\\b(?:if you|would you|let me know|you can|you could|want|like to)\\b");
     private static final Pattern SENTENCE_END = Pattern.compile("(?<=[.!?])\\s+|\\n+");
@@ -82,6 +98,41 @@ final class ReplyText {
             }
         }
         return false;
+    }
+
+    /** @return whether a sentence says the researcher's selected variables changed, as opposed to offering to change them */
+    static boolean claimsSelectionChanged(String text) {
+        if (text == null) {
+            return false;
+        }
+        for (String sentence : SENTENCE_END.split(text)) {
+            if (SELECTION_CLAIM.matcher(sentence).find() && !OFFER.matcher(sentence).find() && !NEGATION.matcher(sentence).find()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * gpt-oss ends some replies by listing the screen state the message ended with, which the researcher already sees. Removed only when
+     * everything after the heading is such a list, so a heading followed by an actual answer stays.
+     */
+    static String withoutScreenRecap(String text) {
+        if (text == null) {
+            return null;
+        }
+        String[] lines = text.split("\\n", -1);
+        for (int i = lines.length - 1; i >= 0; i--) {
+            if (SCREEN_RECAP_HEADING.matcher(lines[i]).matches()) {
+                for (int j = i + 1; j < lines.length; j++) {
+                    if (!lines[j].isBlank() && !SCREEN_RECAP_LINE.matcher(lines[j]).matches()) {
+                        return text;
+                    }
+                }
+                return TRAILING_RULES.matcher(String.join("\n", Arrays.copyOfRange(lines, 0, i))).replaceAll("").stripTrailing();
+            }
+        }
+        return text;
     }
 
     static boolean namesKnownPath(String text, ConceptPaths paths) {
@@ -109,9 +160,9 @@ final class ReplyText {
         return BACKSLASH_RUN.matcher(UNICODE_HYPHEN.matcher(text).replaceAll("-")).replaceAll("\\\\");
     }
 
-    /** The reply as the researcher sees it: no query JSON, and concept paths in the form a tool returned them. */
+    /** The reply as the researcher sees it: no query JSON or screen recap, and concept paths in the form a tool returned them. */
     static String cleaned(String text, ConceptPaths paths) {
-        return withKnownPaths(withPlainPaths(withoutQueryJson(text)), paths);
+        return withKnownPaths(withPlainPaths(withoutScreenRecap(withoutQueryJson(text))), paths);
     }
 
     /**

@@ -1,8 +1,10 @@
 package edu.harvard.hms.dbmi.avillach.ai.chat;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -18,6 +20,13 @@ final class TurnState {
     final Map<String, Integer> failureCounts = new HashMap<>();
     /** The query the request arrived with, or null. */
     final ProposeQueryInput currentQuery;
+    /** The search text the request arrived with, or null. */
+    String currentSearch;
+    /** Whether the researcher's message asks to change their selected variables ({@link ProposalRules#asksToSelect}). */
+    boolean asksToSelect;
+
+    /** The most filters the model may propose, from {@link ProposeQueryTool#maxFilters}. */
+    int maxFilters = ProposeQueryInput.DEFAULT_MAX_FILTERS;
 
     /** Whether the researcher's query was too large to show the model, so it may not propose a query. */
     boolean queryLocked;
@@ -31,8 +40,16 @@ final class TurnState {
     boolean facetsListed;
     /** Set once a tool fails the same way too often; later tool calls are answered without running. */
     boolean toolsStopped;
+    /** Paths the researcher took off their screen by hand ({@link EarlierTurns#removedPathsByHand}); normalized. */
+    Set<String> removedByHand = Set.of();
+    /** Whether the model was already asked to confirm a proposal that brings back {@link #removedByHand} paths; asked at most once. */
+    boolean removedRepairAsked;
     /** Whether the model was already asked to fix unknown paths in its reply; asked at most once. */
     boolean pathRepairAsked;
+    /** Whether the model was already asked to fix a reply claiming the selected variables changed; asked at most once. */
+    boolean selectionRepairAsked;
+    /** Every successful dictionary lookup this turn, kept with the conversation so later turns can rebuild what it showed. */
+    final List<ConversationTurn.ToolOutput> toolOutputs = new ArrayList<>();
     /** The query of the latest successful count_participants call, or null. */
     JsonNode lastCountedQuery;
 
