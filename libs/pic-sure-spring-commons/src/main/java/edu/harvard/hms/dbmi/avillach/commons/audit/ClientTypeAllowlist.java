@@ -18,7 +18,7 @@ public final class ClientTypeAllowlist {
     public static final String UNKNOWN = "UNKNOWN";
 
     /** Caller types that only a verified source may claim. */
-    public static final List<String> RESERVED = List.of("mcp", "service");
+    public static final List<String> RESERVED = List.of("MCP", "SERVICE");
 
     /** The clients PIC-SURE ships: the two adapters and the web frontend. */
     public static final ClientTypeAllowlist DEFAULT = new ClientTypeAllowlist(List.of("PYTHON_ADAPTER", "R_ADAPTER", "FRONTEND"));

@@ -21,9 +21,18 @@ public class ObservabilityConfig {
     /**
      * The {@code X-Client-Type} values clients may present, from {@code picsure.gateway.allowed-client-types}. Both the audit filter and
      * the header sanitizer read it, so an unlisted value is neither audited as a caller nor forwarded downstream.
+     *
+     * @param allowed the configured client types
+     * @return the allowlist
+     * @throws IllegalStateException if no client type is configured, which would reject every adapter and frontend request
      */
     @Bean
     public ClientTypeAllowlist clientTypeAllowlist(@Value("${picsure.gateway.allowed-client-types}") List<String> allowed) {
+        if (allowed.stream().allMatch(value -> value == null || value.isBlank())) {
+            throw new IllegalStateException(
+                "picsure.gateway.allowed-client-types (GATEWAY_ALLOWED_CLIENT_TYPES) lists no client types. Every request naming a client type would be rejected. Unset the variable to use the default, or list at least one type."
+            );
+        }
         return new ClientTypeAllowlist(allowed);
     }
 

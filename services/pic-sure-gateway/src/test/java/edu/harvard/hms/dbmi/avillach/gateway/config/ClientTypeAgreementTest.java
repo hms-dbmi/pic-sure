@@ -6,6 +6,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
@@ -63,19 +65,19 @@ class ClientTypeAgreementTest {
     }
 
     @Test
-    void everyAcceptedClientTypeIsAuditedAndForwardedAsTheSameCaller() throws Exception {
-        String[][] sentAndExpected =
-            {{"PYTHON_ADAPTER", "PYTHON_ADAPTER"}, {"r_adapter", "R_ADAPTER"}, {" FRONTEND ", "FRONTEND"}, {"frontend", "FRONTEND"}};
-        for (String[] pair : sentAndExpected) {
-            clearInvocations(logging);
-            MockHttpServletRequest request = new MockHttpServletRequest("POST", PATH);
-            request.addHeader("X-Client-Type", pair[0]);
+    void everyListedClientTypeIsAuditedAndForwardedAsTheSameCallerInEverySpelling() throws Exception {
+        for (String listed : List.of("PYTHON_ADAPTER", "R_ADAPTER", "FRONTEND")) {
+            for (String sent : List.of(listed, listed.toLowerCase(Locale.ROOT), " " + listed + " ")) {
+                clearInvocations(logging);
+                MockHttpServletRequest request = new MockHttpServletRequest("POST", PATH);
+                request.addHeader("X-Client-Type", sent);
 
-            MockHttpServletResponse response = run(request);
+                MockHttpServletResponse response = run(request);
 
-            assertThat(response.getStatus()).as(pair[0]).isEqualTo(200);
-            assertThat(auditedEvent().getCaller()).as(pair[0]).isEqualTo(pair[1]);
-            assertThat(forwardedClientType.get()).as(pair[0]).isEqualTo(auditedEvent().getCaller());
+                assertThat(response.getStatus()).as(sent).isEqualTo(200);
+                assertThat(auditedEvent().getCaller()).as(sent).isEqualTo(listed);
+                assertThat(forwardedClientType.get()).as(sent).isEqualTo(listed);
+            }
         }
     }
 
