@@ -15,9 +15,11 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import edu.harvard.hms.dbmi.avillach.commons.audit.ClientTypeAllowlist;
 import edu.harvard.hms.dbmi.avillach.commons.audit.VerifiedCaller;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.commons.request.RequestIdFilter;
+import edu.harvard.hms.dbmi.avillach.gateway.request.HeaderNames;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -34,9 +36,9 @@ import jakarta.servlet.http.HttpServletResponse;
  * client request for them. Whatever the gateway resolved (possibly nothing) is authoritative -- a client cannot spoof these by sending its
  * own values, even where the gateway resolved an empty/null value (e.g. open-access requests, users with no privileges).
  * {@code X-Picsure-Access-Type} records which gateway authentication flow admitted the request. Downstream backend routing uses explicit
- * path segments instead. <p> When the request's {@link VerifiedCaller} is {@value McpCallerFilter#CALLER}, {@value #HEADER_CLIENT_TYPE} is
- * also gateway-owned and carries {@value McpCallerFilter#CALLER}, so a backend service sees that value only on a call the gateway verified.
- * Otherwise the client's {@value #HEADER_CLIENT_TYPE} passes through as sanitized upstream.
+ * path segments instead. <p> {@value #HEADER_CLIENT_TYPE} is also gateway-owned, so every backend service gets a caller. It is
+ * {@value McpCallerFilter#CALLER} when the request's {@link VerifiedCaller} is, so a backend sees that value only on a call the gateway
+ * verified. Otherwise it is the client's value as sanitized upstream, or {@value ClientTypeAllowlist#UNKNOWN} when the client sent none.
  */
 public class IdentityPropagationFilter extends OncePerRequestFilter {
 
@@ -45,12 +47,27 @@ public class IdentityPropagationFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(IdentityPropagationFilter.class);
 
-    public IdentityPropagationFilter() {}
+    private final ClientTypeAllowlist clientTypes;
+
+    /** Creates a filter that forwards the {@link ClientTypeAllowlist#DEFAULT} client types. */
+    public IdentityPropagationFilter() {
+        this(ClientTypeAllowlist.DEFAULT);
+    }
+
+    /**
+     * Creates a filter that forwards a client type only in the spelling this allowlist lists, and {@value ClientTypeAllowlist#UNKNOWN} for
+     * anything it does not list.
+     *
+     * @param clientTypes the client types the gateway accepts
+     */
+    public IdentityPropagationFilter(ClientTypeAllowlist clientTypes) {
+        this.clientTypes = clientTypes;
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse resp, FilterChain chain)
         throws ServletException, IOException {
-        IdentityHeadersRequest wrapped = new IdentityHeadersRequest(req);
+        IdentityHeadersRequest wrapped = new IdentityHeadersRequest(req, clientTypes);
         logForwardedIdentity(wrapped);
         chain.doFilter(wrapped, resp);
     }
@@ -81,10 +98,10 @@ public class IdentityPropagationFilter extends OncePerRequestFilter {
         private final Map<String, String> overrides = new LinkedHashMap<>();
         private final Set<String> ownedHeaders;
 
-        IdentityHeadersRequest(HttpServletRequest req) {
+        IdentityHeadersRequest(HttpServletRequest req, ClientTypeAllowlist clientTypes) {
             super(req);
             boolean verifiedMcp = VerifiedCaller.get(req).filter(McpCallerFilter.CALLER::equals).isPresent();
-            ownedHeaders = verifiedMcp ? withClientType(GATEWAY_OWNED_HEADERS) : GATEWAY_OWNED_HEADERS;
+            ownedHeaders = withClientType(GATEWAY_OWNED_HEADERS);
             put(GatewayUserResolver.HEADER_USER_ID, attr(req, GatewayUserResolver.HEADER_USER_ID));
             put(GatewayUserResolver.HEADER_USER_SUBJECT, attr(req, GatewayUserResolver.HEADER_USER_SUBJECT));
             put(GatewayUserResolver.HEADER_USER_EMAIL, attr(req, GatewayUserResolver.HEADER_USER_EMAIL));
@@ -92,9 +109,11 @@ public class IdentityPropagationFilter extends OncePerRequestFilter {
             put(GatewayUserResolver.HEADER_USER_PRIVILEGES, attr(req, GatewayUserResolver.HEADER_USER_PRIVILEGES));
             put(GatewayUserResolver.HEADER_ACCESS_TYPE, attr(req, GatewayUserResolver.HEADER_ACCESS_TYPE));
             put(HEADER_REQUEST_ID, resolveRequestId(req));
-            if (verifiedMcp) {
-                put(HEADER_CLIENT_TYPE, McpCallerFilter.CALLER);
-            }
+            put(HEADER_CLIENT_TYPE, verifiedMcp ? McpCallerFilter.CALLER : clientTypeOrUnknown(req, clientTypes));
+        }
+
+        private static String clientTypeOrUnknown(HttpServletRequest req, ClientTypeAllowlist clientTypes) {
+            return clientTypes.resolve(req.getHeader(HEADER_CLIENT_TYPE)).orElse(ClientTypeAllowlist.UNKNOWN);
         }
 
         private static Set<String> withClientType(Set<String> owned) {
@@ -147,15 +166,7 @@ public class IdentityPropagationFilter extends OncePerRequestFilter {
 
         @Override
         public Enumeration<String> getHeaderNames() {
-            Set<String> names = new LinkedHashSet<>();
-            Enumeration<String> superNames = super.getHeaderNames();
-            while (superNames != null && superNames.hasMoreElements()) {
-                String n = superNames.nextElement();
-                if (ownedCanonicalName(n) == null) {
-                    // Drop any client-supplied gateway-owned header name; only the resolved value (added below, if any) may appear.
-                    names.add(n);
-                }
-            }
+            Set<String> names = HeaderNames.retain(super.getHeaderNames(), n -> ownedCanonicalName(n) == null);
             names.addAll(overrides.keySet());
             return Collections.enumeration(names);
         }
