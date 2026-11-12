@@ -653,6 +653,141 @@ class QueryServiceTest {
         assertThat(onlySave().query()).contains("\"sample\":true");
     }
 
+    private static Query cohortAs(ResultType type, boolean sample) {
+        return new Query(List.of("\\demographics\\AGE\\"), List.of(), null, List.of(), type, null, null, sample);
+    }
+
+    private List<SaveQueryRequest> saves(int count) {
+        ArgumentCaptor<SaveQueryRequest> saved = ArgumentCaptor.forClass(SaveQueryRequest.class);
+        verify(operationsClient, times(count)).save(saved.capture());
+        return saved.getAllValues();
+    }
+
+    @Test
+    void firstSubmitSavesTheGeneralIdSampleAndResultType() {
+        sampleProperties.setEnabled(true);
+        Query pfbSample = cohortAs(ResultType.DATAFRAME_PFB, true);
+        callerHoldsConsents("phs001.c1");
+        hpdsAcceptsOwnedSubmits();
+
+        ownedService.query("auth", envelope(pfbSample), TOKEN, user(ALICE));
+
+        SaveQueryRequest saved = onlySave();
+        assertThat(saved.trigger()).isEqualTo("FIRST_SUBMIT");
+        assertThat(saved.picsureId()).isEqualTo(QueryIdentity.idFor(ALICE, pfbSample));
+        assertThat(saved.queryToVariantUuid()).isEqualTo(QueryIdentity.generalIdFor(ALICE, pfbSample)).isNotEqualTo(saved.picsureId());
+        assertThat(saved.sample()).isTrue();
+        assertThat(saved.resultType()).isEqualTo("DATAFRAME_PFB");
+    }
+
+    @Test
+    void firstSubmitOfAFullQuerySavesSampleFalse() {
+        callerHoldsConsents("phs001.c1");
+        hpdsAcceptsOwnedSubmits();
+
+        ownedService.query("auth", envelope(cohort()), TOKEN, user(ALICE));
+
+        SaveQueryRequest saved = onlySave();
+        assertThat(saved.queryToVariantUuid()).isEqualTo(QueryIdentity.generalIdFor(ALICE, cohort()));
+        assertThat(saved.sample()).isFalse();
+        assertThat(saved.resultType()).isEqualTo("DATAFRAME");
+    }
+
+    @Test
+    void generalIdOfASubmitIgnoresTheAuthorizationFiltersAndThePicsureIdTheClientSent() {
+        Query fromTheClient = cohortWithClientFilters("\\client\\", "narrow").setPicsureId(UUID.randomUUID());
+        callerHoldsConsents("phs001.c1", "phs001.c2");
+        hpdsAcceptsOwnedSubmits();
+
+        ownedService.query("auth", envelope(fromTheClient), TOKEN, user(ALICE));
+
+        assertThat(onlySave().queryToVariantUuid()).isEqualTo(QueryIdentity.generalIdFor(ALICE, cohort()));
+    }
+
+    @Test
+    void sampleAndFullSubmitsShareAGeneralIdAndHaveDifferentRowIds() {
+        sampleProperties.setEnabled(true);
+        Query full = cohortAs(ResultType.DATAFRAME, false);
+        Query sample = cohortAs(ResultType.DATAFRAME, true);
+        callerHoldsConsents("phs001.c1");
+        hpdsAcceptsOwnedSubmits();
+
+        ownedService.query("auth", envelope(full), TOKEN, user(ALICE));
+        ownedService.query("auth", envelope(sample), TOKEN, user(ALICE));
+
+        List<SaveQueryRequest> saved = saves(2);
+        assertThat(saved).extracting(SaveQueryRequest::queryToVariantUuid).containsOnly(QueryIdentity.generalIdFor(ALICE, full));
+        assertThat(saved).extracting(SaveQueryRequest::picsureId)
+            .containsExactly(QueryIdentity.idFor(ALICE, full), QueryIdentity.idFor(ALICE, sample)).doesNotHaveDuplicates();
+        assertThat(saved).extracting(SaveQueryRequest::sample).containsExactly(false, true);
+        assertThat(saved).extracting(SaveQueryRequest::resultType).containsExactly("DATAFRAME", "DATAFRAME");
+    }
+
+    @Test
+    void dataframeAndPfbSubmitsShareAGeneralId() {
+        Query dataframe = cohortAs(ResultType.DATAFRAME, false);
+        Query pfb = cohortAs(ResultType.DATAFRAME_PFB, false);
+        callerHoldsConsents("phs001.c1");
+        hpdsAcceptsOwnedSubmits();
+
+        ownedService.query("auth", envelope(dataframe), TOKEN, user(ALICE));
+        ownedService.query("auth", envelope(pfb), TOKEN, user(ALICE));
+
+        List<SaveQueryRequest> saved = saves(2);
+        assertThat(saved).extracting(SaveQueryRequest::queryToVariantUuid).containsOnly(QueryIdentity.generalIdFor(ALICE, dataframe));
+        assertThat(saved).extracting(SaveQueryRequest::picsureId)
+            .containsExactly(QueryIdentity.idFor(ALICE, dataframe), QueryIdentity.idFor(ALICE, pfb)).doesNotHaveDuplicates();
+        assertThat(saved).extracting(SaveQueryRequest::sample).containsExactly(false, false);
+        assertThat(saved).extracting(SaveQueryRequest::resultType).containsExactly("DATAFRAME", "DATAFRAME_PFB");
+    }
+
+    @Test
+    void twoUsersSubmittingOneQueryGetDifferentGeneralIds() {
+        callerHoldsConsents("phs001.c1");
+        hpdsAcceptsOwnedSubmits();
+
+        ownedService.query("auth", envelope(cohort()), TOKEN, user(ALICE));
+        ownedService.query("auth", envelope(cohort()), TOKEN, user(BOB));
+
+        assertThat(saves(2)).extracting(SaveQueryRequest::queryToVariantUuid)
+            .containsExactly(QueryIdentity.generalIdFor(ALICE, cohort()), QueryIdentity.generalIdFor(BOB, cohort()))
+            .doesNotHaveDuplicates();
+    }
+
+    @Test
+    void rerunSavesTheSameGeneralId() {
+        sampleProperties.setEnabled(true);
+        Query pfbSample = cohortAs(ResultType.DATAFRAME_PFB, true);
+        UUID id = QueryIdentity.idFor(ALICE, pfbSample);
+        callerHoldsConsents("phs001.c1");
+        hpdsAcceptsOwnedSubmits();
+
+        ownedService.query("auth", envelope(pfbSample), TOKEN, user(ALICE));
+        StoredQuery stored = rowOwnedByAlice(pfbSample, "AVAILABLE", BOTH_CONSENTS);
+        ownedService.queryStatus("auth", stored.picsureId(), TOKEN, user(ALICE));
+        when(operationsClient.find(id)).thenReturn(Optional.of(ownedRow(id, ALICE, "ERROR", ONE_CONSENT)));
+        ownedService.query("auth", envelope(pfbSample), TOKEN, user(ALICE));
+
+        List<SaveQueryRequest> saved = saves(3);
+        assertThat(saved).extracting(SaveQueryRequest::trigger).containsExactly("FIRST_SUBMIT", "CONSENT_CHANGE", "RESUBMIT");
+        assertThat(saved).extracting(SaveQueryRequest::picsureId).containsOnly(id);
+        assertThat(saved).extracting(SaveQueryRequest::queryToVariantUuid).containsOnly(QueryIdentity.generalIdFor(ALICE, pfbSample));
+        assertThat(saved).extracting(SaveQueryRequest::sample).containsOnly(true);
+        assertThat(saved).extracting(SaveQueryRequest::resultType).containsOnly("DATAFRAME_PFB");
+    }
+
+    @Test
+    void ownerlessSubmitSavesNoGeneralId() {
+        callerHoldsConsents("phs001.c1");
+        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-legacy"));
+        when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
+        GatewayUser notAUuid = new GatewayUser("auth0|alice", null, null, null, Set.of());
+
+        ownedService.query("auth", envelope(cohortAs(ResultType.DATAFRAME_PFB, false)), TOKEN, notAUuid);
+
+        assertSavedWithoutAnOwner("rr-legacy");
+    }
+
     @Test
     void ownedSubmitRunsTheSampleRulesBeforeAnythingIsLookedUpSentOrSaved() {
         assertThatThrownBy(() -> ownedService.query("auth", sampleRequest(ResultType.DATAFRAME), TOKEN, user(ALICE)))
@@ -860,6 +995,9 @@ class QueryServiceTest {
         assertThat(saved.userUuid()).isNull();
         assertThat(saved.consents()).isNull();
         assertThat(saved.trigger()).isNull();
+        assertThat(saved.queryToVariantUuid()).isNull();
+        assertThat(saved.sample()).isNull();
+        assertThat(saved.resultType()).isNull();
         assertThat(saved.resourceResultId()).isEqualTo(resourceResultId);
         verify(operationsClient, never()).find(any());
         verify(hpds, never()).query(any(HpdsTarget.class), any(), any(UUID.class));

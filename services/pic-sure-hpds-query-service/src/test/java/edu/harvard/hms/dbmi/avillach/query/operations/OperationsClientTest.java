@@ -306,6 +306,35 @@ class OperationsClientTest {
     }
 
     @Test
+    void saveSendsTheGeneralIdSampleAndResultType() {
+        UUID id = UUID.fromString("8694e3d4-5cb4-510f-8431-993445e6d3f6");
+        UUID owner = UUID.fromString("5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11");
+        UUID general = UUID.fromString("3d2f7c1a-9b4e-5c6d-8e7f-0a1b2c3d4e5f");
+        ops.stubFor(
+            post(urlEqualTo("/operations/internal/queries")).willReturn(
+                aResponse().withStatus(201).withHeader("Content-Type", "application/json").withBody("{\"picsureId\":\"" + id + "\"}")
+            )
+        );
+
+        UUID saved = client().save(
+            new SaveQueryRequest(
+                "{}", id.toString(), "PENDING", "3", null, id, owner, Map.of(), "FIRST_SUBMIT", general, true, "DATAFRAME_PFB"
+            )
+        );
+
+        assertThat(saved).isEqualTo(id);
+        ops.verify(
+            postRequestedFor(urlEqualTo("/operations/internal/queries")).withRequestBody(
+                equalTo(
+                    "{\"query\":\"{}\",\"resourceResultId\":\"" + id + "\",\"status\":\"PENDING\",\"version\":\"3\",\"metadata\":null,"
+                        + "\"picsureId\":\"" + id + "\",\"userUuid\":\"" + owner + "\",\"consents\":{},\"trigger\":\"FIRST_SUBMIT\","
+                        + "\"queryToVariantUuid\":\"" + general + "\",\"sample\":true,\"resultType\":\"DATAFRAME_PFB\"}"
+                )
+            )
+        );
+    }
+
+    @Test
     void findReturnsTheStoredQueryWithItsOwnerConsentsAndRun() {
         UUID id = UUID.randomUUID();
         UUID owner = UUID.randomUUID();

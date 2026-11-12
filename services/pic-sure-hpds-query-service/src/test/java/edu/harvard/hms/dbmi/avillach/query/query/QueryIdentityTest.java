@@ -60,6 +60,7 @@ class QueryIdentityTest {
         + "\"max\":0x4059000000000000},{\"key\":null,\"values\":[],\"min\":null,\"max\":null}],\"expectedResultType\":\"DATAFRAME_PFB\","
         + "\"sample\":true}";
     private static final String GOLDEN_ID = "8c6f2644-054c-51f2-9a4a-d129acf11b06";
+    private static final String GOLDEN_GENERAL_ID = "434e9f0e-eb55-52b7-b0e7-c2af73357be8";
 
     private static Query query(List<String> select, PhenotypicClause clause, List<GenomicFilter> genomic, ResultType type, boolean sample) {
         return new Query(select, List.of(), clause, genomic, type, null, null, sample);
@@ -427,6 +428,125 @@ class QueryIdentityTest {
     @Test
     void theIdOfAFixedUserAndQueryNeverChanges() {
         assertThat(QueryIdentity.idFor(USER, fullyPopulated())).hasToString(GOLDEN_ID);
+    }
+
+    @Test
+    void generalIdIgnoresResultTypeAndSample() {
+        Query dataframe = query(List.of(AGE), numeric(18.0, null), List.of(), ResultType.DATAFRAME, false);
+        Query pfb = query(List.of(AGE), numeric(18.0, null), List.of(), ResultType.DATAFRAME_PFB, false);
+        Query sample = query(List.of(AGE), numeric(18.0, null), List.of(), ResultType.DATAFRAME, true);
+        Query pfbSample = query(List.of(AGE), numeric(18.0, null), List.of(), ResultType.DATAFRAME_PFB, true);
+        Query untyped = query(List.of(AGE), numeric(18.0, null), List.of(), null, false);
+
+        UUID expected = QueryIdentity.generalIdFor(USER, dataframe);
+
+        assertThat(List.of(pfb, sample, pfbSample, untyped)).allSatisfy(variant -> {
+            assertThat(CanonicalQuery.generalOf(variant)).isEqualTo(CanonicalQuery.generalOf(dataframe));
+            assertThat(QueryIdentity.generalIdFor(USER, variant)).isEqualTo(expected);
+            assertThat(QueryIdentity.idFor(USER, variant)).isNotEqualTo(QueryIdentity.idFor(USER, dataframe));
+        });
+        assertThat(CanonicalQuery.generalOf(pfbSample)).doesNotContain("expectedResultType", "sample", "DATAFRAME");
+    }
+
+    @Test
+    void generalIdDiffersFromTheRowId() {
+        List<Query> queries = new ArrayList<>(List.of(fullyPopulated(), new Query(null, null, null, null, null, null, null, false)));
+        for (ResultType type : ResultType.values()) {
+            queries.add(query(List.of(AGE), null, List.of(), type, false));
+            queries.add(query(List.of(AGE), null, List.of(), type, true));
+        }
+
+        assertThat(queries).allSatisfy(query -> {
+            assertThat(CanonicalQuery.generalOf(query)).isNotEqualTo(CanonicalQuery.of(query));
+            assertThat(QueryIdentity.generalIdFor(USER, query)).isNotEqualTo(QueryIdentity.idFor(USER, query));
+        });
+    }
+
+    @Test
+    void generalIdChangesWithUserSelectOrderAndClause() {
+        PhenotypicFilter sex = categorical(Set.of("Male"));
+        PhenotypicFilter age = numeric(18.0, null);
+        GenomicFilter gene = new GenomicFilter("Gene_with_variant", List.of("APOE"), null, null);
+        Query base = query(List.of(AGE, SEX), all(sex, age), List.of(gene), ResultType.DATAFRAME, false);
+        Query sameAgain = query(List.of(AGE, SEX), all(sex, age), List.of(gene), ResultType.DATAFRAME, false);
+        Query otherSelectOrder = query(List.of(SEX, AGE), all(sex, age), List.of(gene), ResultType.DATAFRAME, false);
+        Query otherClauseOrder = query(List.of(AGE, SEX), all(age, sex), List.of(gene), ResultType.DATAFRAME, false);
+        Query otherClause = query(List.of(AGE, SEX), all(sex, numeric(21.0, null)), List.of(gene), ResultType.DATAFRAME, false);
+        Query noClause = query(List.of(AGE, SEX), null, List.of(gene), ResultType.DATAFRAME, false);
+        Query noGenomicFilter = query(List.of(AGE, SEX), all(sex, age), List.of(), ResultType.DATAFRAME, false);
+
+        UUID general = QueryIdentity.generalIdFor(USER, base);
+
+        assertThat(QueryIdentity.generalIdFor(USER, sameAgain)).isEqualTo(general);
+        assertThat(QueryIdentity.generalIdFor(OTHER_USER, base)).isNotEqualTo(general);
+        assertThat(QueryIdentity.generalIdFor(USER, otherSelectOrder)).isNotEqualTo(general);
+        assertThat(QueryIdentity.generalIdFor(USER, otherClauseOrder)).isNotEqualTo(general);
+        assertThat(QueryIdentity.generalIdFor(USER, otherClause)).isNotEqualTo(general);
+        assertThat(QueryIdentity.generalIdFor(USER, noClause)).isNotEqualTo(general);
+        assertThat(QueryIdentity.generalIdFor(USER, noGenomicFilter)).isNotEqualTo(general);
+    }
+
+    @Test
+    void generalIdIgnoresAuthorizationFiltersIdAndPicsureId() {
+        Query scoped = fullyPopulated();
+        Query bare = new Query(
+            scoped.select(), null, scoped.phenotypicClause(), scoped.genomicFilters(), scoped.expectedResultType(), null, null,
+            scoped.sample()
+        );
+
+        assertThat(CanonicalQuery.generalOf(scoped)).isEqualTo(CanonicalQuery.generalOf(bare))
+            .doesNotContain("phs000007", "8694e3d4", "11111111", "authorizationFilters");
+        assertThat(QueryIdentity.generalIdFor(USER, scoped)).isEqualTo(QueryIdentity.generalIdFor(USER, bare));
+    }
+
+    @Test
+    void generalFormIsTheRowFormWithoutItsLastTwoMembers() {
+        String lastTwoMembers = ",\"expectedResultType\":\"DATAFRAME_PFB\",\"sample\":true}";
+        Query smallest = new Query(null, null, null, null, null, null, null, false);
+
+        assertThat(GOLDEN_CANONICAL).endsWith(lastTwoMembers);
+        assertThat(CanonicalQuery.generalOf(fullyPopulated()))
+            .isEqualTo(GOLDEN_CANONICAL.substring(0, GOLDEN_CANONICAL.length() - lastTwoMembers.length()) + "}");
+        assertThat(CanonicalQuery.generalOf(smallest))
+            .isEqualTo("{\"v\":" + CanonicalQuery.FORM_VERSION + ",\"select\":[],\"phenotypicClause\":null,\"genomicFilters\":[]}");
+        assertThat(CanonicalQuery.of(smallest)).isEqualTo(
+            "{\"v\":1,\"select\":[],\"phenotypicClause\":null,\"genomicFilters\":[],\"expectedResultType\":null,\"sample\":false}"
+        );
+        for (ResultType type : ResultType.values()) {
+            for (boolean sample : new boolean[] {false, true}) {
+                Query variant = query(List.of(SEX, AGE), all(numeric(18.0, null)), List.of(), type, sample);
+                String general = CanonicalQuery.generalOf(variant);
+
+                assertThat(CanonicalQuery.of(variant)).isEqualTo(
+                    general.substring(0, general.length() - 1) + ",\"expectedResultType\":\"" + type.name() + "\",\"sample\":" + sample
+                        + "}"
+                );
+            }
+        }
+    }
+
+    @Test
+    void theGeneralIdOfAFixedUserAndQueryNeverChanges() {
+        assertThat(QueryIdentity.generalIdFor(USER, fullyPopulated())).hasToString(GOLDEN_GENERAL_ID);
+    }
+
+    @Test
+    void theGeneralIdIsAVersion5UuidOfTheUserAndTheSha256OfTheGeneralForm() {
+        Query query = fullyPopulated();
+        byte[] name = digest("SHA-256", CanonicalQuery.generalOf(query).getBytes(StandardCharsets.UTF_8));
+
+        UUID generalId = QueryIdentity.generalIdFor(USER, query);
+
+        assertThat(generalId.version()).isEqualTo(5);
+        assertThat(generalId.variant()).isEqualTo(2);
+        assertThat(generalId).isEqualTo(rfc4122Version5(USER, name));
+    }
+
+    @Test
+    void aMissingUserOrQueryIsRefusedForTheGeneralId() {
+        assertThatThrownBy(() -> QueryIdentity.generalIdFor(null, fullyPopulated())).isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> QueryIdentity.generalIdFor(USER, null)).isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> CanonicalQuery.generalOf(null)).isInstanceOf(NullPointerException.class);
     }
 
     @Test

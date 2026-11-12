@@ -39,6 +39,7 @@ import edu.harvard.dbmi.avillach.domain.StoredQuery;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.StoredQueryConsentStripper;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.QueryTranslator;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
@@ -333,6 +334,13 @@ public class QueryService {
      * {@link #submitMarkingTheRow} and {@link #saveAfterSubmit} describe. When this method throws, that row stays marked unless HPDS showed
      * that it kept nothing of the submit. A first submit has no row yet and is sent by {@link #submitWithoutARow}, which marks nothing.
      *
+     * <p>Every save names the general query the row is a variant of, and which variant it is: the id {@link QueryIdentity#generalIdFor}
+     * derives for the owner, the {@code sample} flag and the result type name, or null for a query with no result type. All three are read
+     * from the query of {@code req}, the same query that is sent to HPDS and stored as the body, on a first submit and on every later run
+     * alike. The row id comes from that query as well: {@link #createOwned} derives it on a submit, and on a run of a stored row the query
+     * is read from the body stored under it. Authorization filters and ids are in neither canonical form, so scoping the query changes none
+     * of the four values.
+     *
      * @param target the HPDS backend to run on
      * @param req the envelope whose query is the v3 query to run, already scoped with {@code consents} and carrying {@code id}
      * @param owner the UUID of the row's owner
@@ -353,7 +361,8 @@ public class QueryService {
         saveAfterSubmit(
             new SaveQueryRequest(
                 serializeQuery(req.copy().setQuery(scoped.setPicsureId(id).setAuthorizationFilters(List.of()))), resultId,
-                statusName(results.getStatus()), CURRENT_VERSION, metadataBase64, id, owner, consents, trigger
+                statusName(results.getStatus()), CURRENT_VERSION, metadataBase64, id, owner, consents, trigger,
+                QueryIdentity.generalIdFor(owner, scoped), scoped.sample(), resultTypeName(scoped.expectedResultType())
             )
         );
         unsettledRows.markSettled(id);
@@ -649,6 +658,16 @@ public class QueryService {
 
     private static String statusName(PicSureStatus status) {
         return status == null ? null : status.name();
+    }
+
+    /**
+     * Returns the name a result type is saved under.
+     *
+     * @param resultType the result type of a query, or null when the query has none
+     * @return the constant name, or null for a query with no result type
+     */
+    private static String resultTypeName(ResultType resultType) {
+        return resultType == null ? null : resultType.name();
     }
 
     // --- read ops: stored rows older than v3 are upgraded before dispatch ---

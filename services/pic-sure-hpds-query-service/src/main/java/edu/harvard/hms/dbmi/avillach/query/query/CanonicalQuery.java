@@ -22,21 +22,29 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 
 /**
  * Writes a v3 {@link Query} as one fixed string, so that two queries that ask for the same thing give the same string on every JVM, with
- * every collection implementation and with every JSON library version. {@link QueryIdentity} hashes this string into the id of the query
- * row, which is also the key of the HPDS result, so the form must never change for a query that is already stored.
+ * every collection implementation and with every JSON library version. {@link QueryIdentity} hashes the string into a permanent database
+ * key, so neither form below may ever change for a query that is already stored.
  *
- * <p>The string is written by hand, member by member, in the order below. It does not use {@code toString()}, a JSON mapper, or the
- * iteration order of any set or map.
+ * <p><b>Two forms.</b> <ul> <li>The row form, {@link #of(Query)}, writes every member listed under Query below. Its hash is the id of the
+ * query row, which is also the key of the HPDS result.</li> <li>The general form, {@link #generalOf(Query)}, is the row form without its
+ * last two members, {@code expectedResultType} and {@code sample}. Its hash is the id of the general query: what the caller asks for,
+ * whatever the result type and whether or not it is a sample. A sample and a full export, or two export formats, of one cohort therefore
+ * have different row forms and one general form.</li> </ul> One method writes the members the two forms share, so they cannot drift apart.
+ * The two forms of one query are never the same string, and no general form equals any row form: after {@code genomicFilters} a general
+ * form ends with <code>}</code> where a row form continues with {@code ,"expectedResultType":}.
  *
- * <p><b>Version.</b> The first member is {@code v}, the number in {@link #FORM_VERSION}. It names the set of rules the rest of the string
- * was written under.
+ * <p>Each string is written by hand, member by member, in the order below. Neither uses {@code toString()}, a JSON mapper, or the iteration
+ * order of any set or map.
+ *
+ * <p><b>Version.</b> The first member of both forms is {@code v}, the number in {@link #FORM_VERSION}. It names the set of rules the rest
+ * of the string was written under. The general form has no version of its own.
  *
  * <p><b>Query.</b> <ul> <li>{@code select}: every path in the given order, because that order is the column order of the export. Null is
  * written as an empty list.</li> <li>{@code phenotypicClause}: the clause tree, or {@code null} when there is none. A missing clause and a
  * subquery with no clauses are different queries.</li> <li>{@code genomicFilters}: every filter in the given order. Null is written as an
- * empty list.</li> <li>{@code expectedResultType}: the enum constant name, or {@code null}.</li> <li>{@code sample}: always written, as
- * {@code true} or {@code false}.</li> <li>{@code id}, {@code picsureId} and {@code authorizationFilters} are left out, so the string does
- * not depend on who is asking or on their consents.</li> </ul>
+ * empty list.</li> <li>{@code expectedResultType}, row form only: the enum constant name, or {@code null}.</li> <li>{@code sample}, row
+ * form only: always written, as {@code true} or {@code false}.</li> <li>{@code id}, {@code picsureId} and {@code authorizationFilters} are
+ * left out of both forms, so neither string depends on who is asking or on their consents.</li> </ul>
  *
  * <p><b>PhenotypicFilter.</b> {@code phenotypicFilterType} as the constant name or {@code null}, {@code conceptPath} as a string or
  * {@code null}, {@code values} sorted or {@code null}, {@code min}, {@code max}, {@code not}.
@@ -71,9 +79,14 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 public final class CanonicalQuery {
 
     /**
-     * The version of the rules this class writes under, written as the first member of the canonical form. Raise it on every deliberate
-     * change of the rules. A string written under new rules then always differs from every string written under old rules, so a query can
-     * never take the id of a different query that was stored before the change.
+     * The version of the rules this class writes under, written as the first member of the row form and of the general form. Raise it on
+     * every deliberate change of the rules. A string written under new rules then always differs from every string written under old rules,
+     * so a query can never take the id of a different query that was stored before the change.
+     *
+     * <p>Both forms share this one number on purpose. A row is filed under its general query, and one general query holds at most one row
+     * per result type and sample flag. With a version per form, raising only the row form's version would give a resubmitted query a new
+     * row id under the general id it already has, and that row would collide with the one stored before the change. With one version the
+     * two ids always change together.
      */
     static final int FORM_VERSION = 1;
 
@@ -118,13 +131,43 @@ public final class CanonicalQuery {
     private CanonicalQuery() {}
 
     /**
-     * Returns the canonical form of a query. See the class description for the rules.
+     * Returns the row form of a query: every member of the general form, then {@code expectedResultType} and {@code sample}. See the class
+     * description for the rules.
      *
      * @param query the query to write
-     * @return the canonical form, in printable ASCII
+     * @return the row form, in printable ASCII
      * @throws NullPointerException when the query is null
      */
     public static String of(Query query) {
+        StringBuilder out = openWithSharedMembers(query);
+        out.append(",\"expectedResultType\":");
+        writeEnum(out, query.expectedResultType());
+        out.append(",\"sample\":").append(query.sample() ? "true" : "false");
+        return out.append('}').toString();
+    }
+
+    /**
+     * Returns the general form of a query: the row form without {@code expectedResultType} and {@code sample}. Two queries that differ only
+     * in those two members give the same string. See the class description for the rules.
+     *
+     * @param query the query to write
+     * @return the general form, in printable ASCII
+     * @throws NullPointerException when the query is null
+     */
+    public static String generalOf(Query query) {
+        return openWithSharedMembers(query).append('}').toString();
+    }
+
+    /**
+     * Starts a canonical form with the members the row form and the general form share: the opening brace, {@code v}, {@code select},
+     * {@code phenotypicClause} and {@code genomicFilters}. The object is left open, so the caller appends the remaining members, if any,
+     * and the closing brace.
+     *
+     * @param query the query to write
+     * @return a builder that holds the shared members and no closing brace
+     * @throws NullPointerException when the query is null
+     */
+    private static StringBuilder openWithSharedMembers(Query query) {
         Objects.requireNonNull(query, "query is null");
         StringBuilder out = new StringBuilder(256);
         out.append("{\"v\":").append(FORM_VERSION).append(",\"select\":");
@@ -138,10 +181,7 @@ public final class CanonicalQuery {
             writeGenomicFilter(out, filter);
             separator = ",";
         }
-        out.append("],\"expectedResultType\":");
-        writeEnum(out, query.expectedResultType());
-        out.append(",\"sample\":").append(query.sample() ? "true" : "false");
-        return out.append('}').toString();
+        return out.append(']');
     }
 
     /**
