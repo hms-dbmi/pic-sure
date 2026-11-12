@@ -17,6 +17,8 @@ Needs Node 22 (built-in `fetch`), no `npm install`.
 
 1. Start the stack with the service configured for the model under test (`BEDROCK_MODEL_ID`, etc.; see the service
    README) and `AI_ENABLED=true`: the chat endpoint is off by default. The model must be in the IAM allowlist, or every request fails with `model_unavailable`.
+   Also set `LOGGING_LEVEL_EDU_HARVARD_HMS_DBMI_AVILLACH_AI_CHAT=DEBUG`. Tool call arguments and results are only logged at
+   DEBUG; at the default INFO the path and selection checks report "not checked (log is not at DEBUG)".
 2. Point it at the stack:
 
    ```sh
@@ -26,7 +28,7 @@ Needs Node 22 (built-in `fetch`), no `npm install`.
 
    - `CHAT_URL`: chat endpoint. Through the local proxy it is `https://localhost/picsure/ai/chat` (needs `-k` for the
      self-signed cert); straight to the container it is `http://localhost:8080/ai/chat` (the default).
-   - `LOG_CMD`: prints the service log. Without it the path and cap checks can't run.
+   - `LOG_CMD`: prints the service log. Without it the path and cap checks can't run, and the service must log at DEBUG (step 1).
 3. Run, noting what's under test so the report says which model and config produced it:
 
    ```sh
@@ -66,6 +68,9 @@ check, not verdicts**:
 - `path not returned by any search`: the reply or a tool call used a concept path that no tool returned in that
   run, so it may be made up. Watch for non-ASCII look-alikes (e.g. U+2011 non-breaking hyphen) and paths missing a
   trailing backslash. A path the request itself carried counts as returned.
+- `paths not checked (log is not at DEBUG)` / `selection change not checked (log is not at DEBUG)`: the log has no
+  `Chat turn start:` line, so tool arguments and results weren't logged and those checks were skipped. Rerun with
+  `LOGGING_LEVEL_EDU_HARVARD_HMS_DBMI_AVILLACH_AI_CHAT=DEBUG`.
 - `hitCap`: the turn reached `AI_MAX_TOOL_ITERATIONS`. `(answered after cap)` means the forced final call produced
   an answer.
 - `fallback text`: the service gave up and sent its "I wasn't able to finish" reply.

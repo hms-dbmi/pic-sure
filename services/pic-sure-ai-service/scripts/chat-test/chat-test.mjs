@@ -299,6 +299,10 @@ function check(run, logLines, priorLines = []) {
   }
   if (!turnEnd && logLines.length) flags.push('no "Chat turn:" line');
 
+  // Tool arguments and results are DEBUG lines. "Chat turn start:" is the DEBUG line every turn logs, so its absence means the
+  // level is too low and the checks that read tool lines would report fake failures.
+  const debugLogged = logLines.some((l) => l.includes('Chat turn start:'));
+
   // Paths the run was allowed to use: everything a tool returned, this turn or an earlier one, plus whatever the request itself carried.
   const known = new Set(pathsIn(run.body ?? null));
   for (const line of [...priorLines, ...logLines]) {
@@ -326,7 +330,9 @@ function check(run, logLines, priorLines = []) {
     const nonAscii = [...p].filter((c) => c.charCodeAt(0) > 127).map((c) => `U+${c.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}`);
     unknown.push(`${where}: \`${p}\`${nonAscii.length ? ` (non-ASCII: ${[...new Set(nonAscii)].join(', ')})` : ''}`);
   }
-  if (logLines.length) {
+  if (logLines.length && !debugLogged) {
+    if (used.length) flags.push('paths not checked (log is not at DEBUG)');
+  } else if (logLines.length) {
     [...new Set(unknown)].forEach((u) => flags.push(`path not returned by any search: ${u}`));
   } else if (used.length) {
     flags.push('paths not checked (no log)');
@@ -348,6 +354,8 @@ function check(run, logLines, priorLines = []) {
   // the researcher asked for and nothing else. A plain select is read as addSelect.
   if (run.selectChange && !logLines.length) {
     flags.push('selection change not checked (no log)');
+  } else if (run.selectChange && !debugLogged) {
+    flags.push('selection change not checked (log is not at DEBUG)');
   } else if (run.selectChange) {
     const proposals = logLines
       .map((l) => l.match(/Tool call requested: name=propose_query id=\S+ (.*)$/))
