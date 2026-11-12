@@ -42,7 +42,9 @@ public class AccessLogFilter extends OncePerRequestFilter {
             long durationMs = (System.nanoTime() - start) / 1_000_000;
             // An exception escaping the chain has not set the status yet; the container answers it with a 500.
             int status = failed && response.getStatus() < 400 ? 500 : response.getStatus();
-            log.info("{} {} {} {}ms", request.getMethod(), request.getRequestURI(), status, durationMs);
+            log.info(
+                "{} {} {} {}ms", LogSanitizer.clean(request.getMethod()), LogSanitizer.clean(request.getRequestURI()), status, durationMs
+            );
         }
     }
 }
