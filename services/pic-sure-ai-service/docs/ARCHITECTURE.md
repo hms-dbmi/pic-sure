@@ -11,7 +11,7 @@ route, which fronts `pic-sure-mcp`. The model and the MCP tools never talk to ea
 ```mermaid
 flowchart LR
     UI["PIC-SURE UI<br/>(Explorer / Discover)"]
-    GW["pic-sure-gateway<br/>PSAMA introspection,<br/>stamps X-User-Id and<br/>X-Picsure-Access-Type"]
+    GW["pic-sure-gateway<br/>PSAMA introspection,<br/>stamps X-User-Id,<br/>X-User-Privileges and<br/>X-Picsure-Access-Type"]
     AI["pic-sure-ai-service<br/>/ai/chat"]
     MODEL["Reasoning model<br/>Bedrock Converse<br/>(aws-sdk or http provider)"]
     MCP["pic-sure-mcp<br/>read-only tools"]
@@ -132,6 +132,33 @@ prompt.
 
 ## 4. Identity, ownership and stored state
 
+### Authorization
+
+The service does not validate tokens: the gateway introspects them with PSAMA and forwards the result as headers. `GatewayPrivilegesFilter`
+maps `X-User-Privileges` to Spring authorities, and both `ChatController` handlers carry
+`@PreAuthorize("hasAuthority('ASSISTED_SEARCH')")`. That one privilege, with the same name in every deployment, covers Explorer and
+Discover alike; the service never sees which page the request came from. The UI flags `ENABLE_ASSISTED_SEARCH` and
+`ENABLE_ASSISTED_SEARCH_DISCOVER` decide where the assistant is offered, and are separate from both the privilege and `AI_ENABLED`.
+
+```mermaid
+flowchart LR
+    R[Request] --> E{AI_ENABLED}
+    E -- false --> N["404: no controller bean"]
+    E -- true --> A{Authorization<br/>header}
+    A -- missing or malformed --> U401[401]
+    A -- ok --> V{body valid}
+    V -- no --> B400[400]
+    V -- yes --> P{"X-User-Privileges<br/>has ASSISTED_SEARCH"}
+    P -- no, including open access --> F403[403]
+    P -- yes --> H[handler]
+```
+
+Open-access callers carry a user id but no privileges, so they get 403, as does a request with no identity headers. The `GET` recovery
+route needs the same privilege as the `POST`. The guard runs before the handler body, so a rejected caller never reaches the model, the
+MCP gateway or the stores.
+
+### Ownership
+
 Conversation history and finished turn results are keyed by an owner derived from the caller, never by a server session.
 
 ```mermaid
@@ -149,6 +176,7 @@ flowchart LR
 
 - Both stores are Caffeine-backed, in memory, behind interfaces. State is lost on restart and not shared between instances, so run
   one instance or use sticky sessions. A shared store would be a new implementation selected by `picsure.ai.conversation.store`.
+- Open-access callers are rejected with 403 before ownership is used, so the `session:` owner is unreachable through the gateway today; it is kept for when open access is offered.
 - `X-User-Id` alone is never the owner for open access, because every open-access caller shares it. PSAMA reissues the open-session
   token every few minutes with the same `sub`, so the session id stays stable across token refreshes.
 - Only the final reply of each turn is stored for the model to read later. Tool outputs are stored too, but only to rebuild what the
@@ -183,7 +211,7 @@ edu.harvard.hms.dbmi.avillach.ai
   model/   ConverseModelClient (interface), ConverseSdkModelClient (aws-sdk), ConverseHttpModelClient (http),
            the only package that may touch Bedrock or Spring AI types
   mcp/     McpToolGateway (interface), gateway/GatewayMcpToolGateway (MCP client against the gateway's /mcp)
-  config/  security (stateless, permit-all, actuator gate), CallerContext argument resolver, request config
+  config/  security (stateless, actuator gate, GatewayPrivilegesFilter feeding the @PreAuthorize guards), CallerContext argument resolver, request config
   error/   validation error advice, one-line error summaries for logs
 resources/prompts/system-prompt.txt   one sentence per line, with {{capabilities}} and {{counts}} placeholders
 ```
@@ -203,6 +231,7 @@ Boundaries enforced or relied on:
 | --- | --- | --- |
 | 400 | `invalid_request` (state fields) or bean validation (required fields) | A required field is missing or blank, or `query`/`facets`/`search` is malformed |
 | 401 | `unauthorized` | `Authorization` header missing or not a bearer token |
+| 403 | (none set by this service) | The caller does not hold `ASSISTED_SEARCH`, or is an open-access caller. Applies to both routes |
 | 404 | `turn_not_found` | `GET /chat/{requestId}`: nothing stored, failed, or expired. Also every route when `AI_ENABLED=false` |
 | 409 | `turn_in_progress`, `duplicate_in_progress` | The message is still being answered |
 | 422 | `request_id_reused` | Same `requestId`, different message or state |

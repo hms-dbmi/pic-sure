@@ -11,7 +11,7 @@ ownership and idempotency).
 
 ## API
 
-Both routes exist only when `AI_ENABLED=true`; otherwise they answer 404. Every request needs `Authorization: Bearer <jwt>`.
+Both routes exist only when `AI_ENABLED=true`; otherwise they answer 404. Every request needs `Authorization: Bearer <jwt>` and the assisted-search privilege (see [Who may use the assistant](#who-may-use-the-assistant)).
 
 | Route | Purpose |
 | --- | --- |
@@ -24,6 +24,31 @@ A `requestId` runs at most once per caller. Sending it again returns the stored 
 different message or screen state is a 422, and the same message under a new `requestId` while the first is still running is a 409.
 Error statuses and `errorType`s are listed in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#6-error-contract).
 
+## Who may use the assistant
+
+Three layers decide whether a user gets the assistant. All must allow it.
+
+| Layer | Where | Effect |
+| --- | --- | --- |
+| Deployment | `AI_ENABLED` (this service) | `false`: no chat endpoint exists, so both routes answer **404** for everyone. |
+| Feature flags | `ENABLE_ASSISTED_SEARCH` (Explorer), `ENABLE_ASSISTED_SEARCH_DISCOVER` (Discover) in the UI | Whether the UI offers the assistant on that page. Independent of `AI_ENABLED` and of the privilege: some environments grant the privilege but do not want the feature. The service never sees these flags. |
+| User privilege | This service | The caller must hold the assisted-search privilege, or both routes answer **403**. |
+
+The privilege is `ASSISTED_SEARCH`, the same name in every deployment and for both pages. The service does not tell Explorer from Discover. Which page shows the assistant is the UI's
+flags. The privilege is granted through roles like any other, and is created in PSAMA by a migration per deployment line (nothing in this
+repo seeds it): add it to a role and give the role to the users.
+
+Enforcement is a `@PreAuthorize` guard on both handlers (`ChatController`) against the `X-User-Privileges` header the gateway sets after
+PSAMA introspection, read by `GatewayPrivilegesFilter`. The service does no access-rule evaluation of its own. `GET /ai/chat/{requestId}`
+requires the same privilege as the `POST`. The guard runs after the `Authorization` (401) and body (400) checks and before anything else,
+so a rejected caller never reaches the model, the MCP gateway or the turn store.
+
+**The assistant's own MCP calls rely on `ASSISTED_SEARCH`, not on `PIC_SURE_MCP`.** To answer a turn the service calls the dictionary and count tools on `pic-sure-mcp` through the gateway's `/mcp` route, replaying the user's token. `/mcp` otherwise requires `PIC_SURE_MCP`, which assistant users do not get from `ASSISTED_SEARCH` (so they cannot connect their own model to the same counts). Every MCP call therefore also carries `X-PIC-SURE-AI-TOKEN` (`AI_SERVICE_TOKEN`, shared with the gateway). The gateway verifies it, checks the user's token against the assistant's PSAMA rule (`AR_AI_SERVICE_REQUESTS`, which `ASSISTED_SEARCH` carries) instead of the `/mcp` one, and `pic-sure-mcp` admits the call as `ai-service`. A user with `ASSISTED_SEARCH` is the only one who gets that far, because this service's own guard runs first. A blank or mismatched token makes every tool call fail: the gateway answers 401 for a wrong value and `pic-sure-mcp` answers 403 for none.
+
+**Open-access (unauthenticated) callers are rejected with 403.** They carry no privileges, and the UI shows the assistant only to
+signed-in users holding the privilege, so there is no open-access assistant. A request that reaches the service with no identity headers
+is rejected the same way.
+
 ## Conversation history
 
 Conversations are kept in this instance's memory (Caffeine), keyed by the caller's identity and `conversationId`. The model reads each
@@ -35,7 +60,7 @@ passed to the model so it does not add it back.
 - **State is lost on restart and is not shared between instances.** Run one instance, or sticky sessions, until a shared store
   exists (a new implementation of `ConversationStore` / `TurnResultStore`, selected by `AI_CONVERSATION_STORE`).
 - A failed turn, or one that ends in the fallback text, is not stored, so a retry starts from the same place.
-- The owner key is the gateway user id for logged-in callers, the session id inside the `picsure_s_` token for open access (the
+- The owner key is the gateway user id for logged-in callers, the session id inside the `picsure_s_` token for open access (unreachable while open-access callers are rejected; the
   token is reissued every few minutes, the session id is not), and a hash of the token for anything else.
 
 > [!WARNING]
@@ -51,7 +76,7 @@ The gateway's MCP tools (from `pic-sure-mcp`) plus one local tool, minus exclusi
 - `search_concepts`, `list_facets`, `get_concept`, `get_concepts`: always.
 - `count_participants`, `cross_count`: obfuscated open-access counts that ignore consents. **Withheld from logged-in
   (`authorized`) callers**, whose results panel already shows exact counts; their system prompt says the assistant cannot count.
-  Open-access callers get them, with a prompt that says counts are obfuscated.
+  Open-access callers would get them, with a prompt that says counts are obfuscated, but they are rejected with 403 before the tool set is chosen (see [Who may use the assistant](#who-may-use-the-assistant)), so that path is currently unreachable through the gateway.
 - `get_adapter_code`: withheld by default (`AI_MCP_EXCLUDED_TOOLS`).
 - `propose_query` (local, never sent to the gateway): proposes a query, facet selection and/or search for the researcher to review.
   The selected variables are a change (`addSelect` / `removeSelect`), not a list.
@@ -120,7 +145,7 @@ touching the dispatch loop, the controller, or anything else in the service).
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `AI_ENABLED` | no, default `false` | `true` registers the chat endpoint. Left `false`, no chat endpoint exists, so `/ai/chat` and `/ai/chat/{requestId}` answer 404 while the service stays up. The service still starts as it would enabled, so `PICSURE_GATEWAY_URL` is required even then (see below). Set it to `true` wherever the assistant should be offered. The UI is switched separately (`ENABLE_ASSISTED_SEARCH` for Explorer, `ENABLE_ASSISTED_SEARCH_DISCOVER` for Discover). |
+| `AI_ENABLED` | no, default `false` | `true` registers the chat endpoint. Left `false`, no chat endpoint exists, so `/ai/chat` and `/ai/chat/{requestId}` answer 404 while the service stays up. The service still starts as it would enabled, so `PICSURE_GATEWAY_URL` is required even then (see below). Set it to `true` wherever the assistant should be offered. The UI is switched separately (`ENABLE_ASSISTED_SEARCH` for Explorer, `ENABLE_ASSISTED_SEARCH_DISCOVER` for Discover), and users also need the assisted-search privilege: see [Who may use the assistant](#who-may-use-the-assistant). |
 | `AI_MODEL_PROVIDER` | no, default `aws-sdk` | `aws-sdk` or `http` — which `ConverseModelClient` is active. |
 | `BEDROCK_REGION` | no, default `us-east-1` | AWS region, `aws-sdk` provider only. |
 | `BEDROCK_MODEL_ID` | no, default `openai.gpt-oss-120b-1:0` | Bedrock model id, `aws-sdk` provider only. The model must support Converse tool use and be in the deployment's IAM allowlist — see [Choosing a model](#choosing-a-model). |
@@ -133,6 +158,7 @@ touching the dispatch loop, the controller, or anything else in the service).
 | `AI_MAX_TOOL_ITERATIONS` | no, default `8` | Hard cap on tool-call round-trips per chat turn. Reaching it costs one more model call, asking the model to answer from what it has (see [Guarding against model behavior](#guarding-against-model-behavior)), so a turn makes at most this many plus one model calls. |
 | `AI_MAX_FILTERS` | no, default `100` | Most filters (subqueries count too) a query may hold and still be read or proposed by the model; at least 1. Over it, the researcher's query is withheld from the model and the model's own proposals are refused (see [Guarding against model behavior](#guarding-against-model-behavior)). The UI has no such limit: it only bounds what is resent to the model on every call, and the model is told the limit is its own. |
 | `AI_MCP_MODE` | no, default `gateway` | `gateway` (a real MCP client against `pic-sure-mcp`). |
+| `AI_SERVICE_TOKEN` | yes, if `AI_MCP_MODE=gateway` | Shared secret sent as `X-PIC-SURE-AI-TOKEN` on every `/mcp` call, so the gateway admits the assistant by `ASSISTED_SEARCH` and not `PIC_SURE_MCP`. Must equal the gateway's `AI_SERVICE_TOKEN`. |
 | `PICSURE_GATEWAY_URL` | yes, if `AI_MCP_MODE=gateway` | Base URL of the gateway's `/mcp` route. Same gateway URL `pic-sure-mcp` itself binds via `picsure.mcp.gateway-url` — one gateway URL, shared across both services' deploy config. |
 | `AI_MCP_CONNECT_TIMEOUT` | no, default `5s` | Connect timeout for gateway MCP calls. |
 | `AI_MCP_READ_TIMEOUT` | no, default `20s` | Read timeout for gateway MCP calls. Without one the HTTP client waits forever, so a stuck dictionary call would hang the whole chat turn. |
@@ -149,7 +175,7 @@ touching the dispatch loop, the controller, or anything else in the service).
 | `SERVER_PORT` | no, default `8080` | The context path is always `/ai`. |
 
 Misconfiguring the `http` provider (any of its three variables blank while selected), or leaving
-`PICSURE_GATEWAY_URL` blank while `AI_MCP_MODE=gateway`, fails fast at startup with a clear message,
+`PICSURE_GATEWAY_URL` or `AI_SERVICE_TOKEN` blank while `AI_MCP_MODE=gateway`, fails fast at startup with a clear message,
 rather than silently resolving to a blank URL or token.
 
 ## Choosing a model

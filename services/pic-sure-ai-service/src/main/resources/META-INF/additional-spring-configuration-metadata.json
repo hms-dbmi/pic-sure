@@ -37,6 +37,12 @@
       "defaultValue": ""
     },
     {
+      "name": "picsure.ai.mcp.service-token",
+      "type": "java.lang.String",
+      "description": "Shared secret GatewayMcpToolGateway sends as X-PIC-SURE-AI-TOKEN on every /mcp call, so the gateway admits the call by ASSISTED_SEARCH and pic-sure-mcp does not require PIC_SURE_MCP. Required when picsure.ai.mcp.mode=gateway (the default); must equal the gateway's AI_SERVICE_TOKEN. Maps from the AI_SERVICE_TOKEN environment variable.",
+      "defaultValue": ""
+    },
+    {
       "name": "picsure.ai.mcp.excluded-tools",
       "type": "java.lang.String",
       "description": "Comma-separated gateway tool names withheld from the model and refused if it requests them anyway. Set blank to offer every tool. Maps from the AI_MCP_EXCLUDED_TOOLS environment variable.",

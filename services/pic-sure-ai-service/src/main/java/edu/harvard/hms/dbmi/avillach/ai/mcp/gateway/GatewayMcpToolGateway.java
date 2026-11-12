@@ -37,6 +37,10 @@ import edu.harvard.hms.dbmi.avillach.commons.request.RequestIdFilter;
  * <p>The {@code initialize}/{@code notifications/initialized} handshake is done once, lazily, and not repeated after it succeeds --
  * {@code tools/list} and {@code tools/call} are then independent, per-call, caller-scoped requests. The server holds no per-caller state,
  * but the gateway introspects every {@code /mcp} request, so the handshake replays the triggering caller's token like any other call.
+ *
+ * <p>Every call also carries {@value #SERVICE_TOKEN_HEADER}. The gateway verifies it and then asks PSAMA whether the user may use the
+ * assistant ({@code ASSISTED_SEARCH}) instead of whether they may use {@code /mcp} ({@code PIC_SURE_MCP}), and {@code pic-sure-mcp} admits
+ * the call as {@code ai-service}. Without a valid token the same call needs {@code PIC_SURE_MCP} like any other client.
  */
 @Component
 @ConditionalOnProperty(prefix = "picsure.ai.mcp", name = "mode", havingValue = "gateway", matchIfMissing = true)
@@ -48,17 +52,29 @@ public class GatewayMcpToolGateway implements McpToolGateway {
     private static final MediaType EVENT_STREAM = MediaType.valueOf("text/event-stream");
     private static final String UNAVAILABLE = "The dictionary/query service is unavailable right now. Try again shortly.";
 
+    /** Header carrying the shared secret that tells the gateway a {@code /mcp} call comes from this service. */
+    static final String SERVICE_TOKEN_HEADER = "X-PIC-SURE-AI-TOKEN";
+
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
+    private final String serviceToken;
     private volatile boolean initialized;
 
-    /** @param readTimeout without one the HTTP client waits forever, hanging the chat turn */
+    /**
+     * @param serviceToken the secret the gateway checks to admit this service to {@code /mcp} without the {@code PIC_SURE_MCP} privilege;
+     *        it must equal the gateway's {@code AI_SERVICE_TOKEN}
+     * @param readTimeout without one the HTTP client waits forever, hanging the chat turn
+     */
     public GatewayMcpToolGateway(
-        @Value("${picsure.ai.mcp.gateway-url:}") String gatewayUrl, ObjectMapper objectMapper,
-        @Value("${picsure.ai.mcp.connect-timeout:5s}") Duration connectTimeout,
+        @Value("${picsure.ai.mcp.gateway-url:}") String gatewayUrl, @Value("${picsure.ai.mcp.service-token:}") String serviceToken,
+        ObjectMapper objectMapper, @Value("${picsure.ai.mcp.connect-timeout:5s}") Duration connectTimeout,
         @Value("${picsure.ai.mcp.read-timeout:20s}") Duration readTimeout
     ) {
         requireNonBlank(gatewayUrl);
+        if (serviceToken == null || serviceToken.isBlank()) {
+            throw new IllegalStateException("picsure.ai.mcp.service-token is required when picsure.ai.mcp.mode=gateway");
+        }
+        this.serviceToken = serviceToken.trim();
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(connectTimeout);
         requestFactory.setReadTimeout(readTimeout);
@@ -163,6 +179,7 @@ public class GatewayMcpToolGateway implements McpToolGateway {
     private JsonNode post(ObjectNode body, CallerContext caller) {
         return restClient.post().contentType(MediaType.APPLICATION_JSON).accept(MediaType.APPLICATION_JSON, EVENT_STREAM)
             .headers(headers -> {
+                headers.set(SERVICE_TOKEN_HEADER, serviceToken);
                 if (caller != null) {
                     caller.applyTo(headers);
                     applyRequestId(headers, caller);
