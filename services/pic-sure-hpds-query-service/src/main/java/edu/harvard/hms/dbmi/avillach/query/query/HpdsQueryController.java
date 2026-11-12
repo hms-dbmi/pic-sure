@@ -1,5 +1,9 @@
 package edu.harvard.hms.dbmi.avillach.query.query;
 
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -416,33 +420,24 @@ public class HpdsQueryController {
     @AuditEvent(type = "DATA_ACCESS", action = "query.result")
     @GetMapping(value = "/query/{id}/result", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
     @Operation(summary = "Result bytes of a completed query", description = RESULT_DESCRIPTION)
-    @ApiResponses(
-        {@ApiResponse(
-            responseCode = "200",
-            description = "The result file, labelled with the content type HPDS gave it: text/plain for the CSV of DATAFRAME and "
-                + "DATAFRAME_TIMESERIES, application/octet-stream for the Avro PFB of DATAFRAME_PFB.",
-            content = {
-                @Content(
-                    mediaType = MediaType.APPLICATION_OCTET_STREAM_VALUE,
-                    schema = @Schema(type = "string", format = "binary", description = "The Avro PFB file of a DATAFRAME_PFB query.")
-                ),
-                @Content(
-                    mediaType = MediaType.TEXT_PLAIN_VALUE,
-                    schema = @Schema(
-                        type = "string",
-                        description = "The CSV of a DATAFRAME or DATAFRAME_TIMESERIES query: a header row, then one row per patient."
-                    )
-                )}
-        ), @ApiResponse(responseCode = "400", description = RESULT_BAD_REQUEST),
-            @ApiResponse(responseCode = "403", description = RESULT_FORBIDDEN),
-            @ApiResponse(responseCode = "404", description = "Unknown query id."),
-            @ApiResponse(responseCode = "405", description = METHOD_NOT_ALLOWED),
-            @ApiResponse(responseCode = "409", description = RESULT_NOT_READY),
-            @ApiResponse(responseCode = "422", description = "Query stored before v3 cannot be converted to v3."),
-            @ApiResponse(responseCode = "502", description = RESULT_BAD_GATEWAY),
-            @ApiResponse(responseCode = "503", description = READ_UNAVAILABLE),
-            @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
+    @ApiResponse(
+        responseCode = "200",
+        description = "The result file, labelled with the content type HPDS gave it: text/plain for the CSV of DATAFRAME and "
+            + "DATAFRAME_TIMESERIES, application/octet-stream for the Avro PFB of DATAFRAME_PFB.",
+        content = {
+            @Content(
+                mediaType = MediaType.APPLICATION_OCTET_STREAM_VALUE,
+                schema = @Schema(type = "string", format = "binary", description = "The Avro PFB file of a DATAFRAME_PFB query.")
+            ),
+            @Content(
+                mediaType = MediaType.TEXT_PLAIN_VALUE,
+                schema = @Schema(
+                    type = "string",
+                    description = "The CSV of a DATAFRAME or DATAFRAME_TIMESERIES query: a header row, then one row per patient."
+                )
+            )}
     )
+    @ResultErrorResponses
     public ResponseEntity<byte[]> result(
         @Parameter(ref = BackendParameterConfig.BACKEND_REFERENCE) @PathVariable("backend") String backend, @PathVariable("id") UUID id,
         @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader,
@@ -464,18 +459,8 @@ public class HpdsQueryController {
     @AuditEvent(type = "DATA_ACCESS", action = "query.signed_url")
     @GetMapping(value = "/query/{id}/signed-url", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "A signed URL for a completed query's result", description = SIGNED_URL_DESCRIPTION)
-    @ApiResponses(
-        {@ApiResponse(responseCode = "200", description = "The signed URL for the completed query's result."),
-            @ApiResponse(responseCode = "400", description = RESULT_BAD_REQUEST),
-            @ApiResponse(responseCode = "403", description = RESULT_FORBIDDEN),
-            @ApiResponse(responseCode = "404", description = "Unknown query id."),
-            @ApiResponse(responseCode = "405", description = METHOD_NOT_ALLOWED),
-            @ApiResponse(responseCode = "409", description = RESULT_NOT_READY),
-            @ApiResponse(responseCode = "422", description = "Query stored before v3 cannot be converted to v3."),
-            @ApiResponse(responseCode = "502", description = RESULT_BAD_GATEWAY),
-            @ApiResponse(responseCode = "503", description = READ_UNAVAILABLE),
-            @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
-    )
+    @ApiResponse(responseCode = "200", description = "The signed URL for the completed query's result.")
+    @ResultErrorResponses
     public SignedUrlResponse signedUrl(
         @Parameter(ref = BackendParameterConfig.BACKEND_REFERENCE) @PathVariable("backend") String backend, @PathVariable("id") UUID id,
         @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader,
@@ -535,5 +520,26 @@ public class HpdsQueryController {
             b.header("queryMetadata", r.queryMetadata());
         }
         return b.body(r.body());
+    }
+
+    /**
+     * The error answers that {@link #result} and {@link #signedUrl} share. Both reads run the same owner, consent and readiness checks, so
+     * they fail the same way. Declaring the answers once keeps the two operations from drifting apart in the document. Each handler still
+     * declares its own 200.
+     */
+    @Target(ElementType.METHOD)
+    @Retention(RetentionPolicy.RUNTIME)
+    @ApiResponses(
+        {@ApiResponse(responseCode = "400", description = RESULT_BAD_REQUEST),
+            @ApiResponse(responseCode = "403", description = RESULT_FORBIDDEN),
+            @ApiResponse(responseCode = "404", description = "Unknown query id."),
+            @ApiResponse(responseCode = "405", description = METHOD_NOT_ALLOWED),
+            @ApiResponse(responseCode = "409", description = RESULT_NOT_READY),
+            @ApiResponse(responseCode = "422", description = "Query stored before v3 cannot be converted to v3."),
+            @ApiResponse(responseCode = "502", description = RESULT_BAD_GATEWAY),
+            @ApiResponse(responseCode = "503", description = READ_UNAVAILABLE),
+            @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
+    )
+    private @interface ResultErrorResponses {
     }
 }
