@@ -7,8 +7,8 @@ import edu.harvard.hms.dbmi.avillach.query.query.QueryRequestExamples;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
- * Request body of {@code POST /hpds/{backend}/search}: the search term under the {@code query} key. Members other than {@code query} are
- * ignored, so a body that carries {@code resourceUUID} binds and that member is dropped.
+ * Request body of {@code POST /internal/search/{backend}}: the search term under the {@code query} key. Members other than {@code query}
+ * are ignored, so a body that carries {@code resourceUUID} binds and that member is dropped.
  *
  * @param query the term to match against concept paths, categorical values and variant annotation names, or null to list everything
  */

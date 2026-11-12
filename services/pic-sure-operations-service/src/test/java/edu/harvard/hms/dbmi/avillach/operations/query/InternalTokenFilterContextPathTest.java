@@ -15,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import edu.harvard.hms.dbmi.avillach.commons.security.InternalTokenFilter;
 
 /**
  * Verifies that {@link InternalTokenFilter} gates {@code /internal/**} under a non-empty {@code server.servlet.context-path}.

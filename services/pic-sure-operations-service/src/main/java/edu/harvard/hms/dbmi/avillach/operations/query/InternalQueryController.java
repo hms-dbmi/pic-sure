@@ -22,9 +22,10 @@ import io.swagger.v3.oas.annotations.Hidden;
 
 /**
  * The internal query API: the token-gated boundary the hpds-query-service calls to save, read and update queries. {@code /internal/**}
- * passes {@code WebSecurityConfig}'s {@code anyRequest().permitAll()} unauthenticated -- it is {@link InternalTokenFilter} (a plain servlet
- * filter, not this controller) that actually gates every request here on {@code X-PIC-SURE-INTERNAL-TOKEN}, and network isolation (out of
- * this service's hands) that keeps it unreachable from outside the cluster.
+ * passes {@code WebSecurityConfig}'s {@code anyRequest().permitAll()} unauthenticated -- it is
+ * {@link edu.harvard.hms.dbmi.avillach.commons.security.InternalTokenFilter} (a plain servlet filter, not this controller) that actually
+ * gates every request here on {@code X-PIC-SURE-INTERNAL-TOKEN}, and network isolation (out of this service's hands) that keeps it
+ * unreachable from outside the cluster.
  *
  * <p>{@code GET /{picsureId}/dispatch} answers {@code {"queryJson": "<string>"}}, 404 for an unknown id and 403 for a bad or missing token.
  * No service in this repository calls it. The gateway's {@code QueryAuthFetcher} was written against it and has since been removed.

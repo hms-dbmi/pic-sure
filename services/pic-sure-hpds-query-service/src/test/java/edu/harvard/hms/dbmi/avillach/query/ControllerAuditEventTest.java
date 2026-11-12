@@ -40,7 +40,7 @@ class ControllerAuditEventTest {
             Map.entry("HpdsQueryController.signedUrl", "DATA_ACCESS query.signed_url"),
             Map.entry("HpdsQueryController.metadata", "QUERY query.metadata"),
             Map.entry("AggregateController.querySync", "QUERY query.sync"), Map.entry("AggregateController.query", "QUERY query.submitted"),
-            Map.entry("HpdsSearchController.search", "SEARCH search.execute"),
+            Map.entry("InternalSearchController.search", "SEARCH search.execute"),
             Map.entry("HpdsSearchController.values", "SEARCH search.values")
         )
     );
