@@ -1,9 +1,33 @@
 USE `picsure`;
 
+CREATE TABLE `query_to_variant` (
+    `uuid` binary(16) NOT NULL,
+    `user_uuid` binary(16) NOT NULL,
+    `created_at` datetime(3) NOT NULL,
+    PRIMARY KEY (`uuid`),
+    KEY `idx_query_to_variant_user_uuid` (`user_uuid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
+
 ALTER TABLE `query`
     ADD COLUMN `user_uuid` binary(16) NULL,
     ADD COLUMN `consents` JSON NULL,
-    ADD INDEX `idx_query_user_uuid` (`user_uuid`);
+    ADD COLUMN `query_to_variant_uuid` binary(16) NULL,
+    ADD COLUMN `sample` bit(1) NOT NULL DEFAULT 0,
+    ADD COLUMN `result_type` varchar(64) COLLATE utf8_bin NULL,
+    ALGORITHM=INSTANT;
+
+ALTER TABLE `query`
+    ADD INDEX `idx_query_user_uuid` (`user_uuid`),
+    ADD UNIQUE KEY `unique_query_variant` (`query_to_variant_uuid`, `sample`, `result_type`),
+    ALGORITHM=INPLACE, LOCK=NONE;
+
+ALTER TABLE `named_dataset`
+    ADD COLUMN `query_to_variant_uuid` binary(16) NULL,
+    ALGORITHM=INSTANT;
+
+ALTER TABLE `named_dataset`
+    ADD INDEX `idx_named_dataset_query_to_variant` (`query_to_variant_uuid`),
+    ALGORITHM=INPLACE, LOCK=NONE;
 
 CREATE TABLE `query_run` (
     `run_id` binary(16) NOT NULL,
@@ -35,3 +59,16 @@ INSERT INTO `named_dataset_query` (`named_dataset_uuid`, `query_uuid`, `sample`,
 SELECT nd.`uuid`, nd.`queryId`, 0, NULL, COALESCE(q.`startTime`, CURRENT_TIMESTAMP(3))
 FROM `named_dataset` nd
 JOIN `query` q ON q.`uuid` = nd.`queryId`;
+
+SET @saved_fk_checks = @@SESSION.foreign_key_checks;
+SET SESSION foreign_key_checks = 0;
+
+ALTER TABLE `query`
+    ADD CONSTRAINT `fk_query_query_to_variant` FOREIGN KEY (`query_to_variant_uuid`) REFERENCES `query_to_variant` (`uuid`),
+    ALGORITHM=INPLACE, LOCK=NONE;
+
+ALTER TABLE `named_dataset`
+    ADD CONSTRAINT `fk_named_dataset_query_to_variant` FOREIGN KEY (`query_to_variant_uuid`) REFERENCES `query_to_variant` (`uuid`),
+    ALGORITHM=INPLACE, LOCK=NONE;
+
+SET SESSION foreign_key_checks = @saved_fk_checks;

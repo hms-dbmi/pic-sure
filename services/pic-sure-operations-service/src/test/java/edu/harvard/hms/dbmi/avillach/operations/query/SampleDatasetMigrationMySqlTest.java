@@ -45,6 +45,7 @@ class SampleDatasetMigrationMySqlTest {
     private static final UUID UNSTARTED_QUERY = UUID.fromString("00000000-0000-0000-0000-0000000000a2");
     private static final UUID STARTED_DATASET = UUID.fromString("00000000-0000-0000-0000-0000000000b1");
     private static final UUID UNSTARTED_DATASET = UUID.fromString("00000000-0000-0000-0000-0000000000b2");
+    private static final UUID OWNER = UUID.fromString("00000000-0000-0000-0000-0000000000c1");
 
     @Container
     static final MySQLContainer<?> MYSQL =
@@ -103,7 +104,7 @@ class SampleDatasetMigrationMySqlTest {
                 String.class
             )
         ).isEqualTo("NO");
-        assertThat(deleteRulesOf("named_dataset")).containsOnlyKeys("foreign_queryId");
+        assertThat(deleteRulesOf("named_dataset")).containsOnlyKeys("foreign_queryId", "fk_named_dataset_query_to_variant");
     }
 
     @Test
@@ -206,6 +207,111 @@ class SampleDatasetMigrationMySqlTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_run WHERE query_uuid = ?", Integer.class, bytes(ranQuery))).isEqualTo(1);
     }
 
+    @Test
+    void v10AddsTheGeneralQueryTableAndTheVariantColumns() {
+        assertThat(columnsOf("query_to_variant")).containsExactly("uuid", "user_uuid", "created_at");
+        assertThat(indexesOf("query_to_variant")).containsExactlyInAnyOrder("PRIMARY", "idx_query_to_variant_user_uuid");
+        assertThat(columnsOf("query")).contains("query_to_variant_uuid", "sample", "result_type");
+        assertThat(uniqueKeyColumnsOf("query", "unique_query_variant")).containsExactly("query_to_variant_uuid", "sample", "result_type");
+        assertThat(columnsOf("named_dataset")).contains("query_to_variant_uuid");
+        assertThat(indexesOf("named_dataset")).contains("idx_named_dataset_query_to_variant");
+        assertThat(deleteRulesOf("query")).containsEntry("fk_query_query_to_variant", "NO ACTION");
+        assertThat(deleteRulesOf("named_dataset")).containsEntry("fk_named_dataset_query_to_variant", "NO ACTION");
+    }
+
+    @Test
+    void oldStackQueryInsertGetsSampleFalseNoTypeAndNoGeneralQuery() {
+        UUID query = UUID.randomUUID();
+
+        insertQueryAsOldStack(query, STARTED_QUERY_START_TIME);
+
+        Map<String, Object> inserted = jdbc.queryForMap(
+            "SELECT CAST(sample AS UNSIGNED) AS sample, result_type, query_to_variant_uuid FROM query WHERE uuid = ?", bytes(query)
+        );
+        assertThat(((Number) inserted.get("sample")).intValue()).isZero();
+        assertThat(inserted.get("result_type")).isNull();
+        assertThat(inserted.get("query_to_variant_uuid")).isNull();
+        assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM query WHERE sample = 0 AND result_type IS NULL AND query_to_variant_uuid IS NULL", Integer.class
+            )
+        ).isEqualTo(3);
+    }
+
+    @Test
+    void oldStackNamedDatasetInsertLeavesTheGeneralQueryNull() {
+        UUID query = UUID.randomUUID();
+        UUID dataset = UUID.randomUUID();
+        insertQueryAsOldStack(query, null);
+
+        insertNamedDatasetAsOldStack(dataset, query, "third@example.org");
+
+        assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM named_dataset WHERE uuid = ? AND query_to_variant_uuid IS NULL", Integer.class, bytes(dataset)
+            )
+        ).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM named_dataset WHERE query_to_variant_uuid IS NULL", Integer.class))
+            .isEqualTo(3);
+    }
+
+    @Test
+    void variantKeyRefusesASecondRowOfOneVariantUnderOneGeneralQuery() {
+        UUID generalQuery = UUID.randomUUID();
+        insertGeneralQuery(generalQuery);
+        insertVariant(UUID.randomUUID(), generalQuery, true, "DATAFRAME");
+
+        assertThatThrownBy(() -> insertVariant(UUID.randomUUID(), generalQuery, true, "DATAFRAME"))
+            .isInstanceOf(DuplicateKeyException.class).hasMessageContaining("unique_query_variant");
+
+        insertVariant(UUID.randomUUID(), generalQuery, false, "DATAFRAME");
+        insertVariant(UUID.randomUUID(), generalQuery, true, "DATAFRAME_TIMESERIES");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query WHERE query_to_variant_uuid = ?", Integer.class, bytes(generalQuery)))
+            .isEqualTo(3);
+    }
+
+    @Test
+    void variantKeyAllowsManyRowsWithNoGeneralQuery() {
+        insertVariant(UUID.randomUUID(), null, true, "DATAFRAME");
+        insertVariant(UUID.randomUUID(), null, true, "DATAFRAME");
+
+        assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM query WHERE query_to_variant_uuid IS NULL AND sample = 1 AND result_type = 'DATAFRAME'", Integer.class
+            )
+        ).isEqualTo(2);
+        assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM query WHERE query_to_variant_uuid IS NULL AND sample = 0 AND result_type IS NULL", Integer.class
+            )
+        ).isEqualTo(2);
+    }
+
+    @Test
+    void queryRowCannotNameAMissingGeneralQuery() {
+        UUID missingGeneralQuery = UUID.randomUUID();
+
+        assertThatThrownBy(() -> insertVariant(UUID.randomUUID(), missingGeneralQuery, false, "DATAFRAME"))
+            .isInstanceOf(DataIntegrityViolationException.class).hasMessageContaining("fk_query_query_to_variant");
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query", Integer.class)).isEqualTo(2);
+    }
+
+    @Test
+    void namedDatasetCannotNameAMissingGeneralQuery() {
+        UUID missingGeneralQuery = UUID.randomUUID();
+        UUID generalQuery = UUID.randomUUID();
+        insertGeneralQuery(generalQuery);
+
+        assertThatThrownBy(() -> nameGeneralQuery(STARTED_DATASET, missingGeneralQuery)).isInstanceOf(DataIntegrityViolationException.class)
+            .hasMessageContaining("fk_named_dataset_query_to_variant");
+
+        assertThat(nameGeneralQuery(STARTED_DATASET, generalQuery)).isEqualTo(1);
+        assertThat(
+            jdbc.queryForObject("SELECT query_to_variant_uuid FROM named_dataset WHERE uuid = ?", byte[].class, bytes(STARTED_DATASET))
+        ).isEqualTo(bytes(generalQuery));
+    }
+
     private void applyMigration(int version) throws IOException {
         List<Path> matches;
         try (Stream<Path> files = Files.list(MIGRATIONS)) {
@@ -249,6 +355,23 @@ class SampleDatasetMigrationMySqlTest {
         );
     }
 
+    private void insertGeneralQuery(UUID uuid) {
+        jdbc.update("INSERT INTO query_to_variant (uuid, user_uuid, created_at) VALUES (?, ?, NOW(3))", bytes(uuid), bytes(OWNER));
+    }
+
+    private void insertVariant(UUID uuid, UUID generalQuery, boolean sample, String resultType) {
+        jdbc.update(
+            "INSERT INTO query (uuid, query, resourceResultId, status, user_uuid, query_to_variant_uuid, sample, result_type)"
+                + " VALUES (?, ?, ?, 0, ?, ?, ?, ?)",
+            bytes(uuid), new byte[] {1, 2, 3}, uuid.toString(), bytes(OWNER), generalQuery == null ? null : bytes(generalQuery), sample,
+            resultType
+        );
+    }
+
+    private int nameGeneralQuery(UUID dataset, UUID generalQuery) {
+        return jdbc.update("UPDATE named_dataset SET query_to_variant_uuid = ? WHERE uuid = ?", bytes(generalQuery), bytes(dataset));
+    }
+
     private Map<String, Object> joinRowOf(UUID dataset) {
         return jdbc.queryForMap(
             "SELECT query_uuid, CAST(sample AS UNSIGNED) AS sample, result_type, CAST(created_at AS CHAR) AS created_at"
@@ -272,6 +395,14 @@ class SampleDatasetMigrationMySqlTest {
         return jdbc.queryForList(
             "SELECT DISTINCT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = 'picsure' AND TABLE_NAME = ?", String.class,
             table
+        );
+    }
+
+    private List<String> uniqueKeyColumnsOf(String table, String key) {
+        return jdbc.queryForList(
+            "SELECT COLUMN_NAME FROM information_schema.STATISTICS"
+                + " WHERE TABLE_SCHEMA = 'picsure' AND TABLE_NAME = ? AND INDEX_NAME = ? AND NON_UNIQUE = 0 ORDER BY SEQ_IN_INDEX",
+            String.class, table, key
         );
     }
 
