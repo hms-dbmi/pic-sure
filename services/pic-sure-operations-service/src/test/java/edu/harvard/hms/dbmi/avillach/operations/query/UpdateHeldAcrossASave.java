@@ -33,6 +33,7 @@ final class UpdateHeldAcrossASave {
      *
      * @param queries the real query repository
      * @param runs the real run repository
+     * @param generalQueries the real general query repository
      * @param transactionManager the transaction manager the update and the save open their transactions on
      * @param picsureId the id of the row both write
      * @param update the update that reads first and writes last
@@ -41,8 +42,8 @@ final class UpdateHeldAcrossASave {
      * @throws Exception when the update or the save fails or does not finish in time
      */
     static boolean run(
-        QueryRepository queries, QueryRunRepository runs, PlatformTransactionManager transactionManager, UUID picsureId,
-        UpdateQueryRequest update, SaveQueryRequest save
+        QueryRepository queries, QueryRunRepository runs, QueryToVariantRepository generalQueries,
+        PlatformTransactionManager transactionManager, UUID picsureId, UpdateQueryRequest update, SaveQueryRequest save
     ) throws Exception {
         CountDownLatch updateReadItsRun = new CountDownLatch(1);
         CountDownLatch saveHadItsHeadStart = new CountDownLatch(1);
@@ -57,8 +58,8 @@ final class UpdateHeldAcrossASave {
             }
             return result;
         });
-        QueryPersistenceService updating = new QueryPersistenceService(queries, heldAfterLatestRunRead, transactionManager);
-        QueryPersistenceService saving = new QueryPersistenceService(queries, runs, transactionManager);
+        QueryPersistenceService updating = new QueryPersistenceService(queries, heldAfterLatestRunRead, generalQueries, transactionManager);
+        QueryPersistenceService saving = new QueryPersistenceService(queries, runs, generalQueries, transactionManager);
         TransactionTemplate updateTransaction = new TransactionTemplate(transactionManager);
 
         try (var executor = Executors.newFixedThreadPool(2)) {

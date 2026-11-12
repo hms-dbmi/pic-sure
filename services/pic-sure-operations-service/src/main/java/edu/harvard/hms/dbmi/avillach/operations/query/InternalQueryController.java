@@ -47,8 +47,13 @@ public class InternalQueryController {
      * Persists a query and answers 201 with the id it was stored under, as {@code {"picsureId": "<uuid>"}}. A request that carries a
      * {@code picsureId} already stored updates that row and answers the same way.
      *
-     * <p>A request that carries some but not all of {@code picsureId}, {@code userUuid}, {@code consents} and {@code trigger} is answered
-     * with 400, and one whose {@code picsureId} is stored under a different owner with 409. Neither stores anything.
+     * <p>A request that carries some but not all of {@code picsureId}, {@code userUuid}, {@code consents}, {@code trigger} and
+     * {@code queryToVariantUuid} is answered with 400, and one whose {@code picsureId} or {@code queryToVariantUuid} is stored under a
+     * different owner with 409. Neither stores anything.
+     *
+     * <p>A request with all five that inserts a row files it under the general query {@code queryToVariantUuid} names, creating that
+     * general query when it is not stored yet, and writes {@code sample} and {@code resultType} onto the row. A request for a row that is
+     * already stored leaves all three as they are.
      *
      * @param req the query to persist
      * @return the id of the persisted query

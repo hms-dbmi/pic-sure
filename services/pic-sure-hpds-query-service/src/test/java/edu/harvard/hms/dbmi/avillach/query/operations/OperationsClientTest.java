@@ -76,7 +76,7 @@ class OperationsClientTest {
                 "X-PIC-SURE-INTERNAL-TOKEN", equalTo("test-token")
             ).withRequestBody(
                 equalToJson(
-                    "{\"query\":\"{}\",\"resourceResultId\":null,\"status\":\"QUEUED\",\"version\":\"v1\",\"metadata\":null,\"picsureId\":null,\"userUuid\":null,\"consents\":null,\"trigger\":null}"
+                    "{\"query\":\"{}\",\"resourceResultId\":null,\"status\":\"QUEUED\",\"version\":\"v1\",\"metadata\":null,\"picsureId\":null,\"userUuid\":null,\"consents\":null,\"trigger\":null,\"queryToVariantUuid\":null,\"sample\":null,\"resultType\":null}"
                 )
             )
         );
@@ -96,7 +96,7 @@ class OperationsClientTest {
         ops.verify(
             postRequestedFor(urlEqualTo("/operations/internal/queries")).withRequestBody(
                 equalTo(
-                    "{\"query\":\"{}\",\"resourceResultId\":null,\"status\":\"QUEUED\",\"version\":\"3\",\"metadata\":null,\"picsureId\":null,\"userUuid\":null,\"consents\":null,\"trigger\":null}"
+                    "{\"query\":\"{}\",\"resourceResultId\":null,\"status\":\"QUEUED\",\"version\":\"3\",\"metadata\":null,\"picsureId\":null,\"userUuid\":null,\"consents\":null,\"trigger\":null,\"queryToVariantUuid\":null,\"sample\":null,\"resultType\":null}"
                 )
             )
         );
@@ -298,7 +298,8 @@ class OperationsClientTest {
                 equalToJson(
                     "{\"query\":\"{}\",\"resourceResultId\":\"" + id + "\",\"status\":\"PENDING\",\"version\":\"3\",\"metadata\":null,"
                         + "\"picsureId\":\"" + id + "\",\"userUuid\":\"" + owner + "\","
-                        + "\"consents\":{\"\\\\_consents\\\\\":[\"phs001.c1\",\"phs001.c2\"]},\"trigger\":\"FIRST_SUBMIT\"}"
+                        + "\"consents\":{\"\\\\_consents\\\\\":[\"phs001.c1\",\"phs001.c2\"]},\"trigger\":\"FIRST_SUBMIT\","
+                        + "\"queryToVariantUuid\":null,\"sample\":null,\"resultType\":null}"
                 )
             )
         );

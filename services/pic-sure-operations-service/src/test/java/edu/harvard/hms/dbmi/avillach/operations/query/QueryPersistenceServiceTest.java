@@ -47,6 +47,9 @@ class QueryPersistenceServiceTest {
     private QueryRunRepository runRepo;
 
     @Autowired
+    private QueryToVariantRepository generalQueryRepo;
+
+    @Autowired
     private PlatformTransactionManager transactionManager;
 
     @Autowired
@@ -336,7 +339,7 @@ class QueryPersistenceServiceTest {
         service.save(
             new SaveQueryRequest(
                 "{\"q\":1}", "first-result", "QUEUED", "3", encoded("first"), picsureId, owner, Map.of(CONSENTS, List.of("phs1.c1")),
-                "FIRST_SUBMIT"
+                "FIRST_SUBMIT", UUID.randomUUID(), false, "COUNT"
             )
         );
         service.update(picsureId, new UpdateQueryRequest("AVAILABLE", null, null, null, null));
@@ -349,7 +352,7 @@ class QueryPersistenceServiceTest {
         service.save(
             new SaveQueryRequest(
                 "{\"q\":2}", "second-result", "PENDING", "4", encoded("second"), picsureId, owner,
-                Map.of(CONSENTS, List.of("phs3.c1", "phs1.c1")), "CONSENT_CHANGE"
+                Map.of(CONSENTS, List.of("phs3.c1", "phs1.c1")), "CONSENT_CHANGE", UUID.randomUUID(), false, "COUNT"
             )
         );
         entityManager.flush();
@@ -375,11 +378,13 @@ class QueryPersistenceServiceTest {
         UUID owner = UUID.randomUUID();
         try {
             List<UUID> saved = RacingFirstSaves.run(
-                repo, runRepo, transactionManager, picsureId, owned(picsureId, owner, Map.of(CONSENTS, List.of("phs1.c1")), "FIRST_SUBMIT")
+                repo, runRepo, generalQueryRepo, transactionManager, picsureId,
+                owned(picsureId, owner, Map.of(CONSENTS, List.of("phs1.c1")), "FIRST_SUBMIT")
             );
 
             assertThat(saved).containsExactly(picsureId, picsureId);
             assertThat(repo.count()).isEqualTo(1);
+            assertThat(generalQueryRepo.count()).isEqualTo(1);
             StoredQuery stored = service.get(picsureId);
             assertThat(stored.userUuid()).isEqualTo(owner);
             assertThat(stored.query()).isEqualTo("{\"q\":1}");
@@ -388,6 +393,7 @@ class QueryPersistenceServiceTest {
         } finally {
             runRepo.deleteAll();
             repo.deleteAll();
+            generalQueryRepo.deleteAll();
         }
     }
 
@@ -438,7 +444,7 @@ class QueryPersistenceServiceTest {
     void fiveRunsSubmittedAtOneInstantAreKeptOneMillisecondApartInSubmitOrder() {
         Instant instant = Instant.parse("2026-03-04T05:06:07.008Z");
         QueryPersistenceService stoppedClock =
-            new QueryPersistenceService(repo, runRepo, transactionManager, Clock.fixed(instant, ZoneOffset.UTC));
+            new QueryPersistenceService(repo, runRepo, generalQueryRepo, transactionManager, Clock.fixed(instant, ZoneOffset.UTC));
         UUID picsureId = UUID.randomUUID();
         UUID owner = UUID.randomUUID();
         Map<String, List<String>> consents = Map.of(CONSENTS, List.of("phs1.c1"));
@@ -587,8 +593,177 @@ class QueryPersistenceServiceTest {
         assertThat(runRepo.count()).isZero();
     }
 
+    @Test
+    void firstOwnedSaveCreatesTheGeneralQueryAndFilesTheRow() {
+        Instant instant = Instant.parse("2026-03-04T05:06:07.008Z");
+        QueryPersistenceService stoppedClock =
+            new QueryPersistenceService(repo, runRepo, generalQueryRepo, transactionManager, Clock.fixed(instant, ZoneOffset.UTC));
+        UUID picsureId = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        UUID general = UUID.randomUUID();
+
+        stoppedClock.save(variant(picsureId, owner, general, true, "DATAFRAME"));
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(generalQueryRepo.count()).isEqualTo(1);
+        QueryToVariant storedGeneral = generalQueryRepo.findById(general).orElseThrow();
+        assertThat(storedGeneral.getUuid()).isEqualTo(general);
+        assertThat(storedGeneral.getUserUuid()).isEqualTo(owner);
+        assertThat(storedGeneral.getCreatedAt()).isEqualTo(instant);
+        Query row = repo.findById(picsureId).orElseThrow();
+        assertThat(row.getUserUuid()).isEqualTo(owner);
+        assertThat(row.getQueryToVariantUuid()).isEqualTo(general);
+        assertThat(row.isSample()).isTrue();
+        assertThat(row.getResultType()).isEqualTo("DATAFRAME");
+        assertThat(runRepo.findByQueryUuidOrderBySubmittedAtAsc(picsureId)).hasSize(1);
+    }
+
+    @Test
+    void secondVariantReusesTheGeneralQuery() {
+        Instant firstSubmit = Instant.parse("2026-03-04T05:06:07.008Z");
+        UUID owner = UUID.randomUUID();
+        UUID general = UUID.randomUUID();
+        UUID sampleRow = UUID.randomUUID();
+        UUID fullRow = UUID.randomUUID();
+        UUID pfbRow = UUID.randomUUID();
+        new QueryPersistenceService(repo, runRepo, generalQueryRepo, transactionManager, Clock.fixed(firstSubmit, ZoneOffset.UTC))
+            .save(variant(sampleRow, owner, general, true, "DATAFRAME"));
+        entityManager.flush();
+        entityManager.clear();
+
+        QueryPersistenceService anHourLater = new QueryPersistenceService(
+            repo, runRepo, generalQueryRepo, transactionManager, Clock.fixed(firstSubmit.plusSeconds(3600), ZoneOffset.UTC)
+        );
+        anHourLater.save(variant(fullRow, owner, general, false, "DATAFRAME"));
+        anHourLater.save(variant(pfbRow, owner, general, false, "DATAFRAME_PFB"));
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(generalQueryRepo.count()).isEqualTo(1);
+        assertThat(generalQueryRepo.findById(general).orElseThrow().getCreatedAt()).isEqualTo(firstSubmit);
+        assertThat(repo.findAllById(List.of(sampleRow, fullRow, pfbRow))).hasSize(3)
+            .allSatisfy(row -> assertThat(row.getQueryToVariantUuid()).isEqualTo(general));
+        assertThat(repo.findById(sampleRow).orElseThrow().isSample()).isTrue();
+        assertThat(repo.findById(fullRow).orElseThrow().isSample()).isFalse();
+        assertThat(repo.findById(fullRow).orElseThrow().getResultType()).isEqualTo("DATAFRAME");
+        assertThat(repo.findById(pfbRow).orElseThrow().isSample()).isFalse();
+        assertThat(repo.findById(pfbRow).orElseThrow().getResultType()).isEqualTo("DATAFRAME_PFB");
+    }
+
+    @Test
+    void resaveNeverRewritesTheGeneralQuerySampleOrResultType() {
+        UUID picsureId = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        UUID general = UUID.randomUUID();
+        UUID anotherGeneral = UUID.randomUUID();
+        service.save(variant(picsureId, owner, general, true, "DATAFRAME"));
+        entityManager.flush();
+        entityManager.clear();
+
+        service.save(
+            new SaveQueryRequest(
+                "{\"q\":1}", picsureId.toString(), "PENDING", "3", null, picsureId, owner, Map.of(CONSENTS, List.of("phs1.c1")), "RESUBMIT",
+                anotherGeneral, false, "DATAFRAME_PFB"
+            )
+        );
+        entityManager.flush();
+        entityManager.clear();
+
+        Query row = repo.findById(picsureId).orElseThrow();
+        assertThat(row.getStatus()).isEqualTo(PicSureStatus.PENDING);
+        assertThat(row.getQueryToVariantUuid()).isEqualTo(general);
+        assertThat(row.isSample()).isTrue();
+        assertThat(row.getResultType()).isEqualTo("DATAFRAME");
+        assertThat(generalQueryRepo.findById(anotherGeneral)).isEmpty();
+        assertThat(generalQueryRepo.count()).isEqualTo(1);
+        assertThat(runRepo.findByQueryUuidOrderBySubmittedAtAsc(picsureId)).hasSize(2);
+    }
+
+    @Test
+    void generalQueryOfAnotherOwnerIs409AndStoresNothing() {
+        UUID owner = UUID.randomUUID();
+        UUID stranger = UUID.randomUUID();
+        UUID general = UUID.randomUUID();
+        UUID ownersRow = UUID.randomUUID();
+        UUID strangersRow = UUID.randomUUID();
+        service.save(variant(ownersRow, owner, general, false, "DATAFRAME"));
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThatThrownBy(() -> service.save(variant(strangersRow, stranger, general, true, "DATAFRAME")))
+            .isInstanceOfSatisfying(PicsureException.class, refusal -> {
+                assertThat(refusal.getStatus().value()).isEqualTo(409);
+                assertThat(refusal.getErrorType()).isEqualTo("conflict");
+                assertThat(refusal).hasMessage("General query " + general + " belongs to a different owner");
+            });
+
+        assertThat(repo.findById(strangersRow)).isEmpty();
+        assertThat(repo.count()).isEqualTo(1);
+        assertThat(runRepo.findByQueryUuidOrderBySubmittedAtAsc(strangersRow)).isEmpty();
+        assertThat(generalQueryRepo.count()).isEqualTo(1);
+        assertThat(generalQueryRepo.findById(general).orElseThrow().getUserUuid()).isEqualTo(owner);
+    }
+
+    @Test
+    void generalIdWithoutAnOwnerIs400() {
+        SaveQueryRequest ownerless =
+            new SaveQueryRequest("{\"q\":1}", "rr", "QUEUED", "3", null, null, null, null, null, UUID.randomUUID(), false, "COUNT");
+
+        assertThatThrownBy(() -> service.save(ownerless)).isInstanceOfSatisfying(PicsureException.class, refusal -> {
+            assertThat(refusal.getStatus().value()).isEqualTo(400);
+            assertThat(refusal)
+                .hasMessage("picsureId, userUuid, consents, trigger and queryToVariantUuid must be sent together or not at all");
+        });
+
+        assertThat(repo.count()).isZero();
+        assertThat(generalQueryRepo.count()).isZero();
+    }
+
+    @Test
+    void ownedSaveWithoutAGeneralIdIs400() {
+        UUID picsureId = UUID.randomUUID();
+        SaveQueryRequest withoutAGeneralId = new SaveQueryRequest(
+            "{\"q\":1}", picsureId.toString(), "QUEUED", "3", null, picsureId, UUID.randomUUID(), Map.of(CONSENTS, List.of("phs1.c1")),
+            "FIRST_SUBMIT", null, false, "COUNT"
+        );
+
+        assertThatThrownBy(() -> service.save(withoutAGeneralId)).isInstanceOfSatisfying(PicsureException.class, refusal -> {
+            assertThat(refusal.getStatus().value()).isEqualTo(400);
+            assertThat(refusal)
+                .hasMessage("picsureId, userUuid, consents, trigger and queryToVariantUuid must be sent together or not at all");
+        });
+
+        assertThat(repo.count()).isZero();
+        assertThat(runRepo.count()).isZero();
+        assertThat(generalQueryRepo.count()).isZero();
+    }
+
+    @Test
+    void legacySaveStoresNoGeneralQuery() {
+        UUID picsureId = service.save(new SaveQueryRequest("{\"q\":1}", "rr", "QUEUED", "3", null));
+        entityManager.flush();
+        entityManager.clear();
+
+        Query row = repo.findById(picsureId).orElseThrow();
+        assertThat(row.getUserUuid()).isNull();
+        assertThat(row.getQueryToVariantUuid()).isNull();
+        assertThat(row.isSample()).isFalse();
+        assertThat(row.getResultType()).isNull();
+        assertThat(generalQueryRepo.count()).isZero();
+    }
+
     private static SaveQueryRequest owned(UUID picsureId, UUID owner, Map<String, List<String>> consents, String trigger) {
-        return new SaveQueryRequest("{\"q\":1}", picsureId.toString(), "QUEUED", "3", null, picsureId, owner, consents, trigger);
+        return new SaveQueryRequest(
+            "{\"q\":1}", picsureId.toString(), "QUEUED", "3", null, picsureId, owner, consents, trigger, UUID.randomUUID(), false, "COUNT"
+        );
+    }
+
+    private static SaveQueryRequest variant(UUID picsureId, UUID owner, UUID general, boolean sample, String resultType) {
+        return new SaveQueryRequest(
+            "{\"q\":1}", picsureId.toString(), "QUEUED", "3", null, picsureId, owner, Map.of(CONSENTS, List.of("phs1.c1")), "FIRST_SUBMIT",
+            general, sample, resultType
+        );
     }
 
     private static String encoded(String metadata) {

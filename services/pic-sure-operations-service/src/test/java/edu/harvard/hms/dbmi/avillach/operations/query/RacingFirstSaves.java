@@ -9,15 +9,16 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 
 import org.springframework.transaction.PlatformTransactionManager;
 
 import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
 
 /**
- * Runs two first saves of one id so that both look the row up before either inserts it. The lookups go through a repository that holds the
- * first two row lookups at a barrier until both threads have made theirs, which is the interleaving two simultaneous submits of a new query
- * produce. Later lookups pass straight through.
+ * Runs two first saves so that both look their row up before either inserts it. The lookups go through a repository that holds the first
+ * two row lookups at a barrier until both threads have made theirs, which is the interleaving two simultaneous submits of a new query
+ * produce. Later lookups pass straight through. The two saves store under one id, or each under the id its request carries.
  */
 final class RacingFirstSaves {
 
@@ -31,6 +32,7 @@ final class RacingFirstSaves {
      *
      * @param queries the real query repository
      * @param runs the real run repository
+     * @param generalQueries the real general query repository
      * @param transactionManager the transaction manager both saves open their own transactions on
      * @param picsureId the id both saves store under
      * @param request the request both saves send
@@ -38,11 +40,11 @@ final class RacingFirstSaves {
      * @throws Exception when a save fails or does not finish in time
      */
     static List<UUID> run(
-        QueryRepository queries, QueryRunRepository runs, PlatformTransactionManager transactionManager, UUID picsureId,
-        SaveQueryRequest request
+        QueryRepository queries, QueryRunRepository runs, QueryToVariantRepository generalQueries,
+        PlatformTransactionManager transactionManager, UUID picsureId, SaveQueryRequest request
     ) throws Exception {
         List<UUID> saved = new ArrayList<>();
-        for (SaveOutcome outcome : run(queries, runs, transactionManager, picsureId, request, request)) {
+        for (SaveOutcome outcome : run(queries, runs, generalQueries, transactionManager, picsureId, request, request)) {
             if (outcome.failure() instanceof Exception failure) {
                 throw failure;
             }
@@ -56,6 +58,7 @@ final class RacingFirstSaves {
      *
      * @param queries the real query repository
      * @param runs the real run repository
+     * @param generalQueries the real general query repository
      * @param transactionManager the transaction manager both saves open their own transactions on
      * @param picsureId the id both saves store under
      * @param first the request one thread sends
@@ -64,8 +67,39 @@ final class RacingFirstSaves {
      * @throws Exception when a save does not finish in time
      */
     static List<SaveOutcome> run(
-        QueryRepository queries, QueryRunRepository runs, PlatformTransactionManager transactionManager, UUID picsureId,
-        SaveQueryRequest first, SaveQueryRequest second
+        QueryRepository queries, QueryRunRepository runs, QueryToVariantRepository generalQueries,
+        PlatformTransactionManager transactionManager, UUID picsureId, SaveQueryRequest first, SaveQueryRequest second
+    ) throws Exception {
+        return race(
+            queries, runs, generalQueries, transactionManager, service -> service.save(picsureId, first),
+            service -> service.save(picsureId, second)
+        );
+    }
+
+    /**
+     * Saves two requests from two threads at once, each under the id it carries, outside any transaction of the caller. Two requests that
+     * name one general query and different ids are two variants of that general query submitted together for the first time.
+     *
+     * @param queries the real query repository
+     * @param runs the real run repository
+     * @param generalQueries the real general query repository
+     * @param transactionManager the transaction manager both saves open their own transactions on
+     * @param first the request one thread sends
+     * @param second the request the other thread sends
+     * @return how the save of the first request ended, then how the save of the second ended
+     * @throws Exception when a save does not finish in time
+     */
+    static List<SaveOutcome> runUnderTheirOwnIds(
+        QueryRepository queries, QueryRunRepository runs, QueryToVariantRepository generalQueries,
+        PlatformTransactionManager transactionManager, SaveQueryRequest first, SaveQueryRequest second
+    ) throws Exception {
+        return race(queries, runs, generalQueries, transactionManager, service -> service.save(first), service -> service.save(second));
+    }
+
+    private static List<SaveOutcome> race(
+        QueryRepository queries, QueryRunRepository runs, QueryToVariantRepository generalQueries,
+        PlatformTransactionManager transactionManager, Function<QueryPersistenceService, UUID> first,
+        Function<QueryPersistenceService, UUID> second
     ) throws Exception {
         CyclicBarrier bothLookedUp = new CyclicBarrier(RACERS);
         AtomicInteger lookups = new AtomicInteger();
@@ -76,11 +110,11 @@ final class RacingFirstSaves {
             }
             return result;
         });
-        QueryPersistenceService service = new QueryPersistenceService(heldAtLookup, runs, transactionManager);
+        QueryPersistenceService service = new QueryPersistenceService(heldAtLookup, runs, generalQueries, transactionManager);
 
         try (var executor = Executors.newFixedThreadPool(RACERS)) {
-            Future<SaveOutcome> firstSave = executor.submit(() -> SaveOutcome.of(() -> service.save(picsureId, first)));
-            Future<SaveOutcome> secondSave = executor.submit(() -> SaveOutcome.of(() -> service.save(picsureId, second)));
+            Future<SaveOutcome> firstSave = executor.submit(() -> SaveOutcome.of(() -> first.apply(service)));
+            Future<SaveOutcome> secondSave = executor.submit(() -> SaveOutcome.of(() -> second.apply(service)));
             return List.of(firstSave.get(30, TimeUnit.SECONDS), secondSave.get(30, TimeUnit.SECONDS));
         }
     }

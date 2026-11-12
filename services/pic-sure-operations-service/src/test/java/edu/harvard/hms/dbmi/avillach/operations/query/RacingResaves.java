@@ -26,6 +26,7 @@ final class RacingResaves {
      *
      * @param queries the real query repository
      * @param runs the real run repository
+     * @param generalQueries the real general query repository
      * @param transactionManager the transaction manager both saves open their own transactions on
      * @param clock the clock both saves read
      * @param first the request one thread sends
@@ -34,11 +35,11 @@ final class RacingResaves {
      * @throws Exception when a save does not finish in time
      */
     static List<SaveOutcome> run(
-        QueryRepository queries, QueryRunRepository runs, PlatformTransactionManager transactionManager, Clock clock,
-        SaveQueryRequest first, SaveQueryRequest second
+        QueryRepository queries, QueryRunRepository runs, QueryToVariantRepository generalQueries,
+        PlatformTransactionManager transactionManager, Clock clock, SaveQueryRequest first, SaveQueryRequest second
     ) throws Exception {
         CyclicBarrier released = new CyclicBarrier(RACERS);
-        QueryPersistenceService service = new QueryPersistenceService(queries, runs, transactionManager, clock);
+        QueryPersistenceService service = new QueryPersistenceService(queries, runs, generalQueries, transactionManager, clock);
 
         try (var executor = Executors.newFixedThreadPool(RACERS)) {
             Future<SaveOutcome> firstSave = executor.submit(() -> {

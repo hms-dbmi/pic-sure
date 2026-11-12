@@ -44,11 +44,15 @@ class InternalQueryControllerTest {
     @Autowired
     private QueryRunRepository runRepo;
 
+    @Autowired
+    private QueryToVariantRepository generalQueryRepo;
+
     @Value("${picsure.operations.internal-token}")
     private String validToken;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final String OWNER = "5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11";
+    private static final String GENERAL_QUERY = "3d2f7c1a-9b4e-5c6d-8e7f-0a1b2c3d4e5f";
 
     @Test
     void missingTokenIsForbiddenWithTheExactErrorBody() throws Exception {
@@ -172,11 +176,53 @@ class InternalQueryControllerTest {
                 post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON)
                     .content(ownedSave("", OWNER, "QUEUED", "[\"phs1.c1\"]", "FIRST_SUBMIT"))
             ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("bad_request"))
-            .andExpect(jsonPath("$.message").value("picsureId, userUuid, consents and trigger must be sent together or not at all"))
-            .andExpect(result -> assertThat(result.getResponse().getContentAsString()).doesNotContain(OWNER).doesNotContain("phs"));
+            .andExpect(
+                jsonPath("$.message")
+                    .value("picsureId, userUuid, consents, trigger and queryToVariantUuid must be sent together or not at all")
+            ).andExpect(result -> assertThat(result.getResponse().getContentAsString()).doesNotContain(OWNER).doesNotContain("phs"));
 
         assertThat(queryRepo.count()).isZero();
         assertThat(runRepo.count()).isZero();
+        assertThat(generalQueryRepo.count()).isZero();
+    }
+
+    @Test
+    void ownedSaveWithoutAGeneralQueryAnswers400AndStoresNothing() throws Exception {
+        mockMvc.perform(
+            post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON).content(
+                "{\"query\":\"{\\\"q\\\":1}\",\"status\":\"QUEUED\",\"picsureId\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\",\"userUuid\":\""
+                    + OWNER + "\",\"consents\":{\"\\\\_consents\\\\\":[\"phs1.c1\"]},\"trigger\":\"FIRST_SUBMIT\"}"
+            )
+        ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("bad_request")).andExpect(
+            jsonPath("$.message").value("picsureId, userUuid, consents, trigger and queryToVariantUuid must be sent together or not at all")
+        );
+
+        assertThat(queryRepo.count()).isZero();
+        assertThat(runRepo.count()).isZero();
+        assertThat(generalQueryRepo.count()).isZero();
+    }
+
+    @Test
+    void saveUnderAGeneralQueryOfAnotherOwnerAnswers409AndStoresNothing() throws Exception {
+        String stranger = "0d9a4c56-7f1e-4a8b-9a53-2f6f0f0c1b22";
+        String strangersRow = "1c7e4b52-6d3a-5f48-9b21-7a0e5d4c3b2a";
+        mockMvc.perform(
+            post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON)
+                .content(ownedSave("8694e3d4-5cb4-410f-8431-993445e6d3f6", OWNER, "QUEUED", "[\"phs1.c1\"]", "FIRST_SUBMIT"))
+        ).andExpect(status().isCreated());
+
+        mockMvc
+            .perform(
+                post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON)
+                    .content(ownedSave(strangersRow, stranger, "QUEUED", "[\"phs9.c1\"]", "FIRST_SUBMIT"))
+            ).andExpect(status().isConflict()).andExpect(jsonPath("$.errorType").value("conflict"))
+            .andExpect(jsonPath("$.message").value("General query " + GENERAL_QUERY + " belongs to a different owner")).andExpect(
+                result -> assertThat(result.getResponse().getContentAsString()).doesNotContain(OWNER).doesNotContain(stranger)
+                    .doesNotContain("phs")
+            );
+
+        assertThat(queryRepo.findById(UUID.fromString(strangersRow))).isEmpty();
+        assertThat(generalQueryRepo.findById(UUID.fromString(GENERAL_QUERY)).orElseThrow().getUserUuid()).isEqualTo(UUID.fromString(OWNER));
     }
 
     @Test
@@ -348,7 +394,8 @@ class InternalQueryControllerTest {
     private static String ownedSave(String picsureId, String owner, String status, String consentValues, String trigger) {
         return "{\"query\":\"{\\\"q\\\":1}\",\"resourceResultId\":\"" + picsureId + "\",\"status\":\"" + status
             + "\",\"version\":\"3\",\"picsureId\":\"" + picsureId + "\",\"userUuid\":\"" + owner + "\",\"consents\":{\"\\\\_consents\\\\\":"
-            + consentValues + "},\"trigger\":\"" + trigger + "\"}";
+            + consentValues + "},\"trigger\":\"" + trigger + "\",\"queryToVariantUuid\":\"" + GENERAL_QUERY
+            + "\",\"sample\":false,\"resultType\":\"COUNT\"}";
     }
 
     private String storedRunId(String picsureId) throws Exception {

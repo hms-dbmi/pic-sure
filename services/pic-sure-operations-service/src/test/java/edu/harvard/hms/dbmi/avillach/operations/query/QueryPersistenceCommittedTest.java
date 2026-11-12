@@ -64,12 +64,16 @@ class QueryPersistenceCommittedTest {
     private QueryRunRepository runRepo;
 
     @Autowired
+    private QueryToVariantRepository generalQueryRepo;
+
+    @Autowired
     private PlatformTransactionManager transactionManager;
 
     @AfterEach
     void deleteCommittedRows() {
         runRepo.deleteAll();
         repo.deleteAll();
+        generalQueryRepo.deleteAll();
     }
 
     @Test
@@ -77,13 +81,15 @@ class QueryPersistenceCommittedTest {
         UUID picsureId = UUID.randomUUID();
         service.save(
             new SaveQueryRequest(
-                "{\"q\":1}", "first-result", "QUEUED", "3", encoded("first"), picsureId, UUID.randomUUID(), TWO_STUDIES, "FIRST_SUBMIT"
+                "{\"q\":1}", "first-result", "QUEUED", "3", encoded("first"), picsureId, UUID.randomUUID(), TWO_STUDIES, "FIRST_SUBMIT",
+                UUID.randomUUID(), false, "COUNT"
             )
         );
         service.update(picsureId, new UpdateQueryRequest("AVAILABLE", null, null, null, null));
         StoredQuery before = service.get(picsureId);
         SaveQueryRequest fromAStranger = new SaveQueryRequest(
-            "{\"q\":1}", "other-result", "PENDING", "3", encoded("second"), picsureId, UUID.randomUUID(), ONE_STUDY, "RESUBMIT"
+            "{\"q\":1}", "other-result", "PENDING", "3", encoded("second"), picsureId, UUID.randomUUID(), ONE_STUDY, "RESUBMIT",
+            UUID.randomUUID(), false, "COUNT"
         );
 
         assertRefused(() -> service.save(fromAStranger), 409, "conflict", "Query " + picsureId + " belongs to a different owner");
@@ -127,7 +133,8 @@ class QueryPersistenceCommittedTest {
             owned(picsureId, UUID.randomUUID(), TWO_STUDIES, "FIRST_SUBMIT"), owned(picsureId, UUID.randomUUID(), ONE_STUDY, "FIRST_SUBMIT")
         );
 
-        List<SaveOutcome> outcomes = RacingFirstSaves.run(repo, runRepo, transactionManager, picsureId, requests.get(0), requests.get(1));
+        List<SaveOutcome> outcomes =
+            RacingFirstSaves.run(repo, runRepo, generalQueryRepo, transactionManager, picsureId, requests.get(0), requests.get(1));
 
         ConcurrentSaveAssertions.assertOneOwnerWon(picsureId, requests, outcomes, service.get(picsureId), runsOf(picsureId));
         assertThat(repo.count()).isEqualTo(1);
@@ -141,8 +148,12 @@ class QueryPersistenceCommittedTest {
         UUID firstRun = service.get(picsureId).runId();
 
         boolean savedWhileTheUpdateWasHeld = UpdateHeldAcrossASave.run(
-            repo, runRepo, transactionManager, picsureId, new UpdateQueryRequest("AVAILABLE", null, null, null, null, firstRun),
-            new SaveQueryRequest("{\"q\":1}", picsureId.toString(), "PENDING", "3", null, picsureId, owner, ONE_STUDY, "CONSENT_CHANGE")
+            repo, runRepo, generalQueryRepo, transactionManager, picsureId,
+            new UpdateQueryRequest("AVAILABLE", null, null, null, null, firstRun),
+            new SaveQueryRequest(
+                "{\"q\":1}", picsureId.toString(), "PENDING", "3", null, picsureId, owner, ONE_STUDY, "CONSENT_CHANGE", UUID.randomUUID(),
+                false, "COUNT"
+            )
         );
 
         ConcurrentSaveAssertions.assertTheSecondRunStands(firstRun, service.get(picsureId), runsOf(picsureId));
@@ -158,7 +169,7 @@ class QueryPersistenceCommittedTest {
 
         for (int round = 1; round <= RESAVE_ROUNDS; round++) {
             List<SaveOutcome> outcomes = RacingResaves.run(
-                repo, runRepo, transactionManager, stopped, owned(picsureId, owner, TWO_STUDIES, "CONSENT_CHANGE"),
+                repo, runRepo, generalQueryRepo, transactionManager, stopped, owned(picsureId, owner, TWO_STUDIES, "CONSENT_CHANGE"),
                 owned(picsureId, owner, ONE_STUDY, "CONSENT_CHANGE")
             );
 
@@ -176,7 +187,10 @@ class QueryPersistenceCommittedTest {
         service.save(owned(picsureId, owner, TWO_STUDIES, "FIRST_SUBMIT"));
         UUID olderRun = service.get(picsureId).runId();
         service.save(
-            new SaveQueryRequest("{\"q\":1}", picsureId.toString(), "PENDING", "3", null, picsureId, owner, ONE_STUDY, "CONSENT_CHANGE")
+            new SaveQueryRequest(
+                "{\"q\":1}", picsureId.toString(), "PENDING", "3", null, picsureId, owner, ONE_STUDY, "CONSENT_CHANGE", UUID.randomUUID(),
+                false, "COUNT"
+            )
         );
         StoredQuery before = service.get(picsureId);
         assertThat(before.runId()).isNotEqualTo(olderRun);
@@ -234,29 +248,32 @@ class QueryPersistenceCommittedTest {
         assertThat(runsOf(picsureId)).singleElement().satisfies(run -> assertThat(run.getStatus()).isNull());
     }
 
-    @ParameterizedTest(name = "picsureId={0} userUuid={1} consents={2} trigger={3}")
+    @ParameterizedTest(name = "picsureId={0} userUuid={1} consents={2} trigger={3} queryToVariantUuid={4}")
     @MethodSource("partlyOwnedShapes")
     void saveThatIsNeitherLegacyNorFullyOwnedIsRefusedAndStoresNothing(
-        boolean withId, boolean withOwner, boolean withConsents, boolean withTrigger
+        boolean withId, boolean withOwner, boolean withConsents, boolean withTrigger, boolean withGeneralQuery
     ) {
         UUID picsureId = UUID.randomUUID();
         SaveQueryRequest partlyOwned = new SaveQueryRequest(
             "{\"q\":1}", "rr", "QUEUED", "3", null, withId ? picsureId : null, withOwner ? UUID.randomUUID() : null,
-            withConsents ? ONE_STUDY : null, withTrigger ? "FIRST_SUBMIT" : null
+            withConsents ? ONE_STUDY : null, withTrigger ? "FIRST_SUBMIT" : null, withGeneralQuery ? UUID.randomUUID() : null, false,
+            "COUNT"
         );
 
         assertRefused(
             () -> service.save(partlyOwned), 400, "bad_request",
-            "picsureId, userUuid, consents and trigger must be sent together or not at all"
+            "picsureId, userUuid, consents, trigger and queryToVariantUuid must be sent together or not at all"
         );
 
         assertThat(repo.count()).isZero();
         assertThat(runRepo.count()).isZero();
+        assertThat(generalQueryRepo.count()).isZero();
     }
 
     static Stream<Arguments> partlyOwnedShapes() {
-        return IntStream.range(1, 15)
-            .mapToObj(present -> Arguments.of((present & 8) != 0, (present & 4) != 0, (present & 2) != 0, (present & 1) != 0));
+        return IntStream.range(1, 31).mapToObj(
+            present -> Arguments.of((present & 16) != 0, (present & 8) != 0, (present & 4) != 0, (present & 2) != 0, (present & 1) != 0)
+        );
     }
 
     @Test
@@ -276,9 +293,12 @@ class QueryPersistenceCommittedTest {
         service.save(owned(picsureId, owner, TWO_STUDIES, "FIRST_SUBMIT"));
         StoredQuery before = service.get(picsureId);
         AtomicInteger runInserts = new AtomicInteger();
-        QueryPersistenceService failingAtTheRun = new QueryPersistenceService(repo, failingRunInserts(runInserts), transactionManager);
-        SaveQueryRequest resave =
-            new SaveQueryRequest("{\"q\":1}", "other-result", "PENDING", "3", encoded("second"), picsureId, owner, ONE_STUDY, "RESUBMIT");
+        QueryPersistenceService failingAtTheRun =
+            new QueryPersistenceService(repo, failingRunInserts(runInserts), generalQueryRepo, transactionManager);
+        SaveQueryRequest resave = new SaveQueryRequest(
+            "{\"q\":1}", "other-result", "PENDING", "3", encoded("second"), picsureId, owner, ONE_STUDY, "RESUBMIT", UUID.randomUUID(),
+            false, "COUNT"
+        );
 
         assertThatThrownBy(() -> failingAtTheRun.save(resave)).isInstanceOf(DataIntegrityViolationException.class)
             .hasMessage("run insert refused");
@@ -292,7 +312,8 @@ class QueryPersistenceCommittedTest {
     void firstSaveLeavesNoRowWhenTheRunInsertFailsAndIsNotTriedAgain() {
         UUID picsureId = UUID.randomUUID();
         AtomicInteger runInserts = new AtomicInteger();
-        QueryPersistenceService failingAtTheRun = new QueryPersistenceService(repo, failingRunInserts(runInserts), transactionManager);
+        QueryPersistenceService failingAtTheRun =
+            new QueryPersistenceService(repo, failingRunInserts(runInserts), generalQueryRepo, transactionManager);
 
         assertThatThrownBy(() -> failingAtTheRun.save(owned(picsureId, UUID.randomUUID(), ONE_STUDY, "FIRST_SUBMIT")))
             .isInstanceOf(DataIntegrityViolationException.class).hasMessage("run insert refused");
@@ -300,6 +321,7 @@ class QueryPersistenceCommittedTest {
         assertThat(runInserts).hasValue(1);
         assertThat(repo.findById(picsureId)).isEmpty();
         assertThat(runRepo.count()).isZero();
+        assertThat(generalQueryRepo.count()).isZero();
     }
 
     @Test
@@ -310,10 +332,11 @@ class QueryPersistenceCommittedTest {
             rowCalls.add(methodName);
             return call.proceed();
         });
-        QueryPersistenceService countingService = new QueryPersistenceService(counted, runRepo, transactionManager);
+        QueryPersistenceService countingService = new QueryPersistenceService(counted, runRepo, generalQueryRepo, transactionManager);
         String metadataLongerThanTheColumn = Base64.getEncoder().encodeToString(new byte[9000]);
         SaveQueryRequest tooLong = new SaveQueryRequest(
-            "{\"q\":1}", "rr", "QUEUED", "3", metadataLongerThanTheColumn, picsureId, UUID.randomUUID(), ONE_STUDY, "FIRST_SUBMIT"
+            "{\"q\":1}", "rr", "QUEUED", "3", metadataLongerThanTheColumn, picsureId, UUID.randomUUID(), ONE_STUDY, "FIRST_SUBMIT",
+            UUID.randomUUID(), false, "COUNT"
         );
 
         assertThatThrownBy(() -> countingService.save(tooLong)).isInstanceOf(DataIntegrityViolationException.class);
@@ -347,7 +370,9 @@ class QueryPersistenceCommittedTest {
     }
 
     private static SaveQueryRequest owned(UUID picsureId, UUID owner, Map<String, List<String>> consents, String trigger) {
-        return new SaveQueryRequest("{\"q\":1}", picsureId.toString(), "QUEUED", "3", null, picsureId, owner, consents, trigger);
+        return new SaveQueryRequest(
+            "{\"q\":1}", picsureId.toString(), "QUEUED", "3", null, picsureId, owner, consents, trigger, UUID.randomUUID(), false, "COUNT"
+        );
     }
 
     private static String encoded(String metadata) {

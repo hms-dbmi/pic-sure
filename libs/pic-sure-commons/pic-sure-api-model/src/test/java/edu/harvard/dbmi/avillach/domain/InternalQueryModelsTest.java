@@ -22,6 +22,7 @@ public class InternalQueryModelsTest {
     private static final UUID ID = UUID.fromString("8694e3d4-5cb4-410f-8431-993445e6d3f6");
     private static final UUID OWNER = UUID.fromString("5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11");
     private static final UUID RUN = UUID.fromString("0b6d6a0e-3c56-4c0b-9a38-0b1f5c1f3a77");
+    private static final UUID GENERAL_QUERY = UUID.fromString("3d2f7c1a-9b4e-5c6d-8e7f-0a1b2c3d4e5f");
     private static final Map<String, List<String>> CONSENTS = Map.of("\\_consents\\", List.of("phs1.c1", "phs2.c1"));
     private static final String CONSENTS_JSON = "{\"\\\\_consents\\\\\":[\"phs1.c1\",\"phs2.c1\"]}";
 
@@ -102,7 +103,8 @@ public class InternalQueryModelsTest {
     public void saveQueryRequestWritesEveryMemberAndIgnoresUnknownOnes() throws JsonProcessingException {
         assertEquals(
             "{\"query\":\"{}\",\"resourceResultId\":null,\"status\":\"QUEUED\",\"version\":\"3\",\"metadata\":null,"
-                + "\"picsureId\":null,\"userUuid\":null,\"consents\":null,\"trigger\":null}",
+                + "\"picsureId\":null,\"userUuid\":null,\"consents\":null,\"trigger\":null,\"queryToVariantUuid\":null,"
+                + "\"sample\":null,\"resultType\":null}",
             mapper.writeValueAsString(new SaveQueryRequest("{}", null, "QUEUED", "3", null))
         );
         assertEquals(
@@ -116,10 +118,41 @@ public class InternalQueryModelsTest {
         SaveQueryRequest request = new SaveQueryRequest("{}", "rr-1", "QUEUED", "3", null, ID, OWNER, CONSENTS, "FIRST_SUBMIT");
         String json = "{\"query\":\"{}\",\"resourceResultId\":\"rr-1\",\"status\":\"QUEUED\",\"version\":\"3\",\"metadata\":null,"
             + "\"picsureId\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\",\"userUuid\":\"5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11\","
-            + "\"consents\":" + CONSENTS_JSON + ",\"trigger\":\"FIRST_SUBMIT\"}";
+            + "\"consents\":" + CONSENTS_JSON + ",\"trigger\":\"FIRST_SUBMIT\",\"queryToVariantUuid\":null,\"sample\":null,"
+            + "\"resultType\":null}";
 
         assertEquals(json, mapper.writeValueAsString(request));
         assertEquals(request, mapper.readValue(json, SaveQueryRequest.class));
+    }
+
+    @Test
+    public void saveQueryRequestCarriesTheGeneralQuerySampleAndResultType() throws JsonProcessingException {
+        SaveQueryRequest request =
+            new SaveQueryRequest("{}", "rr-1", "QUEUED", "3", null, ID, OWNER, CONSENTS, "FIRST_SUBMIT", GENERAL_QUERY, true, "DATAFRAME");
+        String json = "{\"query\":\"{}\",\"resourceResultId\":\"rr-1\",\"status\":\"QUEUED\",\"version\":\"3\",\"metadata\":null,"
+            + "\"picsureId\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\",\"userUuid\":\"5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11\","
+            + "\"consents\":" + CONSENTS_JSON + ",\"trigger\":\"FIRST_SUBMIT\","
+            + "\"queryToVariantUuid\":\"3d2f7c1a-9b4e-5c6d-8e7f-0a1b2c3d4e5f\",\"sample\":true,\"resultType\":\"DATAFRAME\"}";
+
+        assertEquals(json, mapper.writeValueAsString(request));
+        assertEquals(request, mapper.readValue(json, SaveQueryRequest.class));
+        assertEquals(GENERAL_QUERY, request.queryToVariantUuid());
+        assertEquals(Boolean.TRUE, request.sample());
+        assertEquals("DATAFRAME", request.resultType());
+    }
+
+    @Test
+    public void saveQueryRequestWrittenBeforeTheVariantMembersStillBinds() throws JsonProcessingException {
+        String writtenBefore = "{\"query\":\"{}\",\"resourceResultId\":\"rr-1\",\"status\":\"QUEUED\",\"version\":\"3\",\"metadata\":null,"
+            + "\"picsureId\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\",\"userUuid\":\"5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11\","
+            + "\"consents\":" + CONSENTS_JSON + ",\"trigger\":\"FIRST_SUBMIT\"}";
+
+        SaveQueryRequest bound = mapper.readValue(writtenBefore, SaveQueryRequest.class);
+
+        assertEquals(new SaveQueryRequest("{}", "rr-1", "QUEUED", "3", null, ID, OWNER, CONSENTS, "FIRST_SUBMIT"), bound);
+        assertNull(bound.queryToVariantUuid());
+        assertNull(bound.sample());
+        assertNull(bound.resultType());
     }
 
     @Test

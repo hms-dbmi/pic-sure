@@ -44,6 +44,9 @@ class InternalQueryWireTest {
     @Autowired
     private QueryRepository queryRepo;
 
+    @Autowired
+    private QueryToVariantRepository generalQueryRepo;
+
     @Value("${picsure.operations.internal-token}")
     private String validToken;
 
@@ -67,9 +70,46 @@ class InternalQueryWireTest {
             post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON).content(
                 "{\"query\":\"{\\\"q\\\":1}\",\"status\":\"QUEUED\",\"picsureId\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\","
                     + "\"userUuid\":\"5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11\",\"consents\":{\"\\\\_consents\\\\\":[\"phs1.c1\"]},"
-                    + "\"trigger\":\"FIRST_SUBMIT\"}"
+                    + "\"trigger\":\"FIRST_SUBMIT\",\"queryToVariantUuid\":\"3d2f7c1a-9b4e-5c6d-8e7f-0a1b2c3d4e5f\"}"
             )
         ).andExpect(status().isCreated()).andExpect(content().string("{\"picsureId\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\"}"));
+    }
+
+    @Test
+    void saveCarriesTheGeneralQuerySampleAndResultTypeOntoTheRow() throws Exception {
+        mockMvc.perform(
+            post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON).content(
+                "{\"query\":\"{\\\"q\\\":1}\",\"status\":\"QUEUED\",\"picsureId\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\","
+                    + "\"userUuid\":\"5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11\",\"consents\":{\"\\\\_consents\\\\\":[\"phs1.c1\"]},"
+                    + "\"trigger\":\"FIRST_SUBMIT\",\"queryToVariantUuid\":\"3d2f7c1a-9b4e-5c6d-8e7f-0a1b2c3d4e5f\",\"sample\":true,"
+                    + "\"resultType\":\"DATAFRAME_PFB\"}"
+            )
+        ).andExpect(status().isCreated()).andExpect(content().string("{\"picsureId\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\"}"));
+
+        Query row = queryRepo.findById(UUID.fromString("8694e3d4-5cb4-410f-8431-993445e6d3f6")).orElseThrow();
+        assertThat(row.getQueryToVariantUuid()).isEqualTo(UUID.fromString("3d2f7c1a-9b4e-5c6d-8e7f-0a1b2c3d4e5f"));
+        assertThat(row.isSample()).isTrue();
+        assertThat(row.getResultType()).isEqualTo("DATAFRAME_PFB");
+        assertThat(generalQueryRepo.findById(UUID.fromString("3d2f7c1a-9b4e-5c6d-8e7f-0a1b2c3d4e5f")).orElseThrow().getUserUuid())
+            .isEqualTo(UUID.fromString("5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11"));
+    }
+
+    @Test
+    void payloadWithoutTheVariantMembersStillBindsAndStoresARowUnderNoGeneralQuery() throws Exception {
+        String body = mockMvc.perform(
+            post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON).content(
+                "{\"query\":\"{\\\"q\\\":1}\",\"resourceResultId\":\"rr-1\",\"status\":\"QUEUED\",\"version\":\"3\",\"metadata\":null,"
+                    + "\"picsureId\":null,\"userUuid\":null,\"consents\":null,\"trigger\":null}"
+            )
+        ).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+
+        Matcher saved = SAVED_BODY.matcher(body);
+        assertThat(saved.matches()).as("save body %s", body).isTrue();
+        Query row = queryRepo.findById(UUID.fromString(saved.group(1))).orElseThrow();
+        assertThat(row.getQueryToVariantUuid()).isNull();
+        assertThat(row.isSample()).isFalse();
+        assertThat(row.getResultType()).isNull();
+        assertThat(generalQueryRepo.count()).isZero();
     }
 
     @Test
@@ -78,7 +118,7 @@ class InternalQueryWireTest {
             post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON).content(
                 "{\"query\":\"{\\\"q\\\":1}\",\"status\":\"QUEUED\",\"picsureId\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\","
                     + "\"userUuid\":\"5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11\",\"consents\":{\"\\\\_consents\\\\\":[\"phs2.c1\",\"phs1.c1\"]},"
-                    + "\"trigger\":\"FIRST_SUBMIT\"}"
+                    + "\"trigger\":\"FIRST_SUBMIT\",\"queryToVariantUuid\":\"3d2f7c1a-9b4e-5c6d-8e7f-0a1b2c3d4e5f\"}"
             )
         ).andExpect(status().isCreated());
 

@@ -74,6 +74,9 @@ class QueryPersistenceMySqlTest {
     private QueryRunRepository runRepository;
 
     @Autowired
+    private QueryToVariantRepository generalQueryRepository;
+
+    @Autowired
     private PlatformTransactionManager transactionManager;
 
     @Autowired
@@ -118,6 +121,7 @@ class QueryPersistenceMySqlTest {
         jdbc.update("DELETE FROM named_dataset_query");
         jdbc.update("DELETE FROM named_dataset");
         jdbc.update("DELETE FROM query");
+        jdbc.update("DELETE FROM query_to_variant");
     }
 
     @Test
@@ -178,7 +182,8 @@ class QueryPersistenceMySqlTest {
 
         service.save(
             new SaveQueryRequest(
-                "{\"q\":2}", "other", "PENDING", "4", null, picsureId, owner, Map.of(CONSENTS, List.of("phs1.c1")), "CONSENT_CHANGE"
+                "{\"q\":2}", "other", "PENDING", "4", null, picsureId, owner, Map.of(CONSENTS, List.of("phs1.c1")), "CONSENT_CHANGE",
+                UUID.randomUUID(), false, "COUNT"
             )
         );
 
@@ -217,10 +222,13 @@ class QueryPersistenceMySqlTest {
 
         assertThat(
             jdbc.queryForObject(
-                "SELECT COUNT(*) FROM query WHERE uuid = ? AND user_uuid IS NULL AND consents IS NULL", Integer.class, bytes(picsureId)
+                "SELECT COUNT(*) FROM query WHERE uuid = ? AND user_uuid IS NULL AND consents IS NULL"
+                    + " AND query_to_variant_uuid IS NULL AND sample = 0 AND result_type IS NULL",
+                Integer.class, bytes(picsureId)
             )
         ).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_run", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_to_variant", Integer.class)).isZero();
     }
 
     @Test
@@ -229,7 +237,7 @@ class QueryPersistenceMySqlTest {
         UUID owner = UUID.randomUUID();
 
         List<UUID> saved = RacingFirstSaves.run(
-            queryRepository, runRepository, transactionManager, picsureId,
+            queryRepository, runRepository, generalQueryRepository, transactionManager, picsureId,
             owned(picsureId, owner, Map.of(CONSENTS, List.of("phs1.c1")), "FIRST_SUBMIT")
         );
 
@@ -248,8 +256,8 @@ class QueryPersistenceMySqlTest {
             owned(picsureId, UUID.randomUUID(), Map.of(CONSENTS, List.of("phs1.c1")), "FIRST_SUBMIT")
         );
 
-        List<SaveOutcome> outcomes =
-            RacingFirstSaves.run(queryRepository, runRepository, transactionManager, picsureId, requests.get(0), requests.get(1));
+        List<SaveOutcome> outcomes = RacingFirstSaves
+            .run(queryRepository, runRepository, generalQueryRepository, transactionManager, picsureId, requests.get(0), requests.get(1));
 
         ConcurrentSaveAssertions.assertOneOwnerWon(
             picsureId, requests, outcomes, service.get(picsureId), runRepository.findByQueryUuidOrderBySubmittedAtAsc(picsureId)
@@ -265,11 +273,11 @@ class QueryPersistenceMySqlTest {
         UUID firstRun = service.get(picsureId).runId();
 
         boolean savedWhileTheUpdateWasHeld = UpdateHeldAcrossASave.run(
-            queryRepository, runRepository, transactionManager, picsureId,
+            queryRepository, runRepository, generalQueryRepository, transactionManager, picsureId,
             new UpdateQueryRequest("AVAILABLE", null, null, null, null, firstRun),
             new SaveQueryRequest(
                 "{\"q\":1}", picsureId.toString(), "PENDING", "3", null, picsureId, owner, Map.of(CONSENTS, List.of("phs1.c1")),
-                "CONSENT_CHANGE"
+                "CONSENT_CHANGE", UUID.randomUUID(), false, "COUNT"
             )
         );
 
@@ -287,7 +295,7 @@ class QueryPersistenceMySqlTest {
 
         for (int round = 1; round <= 10; round++) {
             List<SaveOutcome> outcomes = RacingResaves.run(
-                queryRepository, runRepository, transactionManager, stopped,
+                queryRepository, runRepository, generalQueryRepository, transactionManager, stopped,
                 owned(picsureId, owner, Map.of(CONSENTS, List.of("phs1.c1", "phs2.c1")), "CONSENT_CHANGE"),
                 owned(picsureId, owner, Map.of(CONSENTS, List.of("phs1.c1")), "CONSENT_CHANGE")
             );
@@ -319,8 +327,93 @@ class QueryPersistenceMySqlTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_run WHERE completed_at IS NOT NULL", Integer.class)).isZero();
     }
 
+    @Test
+    void firstOwnedSaveFilesTheRowUnderItsGeneralQueryInTheMigratedColumns() {
+        UUID picsureId = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        UUID general = UUID.randomUUID();
+
+        service.save(variant(picsureId, owner, general, true, "DATAFRAME"));
+
+        Map<String, Object> generalRow = jdbc.queryForMap(
+            "SELECT uuid, user_uuid, TIMESTAMPDIFF(SECOND, created_at, UTC_TIMESTAMP(3)) AS seconds_since_created FROM query_to_variant"
+        );
+        assertThat(generalRow.get("uuid")).isEqualTo(bytes(general));
+        assertThat(generalRow.get("user_uuid")).isEqualTo(bytes(owner));
+        assertThat(((Number) generalRow.get("seconds_since_created")).longValue()).isBetween(-5L, 60L);
+        Map<String, Object> row = jdbc.queryForMap(
+            "SELECT query_to_variant_uuid, CAST(sample AS UNSIGNED) AS sample, result_type FROM query WHERE uuid = ?", bytes(picsureId)
+        );
+        assertThat(row.get("query_to_variant_uuid")).isEqualTo(bytes(general));
+        assertThat(((Number) row.get("sample")).intValue()).isEqualTo(1);
+        assertThat(row.get("result_type")).isEqualTo("DATAFRAME");
+        QueryToVariant loaded = generalQueryRepository.findById(general).orElseThrow();
+        assertThat(loaded.getUserUuid()).isEqualTo(owner);
+        assertThat(queryRepository.findById(picsureId).orElseThrow().getQueryToVariantUuid()).isEqualTo(general);
+    }
+
+    @Test
+    void generalQueryOfAnotherOwnerIsRefusedOnMySqlAndStoresNothing() {
+        UUID owner = UUID.randomUUID();
+        UUID general = UUID.randomUUID();
+        UUID strangersRow = UUID.randomUUID();
+        service.save(variant(UUID.randomUUID(), owner, general, false, "DATAFRAME"));
+
+        assertThatThrownBy(() -> service.save(variant(strangersRow, UUID.randomUUID(), general, true, "DATAFRAME")))
+            .isInstanceOfSatisfying(PicsureException.class, refusal -> {
+                assertThat(refusal.getStatus().value()).isEqualTo(409);
+                assertThat(refusal).hasMessage("General query " + general + " belongs to a different owner");
+            });
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_run", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT user_uuid FROM query_to_variant", byte[].class)).isEqualTo(bytes(owner));
+    }
+
+    @Test
+    void twoFirstSavesOfTwoVariantsAtOnceLeaveOneGeneralQueryAndTwoRows() throws Exception {
+        UUID owner = UUID.randomUUID();
+        UUID general = UUID.randomUUID();
+        UUID sampleRow = UUID.randomUUID();
+        UUID fullRow = UUID.randomUUID();
+
+        List<SaveOutcome> outcomes = RacingFirstSaves.runUnderTheirOwnIds(
+            queryRepository, runRepository, generalQueryRepository, transactionManager,
+            variant(sampleRow, owner, general, true, "DATAFRAME"), variant(fullRow, owner, general, false, "DATAFRAME")
+        );
+
+        assertThat(outcomes).extracting(SaveOutcome::failure).containsOnlyNulls();
+        assertThat(outcomes).extracting(SaveOutcome::saved).containsExactly(sampleRow, fullRow);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_to_variant", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT user_uuid FROM query_to_variant WHERE uuid = ?", byte[].class, bytes(general)))
+            .isEqualTo(bytes(owner));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query", Integer.class)).isEqualTo(2);
+        assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM query WHERE uuid = ? AND query_to_variant_uuid = ? AND sample = 1 AND result_type = 'DATAFRAME'",
+                Integer.class, bytes(sampleRow), bytes(general)
+            )
+        ).isEqualTo(1);
+        assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM query WHERE uuid = ? AND query_to_variant_uuid = ? AND sample = 0 AND result_type = 'DATAFRAME'",
+                Integer.class, bytes(fullRow), bytes(general)
+            )
+        ).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_run", Integer.class)).isEqualTo(2);
+    }
+
     private static SaveQueryRequest owned(UUID picsureId, UUID owner, Map<String, List<String>> consents, String trigger) {
-        return new SaveQueryRequest("{\"q\":1}", picsureId.toString(), "QUEUED", "3", null, picsureId, owner, consents, trigger);
+        return new SaveQueryRequest(
+            "{\"q\":1}", picsureId.toString(), "QUEUED", "3", null, picsureId, owner, consents, trigger, UUID.randomUUID(), false, "COUNT"
+        );
+    }
+
+    private static SaveQueryRequest variant(UUID picsureId, UUID owner, UUID general, boolean sample, String resultType) {
+        return new SaveQueryRequest(
+            "{\"q\":1}", picsureId.toString(), "QUEUED", "3", null, picsureId, owner, Map.of(CONSENTS, List.of("phs1.c1")), "FIRST_SUBMIT",
+            general, sample, resultType
+        );
     }
 
     private static int versionOf(Path file) {

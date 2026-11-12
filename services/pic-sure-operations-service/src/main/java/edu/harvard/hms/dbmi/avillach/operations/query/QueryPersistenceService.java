@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.operations.query;
 
+import java.nio.ByteBuffer;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
@@ -48,6 +49,9 @@ import edu.harvard.hms.dbmi.avillach.operations.error.PicsureExceptions;
  * the latest run. Runs are never deleted. This service reads only the latest run of a row; the repository can also list every run of a row,
  * which the tests use.
  *
+ * <p>It is also the only writer of the {@code query_to_variant} table. The save that inserts a row with an owner files it under its general
+ * query, and creates the general query in the same transaction when it is not stored yet. General queries are never changed or deleted.
+ *
  * <p>A save onto a stored row and an update both lock the query row before they read anything else, so two writers of one row run one after
  * the other and the second sees the run the first appended.
  */
@@ -58,10 +62,12 @@ public class QueryPersistenceService {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
     private static final int MYSQL_DUPLICATE_ENTRY = 1062;
-    private static final int OWNED_SAVE_MEMBERS = 4;
+    private static final int OWNED_SAVE_MEMBERS = 5;
+    private static final int UUID_BYTES = 16;
 
     private final QueryRepository repo;
     private final QueryRunRepository runs;
+    private final QueryToVariantRepository generalQueries;
     private final TransactionTemplate transactions;
     private final Clock clock;
 
@@ -70,11 +76,15 @@ public class QueryPersistenceService {
      *
      * @param repo the query rows
      * @param runs the runs of the query rows
+     * @param generalQueries the general queries the owned query rows are filed under
      * @param transactionManager the transaction manager each save opens its transactions on
      */
     @Autowired
-    public QueryPersistenceService(QueryRepository repo, QueryRunRepository runs, PlatformTransactionManager transactionManager) {
-        this(repo, runs, transactionManager, Clock.systemUTC());
+    public QueryPersistenceService(
+        QueryRepository repo, QueryRunRepository runs, QueryToVariantRepository generalQueries,
+        PlatformTransactionManager transactionManager
+    ) {
+        this(repo, runs, generalQueries, transactionManager, Clock.systemUTC());
     }
 
     /**
@@ -82,12 +92,17 @@ public class QueryPersistenceService {
      *
      * @param repo the query rows
      * @param runs the runs of the query rows
+     * @param generalQueries the general queries the owned query rows are filed under
      * @param transactionManager the transaction manager each save opens its transactions on
-     * @param clock the source of the start, ready, submit and completion times
+     * @param clock the source of the start, ready, submit, completion and creation times
      */
-    QueryPersistenceService(QueryRepository repo, QueryRunRepository runs, PlatformTransactionManager transactionManager, Clock clock) {
+    QueryPersistenceService(
+        QueryRepository repo, QueryRunRepository runs, QueryToVariantRepository generalQueries,
+        PlatformTransactionManager transactionManager, Clock clock
+    ) {
         this.repo = repo;
         this.runs = runs;
+        this.generalQueries = generalQueries;
         this.transactions = new TransactionTemplate(transactionManager);
         this.clock = clock;
     }
@@ -96,7 +111,8 @@ public class QueryPersistenceService {
      * Stores a query row under the id the request carries, or under a random id when it carries none, with the rules of the two-argument
      * {@code save}.
      *
-     * @param req the query body, status, version, metadata, and optionally the id, owner, consents and trigger to store
+     * @param req the query body, status, version, metadata, and optionally the id, owner, consents, trigger, general query and variant to
+     *        store
      * @return the id the row is stored under
      * @throws PicsureException as the two-argument {@code save} does
      */
@@ -106,13 +122,19 @@ public class QueryPersistenceService {
 
     /**
      * Stores a query row under the id the caller chose. The first save of an id inserts the row with the request's body, version, result
-     * id, owner, consents, status and metadata. A later save of the same id updates that row in place: it takes the new consents, status
-     * and metadata, restarts {@code startTime}, clears {@code readyTime}, and leaves the stored body, version, result id and owner as they
-     * were. Consent values are stored sorted. When the request names a trigger, one {@code query_run} row is written in the same
-     * transaction as the row change, and neither is kept when the other fails.
+     * id, owner, consents, status, metadata, general query, sample flag and result type. A later save of the same id updates that row in
+     * place: it takes the new consents, status and metadata, restarts {@code startTime}, clears {@code readyTime}, and leaves the stored
+     * body, version, result id, owner, general query, sample flag and result type as they were. Consent values are stored sorted. When the
+     * request names a trigger, one {@code query_run} row is written in the same transaction as the row change, and neither is kept when the
+     * other fails.
      *
-     * <p>The request is either legacy-shaped, with none of {@code picsureId}, {@code userUuid}, {@code consents} and {@code trigger}, or
-     * fully owned, with all four. An empty consent map counts as present. Any other mix is refused before anything is read or written.
+     * <p>The request is either legacy-shaped, with none of {@code picsureId}, {@code userUuid}, {@code consents}, {@code trigger} and
+     * {@code queryToVariantUuid}, or fully owned, with all five. An empty consent map counts as present. Any other mix is refused before
+     * anything is read or written, so a row without an owner is never filed under a general query and a new row with an owner always is.
+     *
+     * <p>The save that inserts an owned row also inserts its general query when no row has that id yet, in the transaction of the row
+     * insert, so neither is kept when the other fails. A general query that is stored under a different owner than the request names
+     * refuses the save, and nothing is stored. A later save of the row neither reads nor writes the general query.
      *
      * <p>A stored row is only ever saved again by its owner. When the owner of the stored row and the owner in the request differ, or one
      * of the two is absent, the save is refused, the row keeps every value it had and no run is written.
@@ -121,15 +143,19 @@ public class QueryPersistenceService {
      * there, updates it. When it is not there, that transaction ends before the second one inserts the row, because on MySQL a locking read
      * that finds nothing holds the gap the row would go into, and two first saves that each held it and then inserted would deadlock. Two
      * first saves of one id can therefore both insert. The one that loses fails on the primary key, its transaction rolls back, and a third
-     * transaction locks the row the other one inserted and updates it under the rules above. Only a duplicate row id leads to that third
-     * transaction, and any other failure of the insert is thrown as it is. A caller that already holds a transaction joins it, and the
-     * third step then cannot succeed, because the failed insert has marked that transaction for rollback.
+     * transaction locks the row the other one inserted and updates it under the rules above. Only a duplicate key on the row insert leads
+     * to that third transaction, and any other failure of the insert is thrown as it is. When the third transaction finds no row under the
+     * id, the duplicate was on the variant key of the general query, and the duplicate-key failure is thrown as the database reported it. A
+     * caller that already holds a transaction joins it, and the third step then cannot succeed, because the failed insert has marked that
+     * transaction for rollback.
      *
      * @param picsureId the row id to store under, or null to have a random one assigned
-     * @param req the query body, status, version, metadata, owner, consents and trigger to store
+     * @param req the query body, status, version, metadata, owner, consents, trigger, general query and variant to store
      * @return the id the row is stored under
      * @throws PicsureException 400 when the request is neither legacy-shaped nor fully owned, when the status or trigger is not a known
-     *         name, or when the metadata is not base64; 409 when the row is stored under a different owner
+     *         name, or when the metadata is not base64; 409 when the row or its general query is stored under a different owner
+     * @throws DataIntegrityViolationException when the general query already holds a row of the same sample flag and result type under
+     *         another id
      */
     public UUID save(UUID picsureId, SaveQueryRequest req) {
         requireLegacyOrFullyOwned(req);
@@ -142,7 +168,7 @@ public class QueryPersistenceService {
         }
         try {
             return transactions.execute(status -> insert(picsureId, req));
-        } catch (RowIdTakenException lostFirstInsert) {
+        } catch (DuplicateRowException lostFirstInsert) {
             UUID storedOnTheWinnersRow = transactions.execute(status -> storeOnExistingRow(picsureId, req));
             if (storedOnTheWinnersRow == null) {
                 throw lostFirstInsert.duplicateKey();
@@ -170,11 +196,18 @@ public class QueryPersistenceService {
     private UUID insertUnderARandomId(SaveQueryRequest req) {
         try {
             return transactions.execute(status -> insert(UUID.randomUUID(), req));
-        } catch (RowIdTakenException randomIdTaken) {
+        } catch (DuplicateRowException randomIdTaken) {
             throw randomIdTaken.duplicateKey();
         }
     }
 
+    /**
+     * Inserts a new row under the given id, filed under the general query the request names. The general query is found or created first,
+     * so the caller's transaction holds both writes.
+     *
+     * @throws PicsureException 409 when the general query is stored under a different owner than the request names
+     * @throws DuplicateRowException when the database refuses the row for a duplicate key
+     */
     private UUID insert(UUID picsureId, SaveQueryRequest req) {
         Query entity = new Query();
         entity.setUuid(picsureId);
@@ -182,7 +215,38 @@ public class QueryPersistenceService {
         entity.setResourceResultId(req.resourceResultId());
         entity.setVersion(req.version());
         entity.setUserUuid(req.userUuid());
+        entity.setQueryToVariantUuid(findOrCreateGeneralQuery(req));
+        entity.setSample(Boolean.TRUE.equals(req.sample()));
+        entity.setResultType(req.resultType());
         return store(entity, req);
+    }
+
+    /**
+     * Makes sure the general query the request names is stored and belongs to the request's owner. The row is inserted when no row has the
+     * id, with a statement that leaves a stored row alone and raises no duplicate-key failure, and is then loaded to read its owner. Two
+     * saves that create one general query at once therefore both go on: the second waits for the first and then finds its row.
+     *
+     * @param req the save request
+     * @return the id of the general query, or null when the request names none
+     * @throws PicsureException 409 when the general query is stored under a different owner than the request names
+     */
+    private UUID findOrCreateGeneralQuery(SaveQueryRequest req) {
+        UUID generalId = req.queryToVariantUuid();
+        if (generalId == null) {
+            return null;
+        }
+        generalQueries.insertIfAbsent(bytesOf(generalId), bytesOf(req.userUuid()), clock.instant().truncatedTo(ChronoUnit.MILLIS));
+        UUID storedOwner = generalQueries.findById(generalId).map(QueryToVariant::getUserUuid)
+            .orElseThrow(() -> new IllegalStateException("General query " + generalId + " is missing right after it was stored"));
+        if (!storedOwner.equals(req.userUuid())) {
+            throw PicsureExceptions.conflict("General query " + generalId + " belongs to a different owner");
+        }
+        return generalId;
+    }
+
+    /** Returns the 16 bytes of a UUID, most significant byte first, which is how the {@code BINARY(16)} id columns hold one. */
+    private static byte[] bytesOf(UUID uuid) {
+        return ByteBuffer.allocate(UUID_BYTES).putLong(uuid.getMostSignificantBits()).putLong(uuid.getLeastSignificantBits()).array();
     }
 
     private UUID store(Query entity, SaveQueryRequest req) {
@@ -202,9 +266,11 @@ public class QueryPersistenceService {
     }
 
     /**
-     * Writes the row to the database now. The primary key is the only unique key of the {@code query} table, so a duplicate key on the
-     * insert of a new row means another save inserted the same id first, and it is reported as {@link RowIdTakenException}. Every other
-     * failure is thrown as it is.
+     * Writes the row to the database now. The {@code query} table has two unique keys: the primary key, and the variant key over the
+     * general query, the sample flag and the result type. A duplicate key on the insert of a new row is reported as
+     * {@link DuplicateRowException} whichever of the two refused it. It means that another save inserted the same id first, or that the
+     * general query already holds a row of the same variant under another id. The caller tells the two apart by looking for a row under the
+     * id. Every other failure is thrown as it is.
      */
     private UUID flushRow(Query entity) {
         boolean inserting = entity.isNew();
@@ -212,7 +278,7 @@ public class QueryPersistenceService {
             return repo.saveAndFlush(entity).getUuid();
         } catch (DataIntegrityViolationException e) {
             if (inserting && isDuplicateKey(e)) {
-                throw new RowIdTakenException(e);
+                throw new DuplicateRowException(e);
             }
             throw e;
         }
@@ -228,11 +294,13 @@ public class QueryPersistenceService {
         return false;
     }
 
-    /** Refuses a request that carries some but not all of the id, owner, consents and trigger of an owned save. */
+    /** Refuses a request that carries some but not all of the id, owner, consents, trigger and general query of an owned save. */
     private static void requireLegacyOrFullyOwned(SaveQueryRequest req) {
-        long ownedMembers = Stream.of(req.picsureId(), req.userUuid(), req.consents(), req.trigger()).filter(Objects::nonNull).count();
+        long ownedMembers = Stream.of(req.picsureId(), req.userUuid(), req.consents(), req.trigger(), req.queryToVariantUuid())
+            .filter(Objects::nonNull).count();
         if (ownedMembers != 0 && ownedMembers != OWNED_SAVE_MEMBERS) {
-            throw PicsureExceptions.badRequest("picsureId, userUuid, consents and trigger must be sent together or not at all");
+            throw PicsureExceptions
+                .badRequest("picsureId, userUuid, consents, trigger and queryToVariantUuid must be sent together or not at all");
         }
     }
 
@@ -426,14 +494,14 @@ public class QueryPersistenceService {
         return new PicsureException(HttpStatus.NOT_FOUND, "not_found", "Query " + id + " not found");
     }
 
-    /** Thrown out of the insert transaction when another save has already inserted a row under the same id. */
-    private static final class RowIdTakenException extends RuntimeException {
+    /** Thrown out of the insert transaction when the database refused the new row for a duplicate key. */
+    private static final class DuplicateRowException extends RuntimeException {
 
         private static final long serialVersionUID = 1L;
 
         private final DataIntegrityViolationException duplicateKey;
 
-        RowIdTakenException(DataIntegrityViolationException duplicateKey) {
+        DuplicateRowException(DataIntegrityViolationException duplicateKey) {
             super(duplicateKey);
             this.duplicateKey = duplicateKey;
         }
