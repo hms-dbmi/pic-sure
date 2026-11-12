@@ -1,7 +1,6 @@
 # pic-sure-ai-service architecture
 
-How the service is put together today. For configuration, model choice, logging and the full guard table, see the
-[README](../README.md).
+How the service is put together today. For configuration see the [README](../README.md). Model choice is in [MODEL.md](MODEL.md), logging in [DEBUGGING.md](DEBUGGING.md), and the full guard table in [GUARDS.md](GUARDS.md).
 
 ## 1. Where it sits
 
@@ -86,8 +85,8 @@ Things the diagram does not show:
 ## 3. Inside the loop
 
 The model's tool calls and replies are treated as untrusted. Each tool call passes through the checks below before it runs, and
-the reply is checked again before it goes out. The full catalogue, one row per misbehavior, is in the README's
-[Guarding against model behavior](../README.md#guarding-against-model-behavior).
+the reply is checked again before it goes out. The full catalogue, one row per misbehavior, is in
+[GUARDS.md](GUARDS.md).
 
 ```mermaid
 flowchart TD
