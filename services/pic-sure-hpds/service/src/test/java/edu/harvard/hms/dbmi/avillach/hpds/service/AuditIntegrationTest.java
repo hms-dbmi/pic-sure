@@ -9,6 +9,7 @@ import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletResponse;
+import jakarta.servlet.http.HttpServletResponseWrapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -102,7 +103,10 @@ class AuditIntegrationTest {
         assertEquals("req-42", requestIdCaptor.getValue());
 
         // Verify the filter chain was invoked
-        verify(chain).doFilter(eq(request), any(ServletResponse.class));
+        ArgumentCaptor<ServletResponse> chainResponse = ArgumentCaptor.forClass(ServletResponse.class);
+        verify(chain).doFilter(eq(request), chainResponse.capture());
+        HttpServletResponseWrapper wrapper = assertInstanceOf(HttpServletResponseWrapper.class, chainResponse.getValue());
+        assertSame(response, wrapper.getResponse());
     }
 
     @Test

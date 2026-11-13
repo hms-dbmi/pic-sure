@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing.audit;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.OptionalLong;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,6 +29,8 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(AuditLoggingFilter.class);
 
+    private static final String HEAD_METHOD = "HEAD";
+
     private final String destIpConfig;
     private final Integer destPortConfig;
     private final LoggingClient loggingClient;
@@ -50,9 +53,11 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
         long startTime = System.currentTimeMillis();
 
         ByteCountingResponseWrapper countingResponse = new ByteCountingResponseWrapper(response);
+        boolean chainCompleted = false;
 
         try {
             filterChain.doFilter(request, countingResponse);
+            chainCompleted = true;
         } finally {
             try {
                 if (loggingClient == null || !loggingClient.isEnabled()) {
@@ -83,7 +88,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
                 // Response info
                 int responseStatus = response.getStatus();
                 String contentType = response.getContentType();
-                Long bytes = bytesWritten(request, countingResponse);
+                Long bytes = bytesWritten(request, countingResponse, chainCompleted);
 
                 String queryString = request.getQueryString();
                 RequestInfo requestInfo = RequestInfo.builder().method(method).url(fullPath).queryString(queryString).srcIp(srcIp)
@@ -147,17 +152,24 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     }
 
     /**
-     * Reads the size of the response body for the audit event.
+     * Reads the size of the response body for the audit event. The size is the body bytes handed to the container, before compression or
+     * chunk framing. <p> It is left unset when the container writes the body after this filter has sent its event: an exception left the
+     * chain, async handling has started, or {@code sendError} was called. Otherwise it is 0 for a HEAD request, whose body the container
+     * discards, after {@code sendRedirect}, and for a response with no body. Unset wins over 0.
      *
      * @param request the request being audited
      * @param response the counting wrapper the rest of the chain wrote to
-     * @return the number of body bytes written, 0 for a response with no body, or null when async handling has started and the body is
-     *         written after this filter has sent its event
+     * @param chainCompleted whether the rest of the chain returned without throwing
+     * @return the number of body bytes, or null to leave the field unset
      */
-    private static Long bytesWritten(HttpServletRequest request, ByteCountingResponseWrapper response) {
-        if (request.isAsyncStarted()) {
+    private static Long bytesWritten(HttpServletRequest request, ByteCountingResponseWrapper response, boolean chainCompleted) {
+        if (!chainCompleted || request.isAsyncStarted()) {
             return null;
         }
-        return response.getByteCount();
+        OptionalLong byteCount = response.getByteCount();
+        if (byteCount.isEmpty()) {
+            return null;
+        }
+        return HEAD_METHOD.equals(request.getMethod()) ? 0L : byteCount.getAsLong();
     }
 }
