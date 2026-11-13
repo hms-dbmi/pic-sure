@@ -361,10 +361,13 @@ class OpenApiDocumentTest {
         for (JsonNode submit : List.of(operation(document, "post", QUERY), operation(authDocument, "post", "/hpds/auth/query"))) {
             assertThat(submit.path("responses").path("400").path("description").asText()).contains(
                 "a query with `sample` set to true while sample datasets are turned off (error type `sample_disabled`)",
-                "on a backend other than auth", "or with a result type other than DATAFRAME, DATAFRAME_PFB and DATAFRAME_TIMESERIES"
+                "on a backend other than auth", "or with a result type other than DATAFRAME, DATAFRAME_PFB and DATAFRAME_TIMESERIES",
+                "a query on auth with no `expectedResultType` that the caller has not run before",
+                "An expected result type is required for a query that has not run before"
             );
         }
         for (JsonNode sync : List.of(operation(document, "post", SYNC), operation(authDocument, "post", "/hpds/auth/query/sync"))) {
+            assertThat(sync.path("responses").path("400").path("description").asText()).doesNotContain("has not run before");
             assertThat(sync.path("responses").path("400").path("description").asText()).contains(
                 "a result type not served inline", "a query with `sample` set to true, which this endpoint never runs",
                 "error type `sample_disabled` while sample datasets are turned off"

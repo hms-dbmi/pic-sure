@@ -11,6 +11,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.dbmi.avillach.domain.StoredQueryVariant;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
@@ -785,6 +787,153 @@ class QueryPersistenceServiceTest {
         assertThat(row.getResultType()).isNull();
         assertThat(row.isSample()).isTrue();
         assertThat(row.getQueryToVariantUuid()).isNotNull();
+    }
+
+    @Test
+    void newOwnedRowGetsACreationTimeAndAResaveNeverChangesIt() {
+        Instant inserted = Instant.parse("2026-03-04T05:06:07.008Z");
+        Instant resaved = Instant.parse("2026-05-06T07:08:09.010Z");
+        UUID picsureId = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        UUID general = UUID.randomUUID();
+        serviceAt(inserted).save(variant(picsureId, owner, general, false, "DATAFRAME"));
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(repo.findById(picsureId).orElseThrow().getCreatedAt()).isEqualTo(inserted);
+        entityManager.clear();
+
+        serviceAt(resaved).save(
+            new SaveQueryRequest(
+                "{\"q\":1}", picsureId.toString(), "PENDING", "3", null, picsureId, owner, Map.of(CONSENTS, List.of("phs1.c1")), "RESUBMIT",
+                general, false, "DATAFRAME"
+            )
+        );
+        entityManager.flush();
+        entityManager.clear();
+
+        Query row = repo.findById(picsureId).orElseThrow();
+        assertThat(row.getStartTime()).isEqualTo(resaved);
+        assertThat(row.getCreatedAt()).isEqualTo(inserted);
+    }
+
+    @Test
+    void creationTimeIsStoredInWholeMilliseconds() {
+        UUID picsureId = UUID.randomUUID();
+
+        serviceAt(Instant.parse("2026-03-04T05:06:07.008999999Z"))
+            .save(variant(picsureId, UUID.randomUUID(), UUID.randomUUID(), false, "COUNT"));
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(repo.findById(picsureId).orElseThrow().getCreatedAt()).isEqualTo(Instant.parse("2026-03-04T05:06:07.008Z"));
+    }
+
+    @Test
+    void ownerlessInsertGetsACreationTime() {
+        Instant inserted = Instant.parse("2026-03-04T05:06:07.008Z");
+
+        UUID picsureId = serviceAt(inserted).save(new SaveQueryRequest("{\"q\":1}", "rr-1", "QUEUED", "3", null));
+        entityManager.flush();
+        entityManager.clear();
+
+        Query row = repo.findById(picsureId).orElseThrow();
+        assertThat(row.getUserUuid()).isNull();
+        assertThat(row.getCreatedAt()).isEqualTo(inserted);
+    }
+
+    @Test
+    void updateOfAStoredRowNeverChangesItsCreationTime() {
+        Instant inserted = Instant.parse("2026-03-04T05:06:07.008Z");
+        UUID picsureId = serviceAt(inserted).save(new SaveQueryRequest("{\"q\":1}", "rr-1", "QUEUED", "3", null));
+        entityManager.flush();
+        entityManager.clear();
+
+        serviceAt(Instant.parse("2026-05-06T07:08:09.010Z")).update(picsureId, new UpdateQueryRequest("AVAILABLE", null, null, null, null));
+        entityManager.flush();
+        entityManager.clear();
+
+        Query row = repo.findById(picsureId).orElseThrow();
+        assertThat(row.getStatus()).isEqualTo(PicSureStatus.AVAILABLE);
+        assertThat(row.getCreatedAt()).isEqualTo(inserted);
+    }
+
+    @Test
+    void createdAtIsNeverUpdatedAfterInsert() {
+        Instant inserted = Instant.parse("2026-03-04T05:06:07.008Z");
+        UUID picsureId = UUID.randomUUID();
+        serviceAt(inserted).save(owned(picsureId, UUID.randomUUID(), Map.of(CONSENTS, List.of("phs1.c1")), "FIRST_SUBMIT"));
+        entityManager.flush();
+        entityManager.clear();
+
+        Query loaded = repo.findById(picsureId).orElseThrow();
+        loaded.setCreatedAt(Instant.parse("2030-01-01T00:00:00Z"));
+        loaded.setStatus(PicSureStatus.ERROR);
+        repo.save(loaded);
+        entityManager.flush();
+        entityManager.clear();
+
+        Query reloaded = repo.findById(picsureId).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(PicSureStatus.ERROR);
+        assertThat(reloaded.getCreatedAt()).isEqualTo(inserted);
+    }
+
+    @Test
+    void variantsOfListsTheOwnersVariantsOldestFirstWithUndatedRowsLastAndTheRowIdBreakingTies() {
+        UUID owner = UUID.randomUUID();
+        UUID general = UUID.randomUUID();
+        Instant early = Instant.parse("2026-01-01T00:00:00Z");
+        Instant late = Instant.parse("2026-02-01T00:00:00Z");
+        UUID newest = storedVariant(owner, general, false, "COUNT", late);
+        UUID oldest = storedVariant(owner, general, true, "DATAFRAME_PFB", early);
+        UUID undated = storedVariant(owner, general, false, "DATAFRAME", null);
+        UUID undatedAndUntyped = storedVariant(owner, general, true, null, null);
+        UUID alsoOldest = storedVariant(owner, general, false, "DATAFRAME_TIMESERIES", early);
+        entityManager.flush();
+        entityManager.clear();
+
+        List<StoredQueryVariant> variants = service.variantsOf(general, owner);
+
+        List<UUID> oldestPair = Stream.of(oldest, alsoOldest).sorted(QueryPersistenceServiceTest::asTheDatabaseOrdersIds).toList();
+        List<UUID> undatedPair = Stream.of(undated, undatedAndUntyped).sorted(QueryPersistenceServiceTest::asTheDatabaseOrdersIds).toList();
+        assertThat(variants).extracting(StoredQueryVariant::picsureId)
+            .containsExactly(oldestPair.get(0), oldestPair.get(1), newest, undatedPair.get(0), undatedPair.get(1));
+        assertThat(variants).filteredOn(variant -> variant.picsureId().equals(oldest))
+            .containsExactly(new StoredQueryVariant(oldest, true, "DATAFRAME_PFB", early.toEpochMilli()));
+        assertThat(variants).filteredOn(variant -> variant.picsureId().equals(undatedAndUntyped))
+            .containsExactly(new StoredQueryVariant(undatedAndUntyped, true, null, null));
+    }
+
+    @Test
+    void variantsOfIsEmptyForAGeneralQueryOfAnotherOwnerAndForAnUnknownOne() {
+        UUID owner = UUID.randomUUID();
+        UUID stranger = UUID.randomUUID();
+        UUID general = UUID.randomUUID();
+        UUID strangersGeneral = UUID.randomUUID();
+        UUID ownersRow = storedVariant(owner, general, false, "DATAFRAME", Instant.parse("2026-01-01T00:00:00Z"));
+        storedVariant(stranger, strangersGeneral, false, "DATAFRAME", Instant.parse("2026-01-01T00:00:00Z"));
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(service.variantsOf(strangersGeneral, owner)).isEmpty();
+        assertThat(service.variantsOf(general, stranger)).isEmpty();
+        assertThat(service.variantsOf(UUID.randomUUID(), owner)).isEmpty();
+        assertThat(service.variantsOf(general, owner)).extracting(StoredQueryVariant::picsureId).containsExactly(ownersRow);
+    }
+
+    private QueryPersistenceService serviceAt(Instant instant) {
+        return new QueryPersistenceService(repo, runRepo, generalQueryRepo, transactionManager, Clock.fixed(instant, ZoneOffset.UTC));
+    }
+
+    private UUID storedVariant(UUID owner, UUID general, boolean sample, String resultType, Instant createdAt) {
+        Query row = QueryFixtures.variant(owner, general, sample, resultType);
+        row.setCreatedAt(createdAt);
+        return repo.save(row).getUuid();
+    }
+
+    /** Compares two ids as unsigned bytes, most significant first, which is how the database orders a {@code BINARY(16)} column. */
+    private static int asTheDatabaseOrdersIds(UUID left, UUID right) {
+        int high = Long.compareUnsigned(left.getMostSignificantBits(), right.getMostSignificantBits());
+        return high != 0 ? high : Long.compareUnsigned(left.getLeastSignificantBits(), right.getLeastSignificantBits());
     }
 
     private static SaveQueryRequest owned(UUID picsureId, UUID owner, Map<String, List<String>> consents, String trigger) {

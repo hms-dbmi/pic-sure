@@ -44,6 +44,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.dbmi.avillach.domain.StoredQueryVariant;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
@@ -488,6 +489,75 @@ class QueryPersistenceMySqlTest {
         assertThat(stored.query()).isEqualTo("{\"q\":1}");
         assertThat(stored.consents()).containsExactlyEntriesOf(Map.of(CONSENTS, List.of("phs1.c1")));
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_run", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void creationTimeIsStoredAtInsertAndNoResaveOrUpdateChangesIt() {
+        Instant inserted = Instant.parse("2026-03-04T05:06:07.008Z");
+        Instant later = Instant.parse("2026-05-06T07:08:09.010Z");
+        UUID picsureId = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        UUID general = UUID.randomUUID();
+        serviceAt(inserted).save(variant(picsureId, owner, general, false, "DATAFRAME"));
+        assertThat(createdAtOf(picsureId)).isEqualTo(inserted);
+
+        serviceAt(later).save(
+            new SaveQueryRequest(
+                "{\"q\":1}", picsureId.toString(), "PENDING", "3", null, picsureId, owner, Map.of(CONSENTS, List.of("phs2.c1")),
+                "CONSENT_CHANGE", general, false, "DATAFRAME"
+            )
+        );
+        service.update(picsureId, new UpdateQueryRequest("AVAILABLE", null, null, null, null));
+
+        assertThat(createdAtOf(picsureId)).isEqualTo(inserted);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_run WHERE query_uuid = ?", Integer.class, bytes(picsureId)))
+            .isEqualTo(2);
+        assertThat(service.get(picsureId).startTime()).isEqualTo(later.toEpochMilli());
+        assertThat(service.get(picsureId).status()).isEqualTo("AVAILABLE");
+    }
+
+    @Test
+    void ownerlessAndNeverRunInsertsStoreACreationTime() {
+        Instant inserted = Instant.parse("2026-03-04T05:06:07.008Z");
+        NeverRunQuery neverRun = neverRun(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+
+        UUID ownerless = serviceAt(inserted).save(new SaveQueryRequest("{\"q\":1}", "rr-1", "QUEUED", "3", null));
+        serviceAt(inserted).storeNeverRun(neverRun);
+
+        assertThat(createdAtOf(ownerless)).isEqualTo(inserted);
+        assertThat(createdAtOf(neverRun.picsureId())).isEqualTo(NEVER_RUN_START);
+    }
+
+    @Test
+    void variantsOfAGeneralQueryComeOldestFirstWithUndatedRowsLast() {
+        UUID owner = UUID.randomUUID();
+        UUID general = UUID.randomUUID();
+        UUID newest = UUID.randomUUID();
+        UUID oldest = UUID.randomUUID();
+        UUID undated = UUID.randomUUID();
+        serviceAt(Instant.parse("2026-02-01T00:00:00Z")).save(variant(newest, owner, general, false, "COUNT"));
+        serviceAt(Instant.parse("2026-01-01T00:00:00.123Z")).save(variant(oldest, owner, general, true, "DATAFRAME_PFB"));
+        serviceAt(Instant.parse("2025-01-01T00:00:00Z")).save(variant(undated, owner, general, false, "DATAFRAME"));
+        jdbc.update("UPDATE query SET created_at = NULL WHERE uuid = ?", bytes(undated));
+
+        assertThat(service.variantsOf(general, owner)).containsExactly(
+            new StoredQueryVariant(oldest, true, "DATAFRAME_PFB", Instant.parse("2026-01-01T00:00:00.123Z").toEpochMilli()),
+            new StoredQueryVariant(newest, false, "COUNT", Instant.parse("2026-02-01T00:00:00Z").toEpochMilli()),
+            new StoredQueryVariant(undated, false, "DATAFRAME", null)
+        );
+        assertThat(service.variantsOf(general, UUID.randomUUID())).isEmpty();
+        assertThat(service.variantsOf(UUID.randomUUID(), owner)).isEmpty();
+    }
+
+    private QueryPersistenceService serviceAt(Instant instant) {
+        return new QueryPersistenceService(
+            queryRepository, runRepository, generalQueryRepository, transactionManager, Clock.fixed(instant, ZoneOffset.UTC)
+        );
+    }
+
+    /** Reads the creation time a row holds in the database, or null when the row has none. */
+    private Instant createdAtOf(UUID picsureId) {
+        return queryRepository.findById(picsureId).orElseThrow().getCreatedAt();
     }
 
     /** Runs a write on another thread, which has no transaction, and waits until it has committed. */

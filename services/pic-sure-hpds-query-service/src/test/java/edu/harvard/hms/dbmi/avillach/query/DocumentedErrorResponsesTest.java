@@ -512,6 +512,33 @@ class DocumentedErrorResponsesTest {
             .andExpect(jsonPath("$.errorType").value("bad_gateway"));
     }
 
+    @Test
+    void ownedSubmitWithNoResultTypeOfAQueryThatHasNotRunIs400WithTheDocumentedMessage() throws Exception {
+        downstream.stubFor(WireMock.get(urlPathEqualTo(QUERIES + "/variants")).willReturn(okJson("[]")));
+
+        mockMvc
+            .perform(
+                calledBy(post("/hpds/auth/query"), OWNER).contentType(MediaType.APPLICATION_JSON).content("{\"query\":{\"select\":[]}}")
+            ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("bad_request"))
+            .andExpect(jsonPath("$.message").value("An expected result type is required for a query that has not run before"));
+
+        downstream
+            .verify(1, WireMock.getRequestedFor(urlPathEqualTo(QUERIES + "/variants")).withQueryParam("userUuid", WireMock.equalTo(OWNER)));
+        downstream.verify(0, WireMock.postRequestedFor(urlPathMatching("/PIC-SURE/.*")));
+        downstream.verify(0, WireMock.postRequestedFor(urlPathEqualTo(QUERIES)));
+    }
+
+    @Test
+    void ownedSubmitWithNoResultTypeWhoseVariantLookupFailsIs502() throws Exception {
+        downstream.stubFor(WireMock.get(urlPathEqualTo(QUERIES + "/variants")).willReturn(aResponse().withStatus(500)));
+
+        mockMvc.perform(
+            calledBy(post("/hpds/auth/query"), OWNER).contentType(MediaType.APPLICATION_JSON).content("{\"query\":{\"select\":[]}}")
+        ).andExpect(status().isBadGateway()).andExpect(jsonPath("$.errorType").value("bad_gateway"));
+
+        downstream.verify(0, WireMock.postRequestedFor(urlPathMatching("/PIC-SURE/.*")));
+    }
+
     /** Endpoints that persist a new query through operations-service after HPDS accepts it. */
     static Stream<Arguments> persistingSubmits() {
         return Stream.of(

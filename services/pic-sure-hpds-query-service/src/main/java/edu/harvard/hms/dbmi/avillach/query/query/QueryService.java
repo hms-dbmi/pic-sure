@@ -36,6 +36,7 @@ import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
 import edu.harvard.dbmi.avillach.domain.SignedUrlResponse;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.dbmi.avillach.domain.StoredQueryVariant;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
@@ -119,6 +120,7 @@ public class QueryService {
     private static final String NOT_THE_OWNER_MESSAGE = "Only the user who submitted this query can read it";
     private static final String STORED_QUERY_UNREADABLE_MESSAGE = "The stored query could not be run again";
     private static final String STATUS_REFUSED_MESSAGE = "HPDS refused to report the status of the query";
+    private static final String RESULT_TYPE_REQUIRED_MESSAGE = "An expected result type is required for a query that has not run before";
     /**
      * How many times the save of an owned row is tried once HPDS has answered its submit. The second try follows a stale pooled connection
      * or a single dropped request, and the third a short interruption of operations-service. A longer outage is not waited for: a row that
@@ -191,21 +193,23 @@ public class QueryService {
      * Submits a query for asynchronous execution and stores it.
      *
      * <p>On {@code auth}, for a caller whose gateway user id is a canonical UUID and a body that carries a query, the row belongs to that
-     * caller: <ol> <li>{@link SampleRules} run first.</li> <li>A query that cannot be read as a v3 query is refused.</li> <li>The
-     * authorization filters the body carried are dropped.</li> <li>The row id is derived from the caller's UUID and the query, and replaces
-     * any {@code picsureId} the body carried.</li> <li>The request takes the {@link QueryRowLocks} lock of that id and holds it for every
-     * step below. A second submit of the same query by the same caller waits here until the first has saved its row.</li> <li>The caller's
-     * consents are fetched once and the query is scoped with them, so HPDS receives the filters built from those consents, and none when
-     * consent authorization is off.</li> <li>With no row under that id, the query is sent to HPDS under the id and the row is saved with
-     * its owner, the consents and a first-submit run. Nothing is marked in {@link UnsettledQueryRows} for an id that has no row.</li>
-     * <li>With a row whose consents equal the caller's current ones and whose status is {@code QUEUED}, {@code PENDING} or
-     * {@code AVAILABLE}, nothing is sent or saved and the stored status is returned, unless the row is marked in
-     * {@link UnsettledQueryRows}. A marked row does not describe the job HPDS holds, so the query is sent again and the row is saved with a
-     * lost-result run.</li> <li>With a row whose consents equal the caller's current ones and whose status is {@code ERROR} or absent, the
-     * query is sent again and the row is saved with a resubmit run.</li> <li>With a row whose consents differ, the query is sent again and
-     * the row is saved with the new consents and a consent-change run.</li> </ol> A row is saved only for an answer from HPDS that carries
-     * a status and names no result id other than the derived one. The stored body carries the derived id and no authorization filters. The
-     * row's result id is the row id.
+     * caller: <ol> <li>A query that cannot be read as a v3 query is refused.</li> <li>A sample query is refused while sampling is turned
+     * off, before anything is looked up.</li> <li>A query that names no result type takes the result type of the caller's original variant
+     * of it, as {@link #withOriginalResultType} describes, and is refused when the caller has none.</li> <li>The other {@link SampleRules}
+     * run on the query with that result type.</li> <li>The authorization filters the body carried are dropped.</li> <li>The row id is
+     * derived from the caller's UUID and the query, and replaces any {@code picsureId} the body carried.</li> <li>The request takes the
+     * {@link QueryRowLocks} lock of that id and holds it for every step below. A second submit of the same query by the same caller waits
+     * here until the first has saved its row.</li> <li>The caller's consents are fetched once and the query is scoped with them, so HPDS
+     * receives the filters built from those consents, and none when consent authorization is off.</li> <li>With no row under that id, the
+     * query is sent to HPDS under the id and the row is saved with its owner, the consents and a first-submit run. Nothing is marked in
+     * {@link UnsettledQueryRows} for an id that has no row.</li> <li>With a row whose consents equal the caller's current ones and whose
+     * status is {@code QUEUED}, {@code PENDING} or {@code AVAILABLE}, nothing is sent or saved and the stored status is returned, unless
+     * the row is marked in {@link UnsettledQueryRows}. A marked row does not describe the job HPDS holds, so the query is sent again and
+     * the row is saved with a lost-result run.</li> <li>With a row whose consents equal the caller's current ones and whose status is
+     * {@code ERROR} or absent, the query is sent again and the row is saved with a resubmit run.</li> <li>With a row whose consents differ,
+     * the query is sent again and the row is saved with the new consents and a consent-change run.</li> </ol> A row is saved only for an
+     * answer from HPDS that carries a status and names no result id other than the derived one. The stored body carries the derived id and
+     * no authorization filters. The row's result id is the row id.
      *
      * <p>Every other submit keeps the path without an owner: the {@code open} backend, a caller with no gateway user or one whose id is not
      * a canonical UUID, and a body with no query. HPDS runs the query under a key it derives, and operations-service stores it under a
@@ -217,9 +221,10 @@ public class QueryService {
      * @param user the caller as the gateway identified them, or null when there is none
      * @return the status of the query, with {@code picsureResultId} set to the id of its row
      * @throws PicsureException 400 when the request is missing, breaks a sample rule, or carries for a caller identified by UUID a query
-     *         that is not a v3 query; 403 {@code consent_denied} when the caller's consents do not permit the query; 500 when the row under
-     *         the derived id is not the caller's; 503 {@code service_unavailable} when another submit of the same query by the same caller
-     *         holds the row for longer than the configured wait; whatever consent lookup, HPDS or operations-service raise
+     *         that is not a v3 query or one that names no result type and has no variant of that caller to take one from; 403
+     *         {@code consent_denied} when the caller's consents do not permit the query; 500 when the row under the derived id is not the
+     *         caller's; 503 {@code service_unavailable} when another submit of the same query by the same caller holds the row for longer
+     *         than the configured wait; whatever consent lookup, HPDS or operations-service raise
      * @throws HpdsCommunicationException when HPDS answers a submit for a caller identified by UUID without a status, or with a result id
      *         other than the derived one
      */
@@ -227,12 +232,71 @@ public class QueryService {
         if (req == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing query data");
         }
-        sampleRules.check(backend, req.getQuery());
         Optional<UUID> owner = ownerOf(backend, user);
         if (owner.isEmpty() || req.getQuery() == null) {
+            sampleRules.check(backend, req.getQuery());
             return createWithoutOwner(backend, req, authorizationHeader);
         }
-        return createOwned(backend, req, requireV3Query(req.getQuery()), authorizationHeader, owner.get());
+        Query submitted = readableV3Query(backend, req.getQuery());
+        sampleRules.checkEnabled(submitted);
+        Query typed = submitted.expectedResultType() == null ? withOriginalResultType(owner.get(), submitted) : submitted;
+        sampleRules.check(backend, typed);
+        return createOwned(backend, req, typed, authorizationHeader, owner.get());
+    }
+
+    /**
+     * Returns the body of an owned submit as a v3 query. A body that cannot be read as one is refused, by {@link SampleRules} when it asks
+     * for a sample and by {@link #requireV3Query} otherwise, which is the order the two checks have always answered in.
+     *
+     * @param backend the ingress {@code {backend}} segment
+     * @param queryBody the query of a submit, never null
+     * @throws PicsureException 400 when the body cannot be read as a v3 query
+     */
+    private Query readableV3Query(String backend, Object queryBody) {
+        try {
+            return requireV3Query(queryBody);
+        } catch (PicsureException notAV3Query) {
+            sampleRules.check(backend, queryBody);
+            throw notAV3Query;
+        }
+    }
+
+    /**
+     * Gives an owned submit that names no result type the result type of the caller's original variant of the query. The variants are the
+     * rows the caller stored under the general query {@link QueryIdentity#generalIdFor} derives, which leaves the result type and the
+     * {@code sample} flag out, so the lookup needs neither. The original is the first variant in the order operations-service lists them,
+     * oldest first, that stores the name of a {@link ResultType} constant. A variant with no result type, or with a name that is not a
+     * constant, is passed over.
+     *
+     * <p>Only the result type is taken from the original. The {@code sample} flag and every other component stay as the client sent them.
+     * This runs before the row id is derived and before the row lock and the consent lookup, because the row id depends on the result type.
+     *
+     * @param owner the caller's UUID
+     * @param submitted the query of the request, which names no result type
+     * @return a copy of the query that asks for the result type of the original variant
+     * @throws PicsureException 400 {@code bad_request} when the caller has no variant of the query that stores a result type; whatever
+     *         {@link OperationsClient#variantsOf} raises when the lookup itself fails
+     */
+    private Query withOriginalResultType(UUID owner, Query submitted) {
+        ResultType original = operationsClient.variantsOf(QueryIdentity.generalIdFor(owner, submitted), owner).stream()
+            .map(StoredQueryVariant::resultType).map(QueryService::knownResultType).flatMap(Optional::stream).findFirst()
+            .orElseThrow(() -> new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", RESULT_TYPE_REQUIRED_MESSAGE));
+        return new Query(
+            submitted.select(), submitted.authorizationFilters(), submitted.phenotypicClause(), submitted.genomicFilters(), original,
+            submitted.picsureId(), submitted.id(), submitted.sample()
+        );
+    }
+
+    /** Returns the {@link ResultType} constant with the given name, or empty when the name is null or names no constant. */
+    private static Optional<ResultType> knownResultType(String name) {
+        if (name == null) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(ResultType.valueOf(name));
+        } catch (IllegalArgumentException notAResultType) {
+            return Optional.empty();
+        }
     }
 
     private QueryStatus createWithoutOwner(String backend, QueryRequest req, String authorizationHeader) {

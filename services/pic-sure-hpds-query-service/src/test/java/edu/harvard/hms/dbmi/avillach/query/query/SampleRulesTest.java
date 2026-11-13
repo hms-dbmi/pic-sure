@@ -53,6 +53,19 @@ class SampleRulesTest {
     }
 
     @Test
+    void checkEnabledRefusesASampleWithNoResultTypeWhileTheFlagIsOff() {
+        assertRefused(() -> rules(false).checkEnabled(query(null, true)), "sample_disabled");
+    }
+
+    @Test
+    void checkEnabledPassesWhateverTheFlagRuleDoesNotCover() {
+        rules(true).checkEnabled(query(null, true));
+        rules(true).checkEnabled(query(ResultType.COUNT, true));
+        rules(false).checkEnabled(query(null, false));
+        rules(false).checkEnabled(null);
+    }
+
+    @Test
     void flagOffIsReportedBeforeBackendAndResultType() {
         assertRefused(() -> rules(false).check(OPEN, query(ResultType.COUNT, true)), "sample_disabled");
     }

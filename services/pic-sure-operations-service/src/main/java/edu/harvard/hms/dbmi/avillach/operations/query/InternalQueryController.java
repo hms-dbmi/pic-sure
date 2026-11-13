@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.operations.query;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -10,12 +11,14 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import edu.harvard.dbmi.avillach.domain.DispatchResponse;
 import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
 import edu.harvard.dbmi.avillach.domain.SavedQueryReference;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.dbmi.avillach.domain.StoredQueryVariant;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Hidden;
@@ -69,6 +72,25 @@ public class InternalQueryController {
     @GetMapping("/{picsureId}")
     public StoredQuery get(@PathVariable("picsureId") UUID picsureId) {
         return service.get(picsureId);
+    }
+
+    /**
+     * Lists the variants one user stored under one general query: the id, sample flag, result type and creation time of each row, without
+     * its body. The oldest row comes first, rows with no creation time come after every row that has one, and the row id orders the rest.
+     *
+     * <p>A general query that does not exist and one that belongs to another user are both answered with an empty list, so the answer says
+     * nothing about the queries of anyone but the named user.
+     *
+     * @param queryToVariantUuid the id of the general query
+     * @param userUuid the UUID of the user whose variants are listed
+     * @return the variants, oldest first, or an empty list
+     */
+    @AuditEvent(type = "OTHER", action = "internal_query.list_variants")
+    @GetMapping("/variants")
+    public List<StoredQueryVariant> variants(
+        @RequestParam("queryToVariantUuid") UUID queryToVariantUuid, @RequestParam("userUuid") UUID userUuid
+    ) {
+        return service.variantsOf(queryToVariantUuid, userUuid);
     }
 
     /**

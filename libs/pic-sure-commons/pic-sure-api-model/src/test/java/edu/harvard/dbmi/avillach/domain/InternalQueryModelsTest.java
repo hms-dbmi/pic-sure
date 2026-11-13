@@ -48,6 +48,25 @@ public class InternalQueryModelsTest {
     }
 
     @Test
+    public void storedQueryVariantRoundTripsItsFourMembersInDeclarationOrder() throws JsonProcessingException {
+        StoredQueryVariant variant = new StoredQueryVariant(ID, true, "DATAFRAME_PFB", 1790777100000L);
+        String json =
+            "{\"picsureId\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\",\"sample\":true,\"resultType\":\"DATAFRAME_PFB\",\"createdAt\":1790777100000}";
+
+        assertEquals(json, mapper.writeValueAsString(variant));
+        assertEquals(variant, mapper.readValue(json, StoredQueryVariant.class));
+    }
+
+    @Test
+    public void storedQueryVariantWritesAndReadsExplicitNulls() throws JsonProcessingException {
+        StoredQueryVariant variant = new StoredQueryVariant(ID, false, null, null);
+        String json = "{\"picsureId\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\",\"sample\":false,\"resultType\":null,\"createdAt\":null}";
+
+        assertEquals(json, mapper.writeValueAsString(variant));
+        assertEquals(variant, mapper.readValue(json, StoredQueryVariant.class));
+    }
+
+    @Test
     public void storedQueryWritesEveryMemberInDeclarationOrderNullsIncluded() throws JsonProcessingException {
         StoredQuery stored = new StoredQuery(ID, "{}", "rr-1", "AVAILABLE", "3", null, 1790777100000L, null);
 

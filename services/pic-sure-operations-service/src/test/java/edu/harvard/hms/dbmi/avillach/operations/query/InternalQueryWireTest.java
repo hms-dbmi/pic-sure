@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.lang.reflect.Method;
+import java.time.Instant;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -171,16 +172,42 @@ class InternalQueryWireTest {
     }
 
     @Test
+    void variantsAnswerWithAnArrayOfTheFourVariantMembersInDeclarationOrder() throws Exception {
+        UUID owner = UUID.fromString("5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11");
+        UUID generalQuery = UUID.fromString("3d2f7c1a-9b4e-5c6d-8e7f-0a1b2c3d4e5f");
+        Query dated = QueryFixtures.variant(owner, generalQuery, true, "DATAFRAME");
+        dated.setCreatedAt(Instant.parse("2026-09-30T14:05:00Z"));
+        queryRepo.saveAndFlush(dated);
+        Query undated = QueryFixtures.variant(owner, generalQuery, false, null);
+        queryRepo.saveAndFlush(undated);
+
+        mockMvc
+            .perform(
+                get("/internal/queries/variants").header(InternalTokenFilter.HEADER, validToken)
+                    .param("queryToVariantUuid", generalQuery.toString()).param("userUuid", owner.toString())
+            ).andExpect(status().isOk()).andExpect(content().contentType(MediaType.APPLICATION_JSON))
+            .andExpect(
+                content().string(
+                    "[{\"picsureId\":\"" + dated.getUuid() + "\",\"sample\":true,\"resultType\":\"DATAFRAME\",\"createdAt\":1790777100000},"
+                        + "{\"picsureId\":\"" + undated.getUuid() + "\",\"sample\":false,\"resultType\":null,\"createdAt\":null}]"
+                )
+            );
+    }
+
+    @Test
     void handlersDeclareTheSharedRecords() throws Exception {
         Method saveHandler = InternalQueryController.class.getMethod("save", SaveQueryRequest.class);
         Method readHandler = InternalQueryController.class.getMethod("get", UUID.class);
         Method updateHandler = InternalQueryController.class.getMethod("update", UUID.class, UpdateQueryRequest.class);
         Method dispatchHandler = InternalQueryController.class.getMethod("dispatch", UUID.class);
+        Method variantsHandler = InternalQueryController.class.getMethod("variants", UUID.class, UUID.class);
 
         assertThat(saveHandler.getGenericReturnType().getTypeName())
             .isEqualTo("org.springframework.http.ResponseEntity<edu.harvard.dbmi.avillach.domain.SavedQueryReference>");
         assertThat(readHandler.getReturnType()).isEqualTo(StoredQuery.class);
         assertThat(updateHandler.getGenericReturnType().getTypeName()).isEqualTo("org.springframework.http.ResponseEntity<java.lang.Void>");
         assertThat(dispatchHandler.getReturnType()).isEqualTo(DispatchResponse.class);
+        assertThat(variantsHandler.getGenericReturnType().getTypeName())
+            .isEqualTo("java.util.List<edu.harvard.dbmi.avillach.domain.StoredQueryVariant>");
     }
 }

@@ -47,6 +47,7 @@ import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
 import edu.harvard.dbmi.avillach.domain.SignedUrlResponse;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.dbmi.avillach.domain.StoredQueryVariant;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
@@ -789,6 +790,233 @@ class QueryServiceTest {
         assertSavedWithoutAnOwner("rr-legacy", ResultType.DATAFRAME_PFB);
     }
 
+    private static StoredQueryVariant storedVariant(boolean sample, String resultType, Long createdAt) {
+        return new StoredQueryVariant(UUID.randomUUID(), sample, resultType, createdAt);
+    }
+
+    private void callerHasVariantsOf(Query query, StoredQueryVariant... oldestFirst) {
+        when(operationsClient.variantsOf(QueryIdentity.generalIdFor(ALICE, query), ALICE)).thenReturn(List.of(oldestFirst));
+    }
+
+    private void assertResultTypeRequired(Runnable submit) {
+        assertThatThrownBy(submit::run).isInstanceOfSatisfying(PicsureException.class, refused -> {
+            assertThat(refused.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(refused.getErrorType()).isEqualTo("bad_request");
+            assertThat(refused.getMessage()).isEqualTo("An expected result type is required for a query that has not run before");
+        });
+        verifyNoInteractions(psama, hpds);
+        verify(operationsClient, never()).find(any());
+        verify(operationsClient, never()).save(any());
+        verify(operationsClient, never()).update(any(), any());
+    }
+
+    @Test
+    void ownedSubmitWithNoResultTypeAndNoVariantIs400AndNothingIsSubmittedOrSaved() {
+        Query untyped = cohortAs(null, false);
+
+        assertResultTypeRequired(() -> ownedService.query("auth", envelope(untyped), TOKEN, user(ALICE)));
+
+        verify(operationsClient).variantsOf(QueryIdentity.generalIdFor(ALICE, cohort()), ALICE);
+    }
+
+    @Test
+    void ownedSubmitWithNoResultTypeRunsAsTheTypeOfTheEarliestVariant() {
+        Query untyped = cohortAs(null, false);
+        Query asTheOriginal = cohortAs(ResultType.DATAFRAME_PFB, false);
+        callerHasVariantsOf(untyped, storedVariant(false, "DATAFRAME_PFB", 1000L), storedVariant(false, "COUNT", 2000L));
+        callerHoldsConsents("phs001.c1");
+        hpdsAcceptsOwnedSubmits();
+
+        QueryStatus out = ownedService.query("auth", envelope(untyped), TOKEN, user(ALICE));
+
+        UUID id = QueryIdentity.idFor(ALICE, asTheOriginal);
+        assertThat(id).isNotEqualTo(QueryIdentity.idFor(ALICE, untyped));
+        verify(operationsClient).find(id);
+        verify(hpds).query(any(HpdsTarget.class), any(), eq(id));
+        assertThat(((Query) queriesSentToHpds.get(0)).expectedResultType()).isEqualTo(ResultType.DATAFRAME_PFB);
+        SaveQueryRequest saved = onlySave();
+        assertThat(saved.picsureId()).isEqualTo(id);
+        assertThat(saved.queryToVariantUuid()).isEqualTo(QueryIdentity.generalIdFor(ALICE, untyped))
+            .isEqualTo(QueryIdentity.generalIdFor(ALICE, asTheOriginal));
+        assertThat(saved.resultType()).isEqualTo("DATAFRAME_PFB");
+        assertThat(saved.sample()).isFalse();
+        assertThat(saved.query()).contains("\"expectedResultType\":\"DATAFRAME_PFB\"");
+        assertThat(out.getPicsureResultId()).isEqualTo(id);
+    }
+
+    @Test
+    void ownedSubmitWithNoResultTypeIsTypedBeforeItsRowIdIsDerivedAndItsRowLockIsTaken() {
+        QueryRowLocks neverRunsTheWork = mock(QueryRowLocks.class);
+        Query untyped = cohortAs(null, false);
+        callerHasVariantsOf(untyped, storedVariant(false, "COUNT", 1000L));
+
+        serviceLockingWith(neverRunsTheWork, true).query("auth", envelope(untyped), TOKEN, user(ALICE));
+
+        verify(neverRunsTheWork).withLock(eq(QueryIdentity.idFor(ALICE, cohortAs(ResultType.COUNT, false))), any());
+        verify(operationsClient).variantsOf(QueryIdentity.generalIdFor(ALICE, untyped), ALICE);
+        verifyNoInteractions(psama, hpds);
+    }
+
+    @Test
+    void ownedSampleSubmitWithNoResultTypeRunsAsASampleOfTheOriginalDataframeType() {
+        sampleProperties.setEnabled(true);
+        Query untypedSample = cohortAs(null, true);
+        Query sampleOfTheOriginal = cohortAs(ResultType.DATAFRAME, true);
+        callerHasVariantsOf(untypedSample, storedVariant(false, "DATAFRAME", 1000L), storedVariant(true, "DATAFRAME_PFB", 2000L));
+        callerHoldsConsents("phs001.c1");
+        hpdsAcceptsOwnedSubmits();
+
+        ownedService.query("auth", envelope(untypedSample), TOKEN, user(ALICE));
+
+        SaveQueryRequest saved = onlySave();
+        assertThat(saved.picsureId()).isEqualTo(QueryIdentity.idFor(ALICE, sampleOfTheOriginal));
+        assertThat(saved.queryToVariantUuid()).isEqualTo(QueryIdentity.generalIdFor(ALICE, sampleOfTheOriginal));
+        assertThat(saved.resultType()).isEqualTo("DATAFRAME");
+        assertThat(saved.sample()).isTrue();
+        Query sent = (Query) queriesSentToHpds.get(0);
+        assertThat(sent.expectedResultType()).isEqualTo(ResultType.DATAFRAME);
+        assertThat(sent.sample()).isTrue();
+    }
+
+    @Test
+    void ownedSampleSubmitWithNoResultTypeWhoseOriginalIsNotADataframeIsRefusedByTheSampleRule() {
+        sampleProperties.setEnabled(true);
+        Query untypedSample = cohortAs(null, true);
+        callerHasVariantsOf(untypedSample, storedVariant(false, "COUNT", 1000L), storedVariant(false, "DATAFRAME", 2000L));
+
+        assertThatThrownBy(() -> ownedService.query("auth", envelope(untypedSample), TOKEN, user(ALICE)))
+            .isInstanceOfSatisfying(PicsureException.class, refused -> {
+                assertThat(refused.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(refused.getErrorType()).isEqualTo("bad_request");
+                assertThat(refused.getMessage()).isEqualTo(SampleRules.WRONG_RESULT_TYPE_MESSAGE);
+            });
+
+        verifyNoInteractions(psama, hpds);
+        verify(operationsClient, never()).find(any());
+        verify(operationsClient, never()).save(any());
+    }
+
+    private void assertSampleDisabledWithoutAnyLookup(Query untypedSample) {
+        assertThatThrownBy(() -> ownedService.query("auth", envelope(untypedSample), TOKEN, user(ALICE)))
+            .isInstanceOfSatisfying(PicsureException.class, refused -> {
+                assertThat(refused.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(refused.getErrorType()).isEqualTo("sample_disabled");
+            });
+
+        verifyNoInteractions(psama, hpds, operationsClient);
+    }
+
+    @Test
+    void ownedSampleSubmitWithNoResultTypeAndNoVariantIsSampleDisabledWithoutALookupWhenSamplingIsOff() {
+        assertSampleDisabledWithoutAnyLookup(cohortAs(null, true));
+    }
+
+    @Test
+    void ownedSampleSubmitWithNoResultTypeAndVariantsIsSampleDisabledWithoutALookupWhenSamplingIsOff() {
+        Query untypedSample = cohortAs(null, true);
+        when(operationsClient.variantsOf(QueryIdentity.generalIdFor(ALICE, untypedSample), ALICE))
+            .thenReturn(List.of(storedVariant(false, "DATAFRAME", 1000L)));
+
+        assertSampleDisabledWithoutAnyLookup(untypedSample);
+    }
+
+    @Test
+    void ownedSampleSubmitWithNoResultTypeIsSampleDisabledWhenSamplingIsOffEvenIfTheLookupWouldFail() {
+        when(operationsClient.variantsOf(any(), any()))
+            .thenThrow(new PicsureException(HttpStatus.BAD_GATEWAY, "bad_gateway", "operations-service variants failed"));
+
+        assertSampleDisabledWithoutAnyLookup(cohortAs(null, true));
+    }
+
+    @Test
+    void ownedSampleSubmitWithNoResultTypeAndNoVariantIsResultTypeRequiredWhenSamplingIsOn() {
+        sampleProperties.setEnabled(true);
+
+        assertResultTypeRequired(() -> ownedService.query("auth", envelope(cohortAs(null, true)), TOKEN, user(ALICE)));
+    }
+
+    @Test
+    void variantsWithNoResultTypeOrAnUnknownOneArePassedOver() {
+        Query untyped = cohortAs(null, false);
+        callerHasVariantsOf(
+            untyped, storedVariant(false, null, 1000L), storedVariant(true, "NOT_A_RESULT_TYPE", 2000L),
+            storedVariant(false, "count", 3000L), storedVariant(false, "COUNT", 4000L), storedVariant(false, "DATAFRAME", null)
+        );
+        callerHoldsConsents("phs001.c1");
+        hpdsAcceptsOwnedSubmits();
+
+        ownedService.query("auth", envelope(untyped), TOKEN, user(ALICE));
+
+        SaveQueryRequest saved = onlySave();
+        assertThat(saved.resultType()).isEqualTo("COUNT");
+        assertThat(saved.picsureId()).isEqualTo(QueryIdentity.idFor(ALICE, cohortAs(ResultType.COUNT, false)));
+    }
+
+    @Test
+    void ownedSubmitWithNoResultTypeWhoseVariantsAllLackAKnownOneIs400() {
+        Query untyped = cohortAs(null, false);
+        callerHasVariantsOf(untyped, storedVariant(false, null, 1000L), storedVariant(true, "NOT_A_RESULT_TYPE", 2000L));
+
+        assertResultTypeRequired(() -> ownedService.query("auth", envelope(untyped), TOKEN, user(ALICE)));
+    }
+
+    @Test
+    void anUntypedBodyWithNoResultTypeIsTypedFromTheOriginalVariantToo() {
+        Query untyped = new Query(List.of("\\demographics\\AGE\\"), List.of(), null, List.of(), null, null, null);
+        callerHasVariantsOf(untyped, storedVariant(false, "DATAFRAME_TIMESERIES", 1000L));
+        callerHoldsConsents("phs001.c1");
+        hpdsAcceptsOwnedSubmits();
+        Map<String, Object> body = Map.of("select", List.of("\\demographics\\AGE\\"));
+
+        ownedService.query("auth", new GeneralQueryRequest().setQuery(body), TOKEN, user(ALICE));
+
+        SaveQueryRequest saved = onlySave();
+        assertThat(saved.resultType()).isEqualTo("DATAFRAME_TIMESERIES");
+        assertThat(saved.picsureId()).isEqualTo(
+            QueryIdentity.idFor(
+                ALICE, new Query(List.of("\\demographics\\AGE\\"), List.of(), null, List.of(), ResultType.DATAFRAME_TIMESERIES, null, null)
+            )
+        );
+    }
+
+    @Test
+    void ownedSubmitThatNamesAResultTypeNeverLooksUpTheVariants() {
+        callerHoldsConsents("phs001.c1");
+        hpdsAcceptsOwnedSubmits();
+
+        ownedService.query("auth", envelope(cohort()), TOKEN, user(ALICE));
+
+        assertThat(onlySave().resultType()).isEqualTo("DATAFRAME");
+        verify(operationsClient, never()).variantsOf(any(), any());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = HttpStatus.class, names = {"BAD_GATEWAY", "GATEWAY_TIMEOUT"})
+    void failedVariantLookupIsAnsweredAsTheLookupFailedAndNeverAs400(HttpStatus failure) {
+        Query untyped = cohortAs(null, false);
+        PicsureException lookupFailed = new PicsureException(failure, "upstream", "operations-service variants failed");
+        when(operationsClient.variantsOf(any(), any())).thenThrow(lookupFailed);
+
+        assertThatThrownBy(() -> ownedService.query("auth", envelope(untyped), TOKEN, user(ALICE))).isSameAs(lookupFailed);
+
+        verifyNoInteractions(psama, hpds);
+        verify(operationsClient, never()).find(any());
+        verify(operationsClient, never()).save(any());
+    }
+
+    @Test
+    void submitWithNoResultTypeByACallerWhoseIdIsNotAUuidIsStoredWithoutAnOwnerAndUntyped() {
+        callerHoldsConsents("phs001.c1");
+        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-legacy"));
+        when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
+        GatewayUser notAUuid = new GatewayUser("auth0|alice", null, null, null, Set.of());
+
+        ownedService.query("auth", envelope(cohortAs(null, false)), TOKEN, notAUuid);
+
+        assertSavedWithoutAnOwner("rr-legacy", null);
+        assertThat(onlySave().query()).contains("\"expectedResultType\":null");
+    }
+
     @Test
     void ownedSubmitRunsTheSampleRulesBeforeAnythingIsLookedUpSentOrSaved() {
         assertThatThrownBy(() -> ownedService.query("auth", sampleRequest(ResultType.DATAFRAME), TOKEN, user(ALICE)))
@@ -1009,6 +1237,7 @@ class QueryServiceTest {
         assertThat(saved.resultType()).isEqualTo(resultType == null ? null : resultType.name());
         assertThat(saved.resourceResultId()).isEqualTo(resourceResultId);
         verify(operationsClient, never()).find(any());
+        verify(operationsClient, never()).variantsOf(any(), any());
         verify(hpds, never()).query(any(HpdsTarget.class), any(), any(UUID.class));
     }
 

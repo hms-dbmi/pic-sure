@@ -39,11 +39,28 @@ public interface QueryRepository extends JpaRepository<Query, UUID> {
      * @return the variant columns of the matching rows, or an empty list when there are none
      */
     @org.springframework.data.jpa.repository.Query(
-        "select new edu.harvard.hms.dbmi.avillach.operations.query.QueryVariantRow(q.queryToVariantUuid, q.uuid, q.sample, q.resultType)"
-            + " from query q where q.queryToVariantUuid in :generalQueries and q.userUuid = :owner"
+        "select new edu.harvard.hms.dbmi.avillach.operations.query.QueryVariantRow(q.queryToVariantUuid, q.uuid, q.sample, q.resultType,"
+            + " q.createdAt) from query q where q.queryToVariantUuid in :generalQueries and q.userUuid = :owner"
             + " order by q.sample, q.resultType, q.uuid"
     )
     List<QueryVariantRow> findVariantsOf(@Param("generalQueries") Collection<UUID> generalQueries, @Param("owner") UUID owner);
+
+    /**
+     * Lists the variants one user stored under one general query, without their query bodies, in the order they were created: the oldest
+     * row first, rows with no creation time after every row that has one, and rows the creation time does not tell apart by row id. A row
+     * that belongs to another user, or to none, is left out even when it is filed under the general query, so a general query of another
+     * user gives the same empty list as one that does not exist.
+     *
+     * @param generalQuery the id of the general query
+     * @param owner the UUID of the user whose rows are listed
+     * @return the variant columns of the matching rows, or an empty list when there are none
+     */
+    @org.springframework.data.jpa.repository.Query(
+        "select new edu.harvard.hms.dbmi.avillach.operations.query.QueryVariantRow(q.queryToVariantUuid, q.uuid, q.sample, q.resultType,"
+            + " q.createdAt) from query q where q.queryToVariantUuid = :generalQuery and q.userUuid = :owner"
+            + " order by q.createdAt asc nulls last, q.uuid"
+    )
+    List<QueryVariantRow> findVariantsOldestFirst(@Param("generalQuery") UUID generalQuery, @Param("owner") UUID owner);
 
     /**
      * Reads the first rows that have no result type, in the order the database sorts their ids. The rows are read in a short read-only

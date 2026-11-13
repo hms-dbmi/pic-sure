@@ -50,6 +50,10 @@ import edu.harvard.dbmi.avillach.domain.PicSureStatus;
  * at most one row for each pair of {@code sample} and result type. The variant key does not compare nulls, so it accepts any number of rows
  * that name no general query, and any number of rows of one general query and one {@code sample} value that have no result type. The table
  * also has a foreign key to {@code query_to_variant}, which is not mapped here: the service reads and writes the id as a plain value.
+ *
+ * <p>{@code createdAt} is when the row was inserted. It is written by the insert and left out of every update, so a later run of the query,
+ * which restarts {@code startTime}, never moves it. A row inserted before the column existed, or by a writer that does not name the column,
+ * has none.
  */
 @Entity(name = "query")
 @Table(
@@ -99,6 +103,9 @@ public class Query implements Persistable<UUID> {
 
     @Column(name = "result_type", length = 64)
     private String resultType;
+
+    @Column(name = "created_at", updatable = false)
+    private Instant createdAt;
 
     public UUID getUuid() {
         return uuid;
@@ -282,6 +289,25 @@ public class Query implements Persistable<UUID> {
      */
     public void setResultType(String resultType) {
         this.resultType = resultType;
+    }
+
+    /**
+     * Returns when the row was inserted.
+     *
+     * @return the creation time, or null for a row that was stored without one
+     */
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    /**
+     * Sets the creation time of a row that has not been inserted yet. The column is left out of updates, so a value set on a stored row is
+     * never written.
+     *
+     * @param createdAt when the row is created, in whole milliseconds
+     */
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
     }
 
     public byte[] getMetadata() {

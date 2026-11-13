@@ -33,6 +33,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.dbmi.avillach.domain.StoredQueryVariant;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
@@ -56,6 +57,10 @@ import edu.harvard.hms.dbmi.avillach.operations.error.PicsureExceptions;
  *
  * <p>{@link #storeNeverRun} inserts an owned row that has not been sent to HPDS: it has no status, no consents and no run. The query
  * service runs such a row the first time its owner asks for its status or result, or submits its query again.
+ *
+ * <p>Every insert of a row stamps {@code created_at}: a save with or without an owner with the time of the insert, and
+ * {@link #storeNeverRun} with the start time it is given, or the time of the insert when it is given none. Nothing writes the column
+ * afterward.
  *
  * <p>A save onto a stored row and an update both lock the query row before they read anything else, so two writers of one row run one after
  * the other and the second sees the run the first appended.
@@ -130,9 +135,9 @@ public class QueryPersistenceService {
      * Stores a query row under the id the caller chose. The first save of an id inserts the row with the request's body, version, result
      * id, owner, consents, status, metadata, general query, sample flag and result type. A later save of the same id updates that row in
      * place: it takes the new consents, status and metadata, restarts {@code startTime}, clears {@code readyTime}, and leaves the stored
-     * body, version, result id, owner, general query, sample flag and result type as they were. Consent values are stored sorted. When the
-     * request names a trigger, one {@code query_run} row is written in the same transaction as the row change, and neither is kept when the
-     * other fails.
+     * body, version, result id, owner, general query, sample flag, result type and creation time as they were. The insert stamps the
+     * creation time, with or without an owner. Consent values are stored sorted. When the request names a trigger, one {@code query_run}
+     * row is written in the same transaction as the row change, and neither is kept when the other fails.
      *
      * <p>The request is either legacy-shaped, with none of {@code picsureId}, {@code userUuid}, {@code consents}, {@code trigger} and
      * {@code queryToVariantUuid}, or fully owned, with all five. An empty consent map counts as present. Any other mix is refused before
@@ -190,9 +195,11 @@ public class QueryPersistenceService {
 
     /**
      * Stores an owned row that has never run, unless a row is already stored under its id. The new row has the given body, start time,
-     * owner, general query, sample flag and result type, version {@code "3"} and its own id as its result id. It has no status, no
-     * consents, no ready time and no metadata, and no {@code query_run} row is written. Null consents are what makes the query service run
-     * the row on its first status, result or submit request, because no consents a caller holds equal them.
+     * owner, general query, sample flag and result type, version {@code "3"} and its own id as its result id. Its creation time is the
+     * given start time, which for a row brought over from an older one is the start time of that older row, or the time of this call when
+     * no start time is given. It has no status, no consents, no ready time and no metadata, and no {@code query_run} row is written. Null
+     * consents are what makes the query service run the row on its first status, result or submit request, because no consents a caller
+     * holds equal them.
      *
      * <p>The general query is stored first when no row has its id yet. A general query stored under another owner refuses the call.
      *
@@ -238,6 +245,7 @@ public class QueryPersistenceService {
             entity.setSample(row.sample());
             entity.setResultType(row.resultType() == null ? null : row.resultType().name());
             entity.setStartTime(row.startTime());
+            entity.setCreatedAt(row.startTime() == null ? insertTime() : row.startTime().truncatedTo(ChronoUnit.MILLIS));
             return repo.saveAndFlush(entity);
         });
     }
@@ -283,7 +291,13 @@ public class QueryPersistenceService {
         entity.setQueryToVariantUuid(findOrCreateGeneralQuery(req));
         entity.setSample(Boolean.TRUE.equals(req.sample()));
         entity.setResultType(req.resultType());
+        entity.setCreatedAt(insertTime());
         return store(entity, req);
+    }
+
+    /** Returns the current time in whole milliseconds, which is what the {@code created_at} columns hold. */
+    private Instant insertTime() {
+        return clock.instant().truncatedTo(ChronoUnit.MILLIS);
     }
 
     /**
@@ -314,7 +328,7 @@ public class QueryPersistenceService {
      * @throws PicsureException 409 when the general query is stored under a different owner
      */
     private UUID storedGeneralQuery(UUID generalId, UUID owner, Function<UUID, Optional<QueryToVariant>> loadAfterTheInsert) {
-        generalQueries.insertIfAbsent(bytesOf(generalId), bytesOf(owner), clock.instant().truncatedTo(ChronoUnit.MILLIS));
+        generalQueries.insertIfAbsent(bytesOf(generalId), bytesOf(owner), insertTime());
         UUID storedOwner = loadAfterTheInsert.apply(generalId).map(QueryToVariant::getUserUuid)
             .orElseThrow(() -> new IllegalStateException("General query " + generalId + " is missing right after it was stored"));
         if (!storedOwner.equals(owner)) {
@@ -416,6 +430,21 @@ public class QueryPersistenceService {
     @Transactional(readOnly = true)
     public StoredQuery get(UUID picsureId) {
         return toDto(load(picsureId));
+    }
+
+    /**
+     * Lists the variants one user stored under one general query, oldest first, as {@link QueryRepository#findVariantsOldestFirst} orders
+     * them. No query body is read.
+     *
+     * @param generalQuery the id of the general query
+     * @param owner the UUID of the user whose rows are listed
+     * @return the variants, or an empty list when the user has none under the id, which is also the answer for a general query of another
+     *         user and for one that does not exist
+     */
+    @Transactional(readOnly = true)
+    public List<StoredQueryVariant> variantsOf(UUID generalQuery, UUID owner) {
+        return repo.findVariantsOldestFirst(generalQuery, owner).stream()
+            .map(row -> new StoredQueryVariant(row.uuid(), row.sample(), row.resultType(), toEpochMillis(row.createdAt()))).toList();
     }
 
     /**

@@ -445,6 +445,7 @@ class QueryPersistenceCommittedTest {
         assertThat(row.getVersion()).isEqualTo("3");
         assertThat(row.getResourceResultId()).isEqualTo(neverRun.picsureId().toString());
         assertThat(row.getStartTime()).isEqualTo(NEVER_RUN_START);
+        assertThat(row.getCreatedAt()).isEqualTo(NEVER_RUN_START);
         assertThat(row.getStatus()).isNull();
         assertThat(row.getConsents()).isNull();
         assertThat(row.getReadyTime()).isNull();
@@ -469,6 +470,33 @@ class QueryPersistenceCommittedTest {
         assertThat(row.getResultType()).isNull();
         assertThat(row.getStartTime()).isNull();
         assertThat(row.isSample()).isFalse();
+    }
+
+    @Test
+    void storeNeverRunWithoutAStartTimeStampsTheCreationTimeWithTheTimeOfTheInsert() {
+        Instant inserted = Instant.parse("2026-03-04T05:06:07.008Z");
+        QueryPersistenceService stoppedClock =
+            new QueryPersistenceService(repo, runRepo, generalQueryRepo, transactionManager, Clock.fixed(inserted, ZoneOffset.UTC));
+        UUID picsureId = UUID.randomUUID();
+
+        stoppedClock.storeNeverRun(new NeverRunQuery(picsureId, UUID.randomUUID(), UUID.randomUUID(), false, null, "{\"query\":{}}", null));
+
+        Query row = repo.findById(picsureId).orElseThrow();
+        assertThat(row.getStartTime()).isNull();
+        assertThat(row.getCreatedAt()).isEqualTo(inserted);
+    }
+
+    @Test
+    void storeNeverRunLeavesTheCreationTimeOfARowAlreadyStoredUnderTheId() {
+        Instant inserted = Instant.parse("2026-03-04T05:06:07.008Z");
+        QueryPersistenceService stoppedClock =
+            new QueryPersistenceService(repo, runRepo, generalQueryRepo, transactionManager, Clock.fixed(inserted, ZoneOffset.UTC));
+        NeverRunQuery neverRun = neverRun(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+        stoppedClock.save(variant(neverRun.picsureId(), neverRun.userUuid(), neverRun.queryToVariantUuid(), true, "DATAFRAME_PFB"));
+
+        service.storeNeverRun(neverRun);
+
+        assertThat(repo.findById(neverRun.picsureId()).orElseThrow().getCreatedAt()).isEqualTo(inserted);
     }
 
     @Test

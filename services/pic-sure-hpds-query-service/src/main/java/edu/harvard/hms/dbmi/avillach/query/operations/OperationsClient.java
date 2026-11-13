@@ -1,10 +1,12 @@
 package edu.harvard.hms.dbmi.avillach.query.operations;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
@@ -14,6 +16,7 @@ import org.springframework.web.client.RestClientException;
 import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
 import edu.harvard.dbmi.avillach.domain.SavedQueryReference;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.dbmi.avillach.domain.StoredQueryVariant;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
@@ -41,6 +44,7 @@ public class OperationsClient {
 
     private static final Logger logger = LoggerFactory.getLogger(OperationsClient.class);
     private static final String QUERIES_PATH = "/operations/internal/queries";
+    private static final ParameterizedTypeReference<List<StoredQueryVariant>> VARIANT_LIST = new ParameterizedTypeReference<>() {};
 
     private final RestClient http;
 
@@ -110,6 +114,31 @@ public class OperationsClient {
         } catch (RestClientException e) {
             throw badGateway("get", e.getMessage());
         }
+    }
+
+    /**
+     * {@code GET /operations/internal/queries/variants?queryToVariantUuid={id}&userUuid={id}} -&gt; 200 with the rows one user stored under
+     * one general query, oldest first, rows with no creation time last.
+     *
+     * <p>An empty list is an answer, not a failure: operations-service gives it for a user with no row under the general query, for a
+     * general query of another user and for one that does not exist.
+     *
+     * @param queryToVariantUuid the id of the general query
+     * @param userUuid the UUID of the user whose rows are listed
+     * @return the variants in the order operations-service lists them, or an empty list
+     * @throws PicsureException BAD_GATEWAY when operations-service refuses the request, fails, or answers without a list; GATEWAY_TIMEOUT
+     *         when it cannot be reached in time
+     */
+    public List<StoredQueryVariant> variantsOf(UUID queryToVariantUuid, UUID userUuid) {
+        List<StoredQueryVariant> variants = execute(
+            () -> http.get().uri(QUERIES_PATH + "/variants?queryToVariantUuid={general}&userUuid={owner}", queryToVariantUuid, userUuid)
+                .retrieve().body(VARIANT_LIST),
+            "variants"
+        );
+        if (variants == null) {
+            throw badGateway("variants", "operations-service returned no list");
+        }
+        return variants;
     }
 
     /** {@code PATCH /operations/internal/queries/{id}}; null fields on {@code request} mean "leave unchanged". */

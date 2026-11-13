@@ -32,6 +32,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 
 import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.dbmi.avillach.domain.StoredQueryVariant;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
@@ -118,6 +119,82 @@ class OperationsClientTest {
         ops.stubFor(post(urlEqualTo("/operations/internal/queries")).willReturn(aResponse().withStatus(500)));
 
         assertThatThrownBy(() -> client().save(new SaveQueryRequest("{}", null, "QUEUED", "v1", null)))
+            .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
+    }
+
+    @Test
+    void variantsOfGetsTheVariantsOfAGeneralQueryForOneOwnerInTheOrderTheyAreListed() {
+        UUID general = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        String url = "/operations/internal/queries/variants?queryToVariantUuid=" + general + "&userUuid=" + owner;
+        ops.stubFor(
+            get(urlEqualTo(url)).willReturn(
+                okJson(
+                    "[{\"picsureId\":\"" + first + "\",\"sample\":true,\"resultType\":\"DATAFRAME_PFB\",\"createdAt\":1790777100000},"
+                        + "{\"picsureId\":\"" + second + "\",\"sample\":false,\"resultType\":null,\"createdAt\":null}]"
+                )
+            )
+        );
+
+        List<StoredQueryVariant> variants = client().variantsOf(general, owner);
+
+        assertThat(variants).containsExactly(
+            new StoredQueryVariant(first, true, "DATAFRAME_PFB", 1790777100000L), new StoredQueryVariant(second, false, null, null)
+        );
+        ops.verify(getRequestedFor(urlEqualTo(url)).withHeader("X-PIC-SURE-INTERNAL-TOKEN", equalTo("test-token")));
+    }
+
+    @Test
+    void variantsOfAnEmptyListIsAnAnswer() {
+        UUID general = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        ops.stubFor(
+            get(urlEqualTo("/operations/internal/queries/variants?queryToVariantUuid=" + general + "&userUuid=" + owner))
+                .willReturn(okJson("[]"))
+        );
+
+        assertThat(client().variantsOf(general, owner)).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {400, 403, 404, 500, 503})
+    void variantsOfAFailureStatusThrowsBadGateway(int status) {
+        UUID general = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        ops.stubFor(
+            get(urlEqualTo("/operations/internal/queries/variants?queryToVariantUuid=" + general + "&userUuid=" + owner))
+                .willReturn(aResponse().withStatus(status))
+        );
+
+        assertThatThrownBy(() -> client().variantsOf(general, owner))
+            .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
+    }
+
+    @Test
+    void variantsOfAnAnswerWithNoListThrowsBadGateway() {
+        UUID general = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        ops.stubFor(
+            get(urlEqualTo("/operations/internal/queries/variants?queryToVariantUuid=" + general + "&userUuid=" + owner))
+                .willReturn(okJson("null"))
+        );
+
+        assertThatThrownBy(() -> client().variantsOf(general, owner))
+            .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
+    }
+
+    @Test
+    void variantsOfAnAnswerThatIsNotAListThrowsBadGateway() {
+        UUID general = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        ops.stubFor(
+            get(urlEqualTo("/operations/internal/queries/variants?queryToVariantUuid=" + general + "&userUuid=" + owner))
+                .willReturn(okJson("{\"picsureId\":\"" + general + "\"}"))
+        );
+
+        assertThatThrownBy(() -> client().variantsOf(general, owner))
             .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
     }
 

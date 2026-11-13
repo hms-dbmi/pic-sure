@@ -79,7 +79,7 @@ class SampleDatasetMigrationMySqlTest {
         assertThat(columnsOf("query_to_variant")).containsExactly("uuid", "user_uuid", "created_at");
         assertThat(columnsOf("query_run"))
             .containsExactly("run_id", "query_uuid", "consents", "trigger", "submitted_at", "completed_at", "status");
-        assertThat(columnsOf("query")).contains("user_uuid", "consents", "query_to_variant_uuid", "sample", "result_type");
+        assertThat(columnsOf("query")).contains("user_uuid", "consents", "query_to_variant_uuid", "sample", "result_type", "created_at");
         assertThat(uniqueKeyColumnsOf("query", "unique_query_variant")).containsExactly("query_to_variant_uuid", "sample", "result_type");
         assertThat(columnsOf("named_dataset")).contains("query_to_variant_uuid");
         assertThat(indexesOf("named_dataset")).contains("idx_named_dataset_query_to_variant");
@@ -176,7 +176,7 @@ class SampleDatasetMigrationMySqlTest {
     void v10AddsTheGeneralQueryTableAndTheVariantColumns() {
         assertThat(columnsOf("query_to_variant")).containsExactly("uuid", "user_uuid", "created_at");
         assertThat(indexesOf("query_to_variant")).containsExactlyInAnyOrder("PRIMARY", "idx_query_to_variant_user_uuid");
-        assertThat(columnsOf("query")).contains("query_to_variant_uuid", "sample", "result_type");
+        assertThat(columnsOf("query")).contains("query_to_variant_uuid", "sample", "result_type", "created_at");
         assertThat(uniqueKeyColumnsOf("query", "unique_query_variant")).containsExactly("query_to_variant_uuid", "sample", "result_type");
         assertThat(columnsOf("named_dataset")).contains("query_to_variant_uuid");
         assertThat(indexesOf("named_dataset")).contains("idx_named_dataset_query_to_variant");
@@ -199,6 +199,50 @@ class SampleDatasetMigrationMySqlTest {
                 "SELECT COUNT(*) FROM query WHERE sample = 0 AND result_type IS NULL AND query_to_variant_uuid IS NULL", Integer.class
             )
         ).isEqualTo(3);
+    }
+
+    @Test
+    void v10AddsANullableCreationTimeToQueryWithNoDefaultAndNoIndex() {
+        Map<String, Object> column = jdbc.queryForMap(
+            "SELECT COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT FROM information_schema.COLUMNS"
+                + " WHERE TABLE_SCHEMA = 'picsure' AND TABLE_NAME = 'query' AND COLUMN_NAME = 'created_at'"
+        );
+
+        assertThat(String.valueOf(column.get("COLUMN_TYPE"))).isEqualTo("datetime(3)");
+        assertThat(column.get("IS_NULLABLE")).isEqualTo("YES");
+        assertThat(column.get("COLUMN_DEFAULT")).isNull();
+        assertThat(columnsOf("query")).endsWith("result_type", "created_at");
+        assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.STATISTICS"
+                    + " WHERE TABLE_SCHEMA = 'picsure' AND TABLE_NAME = 'query' AND COLUMN_NAME = 'created_at'",
+                Integer.class
+            )
+        ).isZero();
+    }
+
+    @Test
+    void rowsFromBeforeV10AndOldStackInsertsAfterItHaveNoCreationTime() {
+        UUID query = UUID.randomUUID();
+
+        insertQueryAsOldStack(query, STARTED_QUERY_START_TIME);
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query", Integer.class)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query WHERE created_at IS NULL", Integer.class)).isEqualTo(3);
+    }
+
+    @Test
+    void creationTimeKeepsItsMilliseconds() {
+        UUID query = UUID.randomUUID();
+        insertQueryAsOldStack(query, null);
+
+        jdbc.update("UPDATE query SET created_at = '2026-03-04 05:06:07.008' WHERE uuid = ?", bytes(query));
+
+        assertThat(
+            jdbc.queryForObject(
+                "SELECT DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s.%f') FROM query WHERE uuid = ?", String.class, bytes(query)
+            )
+        ).isEqualTo("2026-03-04 05:06:07.008000");
     }
 
     @Test

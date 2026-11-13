@@ -61,14 +61,25 @@ public class SampleRules {
         if (query == null || !query.sample()) {
             return;
         }
-        if (!properties.isEnabled()) {
-            throw new PicsureException(HttpStatus.BAD_REQUEST, SAMPLE_DISABLED, SAMPLE_DISABLED_MESSAGE);
-        }
+        checkEnabled(query);
         if (!HpdsBackendSelector.AUTH.equals(backend)) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", WRONG_BACKEND_MESSAGE);
         }
         if (query.expectedResultType() == null || !SAMPLED_RESULT_TYPES.contains(query.expectedResultType())) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", WRONG_RESULT_TYPE_MESSAGE);
+        }
+    }
+
+    /**
+     * Refuses a sample query while sampling is turned off. This is the first rule of {@link #check}, on its own, for a caller that has to
+     * apply it before the result type of the query is known. It reads nothing of the query but its {@code sample} flag.
+     *
+     * @param query a v3 query, or null
+     * @throws PicsureException 400 {@code sample_disabled} when the query sets {@code sample} and sampling is turned off
+     */
+    public void checkEnabled(Query query) {
+        if (query != null && query.sample() && !properties.isEnabled()) {
+            throw new PicsureException(HttpStatus.BAD_REQUEST, SAMPLE_DISABLED, SAMPLE_DISABLED_MESSAGE);
         }
     }
 

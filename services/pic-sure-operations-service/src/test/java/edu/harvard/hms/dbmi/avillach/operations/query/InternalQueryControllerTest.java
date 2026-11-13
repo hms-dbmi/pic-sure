@@ -1,12 +1,15 @@
 package edu.harvard.hms.dbmi.avillach.operations.query;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.time.Instant;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -389,6 +392,68 @@ class InternalQueryControllerTest {
     void sitesByDomainIsGone() throws Exception {
         mockMvc.perform(get("/internal/sites/by-domain/{domain}", "harvard.edu").header(InternalTokenFilter.HEADER, validToken))
             .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void variantsWithoutATokenIsForbidden() throws Exception {
+        mockMvc.perform(get("/internal/queries/variants").param("queryToVariantUuid", GENERAL_QUERY).param("userUuid", OWNER))
+            .andExpect(status().isForbidden()).andExpect(jsonPath("$.errorType").value("FORBIDDEN"));
+    }
+
+    @Test
+    void variantsListsTheOwnersRowsOfAGeneralQueryOldestFirst() throws Exception {
+        String picsureId = "8694e3d4-5cb4-410f-8431-993445e6d3f6";
+        mockMvc.perform(
+            post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON)
+                .content(ownedSave(picsureId, OWNER, "QUEUED", "[\"phs1.c1\"]", "FIRST_SUBMIT"))
+        ).andExpect(status().isCreated());
+        Query older = QueryFixtures.variant(UUID.fromString(OWNER), UUID.fromString(GENERAL_QUERY), true, "DATAFRAME_PFB");
+        older.setCreatedAt(Instant.parse("2020-01-02T03:04:05.678Z"));
+        queryRepo.saveAndFlush(older);
+        Query undated = QueryFixtures.variant(UUID.fromString(OWNER), UUID.fromString(GENERAL_QUERY), true, null);
+        queryRepo.saveAndFlush(undated);
+
+        mockMvc
+            .perform(
+                get("/internal/queries/variants").header(InternalTokenFilter.HEADER, validToken).param("queryToVariantUuid", GENERAL_QUERY)
+                    .param("userUuid", OWNER)
+            ).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(3))
+            .andExpect(jsonPath("$[0].picsureId").value(older.getUuid().toString())).andExpect(jsonPath("$[0].sample").value(true))
+            .andExpect(jsonPath("$[0].resultType").value("DATAFRAME_PFB")).andExpect(jsonPath("$[0].createdAt").value(1577934245678L))
+            .andExpect(jsonPath("$[1].picsureId").value(picsureId)).andExpect(jsonPath("$[1].sample").value(false))
+            .andExpect(jsonPath("$[1].resultType").value("COUNT")).andExpect(jsonPath("$[1].createdAt").isNumber())
+            .andExpect(jsonPath("$[2].picsureId").value(undated.getUuid().toString()))
+            .andExpect(jsonPath("$[2].resultType").value(nullValue())).andExpect(jsonPath("$[2].createdAt").value(nullValue()))
+            .andExpect(jsonPath("$[0].query").doesNotExist()).andExpect(jsonPath("$[0].userUuid").doesNotExist());
+    }
+
+    @Test
+    void variantsOfAnotherOwnersGeneralQueryAndOfAnUnknownOneAreBothAnEmptyList() throws Exception {
+        String stranger = "0d9a4c56-7f1e-4a8b-9a53-2f6f0f0c1b22";
+        mockMvc.perform(
+            post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON)
+                .content(ownedSave("8694e3d4-5cb4-410f-8431-993445e6d3f6", OWNER, "QUEUED", "[\"phs1.c1\"]", "FIRST_SUBMIT"))
+        ).andExpect(status().isCreated());
+
+        mockMvc.perform(
+            get("/internal/queries/variants").header(InternalTokenFilter.HEADER, validToken).param("queryToVariantUuid", GENERAL_QUERY)
+                .param("userUuid", stranger)
+        ).andExpect(status().isOk()).andExpect(content().string("[]"));
+        mockMvc.perform(
+            get("/internal/queries/variants").header(InternalTokenFilter.HEADER, validToken)
+                .param("queryToVariantUuid", UUID.randomUUID().toString()).param("userUuid", OWNER)
+        ).andExpect(status().isOk()).andExpect(content().string("[]"));
+    }
+
+    @Test
+    void variantsWithoutAnOwnerOrWithAnIdThatIsNotAUuidIsABadRequest() throws Exception {
+        mockMvc.perform(
+            get("/internal/queries/variants").header(InternalTokenFilter.HEADER, validToken).param("queryToVariantUuid", GENERAL_QUERY)
+        ).andExpect(status().isBadRequest());
+        mockMvc.perform(
+            get("/internal/queries/variants").header(InternalTokenFilter.HEADER, validToken).param("queryToVariantUuid", "not-a-uuid")
+                .param("userUuid", OWNER)
+        ).andExpect(status().isBadRequest());
     }
 
     private static String ownedSave(String picsureId, String owner, String status, String consentValues, String trigger) {

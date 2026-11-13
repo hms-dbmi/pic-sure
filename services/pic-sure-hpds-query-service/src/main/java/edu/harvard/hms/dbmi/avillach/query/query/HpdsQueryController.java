@@ -161,7 +161,8 @@ public class HpdsQueryController {
 
     private static final String SUBMIT_BAD_REQUEST = "Unknown backend, missing query data, a query with `sample` set to true while sample "
         + "datasets are turned off (error type `sample_disabled`), on a backend other than auth, or with a result type other than "
-        + "DATAFRAME, DATAFRAME_PFB and DATAFRAME_TIMESERIES," + UNREADABLE_BODY;
+        + "DATAFRAME, DATAFRAME_PFB and DATAFRAME_TIMESERIES, a query on auth with no `expectedResultType` that the caller has not run "
+        + "before (message `An expected result type is required for a query that has not run before`)," + UNREADABLE_BODY;
 
     private static final String SYNC_BAD_REQUEST = "Unknown backend, missing query data, a result type not served inline, a query with "
         + "`sample` set to true, which this endpoint never runs (error type `sample_disabled` while sample datasets are turned off),"

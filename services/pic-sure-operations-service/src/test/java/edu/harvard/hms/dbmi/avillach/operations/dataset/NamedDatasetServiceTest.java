@@ -159,10 +159,10 @@ class NamedDatasetServiceTest {
         when(repo.findByUser(ALICE_EMAIL)).thenReturn(List.of(one, two));
         when(queryRepo.findVariantsOf(Set.of(firstGeneral, secondGeneral), ALICE_ID)).thenReturn(
             List.of(
-                new QueryVariantRow(firstGeneral, first.getUuid(), false, "DATAFRAME"),
-                new QueryVariantRow(secondGeneral, second.getUuid(), false, "DATAFRAME"),
-                new QueryVariantRow(firstGeneral, firstPfb, false, "DATAFRAME_PFB"),
-                new QueryVariantRow(firstGeneral, firstSample, true, "DATAFRAME")
+                new QueryVariantRow(firstGeneral, first.getUuid(), false, "DATAFRAME", null),
+                new QueryVariantRow(secondGeneral, second.getUuid(), false, "DATAFRAME", null),
+                new QueryVariantRow(firstGeneral, firstPfb, false, "DATAFRAME_PFB", null),
+                new QueryVariantRow(firstGeneral, firstSample, true, "DATAFRAME", null)
             )
         );
 
@@ -184,7 +184,7 @@ class NamedDatasetServiceTest {
         NamedDataset onAnOwnedRow = datasetPointingAt(owned);
         when(repo.findByUser(ALICE_EMAIL)).thenReturn(List.of(onAnOwnerlessRow, onAnOwnedRow));
         when(queryRepo.findVariantsOf(Set.of(general), ALICE_ID))
-            .thenReturn(List.of(new QueryVariantRow(general, owned.getUuid(), false, "DATAFRAME")));
+            .thenReturn(List.of(new QueryVariantRow(general, owned.getUuid(), false, "DATAFRAME", null)));
 
         List<NamedDatasetDto> result = service.listForUser(ALICE);
 
@@ -226,7 +226,7 @@ class NamedDatasetServiceTest {
         NamedDataset dataset = datasetPointingAt(full);
         callerOwns(dataset);
         when(queryRepo.findVariantsOf(Set.of(general), ALICE_ID))
-            .thenReturn(List.of(new QueryVariantRow(general, full.getUuid(), false, "DATAFRAME")));
+            .thenReturn(List.of(new QueryVariantRow(general, full.getUuid(), false, "DATAFRAME", null)));
 
         NamedDatasetDto dto = service.getForUser(upperCase, dataset.getUuid());
 
@@ -300,7 +300,10 @@ class NamedDatasetServiceTest {
         queryIsStored(pfb);
         savingAssignsAnId();
         when(queryRepo.findVariantsOf(Set.of(general), ALICE_ID)).thenReturn(
-            List.of(new QueryVariantRow(general, pfb.getUuid(), false, "DATAFRAME_PFB"), new QueryVariantRow(general, sample, true, null))
+            List.of(
+                new QueryVariantRow(general, pfb.getUuid(), false, "DATAFRAME_PFB", null),
+                new QueryVariantRow(general, sample, true, null, null)
+            )
         );
 
         NamedDatasetDto dto = service.create(ALICE, requestNaming(pfb));
@@ -429,7 +432,7 @@ class NamedDatasetServiceTest {
         queryIsStored(other);
         when(repo.saveAndFlush(any())).thenAnswer(returnsFirstArg());
         when(queryRepo.findVariantsOf(Set.of(newGeneral), ALICE_ID))
-            .thenReturn(List.of(new QueryVariantRow(newGeneral, other.getUuid(), false, "COUNT")));
+            .thenReturn(List.of(new QueryVariantRow(newGeneral, other.getUuid(), false, "COUNT", null)));
 
         NamedDatasetDto dto = service.update(ALICE, dataset.getUuid(), new NamedDatasetRequestDto(other.getUuid(), "renamed", true, null));
 
@@ -544,7 +547,8 @@ class NamedDatasetServiceTest {
         when(repo.saveAndFlush(any())).thenAnswer(returnsFirstArg());
         when(queryRepo.findVariantsOf(Set.of(general), ALICE_ID)).thenReturn(
             List.of(
-                new QueryVariantRow(general, full.getUuid(), false, "DATAFRAME"), new QueryVariantRow(general, sample, true, "DATAFRAME")
+                new QueryVariantRow(general, full.getUuid(), false, "DATAFRAME", null),
+                new QueryVariantRow(general, sample, true, "DATAFRAME", null)
             )
         );
 
@@ -567,7 +571,7 @@ class NamedDatasetServiceTest {
         callerOwns(dataset);
         when(repo.saveAndFlush(any())).thenAnswer(returnsFirstArg());
         when(queryRepo.findVariantsOf(Set.of(general), ALICE_ID))
-            .thenReturn(List.of(new QueryVariantRow(general, full.getUuid(), false, "DATAFRAME")));
+            .thenReturn(List.of(new QueryVariantRow(general, full.getUuid(), false, "DATAFRAME", null)));
 
         NamedDatasetDto dto = service.update(ALICE, dataset.getUuid(), requestNaming(full));
 
