@@ -413,6 +413,45 @@ class AuditLogServiceTest {
         assertEquals("Claimed Repository", record.get("cadr_name"));
     }
 
+    @Test
+    void rasClaimsReachTheRecordUnderTheDefaultMapping() throws Exception {
+        String token = "Bearer "
+            + TestJwtBuilder.buildToken(Map.of("sub", "user123", "txn", "TluRuQW/fVk=.fabd97d17d4c88ab", "era_commons_id", "ABC123"));
+
+        serviceWithDefaultMapping().logEvent(fullEvent(), token, null);
+
+        Map<String, Object> record = lastRecord();
+        assertEquals("TluRuQW/fVk=.fabd97d17d4c88ab", record.get("txn"));
+        assertEquals("ABC123", record.get("eRA_commons_id"));
+        assertFalse(record.containsKey("era_commons_id"));
+        List<String> keys = new ArrayList<>(record.keySet());
+        assertTrue(keys.indexOf("txn") < keys.indexOf("app"), "claims are written before the platform fields");
+        assertTrue(keys.indexOf("eRA_commons_id") < keys.indexOf("app"), "claims are written before the platform fields");
+    }
+
+    @Test
+    void eraCommonsIdStillReadFromTheClaimSpelledAsTheRecordField() throws Exception {
+        String token = "Bearer " + TestJwtBuilder.buildToken(Map.of("sub", "user123", "eRA_commons_id", "ABC123"));
+
+        serviceWithDefaultMapping().logEvent(fullEvent(), token, null);
+
+        assertEquals("ABC123", lastRecord().get("eRA_commons_id"));
+    }
+
+    @Test
+    void rasFieldsAbsentWhenTheTokenHasNoSuchClaims() throws Exception {
+        serviceWithDefaultMapping().logEvent(fullEvent(), USER_TOKEN, null);
+        Map<String, Object> withToken = lastRecord();
+        serviceWithDefaultMapping().logEvent(fullEvent(), null, null);
+        Map<String, Object> withoutToken = lastRecord();
+
+        assertEquals("user123", withToken.get("subject"));
+        assertFalse(withToken.containsKey("txn"));
+        assertFalse(withToken.containsKey("eRA_commons_id"));
+        assertFalse(withoutToken.containsKey("txn"));
+        assertFalse(withoutToken.containsKey("eRA_commons_id"));
+    }
+
     private static final String NIH_ICO = "NHLBI";
     private static final String CADR_NAME = "BDC - BioData Catalyst";
     private static final String USER_TOKEN = "Bearer " + TestJwtBuilder.buildToken(Map.of("sub", "user123", "email", "user@example.com"));
@@ -453,6 +492,16 @@ class AuditLogServiceTest {
     private static AuditLogService serviceWith(String nihIco, String cadrName, Map<String, String> claimMapping) {
         AppConfig config = new AppConfig("test-key", "myapp", "myplatform", "staging", "myhost", nihIco, cadrName, 8080, "*", claimMapping);
         return new AuditLogService(config, new JwtDecodeService(claimMapping));
+    }
+
+    /**
+     * Builds a service with the claim mapping a deployment gets when {@code JWT_CLAIM_MAPPING} is unset.
+     *
+     * @return a service that writes to the AUDIT logger
+     */
+    private static AuditLogService serviceWithDefaultMapping() {
+        AppConfig config = AppConfig.fromEnvironment(Map.of("LOGGING_API_KEY", "test-key")::get);
+        return new AuditLogService(config, new JwtDecodeService(config.jwtClaimMapping()));
     }
 
     private static AuditEvent fullEvent() {

@@ -29,6 +29,8 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
 
     private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
+    private static final String ERA_COMMONS_SUFFIX = "@era.nih.gov";
+
     private final UserService userService;
     private final boolean isEnabled;
     private final RASPassPortService rasPassPortService;
@@ -246,7 +248,58 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
             userClaims.setUser_mapping_id(introspectResponse.get("user_mapping_id").asText());
         }
 
+        if (StringUtils.isNotBlank(rasPassport.getTxn())) {
+            userClaims.setTxn(rasPassport.getTxn());
+        }
+        userClaims.setEra_commons_id(
+            eraCommonsIdFrom(introspectResponse.get("user_mapping_id"))
+                .or(() -> eraCommonsIdFrom(introspectResponse.get("preferred_username"))).orElse(null)
+        );
+
         return userClaims;
+    }
+
+    /**
+     * Reads an eRA Commons id out of an identity claim of the form {@code id@era.nih.gov}. The suffix is matched without regard to ASCII
+     * case only, so a letter outside ASCII that case-folds to an ASCII one does not match. Never throws, so an unusable claim cannot fail a
+     * login.
+     *
+     * @param claim the claim node from the introspection response, or null when the response has no such claim
+     * @return the text before the suffix, or empty when the claim is missing, a JSON null, not text, not an eRA identity, or has nothing
+     *         before the suffix
+     */
+    private static Optional<String> eraCommonsIdFrom(JsonNode claim) {
+        if (claim == null || !claim.isTextual()) {
+            return Optional.empty();
+        }
+        String identity = claim.textValue().strip();
+        int idLength = identity.length() - ERA_COMMONS_SUFFIX.length();
+        if (idLength <= 0 || !endsWithEraCommonsSuffix(identity)) {
+            return Optional.empty();
+        }
+        String eraCommonsId = identity.substring(0, idLength);
+        return eraCommonsId.isBlank() ? Optional.empty() : Optional.of(eraCommonsId);
+    }
+
+    /**
+     * Tells whether a value ends with {@code @era.nih.gov}, folding only the ASCII letters A to Z to lower case before comparing.
+     *
+     * @param identity the value to test
+     * @return true when the tail of the value equals the suffix ignoring ASCII case
+     */
+    private static boolean endsWithEraCommonsSuffix(String identity) {
+        int offset = identity.length() - ERA_COMMONS_SUFFIX.length();
+        if (offset < 0) {
+            return false;
+        }
+        for (int i = 0; i < ERA_COMMONS_SUFFIX.length(); i++) {
+            char c = identity.charAt(offset + i);
+            char asciiLowered = c >= 'A' && c <= 'Z' ? (char) (c + ('a' - 'A')) : c;
+            if (asciiLowered != ERA_COMMONS_SUFFIX.charAt(i)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private String extractPermissionGroupFromPassport(Passport rasPassport) {

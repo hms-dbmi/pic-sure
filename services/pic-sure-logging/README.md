@@ -202,6 +202,8 @@ JWT_CLAIM_MAPPING='{"sub":"subject","email":"user_email","name":"user_name","rol
 | `country_name` | `user_country_name` |
 | `nih_ico` | `nih_ico` |
 | `eRA_commons_id` | `eRA_commons_id` |
+| `era_commons_id` | `eRA_commons_id` |
+| `txn` | `txn` |
 | `permission_group` | `user_permission_group` |
 | `session_id` | `session_id` |
 | `uuid` | `uuid` |
@@ -209,6 +211,8 @@ JWT_CLAIM_MAPPING='{"sub":"subject","email":"user_email","name":"user_name","rol
 | `logged_in` | `logged_in` |
 | `idp` | `user_id_provider` |
 | `cadr_name` | `cadr_name` |
+
+Setting `JWT_CLAIM_MAPPING` replaces the default mapping entirely, so a custom mapping has to list `txn` and `era_commons_id` itself to keep those fields in the output.
 
 ### Type Handling
 

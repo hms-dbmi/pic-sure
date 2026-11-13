@@ -6,6 +6,7 @@ import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
@@ -31,6 +32,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ContextConfiguration;
 
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 import org.mockito.ArgumentCaptor;
@@ -39,7 +41,10 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @SpringBootTest
-@ContextConfiguration(classes = {RASAuthenticationServiceTest.SessionConfiguration.class, RASPassPortService.class, RASAuthenticationService.class, ApplicationContext.class})
+@ContextConfiguration(
+    classes = {RASAuthenticationServiceTest.SessionConfiguration.class, RASPassPortService.class, RASAuthenticationService.class,
+        ApplicationContext.class}
+)
 public class RASAuthenticationServiceTest {
 
     @TestConfiguration
@@ -74,6 +79,7 @@ public class RASAuthenticationServiceTest {
     private final String testAccessToken = "someRandomAccessToken";
     private final String code = "123123123";
     private static final String TEST_SUBJECT = "okta-ras|accepted-subject";
+    private static final String EXAMPLE_PASSPORT_TXN = "TluRuQW/fVk=.fabd97d17d4c88ab";
     private final String testDomain = "https://testdomain.com";
     private Map<String, String> authRequest;
     private final String exampleRasPassport =
@@ -317,6 +323,191 @@ public class RASAuthenticationServiceTest {
         assertEquals(1, rejections.size(), "one line, not an INFO and a DEBUG copy");
         assertEquals(Level.INFO, rejections.get(0).getLevel());
         assertTrue(rejections.get(0).getFormattedMessage().endsWith("___ CODE " + code));
+    }
+
+    @Test
+    public void linkedIal2UserGetsTheEraCommonsIdFromTheMappingIdAndThePassportTransactionId() {
+        UserClaims claims =
+            claimsOfLogin("\"user_mapping_id\":\"ABC123@era.nih.gov\",\"preferred_username\":\"uuid@login.gov\"", exampleRasPassport);
+
+        assertEquals("ABC123", claims.getEra_commons_id());
+        assertEquals("ABC123", claims.toHashMap().get("era_commons_id"));
+        assertEquals(EXAMPLE_PASSPORT_TXN, claims.getTxn());
+        assertEquals(EXAMPLE_PASSPORT_TXN, claims.toHashMap().get("txn"));
+        assertEquals("ABC123@era.nih.gov", claims.getUser_mapping_id());
+        assertEquals("uuid@login.gov", claims.getPreferred_username());
+    }
+
+    @Test
+    public void eraSignInGetsTheEraCommonsIdFromThePreferredUsername() {
+        UserClaims claims = claimsOfLogin("\"preferred_username\":\"ABC123@era.nih.gov\"", exampleRasPassport);
+
+        assertEquals("ABC123", claims.getEra_commons_id());
+        assertEquals("ABC123", claims.toHashMap().get("era_commons_id"));
+        assertEquals(EXAMPLE_PASSPORT_TXN, claims.toHashMap().get("txn"));
+    }
+
+    @Test
+    public void unlinkedIal2UserGetsNoEraCommonsId() {
+        UserClaims claims =
+            claimsOfLogin("\"user_mapping_id\":\"uuid@login.gov\",\"preferred_username\":\"uuid@login.gov\"", exampleRasPassport);
+
+        assertNull(claims.getEra_commons_id());
+        assertFalse(claims.toHashMap().containsKey("era_commons_id"));
+        assertEquals(EXAMPLE_PASSPORT_TXN, claims.toHashMap().get("txn"));
+    }
+
+    @Test
+    public void eraSuffixIsMatchedWithoutRegardToCase() {
+        UserClaims fromMappingId =
+            claimsOfLogin("\"user_mapping_id\":\"ABC123@ERA.NIH.gov\",\"preferred_username\":\"uuid@login.gov\"", exampleRasPassport);
+        UserClaims fromPreferredUsername = claimsOfLogin("\"preferred_username\":\"ABC123@Era.Nih.Gov\"", exampleRasPassport);
+
+        assertEquals("ABC123", fromMappingId.getEra_commons_id());
+        assertEquals("ABC123", fromPreferredUsername.getEra_commons_id());
+    }
+
+    @Test
+    public void eraSuffixSpelledWithANonAsciiLetterGivesNoEraCommonsId() {
+        UserClaims dotlessMappingId =
+            claimsOfLogin("\"user_mapping_id\":\"ABC123@era.nıh.gov\",\"preferred_username\":\"uuid@login.gov\"", exampleRasPassport);
+        UserClaims dotlessPreferredUsername = claimsOfLogin("\"preferred_username\":\"ABC123@era.nıh.gov\"", exampleRasPassport);
+        UserClaims dottedCapitalMappingId =
+            claimsOfLogin("\"user_mapping_id\":\"ABC123@ERA.NİH.GOV\",\"preferred_username\":\"uuid@login.gov\"", exampleRasPassport);
+        UserClaims dottedCapitalPreferredUsername = claimsOfLogin("\"preferred_username\":\"ABC123@ERA.NİH.GOV\"", exampleRasPassport);
+
+        assertFalse(dotlessMappingId.toHashMap().containsKey("era_commons_id"));
+        assertFalse(dotlessPreferredUsername.toHashMap().containsKey("era_commons_id"));
+        assertFalse(dottedCapitalMappingId.toHashMap().containsKey("era_commons_id"));
+        assertFalse(dottedCapitalPreferredUsername.toHashMap().containsKey("era_commons_id"));
+    }
+
+    @Test
+    public void eraSuffixThatIsNotAtTheEndGivesNoEraCommonsId() {
+        UserClaims longerDomainMappingId = claimsOfLogin(
+            "\"user_mapping_id\":\"ABC@era.nih.gov.example.org\",\"preferred_username\":\"uuid@login.gov\"", exampleRasPassport
+        );
+        UserClaims longerDomainPreferredUsername =
+            claimsOfLogin("\"preferred_username\":\"ABC@era.nih.gov.example.org\"", exampleRasPassport);
+        UserClaims secondAtSignMappingId = claimsOfLogin(
+            "\"user_mapping_id\":\"ABC@era.nih.gov@login.gov\",\"preferred_username\":\"uuid@login.gov\"", exampleRasPassport
+        );
+        UserClaims secondAtSignPreferredUsername =
+            claimsOfLogin("\"preferred_username\":\"ABC@era.nih.gov@login.gov\"", exampleRasPassport);
+
+        assertFalse(longerDomainMappingId.toHashMap().containsKey("era_commons_id"));
+        assertFalse(longerDomainPreferredUsername.toHashMap().containsKey("era_commons_id"));
+        assertFalse(secondAtSignMappingId.toHashMap().containsKey("era_commons_id"));
+        assertFalse(secondAtSignPreferredUsername.toHashMap().containsKey("era_commons_id"));
+    }
+
+    @Test
+    public void whitespaceAroundAnEraIdentityIsIgnored() {
+        UserClaims fromMappingId =
+            claimsOfLogin("\"user_mapping_id\":\"  ABC123@era.nih.gov  \",\"preferred_username\":\"uuid@login.gov\"", exampleRasPassport);
+        UserClaims fromPreferredUsername = claimsOfLogin("\"preferred_username\":\"  ABC123@era.nih.gov  \"", exampleRasPassport);
+
+        assertEquals("ABC123", fromMappingId.getEra_commons_id());
+        assertEquals("ABC123", fromPreferredUsername.getEra_commons_id());
+    }
+
+    @Test
+    public void identityThatIsOnlyTheEraSuffixGivesNoEraCommonsId() {
+        UserClaims suffixOnlyMappingId =
+            claimsOfLogin("\"user_mapping_id\":\"@era.nih.gov\",\"preferred_username\":\"uuid@login.gov\"", exampleRasPassport);
+        UserClaims suffixOnlyPreferredUsername = claimsOfLogin("\"preferred_username\":\"@era.nih.gov\"", exampleRasPassport);
+
+        assertFalse(suffixOnlyMappingId.toHashMap().containsKey("era_commons_id"));
+        assertFalse(suffixOnlyPreferredUsername.toHashMap().containsKey("era_commons_id"));
+    }
+
+    @Test
+    public void unusableMappingIdFallsBackToThePreferredUsername() {
+        UserClaims suffixOnly =
+            claimsOfLogin("\"user_mapping_id\":\"@era.nih.gov\",\"preferred_username\":\"ABC123@era.nih.gov\"", exampleRasPassport);
+        UserClaims otherProvider =
+            claimsOfLogin("\"user_mapping_id\":\"uuid@login.gov\",\"preferred_username\":\"ABC123@era.nih.gov\"", exampleRasPassport);
+
+        assertEquals("ABC123", suffixOnly.getEra_commons_id());
+        assertEquals("ABC123", otherProvider.getEra_commons_id());
+    }
+
+    @Test
+    public void loginSucceedsWhenTheMappingIdIsAJsonNull() {
+        UserClaims eraUser = claimsOfLogin("\"user_mapping_id\":null,\"preferred_username\":\"ABC123@era.nih.gov\"", exampleRasPassport);
+        UserClaims loginGovUser = claimsOfLogin("\"user_mapping_id\":null,\"preferred_username\":\"uuid@login.gov\"", exampleRasPassport);
+
+        assertEquals("ABC123", eraUser.getEra_commons_id());
+        assertNull(eraUser.getUser_mapping_id());
+        assertFalse(loginGovUser.toHashMap().containsKey("era_commons_id"));
+    }
+
+    @Test
+    public void loginSucceedsWhenAnIdentityClaimIsNotText() {
+        UserClaims numericMappingId =
+            claimsOfLogin("\"user_mapping_id\":42,\"preferred_username\":\"ABC123@era.nih.gov\"", exampleRasPassport);
+        UserClaims objectMappingId = claimsOfLogin(
+            "\"user_mapping_id\":{\"id\":\"ABC123@era.nih.gov\"},\"preferred_username\":\"uuid@login.gov\"", exampleRasPassport
+        );
+        UserClaims nullPreferredUsername = claimsOfLogin("\"preferred_username\":null", exampleRasPassport);
+
+        assertEquals("ABC123", numericMappingId.getEra_commons_id());
+        assertFalse(objectMappingId.toHashMap().containsKey("era_commons_id"));
+        assertFalse(nullPreferredUsername.toHashMap().containsKey("era_commons_id"));
+    }
+
+    @Test
+    public void passportWithoutATransactionIdGivesNoTxnClaim() throws JsonProcessingException {
+        UserClaims missing = claimsOfLogin("\"preferred_username\":\"ABC123@era.nih.gov\"", passportWithTxn(null));
+        UserClaims blank = claimsOfLogin("\"preferred_username\":\"ABC123@era.nih.gov\"", passportWithTxn("  "));
+
+        assertNull(missing.getTxn());
+        assertFalse(missing.toHashMap().containsKey("txn"));
+        assertFalse(blank.toHashMap().containsKey("txn"));
+        assertEquals("ABC123", missing.getEra_commons_id());
+    }
+
+    /**
+     * Logs a user in through the authorization code flow and returns the claims the PIC-SURE token is built from.
+     *
+     * @param identityClaims JSON members of the introspection response that identify the user, without surrounding braces
+     * @param passport the encoded RAS passport the introspection response carries
+     * @return the claims handed to the token builder
+     */
+    private UserClaims claimsOfLogin(String identityClaims, String passport) {
+        String introspectionResponse = "{\"active\":true,\"sub\":\"example_email@test.com\",\"client_id\":\"test_client_id\","
+            + "\"userid\":\"test_userid\"," + identityClaims + ",\"passport_jwt_v11\":\"" + passport + "\"}";
+        mockTokenAndIntrospectionResponses(introspectionResponse);
+        User user = createTestUser();
+        user.setSubject("okta-ras|claims-subject");
+        when(userService.createRasUser(any(), any())).thenReturn(Optional.of(user));
+        when(userService.ensureBaselineRoles(any(User.class))).thenReturn(user);
+        when(userService.updateUserConsents(any(), any())).thenReturn(user);
+        ArgumentCaptor<UserClaims> claimsCaptor = ArgumentCaptor.forClass(UserClaims.class);
+        when(userService.getUserProfileResponse(claimsCaptor.capture())).thenReturn(new HashMap<>());
+
+        assertNotNull(rasAuthenticationService.authenticate(authRequest, testDomain), "the login has to succeed");
+        return claimsCaptor.getValue();
+    }
+
+    /**
+     * Rebuilds the example passport with a different transaction identifier. The signature is left as it was, since the login reads the
+     * payload without verifying it.
+     *
+     * @param txn the transaction identifier to carry, or null to leave the claim out
+     * @return the encoded passport
+     */
+    private String passportWithTxn(String txn) throws JsonProcessingException {
+        String[] parts = exampleRasPassport.split("\\.");
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode payload = (ObjectNode) mapper.readTree(new String(Base64.getDecoder().decode(parts[1]), StandardCharsets.UTF_8));
+        if (txn == null) {
+            payload.remove("txn");
+        } else {
+            payload.put("txn", txn);
+        }
+        String encodedPayload = Base64.getEncoder().encodeToString(mapper.writeValueAsBytes(payload));
+        return parts[0] + "." + encodedPayload + "." + parts[2];
     }
 
     private Passport acceptPassport() throws JsonProcessingException {
