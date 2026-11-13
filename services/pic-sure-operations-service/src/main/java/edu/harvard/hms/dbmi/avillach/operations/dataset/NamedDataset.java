@@ -12,14 +12,15 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.OneToOne;
-import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.ManyToOne;
 
 import edu.harvard.hms.dbmi.avillach.operations.query.Query;
 
 /**
  * Persistence model for named datasets and their associated queries.
+ *
+ * <p>Many datasets can point at one query row: a user can save one query under several names, and nothing in the table or in this mapping
+ * limits a query row to one dataset.
  *
  * <p>{@code queryToVariantUuid} names the general query of the dataset: the {@code query_to_variant} row that the query the dataset points
  * at is one variant of. It is a copy of that query row's own value, written whenever the dataset is created or updated, and it is null
@@ -28,7 +29,6 @@ import edu.harvard.hms.dbmi.avillach.operations.query.Query;
  */
 @Schema(description = "A NamedDataset object containing query, name, user, and archived status.")
 @Entity(name = "named_dataset")
-@Table(uniqueConstraints = {@UniqueConstraint(name = "unique_queryId_user", columnNames = {"queryId", "\"user\""})})
 public class NamedDataset {
 
     // Hibernate generates a random UUID for a UUID-typed id with a bare @GeneratedValue.
@@ -38,7 +38,7 @@ public class NamedDataset {
     private UUID uuid;
 
     @Schema(description = "The associated Query")
-    @OneToOne
+    @ManyToOne
     @JoinColumn(name = "queryId")
     private Query query;
 

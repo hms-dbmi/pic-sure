@@ -30,6 +30,11 @@ ALTER TABLE `named_dataset`
     ADD INDEX `idx_named_dataset_query_to_variant` (`query_to_variant_uuid`),
     ALGORITHM=INPLACE, LOCK=NONE;
 
+ALTER TABLE `named_dataset`
+    DROP INDEX `unique_queryId_user`,
+    ADD INDEX `idx_named_dataset_queryId` (`queryId`),
+    ALGORITHM=INPLACE, LOCK=NONE;
+
 CREATE TABLE `query_run` (
     `run_id` binary(16) NOT NULL,
     `query_uuid` binary(16) NOT NULL,

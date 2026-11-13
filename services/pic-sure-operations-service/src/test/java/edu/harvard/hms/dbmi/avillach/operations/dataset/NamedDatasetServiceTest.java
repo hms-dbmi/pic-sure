@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.AdditionalAnswers.returnsFirstArg;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -367,17 +368,35 @@ class NamedDatasetServiceTest {
     }
 
     @Test
-    void createDuplicateQueryAndUserThrows409() {
-        UUID queryId = UUID.randomUUID();
-        Query q = new Query();
-        q.setUuid(queryId);
-        when(queryRepo.findById(queryId)).thenReturn(Optional.of(q));
-        when(repo.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("unique_queryId_user"));
+    void createOfASecondDatasetOnAQueryTheCallerAlreadyNamedStoresIt() {
+        Query alices = storedQuery(ALICE_ID, UUID.randomUUID());
+        queryIsStored(alices);
+        savingAssignsAnId();
 
-        NamedDatasetRequestDto req = new NamedDatasetRequestDto(queryId, "dup", false, null);
-        PicsureException ex = assertThrows(PicsureException.class, () -> service.create(ALICE, req));
+        NamedDatasetDto first = service.create(ALICE, new NamedDatasetRequestDto(alices.getUuid(), "first", false, null));
+        NamedDatasetDto second = service.create(ALICE, new NamedDatasetRequestDto(alices.getUuid(), "second", false, null));
 
-        assertThat(ex.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(first.query().uuid()).isEqualTo(alices.getUuid()).isEqualTo(second.query().uuid());
+        assertThat(first.uuid()).isNotEqualTo(second.uuid());
+        assertThat(second.name()).isEqualTo("second");
+        ArgumentCaptor<NamedDataset> saved = ArgumentCaptor.forClass(NamedDataset.class);
+        verify(repo, times(2)).saveAndFlush(saved.capture());
+        assertThat(saved.getAllValues()).extracting(NamedDataset::getQuery).containsExactly(alices, alices);
+        assertThat(saved.getAllValues()).extracting(NamedDataset::getQueryToVariantUuid)
+            .containsExactly(alices.getQueryToVariantUuid(), alices.getQueryToVariantUuid());
+    }
+
+    @Test
+    void aSaveTheDatabaseRefusesIsNotAnsweredAsAConflict() {
+        Query alices = storedQuery(ALICE_ID, UUID.randomUUID());
+        queryIsStored(alices);
+        DataIntegrityViolationException refused = new DataIntegrityViolationException("refused");
+        when(repo.saveAndFlush(any())).thenThrow(refused);
+
+        DataIntegrityViolationException thrown =
+            assertThrows(DataIntegrityViolationException.class, () -> service.create(ALICE, requestNaming(alices)));
+
+        assertThat(thrown).isSameAs(refused);
     }
 
     @Test
@@ -654,19 +673,24 @@ class NamedDatasetServiceTest {
     }
 
     @Test
-    void putOntoAQueryTheCallerAlreadyNamedIs409() {
+    void putOntoAQueryAnotherDatasetOfTheCallerNamesMovesTheDataset() {
+        UUID general = UUID.randomUUID();
         Query full = storedQuery(ALICE_ID, UUID.randomUUID());
-        Query alreadyNamed = storedQuery(ALICE_ID, UUID.randomUUID());
+        Query alreadyNamed = storedQuery(ALICE_ID, general);
+        NamedDataset onIt = datasetPointingAt(alreadyNamed);
         NamedDataset dataset = datasetPointingAt(full);
         callerOwns(dataset);
         queryIsStored(alreadyNamed);
-        when(repo.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("unique_queryId_user"));
+        when(repo.saveAndFlush(any())).thenAnswer(returnsFirstArg());
 
-        PicsureException ex =
-            assertThrows(PicsureException.class, () -> service.update(ALICE, dataset.getUuid(), requestNaming(alreadyNamed)));
+        NamedDatasetDto dto = service.update(ALICE, dataset.getUuid(), requestNaming(alreadyNamed));
 
-        assertThat(ex.getStatus()).isEqualTo(HttpStatus.CONFLICT);
-        assertThat(ex).hasMessage("A NamedDataset for query " + alreadyNamed.getUuid() + " and user '" + ALICE_EMAIL + "' already exists");
+        NamedDataset saved = savedDataset();
+        assertThat(saved).isSameAs(dataset);
+        assertThat(saved.getQuery()).isSameAs(alreadyNamed).isSameAs(onIt.getQuery());
+        assertThat(saved.getQueryToVariantUuid()).isEqualTo(general);
+        assertThat(dto.query().uuid()).isEqualTo(alreadyNamed.getUuid());
+        verify(repo, never()).findByUser(any());
     }
 
     @Test

@@ -41,7 +41,7 @@ public class NamedDatasetController {
     static final String UPDATE_DESCRIPTION = "Replaces the name, archived state and metadata of the dataset.\n\n"
         + "When queryId names a query other than the one the dataset points at, the dataset is re-pointed: its query member becomes that "
         + "query, and queries lists the stored variants of that query. The query must have been submitted by the caller, or be a query "
-        + "stored without an owner. Re-pointing is refused when the caller already has a dataset on that query.\n\n"
+        + "stored without an owner. Another dataset of the caller may already point at that query.\n\n"
         + "When queryId names the query the dataset already points at, the dataset stays on it.";
 
     private final NamedDatasetService service;
@@ -66,8 +66,7 @@ public class NamedDatasetController {
         {@ApiResponse(responseCode = "201", description = "The created named dataset"),
             @ApiResponse(responseCode = "401", description = "No caller email in the request"),
             @ApiResponse(responseCode = "403", description = "The query belongs to another user"),
-            @ApiResponse(responseCode = "404", description = "Query not found"),
-            @ApiResponse(responseCode = "409", description = "The caller already named that query")}
+            @ApiResponse(responseCode = "404", description = "Query not found")}
     )
     @AuditEvent(type = "ACCESS", action = "named_dataset.modify")
     @PostMapping("")
@@ -95,7 +94,7 @@ public class NamedDatasetController {
             @ApiResponse(responseCode = "403", description = "The new queryId names a query that belongs to another user"),
             @ApiResponse(
                 responseCode = "404", description = "No named dataset with that id for the caller, or the new queryId matches no query"
-            ), @ApiResponse(responseCode = "409", description = "The caller already named that query")}
+            )}
     )
     @AuditEvent(type = "ACCESS", action = "named_dataset.modify")
     @PutMapping("/{id}")

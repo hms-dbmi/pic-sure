@@ -467,6 +467,24 @@ class DatasetBringOverTest {
     }
 
     @Test
+    void twoDatasetsOnOneOwnerlessRowAreBothFiledUnderItsGeneralQuery() {
+        Query ownerless = storedOwnerless(STORED_BODY);
+        UUID one = datasetOn(ownerless);
+        UUID other = datasetOn(ownerless);
+
+        List<NamedDatasetDto> listed = service.listForUser(ALICE);
+
+        assertThat(listed).extracting(NamedDatasetDto::uuid).containsExactlyInAnyOrder(one, other);
+        assertThat(listed).allSatisfy(answer -> assertThat(answer.query().uuid()).isEqualTo(ownerless.getUuid()));
+        assertThat(List.of(rowOf("named_dataset", one), rowOf("named_dataset", other))).allSatisfy(
+            row -> assertThat(row).containsEntry("queryId", hex(ownerless.getUuid()))
+                .containsEntry("query_to_variant_uuid", hex(GENERAL_ID))
+        );
+        assertThat(count("query")).isEqualTo(1);
+        assertThat(count("query_to_variant")).isEqualTo(1);
+    }
+
+    @Test
     void aSecondUserWithTheSameEmailDoesNotOverwriteTheGeneralQueryOfTheFirst(CapturedOutput output) {
         Query ownerless = storedOwnerless(STORED_BODY);
         UUID dataset = datasetOn(ownerless);

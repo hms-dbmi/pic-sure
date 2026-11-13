@@ -105,7 +105,7 @@ class NamedDatasetControllerTest {
     }
 
     @Test
-    void createSecondDatasetOverSameQueryAndUserReturns409() throws Exception {
+    void createSecondDatasetOverSameQueryAndUserReturns201AndBothAreListed() throws Exception {
         Query query = queryRepo.save(QueryFixtures.withRandomId().setQuery(QUERY_BODY));
 
         mockMvc.perform(
@@ -114,11 +114,21 @@ class NamedDatasetControllerTest {
                 .content("{\"queryId\":\"" + query.getUuid() + "\",\"name\":\"first\"}")
         ).andExpect(status().isCreated());
 
-        mockMvc.perform(
-            post("/dataset/named").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
-                .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"queryId\":\"" + query.getUuid() + "\",\"name\":\"second\"}")
-        ).andExpect(status().isConflict()).andExpect(jsonPath("$.errorType").value("conflict"));
+        mockMvc
+            .perform(
+                post("/dataset/named").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+                    .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE).contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"queryId\":\"" + query.getUuid() + "\",\"name\":\"second\"}")
+            ).andExpect(status().isCreated()).andExpect(jsonPath("$.name").value("second"))
+            .andExpect(jsonPath("$.query.uuid").value(query.getUuid().toString()));
+
+        mockMvc
+            .perform(
+                get("/dataset/named").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+                    .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE)
+            ).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2))
+            .andExpect(jsonPath("$[0].query.uuid").value(query.getUuid().toString()))
+            .andExpect(jsonPath("$[1].query.uuid").value(query.getUuid().toString()));
     }
 
     @Test
@@ -340,22 +350,22 @@ class NamedDatasetControllerTest {
         ).andExpect(status().isNotFound()).andExpect(jsonPath("$.errorType").value("not_found"));
     }
 
-    /**
-     * PUT that re-points one of the caller's datasets at a query the caller already named fails the flush on a unique constraint over
-     * {@code queryId}, which the service translates to 409. No pre-check runs, so this proves the constraint-to-409 translation.
-     */
+    /** A PUT may re-point one of the caller's datasets at a query another of the caller's datasets already points at. */
     @Test
-    void updateRepointedOntoAlreadyNamedQueryReturns409() throws Exception {
+    void updateRepointedOntoAlreadyNamedQueryReturns200AndBothDatasetsPointAtIt() throws Exception {
         Query first = queryRepo.save(QueryFixtures.withRandomId().setQuery(QUERY_BODY));
         Query second = queryRepo.save(QueryFixtures.withRandomId().setQuery(QUERY_BODY));
-        namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("first").setQuery(first));
+        NamedDataset onFirst = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("first").setQuery(first));
         NamedDataset onSecond = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("second").setQuery(second));
 
         mockMvc.perform(
             put("/dataset/named/{id}", onSecond.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
                 .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"queryId\":\"" + first.getUuid() + "\",\"name\":\"second\"}")
-        ).andExpect(status().isConflict()).andExpect(jsonPath("$.errorType").value("conflict"));
+        ).andExpect(status().isOk()).andExpect(jsonPath("$.query.uuid").value(first.getUuid().toString()));
+
+        assertThat(namedDatasetRepo.findById(onFirst.getUuid()).orElseThrow().getQuery().getUuid()).isEqualTo(first.getUuid());
+        assertThat(namedDatasetRepo.findById(onSecond.getUuid()).orElseThrow().getQuery().getUuid()).isEqualTo(first.getUuid());
     }
 
     private static final String ALICE_ID = "5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11";

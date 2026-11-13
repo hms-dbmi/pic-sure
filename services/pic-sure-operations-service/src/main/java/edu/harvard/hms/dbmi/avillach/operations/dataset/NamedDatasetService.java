@@ -11,7 +11,6 @@ import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,10 +34,9 @@ import edu.harvard.hms.dbmi.avillach.operations.query.QueryVariantRow;
  *
  * <p>{@code queryId} is resolved to a persisted {@code Query} via {@code QueryRepository.findById}, returning 404 when absent.
  *
- * <p>{@code NamedDataset} carries a DB-level unique constraint on {@code (queryId, user)}. Rather than a check-then-save pre-check (which
- * would race under concurrent requests), {@link #create} and {@link #update} (when it repoints the query) use {@code saveAndFlush} inside a
- * try/catch so the constraint violation surfaces synchronously and is translated to {@code 409 CONFLICT} via {@link PicsureException},
- * mirroring how {@code ConfigurationService} handles its name+kind conflict.
+ * <p>A user can have several datasets on one query row. Nothing limits the pairs of query row and user, so naming a query a second time, or
+ * moving a dataset onto a query another dataset of the user already points at, stores a second dataset. Dataset names are not unique
+ * either.
  *
  * <p>A dataset points at one query row through {@code queryId}. {@link #create} sets it, and {@link #update} moves it when the request
  * names another query. A dataset is pointed only at a query row that belongs to the caller or has no owner. That check is made when
@@ -173,8 +171,7 @@ public class NamedDatasetService {
      * @param user the caller
      * @param req the query to name and the name, archived state and metadata to store
      * @return the created dataset
-     * @throws PicsureException 401 when the caller has no email, 404 when no query has the id, 403 when the query belongs to another user,
-     *         409 when the caller already named the query
+     * @throws PicsureException 401 when the caller has no email, 404 when no query has the id, 403 when the query belongs to another user
      */
     @Transactional
     public NamedDatasetDto create(GatewayUser user, NamedDatasetRequestDto req) {
@@ -182,7 +179,7 @@ public class NamedDatasetService {
         Query query = resolveQuery(req.queryId());
         requireOwnedByCallerOrOwnerless(user, query);
         NamedDataset created = mapper.toEntity(email, query, req).setQueryToVariantUuid(generalQueryOfAnOwnedRow(query));
-        return withVariants(user, List.of(saveOrConflict(created, req.queryId(), email))).getFirst();
+        return withVariants(user, List.of(repo.saveAndFlush(created))).getFirst();
     }
 
     /**
@@ -203,7 +200,7 @@ public class NamedDatasetService {
      * @param req the query to point at and the name, archived state and metadata to store
      * @return the updated dataset
      * @throws PicsureException 401 when the caller has no email, 404 when the caller has no dataset with the id or no query has the id to
-     *         move to, 403 when the query to move to belongs to another user, 409 when the caller already named the query to move to
+     *         move to, 403 when the query to move to belongs to another user
      */
     @Transactional
     public NamedDatasetDto update(GatewayUser user, UUID id, NamedDatasetRequestDto req) {
@@ -220,7 +217,7 @@ public class NamedDatasetService {
             existing.setQueryToVariantUuid(generalQueryOfAnOwnedRow(row));
         }
         existing.setName(req.name()).setArchived(req.archived()).setMetadata(req.metadata());
-        return withVariants(user, List.of(saveOrConflict(existing, req.queryId(), email))).getFirst();
+        return withVariants(user, List.of(repo.saveAndFlush(existing))).getFirst();
     }
 
     /**
@@ -318,19 +315,6 @@ public class NamedDatasetService {
 
     private Query resolveQuery(UUID queryId) {
         return queryRepo.findById(queryId).orElseThrow(() -> PicsureExceptions.notFound("Query", queryId));
-    }
-
-    /**
-     * {@code saveAndFlush} (not {@code save}) so the {@code unique_queryId_user} constraint violation -- if any -- is raised by the
-     * database and thrown here, inside the try/catch, rather than deferred to end-of-transaction flush where it could no longer be
-     * translated into a 409.
-     */
-    private NamedDataset saveOrConflict(NamedDataset entity, UUID queryId, String user) {
-        try {
-            return repo.saveAndFlush(entity);
-        } catch (DataIntegrityViolationException e) {
-            throw PicsureExceptions.conflict("A NamedDataset for query " + queryId + " and user '" + user + "' already exists");
-        }
     }
 
     private static PicsureException notFound(UUID id) {

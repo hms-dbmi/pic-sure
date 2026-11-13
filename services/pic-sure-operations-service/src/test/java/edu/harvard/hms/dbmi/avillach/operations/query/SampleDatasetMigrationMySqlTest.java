@@ -82,7 +82,8 @@ class SampleDatasetMigrationMySqlTest {
         assertThat(columnsOf("query")).contains("user_uuid", "consents", "query_to_variant_uuid", "sample", "result_type", "created_at");
         assertThat(uniqueKeyColumnsOf("query", "unique_query_variant")).containsExactly("query_to_variant_uuid", "sample", "result_type");
         assertThat(columnsOf("named_dataset")).contains("query_to_variant_uuid");
-        assertThat(indexesOf("named_dataset")).contains("idx_named_dataset_query_to_variant");
+        assertThat(indexesOf("named_dataset"))
+            .containsExactlyInAnyOrder("PRIMARY", "idx_named_dataset_query_to_variant", "idx_named_dataset_queryId");
         assertThat(deleteRulesOf("query")).doesNotContainKey("fk_query_query_to_variant");
         assertThat(deleteRulesOf("named_dataset")).containsOnlyKeys("foreign_queryId");
 
@@ -155,6 +156,20 @@ class SampleDatasetMigrationMySqlTest {
             )
         ).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM named_dataset WHERE uuid = ?", Integer.class, bytes(dataset))).isEqualTo(1);
+    }
+
+    @Test
+    void v10LetsAUserHaveSeveralDatasetsOnOneQueryAndKeepsTheForeignKeyToTheQuery() {
+        UUID query = UUID.randomUUID();
+        insertQueryAsOldStack(query, STARTED_QUERY_START_TIME);
+
+        insertNamedDatasetAsOldStack(UUID.randomUUID(), query, "third@example.org");
+        insertNamedDatasetAsOldStack(UUID.randomUUID(), query, "third@example.org");
+
+        assertThat(indexesOf("named_dataset")).doesNotContain("unique_queryId_user").contains("idx_named_dataset_queryId");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM named_dataset WHERE queryId = ?", Integer.class, bytes(query))).isEqualTo(2);
+        assertThatThrownBy(() -> jdbc.update("DELETE FROM query WHERE uuid = ?", bytes(query)))
+            .isInstanceOf(DataIntegrityViolationException.class).hasMessageContaining("foreign_queryId");
     }
 
     @Test

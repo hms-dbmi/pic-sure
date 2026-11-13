@@ -97,9 +97,9 @@ class OpenApiDocumentTest {
             .isEqualTo("#/components/schemas/LinkedQueryDto");
         assertThat(document.at("/components/schemas/LinkedQueryDto/properties/sample/type").asText()).isEqualTo("boolean");
         assertThat(document.at("/paths/~1dataset~1named~1{id}/put/responses").fieldNames()).toIterable()
-            .containsExactlyInAnyOrder("200", "401", "403", "404", "409");
+            .containsExactlyInAnyOrder("200", "401", "403", "404");
         assertThat(document.at("/paths/~1dataset~1named/post/responses").fieldNames()).toIterable()
-            .containsExactlyInAnyOrder("201", "401", "403", "404", "409");
+            .containsExactlyInAnyOrder("201", "401", "403", "404");
         OpenApiDocumentAssertions.assertSchemaHasFields(document, "NamedDatasetQueryDto", "uuid", "query", "startTime", "status");
         OpenApiDocumentAssertions.assertSchemaHasFields(document, "NamedDatasetRequestDto", "queryId", "name", "archived", "metadata");
         assertThat(document.at("/components/schemas/NamedDatasetDto/properties/query/$ref").asText())

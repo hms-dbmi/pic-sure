@@ -287,19 +287,80 @@ class NamedDatasetMySqlTest {
     }
 
     @Test
-    void putOntoAQueryTheCallerAlreadyNamedIs409AndKeepsTheDatasetAsItWas() {
+    void createOfASecondDatasetOnAQueryTheCallerAlreadyNamedStoresBoth() {
         UUID general = generalQueryOf(ALICE_ID);
         Query full = stored(QueryFixtures.variant(ALICE_ID, general, false, "DATAFRAME"));
-        Query count = stored(QueryFixtures.variant(ALICE_ID, generalQueryOf(ALICE_ID), false, "COUNT"));
-        service.create(ALICE, new NamedDatasetRequestDto(count.getUuid(), "counts", false, null));
+        UUID first = service.create(ALICE, new NamedDatasetRequestDto(full.getUuid(), "cohort", false, null)).uuid();
+
+        NamedDatasetDto second = service.create(ALICE, new NamedDatasetRequestDto(full.getUuid(), "the same cohort", false, null));
+
+        assertThat(second.uuid()).isNotEqualTo(first);
+        assertThat(second.queries()).containsExactly(new LinkedQueryDto(full.getUuid(), false, "DATAFRAME"));
+        assertThat(List.of(first, second.uuid())).allSatisfy(
+            dataset -> assertThat(queryIdAndGeneralQueryOf(dataset)).containsEntry("queryId", bytes(full.getUuid()))
+                .containsEntry("query_to_variant_uuid", bytes(general))
+        );
+        assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM named_dataset WHERE queryId = ? AND user = ?", Integer.class, bytes(full.getUuid()), ALICE_EMAIL
+            )
+        ).isEqualTo(2);
+        assertThat(service.listForUser(ALICE)).extracting(NamedDatasetDto::name).containsExactlyInAnyOrder("cohort", "the same cohort");
+    }
+
+    @Test
+    void createOfASecondDatasetOnAnOwnerlessQueryTheCallerAlreadyNamedStoresBoth() {
+        Query ownerless = stored(QueryFixtures.withRandomId().setQuery("{\"query\":{\"select\":[]}}").setVersion("3"));
+        service.create(ALICE, new NamedDatasetRequestDto(ownerless.getUuid(), "cohort", false, null));
+
+        service.create(ALICE, new NamedDatasetRequestDto(ownerless.getUuid(), "the same cohort", false, null));
+
+        assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM named_dataset WHERE queryId = ? AND user = ?", Integer.class, bytes(ownerless.getUuid()), ALICE_EMAIL
+            )
+        ).isEqualTo(2);
+    }
+
+    @Test
+    void putOntoAQueryAnotherDatasetOfTheCallerNamesMovesTheDataset() {
+        UUID general = generalQueryOf(ALICE_ID);
+        UUID countGeneral = generalQueryOf(ALICE_ID);
+        Query full = stored(QueryFixtures.variant(ALICE_ID, general, false, "DATAFRAME"));
+        Query count = stored(QueryFixtures.variant(ALICE_ID, countGeneral, false, "COUNT"));
+        UUID onCount = service.create(ALICE, new NamedDatasetRequestDto(count.getUuid(), "counts", false, null)).uuid();
         UUID dataset = service.create(ALICE, new NamedDatasetRequestDto(full.getUuid(), "cohort", false, null)).uuid();
 
-        assertThatThrownBy(() -> service.update(ALICE, dataset, new NamedDatasetRequestDto(count.getUuid(), "renamed", false, null)))
-            .isInstanceOfSatisfying(PicsureException.class, refused -> assertThat(refused.getStatus()).isEqualTo(HttpStatus.CONFLICT));
+        NamedDatasetDto moved = service.update(ALICE, dataset, new NamedDatasetRequestDto(count.getUuid(), "renamed", false, null));
 
-        assertThat(nameArchivedFlagAndMetadataOf(dataset)).containsEntry("name", "cohort");
-        assertThat(queryIdAndGeneralQueryOf(dataset)).containsEntry("queryId", bytes(full.getUuid()))
-            .containsEntry("query_to_variant_uuid", bytes(general));
+        assertThat(moved.query().uuid()).isEqualTo(count.getUuid());
+        assertThat(moved.queries()).containsExactly(new LinkedQueryDto(count.getUuid(), false, "COUNT"));
+        assertThat(nameArchivedFlagAndMetadataOf(dataset)).containsEntry("name", "renamed");
+        assertThat(queryIdAndGeneralQueryOf(dataset)).containsEntry("queryId", bytes(count.getUuid()))
+            .containsEntry("query_to_variant_uuid", bytes(countGeneral));
+        assertThat(queryIdAndGeneralQueryOf(onCount)).containsEntry("queryId", bytes(count.getUuid()))
+            .containsEntry("query_to_variant_uuid", bytes(countGeneral));
+        assertThat(nameArchivedFlagAndMetadataOf(onCount)).containsEntry("name", "counts");
+    }
+
+    /**
+     * Two datasets of one user on one query row with no owner are both filed under the general query derived from its stored query, and
+     * both stay on that row.
+     */
+    @Test
+    void twoDatasetsOfOneUserOnOneOwnerlessRowAreBothFiledUnderItsGeneralQuery() {
+        Query ownerless = stored(QueryFixtures.withRandomId().setQuery(COHORT_BODY).setVersion("3"));
+        UUID one = datasetOfAliceStoredBeforeGeneralQueries(ownerless, "cohort");
+        UUID other = datasetOfAliceStoredBeforeGeneralQueries(ownerless, "the same cohort");
+
+        readingWithTheStepTurnedOn(datasetRepository).listForUser(ALICE);
+
+        byte[] general = jdbc.queryForObject("SELECT uuid FROM query_to_variant", byte[].class);
+        assertThat(List.of(one, other)).allSatisfy(
+            dataset -> assertThat(queryIdAndGeneralQueryOf(dataset)).containsEntry("queryId", bytes(ownerless.getUuid()))
+                .containsEntry("query_to_variant_uuid", general)
+        );
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query", Integer.class)).isEqualTo(1);
     }
 
     @Test
