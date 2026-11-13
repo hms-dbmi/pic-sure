@@ -23,6 +23,12 @@
       "type": "java.time.Duration",
       "description": "How long ResultTypeBackfill waits between two pages of query rows. A negative value stops the service from starting.",
       "defaultValue": "250ms"
+    },
+    {
+      "name": "picsure.operations.dataset-bring-over.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Whether a read of named datasets brings the caller's datasets over to query rows the caller owns. A dataset saved before query rows had owners points at a row with no owner and lists no variants. When true, the first list or read by its user stores an owned query row and its general query from the dataset's stored query, with no status, no consents and no run, and points the dataset at that row. The row the dataset pointed at before is not changed. Leave it false while a stack without query owners still reads the same database, because that stack cannot read the row a brought-over dataset names. When false, a dataset read writes nothing.",
+      "defaultValue": false
     }
   ]
 }

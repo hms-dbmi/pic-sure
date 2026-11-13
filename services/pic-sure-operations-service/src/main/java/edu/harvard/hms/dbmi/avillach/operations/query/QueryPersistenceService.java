@@ -12,6 +12,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Stream;
 
 import org.slf4j.Logger;
@@ -53,6 +54,9 @@ import edu.harvard.hms.dbmi.avillach.operations.error.PicsureExceptions;
  * <p>It is also the only writer of the {@code query_to_variant} table. The save that inserts a row with an owner files it under its general
  * query, and creates the general query in the same transaction when it is not stored yet. General queries are never changed or deleted.
  *
+ * <p>{@link #storeNeverRun} inserts an owned row that has not been sent to HPDS: it has no status, no consents and no run. The query
+ * service runs such a row the first time its owner asks for its status or result, or submits its query again.
+ *
  * <p>A save onto a stored row and an update both lock the query row before they read anything else, so two writers of one row run one after
  * the other and the second sees the run the first appended.
  */
@@ -65,6 +69,7 @@ public class QueryPersistenceService {
     private static final int MYSQL_DUPLICATE_ENTRY = 1062;
     private static final int OWNED_SAVE_MEMBERS = 5;
     private static final int UUID_BYTES = 16;
+    private static final String NEVER_RUN_VERSION = "3";
 
     private final QueryRepository repo;
     private final QueryRunRepository runs;
@@ -184,6 +189,60 @@ public class QueryPersistenceService {
     }
 
     /**
+     * Stores an owned row that has never run, unless a row is already stored under its id. The new row has the given body, start time,
+     * owner, general query, sample flag and result type, version {@code "3"} and its own id as its result id. It has no status, no
+     * consents, no ready time and no metadata, and no {@code query_run} row is written. Null consents are what makes the query service run
+     * the row on its first status, result or submit request, because no consents a caller holds equal them.
+     *
+     * <p>The general query is stored first when no row has its id yet. A general query stored under another owner refuses the call.
+     *
+     * <p>A row already stored under the id is returned as it is and nothing of it is written, so its status, consents, start time and runs
+     * stay. Such a row must belong to the same owner.
+     *
+     * <p><b>Transactions.</b> The method runs in the caller's transaction when the caller has one, and in a transaction of its own
+     * otherwise. Either way the general query and the row are both stored or neither is. It is written for a caller whose transaction has
+     * already read other rows, which the save methods are not: on MySQL a plain read returns the rows as they were at the first plain read
+     * of the transaction, so it can miss a general query or a row another transaction has committed since. Both lookups here are locking
+     * reads, which return the latest committed row. The general query is read with a shared lock after the insert that leaves a stored row
+     * alone, and the row is read with {@link QueryRepository#findLockedByUuid}. The general query is always touched before the row, which
+     * is the order a save takes the same locks in.
+     *
+     * <p>When the method throws inside a caller's transaction, that transaction can only roll back. Two calls that insert one new id at the
+     * same time do not both succeed: the database fails one of them, on the primary key or as the loser of a lock cycle, and that call
+     * throws. A call made afterward finds the row.
+     *
+     * @param row the row to store
+     * @return the row stored under the id: the one this call inserted, or the one that was already there. Inside a caller's transaction it
+     *         is a managed entity
+     * @throws PicsureException 409 when the general query, or the row already stored under the id, belongs to a different owner
+     * @throws DataIntegrityViolationException when the database refuses the row, for example because the general query already holds a row
+     *         of the same sample flag and result type under another id
+     */
+    public Query storeNeverRun(NeverRunQuery row) {
+        return transactions.execute(status -> {
+            storedGeneralQuery(row.queryToVariantUuid(), row.userUuid(), generalQueries::findSharedByUuid);
+            Optional<Query> stored = repo.findLockedByUuid(row.picsureId());
+            if (stored.isPresent()) {
+                if (!row.userUuid().equals(stored.get().getUserUuid())) {
+                    throw PicsureExceptions.conflict("Query " + row.picsureId() + " belongs to a different owner");
+                }
+                return stored.get();
+            }
+            Query entity = new Query();
+            entity.setUuid(row.picsureId());
+            entity.setQuery(stripResourceCredentials(row.query()));
+            entity.setResourceResultId(row.picsureId().toString());
+            entity.setVersion(NEVER_RUN_VERSION);
+            entity.setUserUuid(row.userUuid());
+            entity.setQueryToVariantUuid(row.queryToVariantUuid());
+            entity.setSample(row.sample());
+            entity.setResultType(row.resultType() == null ? null : row.resultType().name());
+            entity.setStartTime(row.startTime());
+            return repo.saveAndFlush(entity);
+        });
+    }
+
+    /**
      * Locks the row with the given id and stores the request onto it, or returns null without writing when no row has the id.
      *
      * @throws PicsureException 409 when the row is stored under a different owner than the request names
@@ -228,9 +287,8 @@ public class QueryPersistenceService {
     }
 
     /**
-     * Makes sure the general query the request names is stored and belongs to the request's owner. The row is inserted when no row has the
-     * id, with a statement that leaves a stored row alone and raises no duplicate-key failure, and is then loaded to read its owner. Two
-     * saves that create one general query at once therefore both go on: the second waits for the first and then finds its row.
+     * Makes sure the general query the request names is stored and belongs to the request's owner, as {@link #storedGeneralQuery} does. The
+     * row is loaded with a plain read, which is the first read of the transaction a save inserts in.
      *
      * @param req the save request
      * @return the id of the general query, or null when the request names none
@@ -241,10 +299,25 @@ public class QueryPersistenceService {
         if (generalId == null) {
             return null;
         }
-        generalQueries.insertIfAbsent(bytesOf(generalId), bytesOf(req.userUuid()), clock.instant().truncatedTo(ChronoUnit.MILLIS));
-        UUID storedOwner = generalQueries.findById(generalId).map(QueryToVariant::getUserUuid)
+        return storedGeneralQuery(generalId, req.userUuid(), generalQueries::findById);
+    }
+
+    /**
+     * Makes sure a general query is stored and belongs to the given owner. The row is inserted when no row has the id, with a statement
+     * that leaves a stored row alone and raises no duplicate-key failure, and is then loaded to read its owner. Two callers that create one
+     * general query at once therefore both go on: the second waits for the first and then finds its row.
+     *
+     * @param generalId the id of the general query
+     * @param owner the UUID of the user the general query must belong to
+     * @param loadAfterTheInsert how the row is read once it is stored; it must find a row another transaction committed just before
+     * @return the id of the general query
+     * @throws PicsureException 409 when the general query is stored under a different owner
+     */
+    private UUID storedGeneralQuery(UUID generalId, UUID owner, Function<UUID, Optional<QueryToVariant>> loadAfterTheInsert) {
+        generalQueries.insertIfAbsent(bytesOf(generalId), bytesOf(owner), clock.instant().truncatedTo(ChronoUnit.MILLIS));
+        UUID storedOwner = loadAfterTheInsert.apply(generalId).map(QueryToVariant::getUserUuid)
             .orElseThrow(() -> new IllegalStateException("General query " + generalId + " is missing right after it was stored"));
-        if (!storedOwner.equals(req.userUuid())) {
+        if (!storedOwner.equals(owner)) {
             throw PicsureExceptions.conflict("General query " + generalId + " belongs to a different owner");
         }
         return generalId;

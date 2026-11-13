@@ -25,10 +25,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
 import edu.harvard.hms.dbmi.avillach.operations.query.Query;
+import edu.harvard.hms.dbmi.avillach.operations.query.QueryPersistenceService;
 import edu.harvard.hms.dbmi.avillach.operations.query.QueryRepository;
 import edu.harvard.hms.dbmi.avillach.operations.query.QueryVariantRow;
 
@@ -43,8 +45,10 @@ import edu.harvard.hms.dbmi.avillach.operations.query.QueryVariantRow;
  * is never leaked to a non-owning caller.
  *
  * <p>The repositories are mocks, so these tests pin what the service decides, which rows it asks the repositories to write, and which
- * general queries and owner it asks for the variants of. Which query rows the database returns for them is pinned by
- * {@code NamedDatasetControllerTest} and {@code NamedDatasetMySqlTest}.
+ * general queries and owner it asks for the variants of. The transaction manager is a mock as well, so the two reads run their work with no
+ * transaction around it, and the step that brings datasets over is turned off, as it is by default. {@code DatasetBringOverTest} covers
+ * that step. Which query rows the database returns for them is pinned by {@code NamedDatasetControllerTest} and
+ * {@code NamedDatasetMySqlTest}.
  */
 @ExtendWith(MockitoExtension.class)
 class NamedDatasetServiceTest {
@@ -64,11 +68,19 @@ class NamedDatasetServiceTest {
     @Mock
     private QueryRepository queryRepo;
 
+    @Mock
+    private QueryPersistenceService queryPersistence;
+
+    @Mock
+    private PlatformTransactionManager transactionManager;
+
     private NamedDatasetService service;
 
     @BeforeEach
     void buildService() {
-        service = new NamedDatasetService(repo, queryRepo, new NamedDatasetMapper());
+        DatasetBringOver turnedOff =
+            new DatasetBringOver(repo, queryPersistence, transactionManager, new DatasetBringOverProperties(false));
+        service = new NamedDatasetService(repo, queryRepo, new NamedDatasetMapper(), turnedOff, transactionManager);
     }
 
     private static Query storedQuery(UUID owner, UUID generalQuery) {

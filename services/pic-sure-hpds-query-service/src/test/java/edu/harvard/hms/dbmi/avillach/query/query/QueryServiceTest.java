@@ -1741,6 +1741,106 @@ class QueryServiceTest {
         assertConsentChangeOnStatusReruns(ONE_CONSENT, BOTH_CONSENTS);
     }
 
+    /**
+     * The body of a row that operations-service stored for Alice when it brought one of her named datasets over: a federated envelope from
+     * an older release around a v3 query that carries the row id and no authorization filters. {@code DatasetBringOverTest} in the
+     * operations service asserts that the step stores exactly this text, so the body read here is the body written there. Change the two
+     * together.
+     */
+    private static final String BROUGHT_OVER_BODY =
+        "{\"@type\":\"FederatedQueryRequest\",\"resourceUUID\":\"0e3ad2a1-9b1c-4d53-8f52-2f1d6f0a7c11\","
+            + "\"query\":{\"select\":[\"\\\\demographics\\\\AGE\\\\\"],\"authorizationFilters\":[],"
+            + "\"phenotypicClause\":{\"not\":null,\"phenotypicClauses\":["
+            + "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demographics\\\\SEX\\\\\",\"values\":[\"female\"],\"min\":null,\"max\":null,\"not\":null}],"
+            + "\"operator\":\"AND\"},\"genomicFilters\":[],\"expectedResultType\":\"DATAFRAME\","
+            + "\"picsureId\":\"024abf78-fcdc-54cc-b416-c173cc5bd4ee\",\"id\":null},\"commonAreaUUID\":\"7a1c0c5e-2f0b-4c7e-9d7a-3b1f2e4d5c6a\"}";
+    private static final UUID BROUGHT_OVER_ID = UUID.fromString("024abf78-fcdc-54cc-b416-c173cc5bd4ee");
+    private static final UUID BROUGHT_OVER_RESOURCE = UUID.fromString("0e3ad2a1-9b1c-4d53-8f52-2f1d6f0a7c11");
+
+    /** The query of {@link #BROUGHT_OVER_BODY}, read with the mapper that refuses unknown members. */
+    private static Query broughtOverQuery() throws JsonProcessingException {
+        return MAPPER.treeToValue(MAPPER.readTree(BROUGHT_OVER_BODY).get("query"), Query.class);
+    }
+
+    /**
+     * Stores the row as operations-service leaves it after bringing a dataset over: owned by Alice, with the body above, the row id as its
+     * result id, and no status, no consents and no run.
+     */
+    private StoredQuery rowThatNeverRan() {
+        StoredQuery row =
+            new StoredQuery(BROUGHT_OVER_ID, BROUGHT_OVER_BODY, BROUGHT_OVER_ID.toString(), null, "3", null, 1L, null, ALICE, null, null);
+        when(operationsClient.get(BROUGHT_OVER_ID)).thenReturn(row);
+        return row;
+    }
+
+    private void assertTheRowThatNeverRanWasRunOnce() throws JsonProcessingException {
+        assertRerunUnder(BROUGHT_OVER_ID, ONE_CONSENT, "CONSENT_CHANGE");
+        Query sent = (Query) queriesSentToHpds.get(0);
+        assertThat(sent.setAuthorizationFilters(List.of())).isEqualTo(broughtOverQuery());
+        SaveQueryRequest saved = onlySave();
+        assertThat(saved.queryToVariantUuid()).isEqualTo(QueryIdentity.generalIdFor(ALICE, broughtOverQuery()));
+        assertThat(saved.sample()).isFalse();
+        assertThat(saved.resultType()).isEqualTo("DATAFRAME");
+    }
+
+    @Test
+    void theIdInTheBroughtOverBodyIsTheIdDerivedForItsQueryAndItsOwner() throws Exception {
+        assertThat(QueryIdentity.idFor(ALICE, broughtOverQuery())).isEqualTo(BROUGHT_OVER_ID).isEqualTo(broughtOverQuery().picsureId());
+        assertThat(broughtOverQuery().authorizationFilters()).isEmpty();
+    }
+
+    @Test
+    void statusOfARowThatNeverRanRunsIt() throws Exception {
+        rowThatNeverRan();
+        callerHoldsConsents("phs001.c1");
+        hpdsAcceptsOwnedSubmits();
+
+        QueryStatus out = ownedService.queryStatus("auth", BROUGHT_OVER_ID, TOKEN, user(ALICE));
+
+        assertTheRowThatNeverRanWasRunOnce();
+        assertThat(out.getStatus()).isEqualTo(PicSureStatus.PENDING);
+        assertThat(out.getPicsureResultId()).isEqualTo(BROUGHT_OVER_ID);
+        assertThat(out.getResourceResultId()).isEqualTo(BROUGHT_OVER_ID.toString());
+        assertThat(out.getResourceID()).isEqualTo(BROUGHT_OVER_RESOURCE);
+        verify(hpds, never()).queryStatus(any(), any());
+        verifyNoResultWasFetched();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = Read.class, names = {"RESULT", "SIGNED_URL"})
+    void resultOfARowThatNeverRanAnswers409(Read read) throws Exception {
+        rowThatNeverRan();
+        callerHoldsConsents("phs001.c1");
+        hpdsHoldsTheJob(BROUGHT_OVER_ID, PicSureStatus.AVAILABLE);
+        hpdsServesTheResult(BROUGHT_OVER_ID);
+        hpdsAcceptsOwnedSubmits();
+
+        assertThatThrownBy(() -> read.call(ownedService, "auth", BROUGHT_OVER_ID, TOKEN, user(ALICE)))
+            .satisfies(QueryServiceTest::assertResultNotReady);
+
+        assertTheRowThatNeverRanWasRunOnce();
+        verify(hpds, never()).queryStatus(any(), any());
+        verifyNoResultWasFetched();
+    }
+
+    @Test
+    void submitOfAQueryWhoseRowNeverRanRunsIt() throws Exception {
+        StoredQuery row = rowThatNeverRan();
+        when(operationsClient.find(BROUGHT_OVER_ID)).thenReturn(Optional.of(row));
+        callerHoldsConsents("phs001.c1");
+        hpdsAcceptsOwnedSubmits();
+        Query asTheDatasetApiReturnsIt = broughtOverQuery();
+
+        QueryStatus out = ownedService.query("auth", envelope(asTheDatasetApiReturnsIt), TOKEN, user(ALICE));
+
+        assertTheRowThatNeverRanWasRunOnce();
+        assertThat(out.getStatus()).isEqualTo(PicSureStatus.PENDING);
+        assertThat(out.getPicsureResultId()).isEqualTo(BROUGHT_OVER_ID);
+        assertThat(out.getResourceResultId()).isEqualTo(BROUGHT_OVER_ID.toString());
+        verify(operationsClient).find(BROUGHT_OVER_ID);
+        verify(operationsClient, never()).get(any());
+    }
+
     static Stream<Arguments> consentChanges() {
         return Stream.of(Arguments.of("shrink", BOTH_CONSENTS, ONE_CONSENT), Arguments.of("grow", ONE_CONSENT, BOTH_CONSENTS));
     }

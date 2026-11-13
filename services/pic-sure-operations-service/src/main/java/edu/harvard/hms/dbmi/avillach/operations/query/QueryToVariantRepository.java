@@ -1,9 +1,13 @@
 package edu.harvard.hms.dbmi.avillach.operations.query;
 
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
+import jakarta.persistence.LockModeType;
+
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.repository.query.Param;
 
@@ -26,4 +30,17 @@ public interface QueryToVariantRepository extends JpaRepository<QueryToVariant, 
         nativeQuery = true
     )
     int insertIfAbsent(@Param("uuid") byte[] uuid, @Param("userUuid") byte[] userUuid, @Param("createdAt") Instant createdAt);
+
+    /**
+     * Finds a general query with a locking read, as {@code SELECT ... FOR SHARE} does. A locking read returns the latest committed row,
+     * where a plain read on MySQL returns the row as it was when the transaction made its first plain read. Use it after
+     * {@link #insertIfAbsent} in a transaction that read something before: a general query another transaction committed in between is
+     * found by this method and missed by {@code findById}. The lock is shared, so two transactions that file rows under one general query
+     * do not wait for each other here. Call it inside a transaction.
+     *
+     * @param uuid the id of the general query
+     * @return the general query as it is stored now, or empty when no row has the id
+     */
+    @Lock(LockModeType.PESSIMISTIC_READ)
+    Optional<QueryToVariant> findSharedByUuid(UUID uuid);
 }

@@ -40,7 +40,7 @@ public record NamedDatasetDto(
         description = "Free-form settings the client stored with the dataset, returned unchanged. The service defines no keys of its own: the keys are whatever the client sent."
     ) Map<String, Object> metadata,
     @Schema(
-        description = "The stored variants of the query the dataset points at: that query as the caller submitted it with each sample flag and result type, ordered by sample flag, then result type, then query id. The query the query member holds is one of them when the caller submitted it. Empty when the query was stored without an owner or the caller submitted none of its variants. Clients written before this member existed ignore it.",
+        description = "The stored variants of the query the dataset points at: that query as the caller submitted it with each sample flag and result type, ordered by sample flag, then result type, then query id. The variants are found through the general query of the dataset. When the dataset has one, the query the query member holds is listed when the caller owns it. A dataset has no general query while the query it points at is stored without an owner, and a dataset saved before general queries existed can lack one. Such a dataset lists no variants at all, the query the query member holds included. Also empty when the caller owns none of the variants. Clients written before this member existed ignore it.",
         requiredMode = Schema.RequiredMode.REQUIRED
     ) List<LinkedQueryDto> queries
 ) {

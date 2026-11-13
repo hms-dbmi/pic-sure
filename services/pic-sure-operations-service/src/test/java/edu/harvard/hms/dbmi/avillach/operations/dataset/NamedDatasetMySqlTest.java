@@ -14,6 +14,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -21,13 +26,18 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -35,8 +45,12 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.QueryIdentity;
+import edu.harvard.hms.dbmi.avillach.operations.query.InterceptedRepository;
 import edu.harvard.hms.dbmi.avillach.operations.query.Query;
 import edu.harvard.hms.dbmi.avillach.operations.query.QueryFixtures;
+import edu.harvard.hms.dbmi.avillach.operations.query.QueryPersistenceService;
 import edu.harvard.hms.dbmi.avillach.operations.query.QueryRepository;
 
 /**
@@ -47,6 +61,9 @@ import edu.harvard.hms.dbmi.avillach.operations.query.QueryRepository;
  * types is H2's and not MySQL's.
  *
  * <p>Nothing here runs inside a test transaction: each service call commits or rolls back as it does in the deployed service.
+ *
+ * <p>The step that brings datasets over on a read is off in this context, as it is by default, so the reads of the other tests write
+ * nothing. The test of that step builds a service with the step turned on.
  *
  * <p>The migration set in this module has no {@code query.version} column, which the entity maps. Deployed databases get it from a separate
  * baseline, so the test adds it after the scripts.
@@ -73,6 +90,15 @@ class NamedDatasetMySqlTest {
 
     @Autowired
     private QueryRepository queryRepository;
+
+    @Autowired
+    private NamedDatasetRepository datasetRepository;
+
+    @Autowired
+    private QueryPersistenceService queryPersistence;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @Autowired
     private JdbcTemplate jdbc;
@@ -281,6 +307,70 @@ class NamedDatasetMySqlTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM named_dataset WHERE uuid = ?", Integer.class, bytes(dataset))).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query", Integer.class)).isEqualTo(2);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_to_variant", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    @Timeout(120)
+    @ExtendWith(OutputCaptureExtension.class)
+    void twoListsAtOnceBringADatasetOverOnce(CapturedOutput output) throws Exception {
+        edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query cohort = new edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query(
+            List.of("\\demographics\\AGE\\"), List.of(), null, List.of(), ResultType.DATAFRAME, null, null
+        );
+        UUID ownedId = QueryIdentity.idFor(ALICE_ID, cohort);
+        UUID generalId = QueryIdentity.generalIdFor(ALICE_ID, cohort);
+        Query ownerless = stored(
+            QueryFixtures.withRandomId().setQuery(
+                "{\"query\":{\"select\":[\"\\\\demographics\\\\AGE\\\\\"],\"authorizationFilters\":[{\"conceptPath\":\"\\\\_consents\\\\\","
+                    + "\"values\":[\"phs001.c1\"]}],\"phenotypicClause\":null,\"expectedResultType\":\"DATAFRAME\"}}"
+            ).setVersion("3")
+        );
+        UUID dataset = UUID.randomUUID();
+        jdbc.update(
+            "INSERT INTO named_dataset (uuid, queryId, user, name, archived, metadata) VALUES (?, ?, ?, 'cohort', 0, NULL)", bytes(dataset),
+            bytes(ownerless.getUuid()), ALICE_EMAIL
+        );
+        CyclicBarrier bothReadTheDatasetBeforeEitherLockedIt = new CyclicBarrier(2);
+        AtomicInteger lockAttempts = new AtomicInteger();
+        NamedDatasetRepository heldBeforeTheLock =
+            InterceptedRepository.of(NamedDatasetRepository.class, datasetRepository, (methodName, call) -> {
+                if ("findLockedByUuidAndUser".equals(methodName) && lockAttempts.incrementAndGet() <= 2) {
+                    bothReadTheDatasetBeforeEitherLockedIt.await(20, TimeUnit.SECONDS);
+                }
+                return call.proceed();
+            });
+        DatasetBringOver turnedOn =
+            new DatasetBringOver(heldBeforeTheLock, queryPersistence, transactionManager, new DatasetBringOverProperties(true));
+        NamedDatasetService racing =
+            new NamedDatasetService(heldBeforeTheLock, queryRepository, new NamedDatasetMapper(), turnedOn, transactionManager);
+
+        List<List<NamedDatasetDto>> answers;
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            Future<List<NamedDatasetDto>> one = executor.submit(() -> racing.listForUser(ALICE));
+            Future<List<NamedDatasetDto>> other = executor.submit(() -> racing.listForUser(ALICE));
+            answers = List.of(one.get(60, TimeUnit.SECONDS), other.get(60, TimeUnit.SECONDS));
+        }
+
+        assertThat(lockAttempts).hasValue(2);
+        assertThat(answers).allSatisfy(answer -> assertThat(answer).singleElement().satisfies(listed -> {
+            assertThat(listed.uuid()).isEqualTo(dataset);
+            assertThat(listed.query().uuid()).isEqualTo(ownedId);
+            assertThat(listed.queries()).containsExactly(new LinkedQueryDto(ownedId, false, "DATAFRAME"));
+        }));
+        assertThat(queryIdAndGeneralQueryOf(dataset)).containsEntry("queryId", bytes(ownedId))
+            .containsEntry("query_to_variant_uuid", bytes(generalId));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query", Integer.class)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_to_variant", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_run", Integer.class)).isZero();
+        assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM query WHERE uuid = ? AND user_uuid = ? AND query_to_variant_uuid = ? AND consents IS NULL"
+                    + " AND status IS NULL AND sample = 0 AND result_type = 'DATAFRAME' AND version = '3' AND resourceResultId = ?",
+                Integer.class, bytes(ownedId), bytes(ALICE_ID), bytes(generalId), ownedId.toString()
+            )
+        ).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT user_uuid FROM query WHERE uuid = ?", byte[].class, bytes(ownerless.getUuid()))).isNull();
+        assertThat(output.getAll().split("Brought dataset ", -1)).hasSize(2);
+        assertThat(output.getAll()).doesNotContain("Could not bring dataset");
     }
 
     private Map<String, Object> nameArchivedFlagAndMetadataOf(UUID dataset) {

@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.operations.dataset;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -56,23 +57,40 @@ public class NamedDatasetMapper {
     }
 
     /**
-     * Returns a v3 request wrapper without changing the stored query. The wrapper carries no consent value: it goes through
-     * {@link StoredQueryConsentStripper} after the conversion, so a query stored before v3 loses the consent filters its translation
-     * produced. Every other member of the stored body is returned as it is.
+     * Returns the stored body of a query row as text: the wrapper {@link #strippedV3Request} builds, or the stored body itself when it is
+     * blank. The stored query is not changed.
      */
     private static String convertQuery(Query q) {
-        String stored = q.getQuery();
-        if (stored == null || stored.isBlank()) {
-            return stored;
-        }
         try {
-            ObjectNode wrapper = StoredQueryBody.v3Request(q, stored);
-            StoredQueryConsentStripper.strip(wrapper);
-            return QUERY_MAPPER.writeValueAsString(wrapper);
+            Optional<ObjectNode> wrapper = strippedV3Request(q);
+            return wrapper.isPresent() ? QUERY_MAPPER.writeValueAsString(wrapper.get()) : q.getQuery();
         } catch (JsonProcessingException | UntranslatableQueryException | IllegalArgumentException e) {
             log.warn("Unable to convert saved query {} to v3", q.getUuid());
             throw new PicsureException(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error", "Unable to convert saved query to v3");
         }
+    }
+
+    /**
+     * Reads the stored body of a query row as a v3 request wrapper that carries no consent value. The {@code query} member of the wrapper
+     * is the query as a v3 object, translated first when the row was stored before v3. The wrapper then goes through
+     * {@link StoredQueryConsentStripper}, so {@code authorizationFilters} is empty and no filter on a consent concept path is left, the
+     * ones a translation produced included. Every other member of the stored body is returned as it is. The row and its stored bytes are
+     * not changed.
+     *
+     * @param q the query row
+     * @return the wrapper, or empty when the row holds no body
+     * @throws JsonProcessingException when the body is not JSON, or its query does not have the member types of its format
+     * @throws UntranslatableQueryException when the query was stored before v3 and has no v3 equivalent
+     * @throws IllegalArgumentException when the body or its query is not a JSON object, or is not a query this service recognizes
+     */
+    public static Optional<ObjectNode> strippedV3Request(Query q) throws JsonProcessingException, UntranslatableQueryException {
+        String stored = q.getQuery();
+        if (stored == null || stored.isBlank()) {
+            return Optional.empty();
+        }
+        ObjectNode wrapper = StoredQueryBody.v3Request(q, stored);
+        StoredQueryConsentStripper.strip(wrapper);
+        return Optional.of(wrapper);
     }
 
     /** {@code user} is the caller's EMAIL (owner key); {@code query} is pre-resolved by the service. */

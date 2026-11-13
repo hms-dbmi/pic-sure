@@ -33,6 +33,8 @@ picsure:
       enabled: true
       batch-size: 200
       pause: 250ms
+    dataset-bring-over:
+      enabled: false
   # The X-Application-Token gate for /actuator/** (ActuatorSecurityConfig + the shared
   # ActuatorSecurityHelper in pic-sure-spring-commons). Shallow health/liveness/readiness stay open regardless.
   actuator:

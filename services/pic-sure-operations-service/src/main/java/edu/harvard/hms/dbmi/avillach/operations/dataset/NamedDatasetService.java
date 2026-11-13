@@ -7,12 +7,15 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
@@ -48,8 +51,17 @@ import edu.harvard.hms.dbmi.avillach.operations.query.QueryVariantRow;
  * query row that has no owner has no general query.
  *
  * <p>Every answer lists the dataset's {@code queries}: the query rows filed under its general query that belong to the caller, by the
- * gateway user id. They are found by the general query alone. Nothing links a query to a dataset, no stored query body is read to list
- * them, and a read writes nothing.
+ * gateway user id. They are found by the general query alone. Nothing links a query to a dataset, and no stored query body is read to list
+ * them.
+ *
+ * <p>The two reads, {@link #listForUser} and {@link #getForUser}, are the only callers of {@link DatasetBringOver}. Each reads in a
+ * read-only transaction and answers from it. When {@link DatasetBringOver#notSettled} names datasets among the ones that transaction
+ * loaded, the read transaction ends first, {@link DatasetBringOver#settle} then handles each of them in a write transaction of its own, and
+ * when that changed anything the read is made once more and answered from the new state. A caller whose gateway user id is not a UUID is
+ * never passed to that step, and with the step turned off, which is the default, it names no dataset: a read is then one read-only
+ * transaction and writes nothing. A dataset the step cannot bring over is answered as it was read. The two reads are called with no
+ * transaction open, as the controller calls them. Inside a caller's transaction the read and the writes would all join it, and one dataset
+ * that fails would leave that whole transaction to roll back.
  */
 @Service
 public class NamedDatasetService {
@@ -61,6 +73,8 @@ public class NamedDatasetService {
     private final NamedDatasetRepository repo;
     private final QueryRepository queryRepo;
     private final NamedDatasetMapper mapper;
+    private final DatasetBringOver bringOver;
+    private final TransactionTemplate reads;
 
     /**
      * Creates the service.
@@ -68,37 +82,84 @@ public class NamedDatasetService {
      * @param repo the named datasets
      * @param queryRepo the query rows
      * @param mapper the mapper to the public shapes
+     * @param bringOver the step that brings the datasets a read loaded over to query rows the caller owns
+     * @param transactionManager the transaction manager the two reads open their read-only transactions on
      */
-    public NamedDatasetService(NamedDatasetRepository repo, QueryRepository queryRepo, NamedDatasetMapper mapper) {
+    public NamedDatasetService(
+        NamedDatasetRepository repo, QueryRepository queryRepo, NamedDatasetMapper mapper, DatasetBringOver bringOver,
+        PlatformTransactionManager transactionManager
+    ) {
         this.repo = repo;
         this.queryRepo = queryRepo;
         this.mapper = mapper;
+        this.bringOver = bringOver;
+        this.reads = new TransactionTemplate(transactionManager);
+        this.reads.setReadOnly(true);
     }
 
     /**
-     * Lists the caller's named datasets, each with the variants of its general query that belong to the caller.
+     * Lists the caller's named datasets, each with the variants of its general query that belong to the caller. Datasets of the caller that
+     * {@link DatasetBringOver} has work for are brought over first, as the class comment describes.
      *
      * @param user the caller
      * @return the caller's datasets, archived ones included
      * @throws PicsureException 401 when the caller has no email
      */
-    @Transactional(readOnly = true)
     public List<NamedDatasetDto> listForUser(GatewayUser user) {
-        return withVariants(user, repo.findByUser(requireEmail(user)));
+        String email = requireEmail(user);
+        return afterBringingOver(user, email, () -> repo.findByUser(email));
     }
 
     /**
-     * Reads one of the caller's named datasets with the variants of its general query that belong to the caller.
+     * Reads one of the caller's named datasets with the variants of its general query that belong to the caller. The dataset is brought
+     * over first when {@link DatasetBringOver} has work for it, as the class comment describes.
      *
      * @param user the caller
      * @param id the id of the dataset
      * @return the dataset
      * @throws PicsureException 401 when the caller has no email, 404 when the caller has no dataset with the id
      */
-    @Transactional(readOnly = true)
     public NamedDatasetDto getForUser(GatewayUser user, UUID id) {
-        NamedDataset dataset = repo.findByUuidAndUser(id, requireEmail(user)).orElseThrow(() -> notFound(id));
-        return withVariants(user, List.of(dataset)).getFirst();
+        String email = requireEmail(user);
+        return afterBringingOver(user, email, () -> List.of(repo.findByUuidAndUser(id, email).orElseThrow(() -> notFound(id)))).getFirst();
+    }
+
+    /**
+     * Answers a read. The datasets are loaded and turned into their public shape in one read-only transaction. When
+     * {@link DatasetBringOver} has work for some of them, that work is done after the transaction has ended, and when it changed anything
+     * the datasets are loaded and answered once more.
+     *
+     * @param user the caller
+     * @param email the email the caller's datasets are stored under
+     * @param load reads the datasets to answer with; called inside a read-only transaction, once or twice
+     * @return the public shape of the datasets {@code load} returned last
+     */
+    private List<NamedDatasetDto> afterBringingOver(GatewayUser user, String email, Supplier<List<NamedDataset>> load) {
+        Read first = reads.execute(status -> read(user, load.get()));
+        if (first.notSettled().isEmpty() || !bringOver.settle(first.caller(), email, first.notSettled())) {
+            return first.answer();
+        }
+        return reads.execute(status -> read(user, load.get())).answer();
+    }
+
+    /**
+     * Builds the answer for the datasets a read loaded and names the ones {@link DatasetBringOver} has work for. The caller of this method
+     * holds the read transaction.
+     */
+    private Read read(GatewayUser user, List<NamedDataset> datasets) {
+        Optional<UUID> caller = uuidOf(user);
+        List<UUID> notSettled = caller.isPresent() ? bringOver.notSettled(caller.get(), datasets) : List.of();
+        return new Read(withVariants(user, datasets), caller.orElse(null), notSettled);
+    }
+
+    /**
+     * What one read transaction found.
+     *
+     * @param answer the public shape of the datasets
+     * @param caller the caller's UUID, or null when the gateway user id is not one
+     * @param notSettled the ids of the datasets {@link DatasetBringOver} has work for; empty when the caller has no UUID
+     */
+    private record Read(List<NamedDatasetDto> answer, UUID caller, List<UUID> notSettled) {
     }
 
     /**

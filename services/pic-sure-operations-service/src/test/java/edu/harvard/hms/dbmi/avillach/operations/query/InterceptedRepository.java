@@ -7,13 +7,13 @@ import java.lang.reflect.Proxy;
  * Wraps a repository so a test can act around chosen calls: hold a thread after a lookup, or fail a write. Every call the interceptor does
  * not single out goes straight to the real repository.
  */
-final class InterceptedRepository {
+public final class InterceptedRepository {
 
     private InterceptedRepository() {}
 
     /** One call on the real repository, not yet made. */
     @FunctionalInterface
-    interface Call {
+    public interface Call {
 
         /**
          * Makes the call on the real repository.
@@ -26,7 +26,7 @@ final class InterceptedRepository {
 
     /** Decides what happens around each repository call. */
     @FunctionalInterface
-    interface Interceptor {
+    public interface Interceptor {
 
         /**
          * Handles one repository call.
@@ -48,7 +48,7 @@ final class InterceptedRepository {
      * @param <T> the repository interface
      * @return the wrapped repository
      */
-    static <T> T of(Class<T> type, T target, Interceptor interceptor) {
+    public static <T> T of(Class<T> type, T target, Interceptor interceptor) {
         return type.cast(
             Proxy.newProxyInstance(
                 type.getClassLoader(), new Class<?>[] {type}, (proxy, method, args) -> interceptor.around(method.getName(), () -> {
