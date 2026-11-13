@@ -1,0 +1,162 @@
+package edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestTemplate;
+
+import java.util.List;
+import java.util.stream.IntStream;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class DictionaryServiceTest {
+
+    private static final String BASE_URL = "http://dictionary-api";
+    private static final String DETAIL_URL = BASE_URL + "/concepts/detail";
+
+    @Mock
+    private RestTemplate restTemplate;
+
+    @Captor
+    private ArgumentCaptor<HttpEntity<List<String>>> requestCaptor;
+
+    private static Concept concept(String path) {
+        return new Concept(path, path, path, "dataset", "description", null);
+    }
+
+    private static List<String> paths(int count) {
+        return IntStream.range(0, count).mapToObj(index -> "\\study\\concept" + index + "\\").toList();
+    }
+
+    private void stubEchoingDictionary(String url) {
+        when(restTemplate.exchange(eq(url), eq(HttpMethod.POST), any(HttpEntity.class), eq(DictionaryService.CONCEPT_LIST_TYPE_REFERENCE)))
+            .thenAnswer(invocation -> {
+                HttpEntity<List<String>> request = invocation.getArgument(2);
+                return ResponseEntity.ok(request.getBody().stream().map(DictionaryServiceTest::concept).toList());
+            });
+    }
+
+    @Test
+    void getConcepts_morePathsThanBatchSize_postsEachBatchAndConcatenates() {
+        DictionaryService dictionaryService = new DictionaryService(BASE_URL, 1000, restTemplate);
+        List<String> conceptPaths = paths(2500);
+        stubEchoingDictionary(DETAIL_URL);
+
+        List<Concept> concepts = dictionaryService.getConcepts(conceptPaths);
+
+        verify(restTemplate, times(3))
+            .exchange(eq(DETAIL_URL), eq(HttpMethod.POST), requestCaptor.capture(), eq(DictionaryService.CONCEPT_LIST_TYPE_REFERENCE));
+        assertEquals(List.of(1000, 1000, 500), requestCaptor.getAllValues().stream().map(request -> request.getBody().size()).toList());
+        assertEquals(conceptPaths, concepts.stream().map(Concept::conceptPath).toList());
+    }
+
+    @Test
+    void getConcepts_restClientException_throwsUnavailableNamingUrl() {
+        DictionaryService dictionaryService = new DictionaryService(BASE_URL, 1000, restTemplate);
+        ResourceAccessException cause = new ResourceAccessException("connection refused");
+        when(
+            restTemplate
+                .exchange(eq(DETAIL_URL), eq(HttpMethod.POST), any(HttpEntity.class), eq(DictionaryService.CONCEPT_LIST_TYPE_REFERENCE))
+        ).thenThrow(cause);
+
+        DictionaryUnavailableException thrown =
+            assertThrows(DictionaryUnavailableException.class, () -> dictionaryService.getConcepts(paths(2)));
+
+        assertTrue(thrown.getMessage().contains(DETAIL_URL), thrown.getMessage());
+        assertSame(cause, thrown.getCause());
+    }
+
+    @Test
+    void getConcepts_nullBody_throwsUnavailableNamingUrl() {
+        DictionaryService dictionaryService = new DictionaryService(BASE_URL, 1000, restTemplate);
+        when(
+            restTemplate
+                .exchange(eq(DETAIL_URL), eq(HttpMethod.POST), any(HttpEntity.class), eq(DictionaryService.CONCEPT_LIST_TYPE_REFERENCE))
+        ).thenReturn(ResponseEntity.ok().build());
+
+        DictionaryUnavailableException thrown =
+            assertThrows(DictionaryUnavailableException.class, () -> dictionaryService.getConcepts(paths(2)));
+
+        assertTrue(thrown.getMessage().contains(DETAIL_URL), thrown.getMessage());
+    }
+
+    @Test
+    void getConcepts_blankUrl_throwsUnavailableNamingPropertyWithoutCalling() {
+        DictionaryService dictionaryService = new DictionaryService("  ", 1000, restTemplate);
+
+        DictionaryUnavailableException thrown =
+            assertThrows(DictionaryUnavailableException.class, () -> dictionaryService.getConcepts(paths(2)));
+
+        assertTrue(thrown.getMessage().contains("dictionary.url"), thrown.getMessage());
+        verifyNoInteractions(restTemplate);
+    }
+
+    @Test
+    void getConcepts_urlWithoutScheme_throwsUnavailableNamingPropertyAndValueWithoutCalling() {
+        DictionaryService dictionaryService = new DictionaryService("dictionary-api", 1000, restTemplate);
+
+        DictionaryUnavailableException thrown =
+            assertThrows(DictionaryUnavailableException.class, () -> dictionaryService.getConcepts(paths(2)));
+
+        assertTrue(thrown.getMessage().contains("dictionary.url"), thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("dictionary-api"), thrown.getMessage());
+        verifyNoInteractions(restTemplate);
+    }
+
+    @Test
+    void getConcepts_urlWithUnsupportedScheme_throwsUnavailableNamingPropertyAndValueWithoutCalling() {
+        DictionaryService dictionaryService = new DictionaryService("ftp://dictionary-api", 1000, restTemplate);
+
+        DictionaryUnavailableException thrown =
+            assertThrows(DictionaryUnavailableException.class, () -> dictionaryService.getConcepts(paths(2)));
+
+        assertTrue(thrown.getMessage().contains("dictionary.url"), thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("ftp://dictionary-api"), thrown.getMessage());
+        verifyNoInteractions(restTemplate);
+    }
+
+    @Test
+    void getConcepts_urlThatIsNotAUri_throwsUnavailableNamingPropertyAndValueWithoutCalling() {
+        DictionaryService dictionaryService = new DictionaryService("http://dictionary api", 1000, restTemplate);
+
+        DictionaryUnavailableException thrown =
+            assertThrows(DictionaryUnavailableException.class, () -> dictionaryService.getConcepts(paths(2)));
+
+        assertTrue(thrown.getMessage().contains("dictionary.url"), thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("http://dictionary api"), thrown.getMessage());
+        verifyNoInteractions(restTemplate);
+    }
+
+    @Test
+    void getConcepts_trailingSlashOnBaseUrl_isNormalized() {
+        DictionaryService dictionaryService = new DictionaryService(BASE_URL + "/", 1000, restTemplate);
+        stubEchoingDictionary(DETAIL_URL);
+
+        List<Concept> concepts = dictionaryService.getConcepts(paths(2));
+
+        assertEquals(2, concepts.size());
+    }
+
+    @Test
+    void constructor_batchSizeBelowOne_isRejected() {
+        assertThrows(IllegalArgumentException.class, () -> new DictionaryService(BASE_URL, 0, restTemplate));
+    }
+}
