@@ -22,6 +22,8 @@ class AppConfigTest {
         env.put("PLATFORM", "myplatform");
         env.put("ENVIRONMENT", "staging");
         env.put("HOSTNAME", "myhost");
+        env.put("NIH_ICO", "NHLBI");
+        env.put("CADR_NAME", "BDC - BioData Catalyst");
         env.put("PORT", "9090");
         env.put("ALLOWED_ORIGIN", "https://example.com");
         env.put("JWT_CLAIM_MAPPING", "{\"sub\":\"subject\",\"email\":\"mail\"}");
@@ -33,6 +35,8 @@ class AppConfigTest {
         assertEquals("myplatform", config.platform());
         assertEquals("staging", config.environment());
         assertEquals("myhost", config.hostname());
+        assertEquals("NHLBI", config.nihIco());
+        assertEquals("BDC - BioData Catalyst", config.cadrName());
         assertEquals(9090, config.port());
         assertEquals("https://example.com", config.allowedOrigin());
         assertEquals(Map.of("sub", "subject", "email", "mail"), config.jwtClaimMapping());
@@ -41,8 +45,7 @@ class AppConfigTest {
     @Test
     void missingApiKeyFails() {
         Map<String, String> env = new HashMap<>();
-        IllegalStateException ex = assertThrows(IllegalStateException.class,
-            () -> AppConfig.fromEnvironment(envWith(env)));
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> AppConfig.fromEnvironment(envWith(env)));
         assertTrue(ex.getMessage().contains("LOGGING_API_KEY"));
     }
 
@@ -50,8 +53,7 @@ class AppConfigTest {
     void blankApiKeyFails() {
         Map<String, String> env = new HashMap<>();
         env.put("LOGGING_API_KEY", "   ");
-        IllegalStateException ex = assertThrows(IllegalStateException.class,
-            () -> AppConfig.fromEnvironment(envWith(env)));
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> AppConfig.fromEnvironment(envWith(env)));
         assertTrue(ex.getMessage().contains("LOGGING_API_KEY"));
     }
 
@@ -60,8 +62,7 @@ class AppConfigTest {
         Map<String, String> env = new HashMap<>();
         env.put("LOGGING_API_KEY", "test-key");
         env.put("PORT", "not-a-number");
-        IllegalStateException ex = assertThrows(IllegalStateException.class,
-            () -> AppConfig.fromEnvironment(envWith(env)));
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> AppConfig.fromEnvironment(envWith(env)));
         assertTrue(ex.getMessage().contains("PORT"));
     }
 
@@ -70,8 +71,7 @@ class AppConfigTest {
         Map<String, String> env = new HashMap<>();
         env.put("LOGGING_API_KEY", "test-key");
         env.put("PORT", "99999");
-        IllegalStateException ex = assertThrows(IllegalStateException.class,
-            () -> AppConfig.fromEnvironment(envWith(env)));
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> AppConfig.fromEnvironment(envWith(env)));
         assertTrue(ex.getMessage().contains("PORT"));
     }
 
@@ -85,10 +85,36 @@ class AppConfigTest {
         assertEquals("unknown", config.app());
         assertEquals("unknown", config.platform());
         assertEquals("unknown", config.environment());
+        assertNull(config.nihIco());
+        assertNull(config.cadrName());
         assertEquals(8080, config.port());
         assertEquals("*", config.allowedOrigin());
         assertNotNull(config.hostname());
         assertFalse(config.jwtClaimMapping().isEmpty());
+    }
+
+    @Test
+    void blankCadrSettingsAreUnset() {
+        Map<String, String> env = new HashMap<>();
+        env.put("LOGGING_API_KEY", "test-key");
+        env.put("NIH_ICO", "   ");
+        env.put("CADR_NAME", "");
+
+        AppConfig config = AppConfig.fromEnvironment(envWith(env));
+
+        assertNull(config.nihIco());
+        assertNull(config.cadrName());
+    }
+
+    @Test
+    void defaultMappingStillReadsCadrClaims() {
+        Map<String, String> env = new HashMap<>();
+        env.put("LOGGING_API_KEY", "test-key");
+
+        AppConfig config = AppConfig.fromEnvironment(envWith(env));
+
+        assertEquals("nih_ico", config.jwtClaimMapping().get("nih_ico"));
+        assertEquals("cadr_name", config.jwtClaimMapping().get("cadr_name"));
     }
 
     @Test
@@ -123,8 +149,7 @@ class AppConfigTest {
         env.put("LOGGING_API_KEY", "test-key");
         env.put("JWT_CLAIM_MAPPING", "not-json");
 
-        IllegalStateException ex = assertThrows(IllegalStateException.class,
-            () -> AppConfig.fromEnvironment(envWith(env)));
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> AppConfig.fromEnvironment(envWith(env)));
         assertTrue(ex.getMessage().contains("JWT_CLAIM_MAPPING"));
     }
 }
