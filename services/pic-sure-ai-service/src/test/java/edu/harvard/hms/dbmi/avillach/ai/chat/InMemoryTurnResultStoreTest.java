@@ -112,9 +112,42 @@ class InMemoryTurnResultStoreTest {
     }
 
     @Test
+    void oneCallerFillingTheirQuotaNeverEvictsAnotherCallersResult() {
+        InMemoryTurnResultStore small = new InMemoryTurnResultStore(Duration.ofMinutes(60), Duration.ofMinutes(60), 5, nanos::get);
+        TurnResultStore.Key victim = new TurnResultStore.Key("owner-b", "req-1");
+        small.claim(victim, PRINT);
+        small.complete(victim, PRINT, RESPONSE);
+
+        for (int i = 0; i < 50; i++) {
+            TurnResultStore.Key key = new TurnResultStore.Key("owner-a", "flood-" + i);
+            small.claim(key, "print-" + i);
+            small.complete(key, "print-" + i, RESPONSE);
+        }
+
+        assertTrue(small.find(victim).isPresent());
+        assertTrue(small.claim(victim, PRINT) instanceof TurnResultStore.Claim.Existing);
+    }
+
+    @Test
+    void aRunningClaimIsNeverEvictedByOtherCompletedTurns() {
+        InMemoryTurnResultStore small = new InMemoryTurnResultStore(Duration.ofMinutes(60), Duration.ofMinutes(60), 5, nanos::get);
+        small.claim(KEY, PRINT);
+
+        for (int i = 0; i < 50; i++) {
+            TurnResultStore.Key other = new TurnResultStore.Key("owner-b", "req-" + i);
+            small.claim(other, "print-" + i);
+            small.complete(other, "print-" + i, RESPONSE);
+        }
+
+        assertTrue(small.find(KEY).isPresent());
+        assertTrue(small.claim(new TurnResultStore.Key(KEY.owner(), "req-retry"), PRINT) instanceof TurnResultStore.Claim.Duplicate);
+    }
+
+    @Test
     void aResultTtlShorterThanTheConversationIdleTimeoutIsRefused() {
         assertThrows(
-            IllegalArgumentException.class, () -> new InMemoryTurnResultStore(Duration.ofMinutes(30), Duration.ofMinutes(60), 100, nanos::get)
+            IllegalArgumentException.class,
+            () -> new InMemoryTurnResultStore(Duration.ofMinutes(30), Duration.ofMinutes(60), 100, nanos::get)
         );
     }
 }

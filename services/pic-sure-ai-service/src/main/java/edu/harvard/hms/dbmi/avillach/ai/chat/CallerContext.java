@@ -1,15 +1,10 @@
 package edu.harvard.hms.dbmi.avillach.ai.chat;
 
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Base64;
 import java.util.HexFormat;
-import java.util.UUID;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.commons.request.RequestIdFilter;
 import jakarta.servlet.http.HttpServletRequest;
@@ -27,18 +22,19 @@ import org.springframework.http.HttpHeaders;
  *        constructed -- see {@code CallerContextArgumentResolver}
  * @param requestId the inbound {@code X-Request-Id}, or null
  * @param userId the {@code X-User-Id} the gateway set after PSAMA introspection, or null. Never replayed on an outbound call
- * @param accessType the {@code X-Picsure-Access-Type} the gateway set: {@code authorized} for a validated login token, {@code open} for
- *        an open-access grant, or null when the request reached neither gateway filter
+ * @param accessType the {@code X-Picsure-Access-Type} the gateway set: {@code authorized} for a validated login token, {@code open} for an
+ *        open-access grant, or null when the request reached neither gateway filter
+ * @param openSessionId the {@code X-Picsure-Open-Session-Id} the gateway set from the session id PSAMA verified, or null. Gateway-owned, so
+ *        it is the only trustworthy source of an open-access session id: the token's own payload is not signature-checked here
  */
-public record CallerContext(String authorization, String requestId, String userId, String accessType) {
+public record CallerContext(String authorization, String requestId, String userId, String accessType, String openSessionId) {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
-
-    /** PSAMA's open-access session tokens, {@code picsure_s_<jwt>}: reissued every few minutes with the same session id in {@code sub}. */
-    private static final String OPEN_SESSION_PREFIX = "Bearer picsure_s_";
+    public CallerContext(String authorization, String requestId, String userId, String accessType) {
+        this(authorization, requestId, userId, accessType, null);
+    }
 
     public CallerContext(String authorization, String requestId, String userId) {
-        this(authorization, requestId, userId, null);
+        this(authorization, requestId, userId, null, null);
     }
 
     /**
@@ -52,7 +48,10 @@ public record CallerContext(String authorization, String requestId, String userI
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
         String requestId = request.getHeader(RequestIdFilter.HEADER);
         String userId = GatewayUserResolver.resolve(request).map(user -> user.getUserId()).orElse(null);
-        return new CallerContext(authorization, requestId, userId, request.getHeader(GatewayUserResolver.HEADER_ACCESS_TYPE));
+        return new CallerContext(
+            authorization, requestId, userId, request.getHeader(GatewayUserResolver.HEADER_ACCESS_TYPE),
+            request.getHeader(GatewayUserResolver.HEADER_OPEN_SESSION_ID)
+        );
     }
 
     /**
@@ -68,11 +67,12 @@ public record CallerContext(String authorization, String requestId, String userI
     }
 
     /**
-     * Who a stored conversation or reply belongs to, stable for as long as the caller is the same person or session even though their
-     * token is replaced: a logged-in user by their gateway user id, an open-access session by the session id in its token. Neither can be
-     * the {@code X-User-Id} alone, which every open-access caller shares. The session id is read without checking the token's signature:
-     * {@code open} means the gateway had PSAMA verify it, the same trust its {@code X-User-*} headers rely on. Any other caller (a stored
-     * API key, or a request that did not come through the gateway) is identified by a hash of its token, never the token itself.
+     * Who a stored conversation or reply belongs to, stable for as long as the caller is the same person or session even though their token
+     * is replaced: a logged-in user by their gateway user id, an open-access session by the session id the gateway had PSAMA verify
+     * ({@link #openSessionId()}). Neither can be the {@code X-User-Id} alone, which every open-access caller shares. The token's payload is
+     * never decoded: this service does not check its signature, and PSAMA grants an unverifiable key as anonymous. Any other caller (a
+     * stored API key, an anonymous open-access grant, or a request that did not come through the gateway) is identified by a hash of its
+     * token, never the token itself.
      *
      * @return {@code user:<id>}, {@code session:<id>} or {@code token:<SHA-256 hex>}
      */
@@ -80,33 +80,15 @@ public record CallerContext(String authorization, String requestId, String userI
         if (GatewayUserResolver.ACCESS_TYPE_AUTHORIZED.equals(accessType) && userId != null && !userId.isBlank()) {
             return "user:" + userId;
         }
-        String session = GatewayUserResolver.ACCESS_TYPE_OPEN.equals(accessType) ? openSessionId(authorization) : null;
-        return session != null ? "session:" + session : "token:" + sha256(withCanonicalScheme(authorization));
+        boolean verifiedSession =
+            GatewayUserResolver.ACCESS_TYPE_OPEN.equals(accessType) && openSessionId != null && !openSessionId.isBlank();
+        return verifiedSession ? "session:" + openSessionId : "token:" + sha256(withCanonicalScheme(authorization));
     }
 
     /** The scheme name is case-insensitive, so {@code bearer x} and {@code Bearer x} are one caller; the token itself is untouched. */
     private static String withCanonicalScheme(String authorization) {
         return authorization != null && authorization.regionMatches(true, 0, "Bearer ", 0, 7) ? "Bearer " + authorization.substring(7)
             : authorization;
-    }
-
-    /** @return the {@code sub} of a {@code picsure_s_} token, or null when it is not one or its payload is not a session id */
-    private static String openSessionId(String authorization) {
-        if (authorization == null || !authorization.regionMatches(true, 0, OPEN_SESSION_PREFIX, 0, OPEN_SESSION_PREFIX.length())) {
-            return null;
-        }
-        String[] parts = authorization.substring(OPEN_SESSION_PREFIX.length()).trim().split("\\.");
-        if (parts.length != 3) {
-            return null;
-        }
-        try {
-            JsonNode subject = JSON.readTree(Base64.getUrlDecoder().decode(parts[1])).path("sub");
-            // PSAMA only issues canonical UUIDs; anything else is not a session it made.
-            return subject.isTextual() && UUID.fromString(subject.textValue()).toString().equals(subject.textValue()) ? subject.textValue()
-                : null;
-        } catch (IllegalArgumentException | IOException e) {
-            return null;
-        }
     }
 
     private static String sha256(String text) {

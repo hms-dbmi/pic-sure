@@ -74,7 +74,10 @@ class TermBalancedSearchTest {
 
     @Test
     void aTermThatMatchedNothingIsReportedAtZeroAndAnotherTermFillsTheSpace() throws Exception {
-        String result = page(3, "{\"sleep\":0,\"age\":3}", concept("\\\\d\\\\a\\\\", "age"), concept("\\\\d\\\\b\\\\", "age"), concept("\\\\d\\\\c\\\\", "age"));
+        String result = page(
+            3, "{\"sleep\":0,\"age\":3}", concept("\\\\d\\\\a\\\\", "age"), concept("\\\\d\\\\b\\\\", "age"),
+            concept("\\\\d\\\\c\\\\", "age")
+        );
 
         JsonNode out = JSON.readTree(TermBalancedSearch.search("{\"search\":\"sleep | age\"}", pages(newCalls(), result)).content());
 
@@ -119,7 +122,8 @@ class TermBalancedSearchTest {
         String arguments = "{\"search\":\"smoking | alcohol use\",\"pageSize\":10}";
 
         JsonNode truncated = JSON.readTree(
-            TermBalancedSearch.search(arguments, pages(newCalls(), page(5000, "{\"smoking\":4990,\"alcohol use\":10}", firstPage))).content()
+            TermBalancedSearch.search(arguments, pages(newCalls(), page(5000, "{\"smoking\":4990,\"alcohol use\":10}", firstPage)))
+                .content()
         );
         JsonNode whole = JSON.readTree(
             TermBalancedSearch.search(arguments, pages(newCalls(), page(50, "{\"smoking\":40,\"alcohol use\":10}", firstPage))).content()
@@ -139,9 +143,13 @@ class TermBalancedSearchTest {
 
         JsonNode out = JSON.readTree(
             TermBalancedSearch.search(
-                "{\"search\":\"smoking | alcohol use\",\"pageSize\":10}", pages(
+                "{\"search\":\"smoking | alcohol use\",\"pageSize\":10}",
+                pages(
                     calls, page(120, "{\"smoking\":118,\"alcohol use\":2}", firstPage), page(120, "{}"),
-                    page(120, "{}", concept("\\\\a\\\\drink per day\\\\", "alcohol use"), concept("\\\\a\\\\days drink in year\\\\", "alcohol use"))
+                    page(
+                        120, "{}", concept("\\\\a\\\\drink per day\\\\", "alcohol use"),
+                        concept("\\\\a\\\\days drink in year\\\\", "alcohol use")
+                    )
                 )
             ).content()
         );
@@ -170,7 +178,8 @@ class TermBalancedSearchTest {
         };
         assertNull(TermBalancedSearch.search("{\"terms\":[\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\",\"i\",\"j\",\"k\"]}", never));
         assertNotNull(
-            TermBalancedSearch.search("{\"terms\":[\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\",\"i\",\"j\"]}", pages(newCalls(), page(0, "{}")))
+            TermBalancedSearch
+                .search("{\"terms\":[\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\",\"i\",\"j\"]}", pages(newCalls(), page(0, "{}")))
         );
     }
 
@@ -186,7 +195,11 @@ class TermBalancedSearchTest {
         assertNull(TermBalancedSearch.search("{\"search\":\"a | b\"}", arguments -> ToolResult.failure("down")));
         // A later page that fails leaves the whole call to run as it came.
         String full = page(120, "{\"a\":60,\"b\":60}", concept("\\\\x\\\\", "a"));
-        assertNull(TermBalancedSearch.search("{\"search\":\"a | b\"}", arguments -> pageNumber(arguments) == 0 ? ToolResult.success(full) : ToolResult.failure("down")));
+        assertNull(
+            TermBalancedSearch.search(
+                "{\"search\":\"a | b\"}", arguments -> pageNumber(arguments) == 0 ? ToolResult.success(full) : ToolResult.failure("down")
+            )
+        );
         // No matchedTerms on any concept, as from a dictionary without the term breakdown.
         String bare = "{\"page\":0,\"total\":1,\"concepts\":[{\"conceptPath\":\"\\\\x\\\\\"}],\"termTotals\":{\"a\":1,\"b\":0}}";
         assertNull(TermBalancedSearch.search("{\"search\":\"a | b\"}", arguments -> ToolResult.success(bare)));

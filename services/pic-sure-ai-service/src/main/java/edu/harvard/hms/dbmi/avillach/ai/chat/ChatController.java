@@ -27,8 +27,8 @@ import jakarta.validation.Valid;
  * {@link ChatOrchestrator#handle} is ever called, so neither Bedrock nor the MCP gateway is touched on a rejected request.
  *
  * <p>Each {@code requestId} runs at most once per caller ({@link TurnResultStore}): sending it again returns the stored response without
- * calling the model, and {@code GET /ai/chat/{requestId}} fetches it. A requestId reused for a different message is refused, and so is the same message
- * sent under a new requestId while the first is still being answered. Both find only the caller's own turns, keyed by
+ * calling the model, and {@code GET /ai/chat/{requestId}} fetches it. A requestId reused for a different message is refused, and so is the
+ * same message sent under a new requestId while the first is still being answered. Both find only the caller's own turns, keyed by
  * {@link CallerContext#owner()}.
  */
 @Tag(name = "AI chat", description = "AI-assisted dictionary search")
@@ -48,7 +48,9 @@ public class ChatController {
     @ApiResponse(responseCode = "200", description = "The model's reply and any query, facet or search state the turn changed")
     @ApiResponse(responseCode = "400", description = "A required field is missing or blank")
     @ApiResponse(responseCode = "401", description = "The Authorization header is missing or is not a bearer token")
-    @ApiResponse(responseCode = "409", description = "This message is still being answered, under this requestId or another; fetch it with GET")
+    @ApiResponse(
+        responseCode = "409", description = "This message is still being answered, under this requestId or another; fetch it with GET"
+    )
     @ApiResponse(responseCode = "422", description = "This requestId was already used for a different message or state")
     @AuditEvent(type = "SEARCH", action = "ai.chat")
     @PostMapping("/chat")

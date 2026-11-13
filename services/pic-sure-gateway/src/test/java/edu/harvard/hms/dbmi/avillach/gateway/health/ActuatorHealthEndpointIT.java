@@ -27,8 +27,9 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 /**
  * End-to-end: hits the real {@code GET /actuator/health} HTTP endpoint (not just the {@link DownstreamHealthContributor} bean directly, as
  * {@link ActuatorHealthIT} does) and asserts the JSON composite shows the "hpds" component DOWN. Actuator is OFF BY DEFAULT (the no-match
- * sentinel {@code none} exposure in application.yml), so this test context explicitly exposes {@code health} and forces {@code show-details} to {@code always} --
- * production exposes/gates via PICSURE_ACTUATOR_EXPOSURE / PICSURE_ACTUATOR_DETAILS (see application.yml).
+ * sentinel {@code none} exposure in application.yml), so this test context explicitly exposes {@code health} and forces
+ * {@code show-details} to {@code always} -- production exposes/gates via PICSURE_ACTUATOR_EXPOSURE / PICSURE_ACTUATOR_DETAILS (see
+ * application.yml).
  */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 @TestPropertySource(properties = {"management.endpoints.web.exposure.include=health", "management.endpoint.health.show-details=always"})

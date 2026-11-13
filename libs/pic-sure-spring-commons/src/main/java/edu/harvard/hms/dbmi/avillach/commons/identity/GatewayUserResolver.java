@@ -30,6 +30,13 @@ public final class GatewayUserResolver {
      */
     public static final String HEADER_ACCESS_TYPE = "X-Picsure-Access-Type";
 
+    /**
+     * The open-access session id PSAMA verified, set by the gateway only when {@link #HEADER_ACCESS_TYPE} is {@code open} and the grant was
+     * to a {@code picsure_s_} session. Gateway-owned: a client-sent copy is stripped. Downstream services that key data on an open-access
+     * session must use this header and never decode the {@code Authorization} token, whose signature they do not check.
+     */
+    public static final String HEADER_OPEN_SESSION_ID = "X-Picsure-Open-Session-Id";
+
     /** {@link #HEADER_ACCESS_TYPE} value for a PSAMA open-access grant. */
     public static final String ACCESS_TYPE_OPEN = "open";
 

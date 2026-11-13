@@ -218,11 +218,13 @@ class ToolUseLoopServiceTest {
 
     @Test
     void aPathOnlyInTheCurrentQuerysHiddenFieldsIsNotSeen() throws Exception {
-        ChatRequest request = new ChatRequest(
-            "narrow it", "conv-1", "req-1",
-            new ObjectMapper().readTree("{\"authorizationFilters\":[{\"conceptPath\":\"\\\\secret\\\\consent\\\\\",\"values\":[\"x\"]}]}"),
-            null, null
-        );
+        ChatRequest request =
+            new ChatRequest(
+                "narrow it", "conv-1", "req-1",
+                new ObjectMapper()
+                    .readTree("{\"authorizationFilters\":[{\"conceptPath\":\"\\\\secret\\\\consent\\\\\",\"values\":[\"x\"]}]}"),
+                null, null
+            );
         String countWithThatPath = "{\"query\":{\"select\":[\"\\\\secret\\\\consent\\\\\"]}}";
         FakeModelClient model = FakeModelClient.returning(toolCallTurn("count_participants", countWithThatPath), doneTurn("Done"));
         FakeToolGateway tools = new FakeToolGateway();
@@ -247,8 +249,10 @@ class ToolUseLoopServiceTest {
         ChatRequest request = new ChatRequest("hi", "conv-1", "req-1", new ObjectMapper().readTree("\"not an object\""), null, null);
         FakeModelClient model = FakeModelClient.returning(doneTurn("unreachable"));
 
-        PicsureException thrown =
-            assertThrows(PicsureException.class, () -> new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(request, CALLER));
+        PicsureException thrown = assertThrows(
+            PicsureException.class,
+            () -> new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(request, CALLER)
+        );
 
         assertEquals(org.springframework.http.HttpStatus.BAD_REQUEST, thrown.getStatus());
         assertTrue(thrown.getMessage().contains("query"), thrown.getMessage());
@@ -274,8 +278,11 @@ class ToolUseLoopServiceTest {
     }
 
     private static ChatRequest requestWithFilters(int count) throws Exception {
-        String clauses = String.join(",", java.util.Collections.nCopies(count,
-            "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demo\\\\age\\\\\",\"values\":[\"x\"]}"));
+        String clauses = String.join(
+            ",",
+            java.util.Collections
+                .nCopies(count, "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demo\\\\age\\\\\",\"values\":[\"x\"]}")
+        );
         String big = "{\"phenotypicClause\":{\"operator\":\"AND\",\"phenotypicClauses\":[" + clauses + "]}}";
         return new ChatRequest("narrow it", "c", "r", new ObjectMapper().readTree(big), null, null);
     }
@@ -372,7 +379,8 @@ class ToolUseLoopServiceTest {
 
     @Test
     void aProposalDifferingOnlyByAnOmittedNotFalseIsOmittedAsUnchanged() throws Exception {
-        String withNotFalse = "{\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"\\\\demo\\\\age\\\\\",\"not\":false}}";
+        String withNotFalse =
+            "{\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"\\\\demo\\\\age\\\\\",\"not\":false}}";
         ChatRequest request = new ChatRequest("same", "c", "r", new ObjectMapper().readTree(withNotFalse), null, null);
         FakeModelClient model = FakeModelClient.returning(toolCallTurn("propose_query", "{\"query\":" + AGE_QUERY + "}"), doneTurn("Done"));
 
@@ -529,9 +537,8 @@ class ToolUseLoopServiceTest {
 
     @Test
     void aSearchNarrowedByAListedFacetReachesTheDictionaryWithTheFacetsUnchanged() {
-        FakeModelClient model = FakeModelClient.returning(
-            toolCallTurn("list_facets", "{}"), toolCallTurn("search_concepts", NARROWED_SEARCH), doneTurn("Done")
-        );
+        FakeModelClient model = FakeModelClient
+            .returning(toolCallTurn("list_facets", "{}"), toolCallTurn("search_concepts", NARROWED_SEARCH), doneTurn("Done"));
         FakeToolGateway tools = FakeToolGateway.returning(DICTIONARY_RESULT);
 
         new ToolUseLoopService(model, tools, PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
@@ -770,10 +777,12 @@ class ToolUseLoopServiceTest {
         String proposal = "{\"search\":\"bmi\"}";
 
         ChatResponse unchanged = new ToolUseLoopService(
-            FakeModelClient.returning(toolCallTurn("propose_query", proposal), doneTurn("Done")), new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8
+            FakeModelClient.returning(toolCallTurn("propose_query", proposal), doneTurn("Done")), new FakeToolGateway(), PROPOSE_QUERY_TOOL,
+            8
         ).handle(same, CALLER);
         ChatResponse changed = new ToolUseLoopService(
-            FakeModelClient.returning(toolCallTurn("propose_query", proposal), doneTurn("Done")), new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8
+            FakeModelClient.returning(toolCallTurn("propose_query", proposal), doneTurn("Done")), new FakeToolGateway(), PROPOSE_QUERY_TOOL,
+            8
         ).handle(REQUEST, CALLER);
 
         assertNull(unchanged.search());
@@ -782,9 +791,8 @@ class ToolUseLoopServiceTest {
 
     @Test
     void aRejectedProposalNeverSurfacesEvenIfALaterTurnEndsNormally() {
-        FakeModelClient model = FakeModelClient.returning(
-            toolCallTurn("propose_query", "{\"query\":{\"phenotypicClause\":{\"operator\":\"AND\"}}}"), doneTurn("Gave up")
-        );
+        FakeModelClient model = FakeModelClient
+            .returning(toolCallTurn("propose_query", "{\"query\":{\"phenotypicClause\":{\"operator\":\"AND\"}}}"), doneTurn("Gave up"));
 
         ChatResponse response = new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
 
@@ -795,8 +803,8 @@ class ToolUseLoopServiceTest {
     @Test
     void aLaterProposalReplacesEarlierOnesOnlyForThePartsItSends() {
         FakeModelClient model = FakeModelClient.returning(
-            toolCallTurn("propose_query", "{\"search\":\"first\"}"),
-            toolCallTurn("propose_query", "{\"search\":\"second\",\"facets\":[]}"), doneTurn("Done")
+            toolCallTurn("propose_query", "{\"search\":\"first\"}"), toolCallTurn("propose_query", "{\"search\":\"second\",\"facets\":[]}"),
+            doneTurn("Done")
         );
 
         ChatResponse response = new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
@@ -809,7 +817,8 @@ class ToolUseLoopServiceTest {
         String uiQuery = "{\"authorizationFilters\":[\"secret\"],\"expectedResultType\":\"COUNT\"," + "\"phenotypicClause\":"
             + new ObjectMapper().readTree(AGE_QUERY).get("phenotypicClause") + "}";
         ChatRequest request = new ChatRequest(
-            "narrow it", "c", "r", new ObjectMapper().readTree(uiQuery), List.of(new FacetSelection("study", "demo")), TextNode.valueOf("age")
+            "narrow it", "c", "r", new ObjectMapper().readTree(uiQuery), List.of(new FacetSelection("study", "demo")),
+            TextNode.valueOf("age")
         );
         FakeModelClient model = FakeModelClient.returning(doneTurn("ok"));
 
@@ -884,14 +893,16 @@ class ToolUseLoopServiceTest {
         assertEquals("Handled the error", response.response());
         ConversationEntry lastEntryOfFirstReplay = model.historySeenOnCall(2).get(model.historySeenOnCall(2).size() - 1);
         assertTrue(lastEntryOfFirstReplay instanceof ConversationEntry.ToolResultEntry, "the failure must still appear as a tool result");
-        assertTrue(((ConversationEntry.ToolResultEntry) lastEntryOfFirstReplay).error(), "the failure must be flagged as an error to the model");
+        assertTrue(
+            ((ConversationEntry.ToolResultEntry) lastEntryOfFirstReplay).error(), "the failure must be flagged as an error to the model"
+        );
     }
 
     @Test
     void aToolFailingTheSameWayTwiceGetsANoteThatRetryingWillNotHelp() {
         FakeModelClient model = FakeModelClient.returning(
-            toolCallTurn("search_concepts", "{\"search\":\"sex\"}"), toolCallTurn("search_concepts", "{\"search\":\"sex\",\"pageSize\":25}"),
-            doneTurn("Handled the error")
+            toolCallTurn("search_concepts", "{\"search\":\"sex\"}"),
+            toolCallTurn("search_concepts", "{\"search\":\"sex\",\"pageSize\":25}"), doneTurn("Handled the error")
         );
         FakeToolGateway tools = FakeToolGateway.thatFailsEveryCall();
 
@@ -920,11 +931,11 @@ class ToolUseLoopServiceTest {
     @Test
     void aCallInTheSameBatchAfterTheStopIsNotRun() {
         ModelTurnResult twoCalls = new ModelTurnResult(
-            false, null, List.of(new RequestedToolCall("a", "search_concepts", "{}"), new RequestedToolCall("b", "list_facets", "{}")), 10, 5
+            false, null, List.of(new RequestedToolCall("a", "search_concepts", "{}"), new RequestedToolCall("b", "list_facets", "{}")), 10,
+            5
         );
-        FakeModelClient model = FakeModelClient.returning(
-            toolCallTurn("search_concepts", "{}"), toolCallTurn("search_concepts", "{}"), twoCalls, doneTurn("Answered")
-        );
+        FakeModelClient model = FakeModelClient
+            .returning(toolCallTurn("search_concepts", "{}"), toolCallTurn("search_concepts", "{}"), twoCalls, doneTurn("Answered"));
         FakeToolGateway tools = FakeToolGateway.thatFailsEveryCall();
 
         ChatResponse response = new ToolUseLoopService(model, tools, PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
@@ -1067,7 +1078,8 @@ class ToolUseLoopServiceTest {
         // Gpt-oss wrote a lookup as a select-only query in nearly every run, then retried after the refusal.
         String selectOnly = "{\"query\":{\"select\":[\"\\\\demo\\\\age\\\\\"]}}";
         FakeModelClient model = FakeModelClient.returning(
-            toolCallTurn("search_concepts", "{\"search\":\"age\"}"), toolCallTurn("propose_query", selectOnly), doneTurn("The age variable is demo age.")
+            toolCallTurn("search_concepts", "{\"search\":\"age\"}"), toolCallTurn("propose_query", selectOnly),
+            doneTurn("The age variable is demo age.")
         );
 
         ChatResponse response =
@@ -1082,9 +1094,8 @@ class ToolUseLoopServiceTest {
     @Test
     void aSelectOnlyQueryAlongsideASearchKeepsTheSearchAndDropsTheQuery() {
         String both = "{\"search\":\"age\",\"query\":{\"select\":[\"\\\\demo\\\\age\\\\\"]}}";
-        FakeModelClient model = FakeModelClient.returning(
-            toolCallTurn("search_concepts", "{\"search\":\"age\"}"), toolCallTurn("propose_query", both), doneTurn("Done")
-        );
+        FakeModelClient model = FakeModelClient
+            .returning(toolCallTurn("search_concepts", "{\"search\":\"age\"}"), toolCallTurn("propose_query", both), doneTurn("Done"));
 
         ChatResponse response =
             new ToolUseLoopService(model, FakeToolGateway.returning(DICTIONARY_RESULT), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
@@ -1096,9 +1107,8 @@ class ToolUseLoopServiceTest {
     @Test
     void aQueryWithNoFiltersIsRefusedWhenNoSearchFoundAnythingAndNothingHasFilters() {
         String selectOnly = "{\"query\":{\"select\":[\"\\\\demo\\\\age\\\\\"]}}";
-        FakeModelClient model = FakeModelClient.returning(
-            toolCallTurn("get_concept", "{}"), toolCallTurn("propose_query", selectOnly), doneTurn("Nothing matched.")
-        );
+        FakeModelClient model = FakeModelClient
+            .returning(toolCallTurn("get_concept", "{}"), toolCallTurn("propose_query", selectOnly), doneTurn("Nothing matched."));
 
         ChatResponse response =
             new ToolUseLoopService(model, FakeToolGateway.returning(DICTIONARY_RESULT), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
@@ -1106,7 +1116,9 @@ class ToolUseLoopServiceTest {
         assertNull(response.query(), "a select-only proposal is not surfaced");
         assertNull(response.search());
         ConversationEntry refusal = model.historySeenOnCall(3).get(model.historySeenOnCall(3).size() - 1);
-        assertTrue(((ConversationEntry.ToolResultEntry) refusal).content().contains("would export the selected variables for every participant"));
+        assertTrue(
+            ((ConversationEntry.ToolResultEntry) refusal).content().contains("would export the selected variables for every participant")
+        );
     }
 
     @Test
@@ -1139,7 +1151,8 @@ class ToolUseLoopServiceTest {
     void aFacetNarrowedSearchTheModelNeverProposedIsAttachedWithoutAScreenClaim() {
         // List_facets and the narrowed search_concepts ran, the reply was right, but propose_query was skipped.
         FakeModelClient model = FakeModelClient.returning(
-            toolCallTurn("list_facets", "{}"), toolCallTurn("search_concepts", NARROWED_SEARCH), doneTurn("Here are the age variables in demo.")
+            toolCallTurn("list_facets", "{}"), toolCallTurn("search_concepts", NARROWED_SEARCH),
+            doneTurn("Here are the age variables in demo.")
         );
 
         ChatResponse response =
@@ -1151,9 +1164,8 @@ class ToolUseLoopServiceTest {
 
     @Test
     void aReplyWithoutAScreenClaimGetsNoSearchItDidNotPropose() {
-        FakeModelClient model = FakeModelClient.returning(
-            toolCallTurn("search_concepts", "{\"search\":\"age\"}"), doneTurn("Age is available as demo age.")
-        );
+        FakeModelClient model =
+            FakeModelClient.returning(toolCallTurn("search_concepts", "{\"search\":\"age\"}"), doneTurn("Age is available as demo age."));
 
         ChatResponse response =
             new ToolUseLoopService(model, FakeToolGateway.returning(DICTIONARY_RESULT), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
@@ -1235,8 +1247,7 @@ class ToolUseLoopServiceTest {
             toolCallTurn("search_concepts", "{\"search\":\"race\"}"),
             toolCallTurn(
                 "propose_query", "{\"query\":{\"addSelect\":[\"\\\\demo\\\\race\\\\\"],\"removeSelect\":[\"\\\\demo\\\\bmi\\\\\"]}}"
-            ),
-            doneTurn("Done")
+            ), doneTurn("Done")
         );
 
         ChatResponse response =
@@ -1253,9 +1264,8 @@ class ToolUseLoopServiceTest {
         // The response leaves a null select out, and the UI would keep the old one.
         ChatRequest request =
             new ChatRequest("Remove BMI", "c", "r", new ObjectMapper().readTree("{\"select\":[\"\\\\demo\\\\bmi\\\\\"]}"), null, null);
-        FakeModelClient model = FakeModelClient.returning(
-            toolCallTurn("propose_query", "{\"query\":{\"removeSelect\":[\"\\\\demo\\\\bmi\\\\\"]}}"), doneTurn("Done")
-        );
+        FakeModelClient model = FakeModelClient
+            .returning(toolCallTurn("propose_query", "{\"query\":{\"removeSelect\":[\"\\\\demo\\\\bmi\\\\\"]}}"), doneTurn("Done"));
 
         ChatResponse response = new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(request, CALLER);
 
@@ -1287,9 +1297,8 @@ class ToolUseLoopServiceTest {
     void aRemovedPathNoToolOrQueryShowedIsRefused() throws Exception {
         String current = "{\"select\":[\"\\\\demo\\\\bmi\\\\\"]," + AGE_QUERY.substring(1);
         ChatRequest request = new ChatRequest("Remove height", "c", "r", new ObjectMapper().readTree(current), null, null);
-        FakeModelClient model = FakeModelClient.returning(
-            toolCallTurn("propose_query", "{\"query\":{\"removeSelect\":[\"\\\\demo\\\\height\\\\\"]}}"), doneTurn("Done")
-        );
+        FakeModelClient model = FakeModelClient
+            .returning(toolCallTurn("propose_query", "{\"query\":{\"removeSelect\":[\"\\\\demo\\\\height\\\\\"]}}"), doneTurn("Done"));
 
         ChatResponse response = new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(request, CALLER);
 
@@ -1322,9 +1331,8 @@ class ToolUseLoopServiceTest {
     }
 
     private static ChatResponse addRace(ChatRequest request, String query, FakeModelClient[] modelOut) {
-        FakeModelClient model = FakeModelClient.returning(
-            toolCallTurn("search_concepts", "{\"search\":\"race\"}"), toolCallTurn("propose_query", query), doneTurn("Done")
-        );
+        FakeModelClient model = FakeModelClient
+            .returning(toolCallTurn("search_concepts", "{\"search\":\"race\"}"), toolCallTurn("propose_query", query), doneTurn("Done"));
         modelOut[0] = model;
         return new ToolUseLoopService(model, FakeToolGateway.returning(RACE_RESULT), PROPOSE_QUERY_TOOL, 8).handle(request, CALLER);
     }
@@ -1334,7 +1342,8 @@ class ToolUseLoopServiceTest {
         // 100 selected is allowed, so the researcher's query is shown; the one added variable makes 101.
         FakeModelClient[] model = new FakeModelClient[1];
 
-        ChatResponse response = addRace(requestSelecting(ProposeQueryInput.MAX_SELECT), "{\"query\":{\"addSelect\":[\"\\\\demo\\\\race\\\\\"]}}", model);
+        ChatResponse response =
+            addRace(requestSelecting(ProposeQueryInput.MAX_SELECT), "{\"query\":{\"addSelect\":[\"\\\\demo\\\\race\\\\\"]}}", model);
 
         assertNull(response.query());
         assertTrue(lastToolResult(model[0], 3).contains("too large"), lastToolResult(model[0], 3));
@@ -1389,7 +1398,8 @@ class ToolUseLoopServiceTest {
         // The value "G47.9 Sleep disorder, unspecified" of the G47 folder was written as a path of its own.
         String invented = "Sleep: `\\demo\\G47.9 Sleep disorder, unspecified\\`";
         FakeModelClient model = FakeModelClient.returning(
-            toolCallTurn("search_concepts", "{\"search\":\"sleep\"}"), doneTurn(invented), doneTurn("Sleep: `\\demo\\G47 Sleep disorders\\`")
+            toolCallTurn("search_concepts", "{\"search\":\"sleep\"}"), doneTurn(invented),
+            doneTurn("Sleep: `\\demo\\G47 Sleep disorders\\`")
         );
 
         ChatResponse response =
@@ -1415,7 +1425,9 @@ class ToolUseLoopServiceTest {
         assertEquals(folder, response.response(), "a reply still wrong after one correction goes out as written");
         assertEquals(3, model.callCount);
         List<ConversationEntry> history = model.historySeenOnCall(3);
-        assertTrue(((ConversationEntry.UserEntry) history.get(history.size() - 1)).text().contains("is a parent of paths the results returned"));
+        assertTrue(
+            ((ConversationEntry.UserEntry) history.get(history.size() - 1)).text().contains("is a parent of paths the results returned")
+        );
     }
 
     @Test
@@ -1462,9 +1474,8 @@ class ToolUseLoopServiceTest {
     @Test
     void theOneSearchThatFoundTheNamedVariablesIsProposedWhenNothingWasProposed() {
         // One combined search, a reply listing some of its paths, and no propose_query.
-        FakeModelClient model = FakeModelClient.returning(
-            toolCallTurn("search_concepts", "{\"search\":\"race\"}"), doneTurn("Race: `\\demo\\race\\`")
-        );
+        FakeModelClient model =
+            FakeModelClient.returning(toolCallTurn("search_concepts", "{\"search\":\"race\"}"), doneTurn("Race: `\\demo\\race\\`"));
 
         ChatResponse response =
             new ToolUseLoopService(model, FakeToolGateway.returning(RACE_RESULT), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
@@ -1512,7 +1523,8 @@ class ToolUseLoopServiceTest {
     void aProposalWrittenAsTheReplyIsCheckedAndSurfacedLikeAToolCall() throws Exception {
         // The model wrote the narrowed query as its reply instead of calling propose_query.
         ChatRequest request = new ChatRequest("narrow it", "c", "r", new ObjectMapper().readTree(AGE_QUERY), null, null);
-        String narrowed = "{\"query\":{\"phenotypicClause\":{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demo\\\\age\\\\\",\"min\":50}}}";
+        String narrowed =
+            "{\"query\":{\"phenotypicClause\":{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demo\\\\age\\\\\",\"min\":50}}}";
         FakeModelClient model = FakeModelClient.returning(doneTurn(narrowed));
 
         ChatResponse response = new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(request, CALLER);
@@ -1524,7 +1536,8 @@ class ToolUseLoopServiceTest {
 
     @Test
     void aProposalWrittenAsTheReplyThatFailsACheckIsNotSurfaced() {
-        String invented = "{\"query\":{\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"\\\\made\\\\up\\\\\"}}}";
+        String invented =
+            "{\"query\":{\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"\\\\made\\\\up\\\\\"}}}";
         FakeModelClient model = FakeModelClient.returning(doneTurn(invented));
 
         ChatResponse response = new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
@@ -1535,9 +1548,11 @@ class ToolUseLoopServiceTest {
 
     @Test
     void aReplyRepeatingAnAlreadyAcceptedProposalDoesNotReplaceIt() {
-        String other = "{\"query\":{\"phenotypicClause\":{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demo\\\\age\\\\\",\"min\":50}}}";
+        String other =
+            "{\"query\":{\"phenotypicClause\":{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demo\\\\age\\\\\",\"min\":50}}}";
         FakeModelClient model = FakeModelClient.returning(
-            toolCallTurn("search_concepts", "{\"search\":\"age\"}"), toolCallTurn("propose_query", "{\"query\":" + AGE_QUERY + "}"), doneTurn(other)
+            toolCallTurn("search_concepts", "{\"search\":\"age\"}"), toolCallTurn("propose_query", "{\"query\":" + AGE_QUERY + "}"),
+            doneTurn(other)
         );
 
         ChatResponse response =
@@ -1591,7 +1606,10 @@ class ToolUseLoopServiceTest {
     void theLogIdsAreClearedEvenWhenTheModelFails() {
         FakeModelClient model = FakeModelClient.throwingImmediately();
 
-        assertThrows(PicsureException.class, () -> new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER));
+        assertThrows(
+            PicsureException.class,
+            () -> new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER)
+        );
 
         assertNull(MDC.get("conversationId"));
         assertNull(MDC.get("chatRequestId"));
@@ -1738,8 +1756,8 @@ class ToolUseLoopServiceTest {
         firstTurn(store, DICTIONARY_RESULT, toolCallTurn("search_concepts", "{\"search\":\"age\"}"), doneTurn("Found it"));
         // The first turn's search is what the table shows now; the researcher has no query and asks to select nothing.
         ChatRequest second = new ChatRequest("tell me more about that one", "conv-1", "req-2", null, null, TextNode.valueOf("age"));
-        FakeModelClient model =
-            FakeModelClient.returning(toolCallTurn("propose_query", "{\"query\":{\"addSelect\":[\"\\\\demo\\\\age\\\\\"]}}"), doneTurn("Done"));
+        FakeModelClient model = FakeModelClient
+            .returning(toolCallTurn("propose_query", "{\"query\":{\"addSelect\":[\"\\\\demo\\\\age\\\\\"]}}"), doneTurn("Done"));
 
         ChatResponse response = new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8, store).handle(second, CALLER);
 
@@ -1755,8 +1773,8 @@ class ToolUseLoopServiceTest {
         ConversationStore store = ToolUseLoopService.newConversationStore();
         firstTurn(store, DICTIONARY_RESULT, toolCallTurn("search_concepts", "{\"search\":\"age\"}"), doneTurn("Found it"));
         ChatRequest second = new ChatRequest("add that to my selected variables", "conv-1", "req-2", null, null, TextNode.valueOf("age"));
-        FakeModelClient model =
-            FakeModelClient.returning(toolCallTurn("propose_query", "{\"query\":{\"addSelect\":[\"\\\\demo\\\\age\\\\\"]}}"), doneTurn("Done"));
+        FakeModelClient model = FakeModelClient
+            .returning(toolCallTurn("propose_query", "{\"query\":{\"addSelect\":[\"\\\\demo\\\\age\\\\\"]}}"), doneTurn("Done"));
 
         ChatResponse response = new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8, store).handle(second, CALLER);
 
@@ -1769,7 +1787,8 @@ class ToolUseLoopServiceTest {
     void selectingVariablesInOneMessageNeedsNoFilters() {
         ChatRequest select = new ChatRequest("Select all age variables", "c", "r", null, null, null);
         FakeModelClient model = FakeModelClient.returning(
-            toolCallTurn("search_concepts", "{\"search\":\"age\"}"), toolCallTurn("propose_query", "{\"query\":{\"select\":[\"\\\\demo\\\\age\\\\\"]}}"),
+            toolCallTurn("search_concepts", "{\"search\":\"age\"}"),
+            toolCallTurn("propose_query", "{\"query\":{\"select\":[\"\\\\demo\\\\age\\\\\"]}}"),
             doneTurn("Age is selected for your export.")
         );
 
@@ -1821,13 +1840,18 @@ class ToolUseLoopServiceTest {
         );
         assertTrue(store.turns(CONVERSATION).get(0).sentQuery() != null, "the first turn sent a query");
         // The researcher then removed the SEX filter by hand.
-        ChatRequest second = new ChatRequest("also require age over 50", "conv-1", "req-2", new ObjectMapper().readTree(AGE_QUERY), null, null);
+        ChatRequest second =
+            new ChatRequest("also require age over 50", "conv-1", "req-2", new ObjectMapper().readTree(AGE_QUERY), null, null);
         FakeModelClient model = FakeModelClient.returning(doneTurn("ok"));
 
         new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8, store).handle(second, CALLER);
 
         String shown = ((ConversationEntry.UserEntry) model.historySeenOnCall(1).get(2)).text();
-        assertTrue(shown.contains("removed these from their query by hand since you last changed their query, so they do not want them: filters on `\\demo\\sex\\`"), shown);
+        assertTrue(
+            shown.contains(
+                "removed these from their query by hand since you last changed their query, so they do not want them: filters on `\\demo\\sex\\`"
+            ), shown
+        );
     }
 
     @Test
@@ -1843,14 +1867,17 @@ class ToolUseLoopServiceTest {
             doneTurn("Done")
         );
         // The researcher then removed the SEX filter by hand, and the model puts it back.
-        ChatRequest second = new ChatRequest("also require age over 50", "conv-1", "req-2", new ObjectMapper().readTree(AGE_QUERY), null, null);
-        FakeModelClient model = FakeModelClient.returning(
-            toolCallTurn("propose_query", sexAndAge), toolCallTurn("propose_query", sexAndAge), doneTurn("ok")
-        );
+        ChatRequest second =
+            new ChatRequest("also require age over 50", "conv-1", "req-2", new ObjectMapper().readTree(AGE_QUERY), null, null);
+        FakeModelClient model =
+            FakeModelClient.returning(toolCallTurn("propose_query", sexAndAge), toolCallTurn("propose_query", sexAndAge), doneTurn("ok"));
 
         new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8, store).handle(second, CALLER);
 
-        assertTrue(lastToolResult(model, 2).contains("sex") && lastToolResult(model, 2).contains("from their query by hand"), lastToolResult(model, 2));
+        assertTrue(
+            lastToolResult(model, 2).contains("sex") && lastToolResult(model, 2).contains("from their query by hand"),
+            lastToolResult(model, 2)
+        );
         assertTrue(lastToolResult(model, 3).contains("\"received\":true"), "asked once; the same proposal again is accepted");
     }
 
@@ -1858,6 +1885,7 @@ class ToolUseLoopServiceTest {
         List<ConversationEntry> history = model.historySeenOnCall(callNumber);
         return ((ConversationEntry.ToolResultEntry) history.get(history.size() - 1)).content();
     }
+
     private static ModelTurnResult doneTurn(String text) {
         return new ModelTurnResult(true, text, List.of(), 10, 5);
     }

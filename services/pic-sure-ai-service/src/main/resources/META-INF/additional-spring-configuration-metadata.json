@@ -85,10 +85,10 @@
       "defaultValue": "60m"
     },
     {
-      "name": "picsure.ai.conversation.max-results",
+      "name": "picsure.ai.conversation.max-results-per-owner",
       "type": "java.lang.Long",
-      "description": "Most turn results kept at once.",
-      "defaultValue": 10000
+      "description": "Most turn results kept for one caller; the oldest go first. Never evicts another caller's results.",
+      "defaultValue": 200
     }
   ]
 }

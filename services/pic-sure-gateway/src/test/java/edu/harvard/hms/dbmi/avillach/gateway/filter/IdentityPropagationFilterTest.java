@@ -226,6 +226,39 @@ class IdentityPropagationFilterTest {
         assertThat(Collections.list(wrapped.getHeaderNames())).doesNotContain(GatewayUserResolver.HEADER_ACCESS_TYPE);
     }
 
+    @Test
+    void clientSpoofedOpenSessionIdIsReplacedByTheGatewayResolvedValueOrDropped() throws Exception {
+        HttpServletRequest resolved = mock(HttpServletRequest.class);
+        when(resolved.getAttribute(GatewayUserResolver.HEADER_OPEN_SESSION_ID)).thenReturn("verified-session");
+        when(resolved.getHeader(GatewayUserResolver.HEADER_OPEN_SESSION_ID)).thenReturn("victim-session");
+        when(resolved.getHeaders(GatewayUserResolver.HEADER_OPEN_SESSION_ID))
+            .thenReturn(Collections.enumeration(List.of("victim-session")));
+        when(resolved.getHeaderNames()).thenReturn(Collections.enumeration(List.of(GatewayUserResolver.HEADER_OPEN_SESSION_ID)));
+        HttpServletRequest unresolved = mock(HttpServletRequest.class);
+        when(unresolved.getHeader(GatewayUserResolver.HEADER_OPEN_SESSION_ID)).thenReturn("victim-session");
+        when(unresolved.getHeaders(GatewayUserResolver.HEADER_OPEN_SESSION_ID))
+            .thenReturn(Collections.enumeration(List.of("victim-session")));
+        when(unresolved.getHeaderNames()).thenReturn(Collections.enumeration(List.of(GatewayUserResolver.HEADER_OPEN_SESSION_ID)));
+
+        HttpServletRequest withSession = wrap(resolved);
+        HttpServletRequest withoutSession = wrap(unresolved);
+
+        assertThat(withSession.getHeader(GatewayUserResolver.HEADER_OPEN_SESSION_ID)).isEqualTo("verified-session");
+        assertThat(Collections.list(withSession.getHeaders(GatewayUserResolver.HEADER_OPEN_SESSION_ID)))
+            .containsExactly("verified-session");
+        assertThat(withoutSession.getHeader(GatewayUserResolver.HEADER_OPEN_SESSION_ID)).isNull();
+        assertThat(Collections.list(withoutSession.getHeaderNames())).doesNotContain(GatewayUserResolver.HEADER_OPEN_SESSION_ID);
+    }
+
+    private static HttpServletRequest wrap(HttpServletRequest req) throws Exception {
+        FilterChain chain = mock(FilterChain.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        new IdentityPropagationFilter().doFilter(req, resp, chain);
+        ArgumentCaptor<ServletRequest> cap = ArgumentCaptor.forClass(ServletRequest.class);
+        verify(chain).doFilter(cap.capture(), eq(resp));
+        return (HttpServletRequest) cap.getValue();
+    }
+
     // ---- FIX 3: request-id correlation must unify with the commons RequestIdFilter's MDC value ----
 
     @Test

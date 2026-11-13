@@ -30,13 +30,14 @@ import jakarta.servlet.http.HttpServletResponse;
  * {@code X-User-Privileges} — plus {@code X-Request-Id} (propagate the incoming one, reuse the commons {@link RequestIdFilter}'s MDC value,
  * or generate). Downstream maps {@code X-User-Privileges} to {@code GrantedAuthority}s for {@code @PreAuthorize} checks. <p> The five
  * {@code X-User-*} headers ({@link GatewayUserResolver#HEADER_USER_ID}, {@code _SUBJECT}, {@code _EMAIL}, {@code _ROLES},
- * {@code _PRIVILEGES}) plus {@link GatewayUserResolver#HEADER_ACCESS_TYPE} are gateway-owned: the wrapper NEVER falls through to the raw
- * client request for them. Whatever the gateway resolved (possibly nothing) is authoritative -- a client cannot spoof these by sending its
- * own values, even where the gateway resolved an empty/null value (e.g. open-access requests, users with no privileges).
- * {@code X-Picsure-Access-Type} records which gateway authentication flow admitted the request. Downstream backend routing uses explicit
- * path segments instead. <p> When the request's {@link VerifiedCaller} is {@value McpCallerFilter#CALLER}, {@value #HEADER_CLIENT_TYPE} is
- * also gateway-owned and carries {@value McpCallerFilter#CALLER}, so a backend service sees that value only on a call the gateway verified.
- * Otherwise the client's {@value #HEADER_CLIENT_TYPE} passes through as sanitized upstream.
+ * {@code _PRIVILEGES}) plus {@link GatewayUserResolver#HEADER_ACCESS_TYPE} and {@link GatewayUserResolver#HEADER_OPEN_SESSION_ID} are
+ * gateway-owned: the wrapper NEVER falls through to the raw client request for them. Whatever the gateway resolved (possibly nothing) is
+ * authoritative -- a client cannot spoof these by sending its own values, even where the gateway resolved an empty/null value (e.g.
+ * open-access requests, users with no privileges). {@code X-Picsure-Access-Type} records which gateway authentication flow admitted the
+ * request. Downstream backend routing uses explicit path segments instead. <p> When the request's {@link VerifiedCaller} is
+ * {@value McpCallerFilter#CALLER}, {@value #HEADER_CLIENT_TYPE} is also gateway-owned and carries {@value McpCallerFilter#CALLER}, so a
+ * backend service sees that value only on a call the gateway verified. Otherwise the client's {@value #HEADER_CLIENT_TYPE} passes through
+ * as sanitized upstream.
  */
 public class IdentityPropagationFilter extends OncePerRequestFilter {
 
@@ -75,7 +76,8 @@ public class IdentityPropagationFilter extends OncePerRequestFilter {
         /** Gateway-owned identity headers: never sourced from the raw client request, regardless of name casing. */
         private static final Set<String> GATEWAY_OWNED_HEADERS = Set.of(
             GatewayUserResolver.HEADER_USER_ID, GatewayUserResolver.HEADER_USER_SUBJECT, GatewayUserResolver.HEADER_USER_EMAIL,
-            GatewayUserResolver.HEADER_USER_ROLES, GatewayUserResolver.HEADER_USER_PRIVILEGES, GatewayUserResolver.HEADER_ACCESS_TYPE
+            GatewayUserResolver.HEADER_USER_ROLES, GatewayUserResolver.HEADER_USER_PRIVILEGES, GatewayUserResolver.HEADER_ACCESS_TYPE,
+            GatewayUserResolver.HEADER_OPEN_SESSION_ID
         );
 
         private final Map<String, String> overrides = new LinkedHashMap<>();
@@ -91,6 +93,7 @@ public class IdentityPropagationFilter extends OncePerRequestFilter {
             put(GatewayUserResolver.HEADER_USER_ROLES, attr(req, GatewayUserResolver.HEADER_USER_ROLES));
             put(GatewayUserResolver.HEADER_USER_PRIVILEGES, attr(req, GatewayUserResolver.HEADER_USER_PRIVILEGES));
             put(GatewayUserResolver.HEADER_ACCESS_TYPE, attr(req, GatewayUserResolver.HEADER_ACCESS_TYPE));
+            put(GatewayUserResolver.HEADER_OPEN_SESSION_ID, attr(req, GatewayUserResolver.HEADER_OPEN_SESSION_ID));
             put(HEADER_REQUEST_ID, resolveRequestId(req));
             if (verifiedMcp) {
                 put(HEADER_CLIENT_TYPE, McpCallerFilter.CALLER);

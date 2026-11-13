@@ -122,6 +122,22 @@ class InboundIdentityHeaderSanitizingFilterTest {
     }
 
     @Test
+    void stripsClientSuppliedOpenSessionIdHeaderRegardlessOfCase() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/ai/chat");
+        request.addHeader("x-picsure-open-session-id", "victim-session");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        AtomicReference<HttpServletRequest> captured = new AtomicReference<>();
+        filter.doFilter(request, response, (req, resp) -> captured.set((HttpServletRequest) req));
+
+        HttpServletRequest wrapped = captured.get();
+        assertThat(wrapped.getHeader(GatewayUserResolver.HEADER_OPEN_SESSION_ID)).isNull();
+        assertThat(wrapped.getHeaders(GatewayUserResolver.HEADER_OPEN_SESSION_ID).hasMoreElements()).isFalse();
+        assertThat(Collections.list(wrapped.getHeaderNames()))
+            .doesNotContain("x-picsure-open-session-id", GatewayUserResolver.HEADER_OPEN_SESSION_ID);
+    }
+
+    @Test
     void stripsClientSuppliedAccessTypeHeaderRegardlessOfCase() throws Exception {
         // The gateway owns X-Picsure-Access-Type, so it gets the same unconditional strip as the X-User-* set.
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/visualization/auth/distributions");

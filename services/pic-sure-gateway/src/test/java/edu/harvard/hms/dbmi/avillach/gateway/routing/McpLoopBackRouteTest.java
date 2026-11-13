@@ -47,9 +47,9 @@ import edu.harvard.hms.dbmi.avillach.gateway.filter.McpCallerFilter;
  * Runs {@code pic-sure-mcp}'s loop-back call through the whole application with the MCP service secrets set through the same
  * {@code MCP_SERVICE_TOKEN} and {@code MCP_SERVICE_TOKEN_PREVIOUS} variables {@code application.yml} reads, so a mistyped key in that file
  * leaves the gateway with no secret and these tests fail. A request presenting the current or previous secret reaches the dictionary
- * service marked {@code X-Client-Type: mcp} without the secret, and is audited with caller {@code mcp}. A
- * request presenting any other value is refused before PSAMA or the dictionary service is called. A request to {@code /mcp} itself reaches
- * the MCP service with its {@code Authorization} API key and without the secret.
+ * service marked {@code X-Client-Type: mcp} without the secret, and is audited with caller {@code mcp}. A request presenting any other
+ * value is refused before PSAMA or the dictionary service is called. A request to {@code /mcp} itself reaches the MCP service with its
+ * {@code Authorization} API key and without the secret.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class McpLoopBackRouteTest {
