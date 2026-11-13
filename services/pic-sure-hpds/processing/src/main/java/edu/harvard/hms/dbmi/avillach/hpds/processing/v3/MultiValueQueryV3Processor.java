@@ -179,7 +179,7 @@ public class MultiValueQueryV3Processor implements HpdsV3Processor {
         ArrayList<Integer> columnIndex = queryExecutor.useResidentCubesFirst(paths, columnCount);
 
         // todo: investigate if the parallel stream will thrash the cache if the number of executors is > number of resident cubes
-        columnIndex.parallelStream().forEach((columnId) -> {
+        columnIndex.stream().distinct().parallel().forEach((columnId) -> {
             String columnPath = paths.get(columnId - 1);
             pathToObservations.put(columnPath, processColumn(ids, columnPath, datedConcepts.contains(columnPath)));
         });
