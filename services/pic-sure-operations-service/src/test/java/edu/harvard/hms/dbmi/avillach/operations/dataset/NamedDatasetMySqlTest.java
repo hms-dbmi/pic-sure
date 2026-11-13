@@ -112,7 +112,6 @@ class NamedDatasetMySqlTest {
     @BeforeEach
     void emptyTables() {
         jdbc.update("DELETE FROM query_run");
-        jdbc.update("DELETE FROM named_dataset_query");
         jdbc.update("DELETE FROM named_dataset");
         jdbc.update("DELETE FROM query");
         jdbc.update("DELETE FROM query_to_variant");

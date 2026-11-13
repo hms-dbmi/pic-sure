@@ -28,10 +28,11 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Applies the operations migration set to a real MySQL and proves what V10 leaves behind. Each test starts from an empty schema, runs V1 to
- * V9 as whole scripts so the server sees them as a migration tool would send them, seeds two queries and the two named datasets that point
- * at them as the stack before V10 would have written them, and then runs V10. Statements that stand in for the stack before V10 name only
- * columns that existed in V9.
+ * Applies the operations migration set to a real MySQL and proves what V10 and V11 leave behind. Each test starts from an empty schema,
+ * runs V1 to V9 as whole scripts so the server sees them as a migration tool would send them, seeds two queries and the two named datasets
+ * that point at them as the stack before V10 would have written them, and then runs V10 and V11. V11 holds only the foreign keys to the
+ * general query, so one test stops after V10 to prove the schema is usable without them. Statements that stand in for the stack before V10
+ * name only columns that existed in V9.
  */
 @Testcontainers(disabledWithoutDocker = true)
 class SampleDatasetMigrationMySqlTest {
@@ -39,6 +40,7 @@ class SampleDatasetMigrationMySqlTest {
     private static final Path MIGRATIONS = Path.of("db", "sql");
     private static final Pattern MIGRATION_FILE = Pattern.compile("V(\\d+)__.+\\.sql");
     private static final int SAMPLE_DATASET_VERSION = 10;
+    private static final int FOREIGN_KEY_VERSION = 11;
     private static final String STARTED_QUERY_START_TIME = "2026-01-02 03:04:05.678";
 
     private static final UUID STARTED_QUERY = UUID.fromString("00000000-0000-0000-0000-0000000000a1");
@@ -53,24 +55,12 @@ class SampleDatasetMigrationMySqlTest {
 
     private SingleConnectionDataSource dataSource;
     private JdbcTemplate jdbc;
-    private String timeBeforeMigration;
 
     @BeforeEach
     void migrateSeededSchema() throws Exception {
         dataSource = new SingleConnectionDataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword(), true);
         jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute("DROP DATABASE IF EXISTS `picsure`");
-        jdbc.execute("CREATE DATABASE `picsure`");
-        jdbc.execute("USE `picsure`");
-        for (int version = 1; version < SAMPLE_DATASET_VERSION; version++) {
-            applyMigration(version);
-        }
-        insertQueryAsOldStack(STARTED_QUERY, STARTED_QUERY_START_TIME);
-        insertQueryAsOldStack(UNSTARTED_QUERY, null);
-        insertNamedDatasetAsOldStack(STARTED_DATASET, STARTED_QUERY, "first@example.org");
-        insertNamedDatasetAsOldStack(UNSTARTED_DATASET, UNSTARTED_QUERY, "second@example.org");
-        timeBeforeMigration = jdbc.queryForObject("SELECT CAST(NOW(3) AS CHAR)", String.class);
-        applyMigration(SAMPLE_DATASET_VERSION);
+        migrateSeededSchemaThrough(FOREIGN_KEY_VERSION);
     }
 
     @AfterEach
@@ -79,20 +69,57 @@ class SampleDatasetMigrationMySqlTest {
     }
 
     @Test
+    void v10AloneLeavesAUsableSchemaWithoutTheForeignKeys() throws Exception {
+        migrateSeededSchemaThrough(SAMPLE_DATASET_VERSION);
+        UUID query = UUID.randomUUID();
+        UUID dataset = UUID.randomUUID();
+        UUID variant = UUID.randomUUID();
+        UUID missingGeneralQuery = UUID.randomUUID();
+
+        assertThat(columnsOf("query_to_variant")).containsExactly("uuid", "user_uuid", "created_at");
+        assertThat(columnsOf("query_run"))
+            .containsExactly("run_id", "query_uuid", "consents", "trigger", "submitted_at", "completed_at", "status");
+        assertThat(columnsOf("query")).contains("user_uuid", "consents", "query_to_variant_uuid", "sample", "result_type");
+        assertThat(uniqueKeyColumnsOf("query", "unique_query_variant")).containsExactly("query_to_variant_uuid", "sample", "result_type");
+        assertThat(columnsOf("named_dataset")).contains("query_to_variant_uuid");
+        assertThat(indexesOf("named_dataset")).contains("idx_named_dataset_query_to_variant");
+        assertThat(deleteRulesOf("query")).doesNotContainKey("fk_query_query_to_variant");
+        assertThat(deleteRulesOf("named_dataset")).containsOnlyKeys("foreign_queryId");
+
+        insertQueryAsOldStack(query, STARTED_QUERY_START_TIME);
+        insertNamedDatasetAsOldStack(dataset, query, "third@example.org");
+        insertVariant(variant, missingGeneralQuery, false, "DATAFRAME");
+
+        assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM query WHERE uuid = ? AND sample = 0 AND result_type IS NULL AND query_to_variant_uuid IS NULL",
+                Integer.class, bytes(query)
+            )
+        ).isEqualTo(1);
+        assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM named_dataset WHERE uuid = ? AND query_to_variant_uuid IS NULL", Integer.class, bytes(dataset)
+            )
+        ).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT query_to_variant_uuid FROM query WHERE uuid = ?", byte[].class, bytes(variant)))
+            .isEqualTo(bytes(missingGeneralQuery));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_to_variant", Integer.class)).isZero();
+    }
+
+    @Test
+    void v11AddsTheForeignKeysToTheGeneralQuery() {
+        assertThat(deleteRulesOf("query")).containsEntry("fk_query_query_to_variant", "NO ACTION");
+        assertThat(deleteRulesOf("named_dataset")).containsEntry("fk_named_dataset_query_to_variant", "NO ACTION");
+    }
+
+    @Test
     void v10AppliesOnTopOfV9() {
         assertThat(columnsOf("query")).contains("user_uuid", "consents");
         assertThat(columnsOf("query_run"))
             .containsExactly("run_id", "query_uuid", "consents", "trigger", "submitted_at", "completed_at", "status");
-        assertThat(columnsOf("named_dataset_query"))
-            .containsExactly("named_dataset_uuid", "query_uuid", "sample", "result_type", "created_at");
         assertThat(indexesOf("query")).contains("idx_query_user_uuid");
         assertThat(indexesOf("query_run")).containsExactlyInAnyOrder("PRIMARY", "idx_query_run_query_uuid");
-        assertThat(indexesOf("named_dataset_query"))
-            .containsExactlyInAnyOrder("PRIMARY", "unique_named_dataset_variant", "idx_named_dataset_query_query_uuid");
         assertThat(deleteRulesOf("query_run")).containsExactlyInAnyOrderEntriesOf(Map.of("fk_query_run_query", "NO ACTION"));
-        assertThat(deleteRulesOf("named_dataset_query")).containsExactlyInAnyOrderEntriesOf(
-            Map.of("fk_named_dataset_query_dataset", "CASCADE", "fk_named_dataset_query_query", "NO ACTION")
-        );
     }
 
     @Test
@@ -105,28 +132,6 @@ class SampleDatasetMigrationMySqlTest {
             )
         ).isEqualTo("NO");
         assertThat(deleteRulesOf("named_dataset")).containsOnlyKeys("foreign_queryId", "fk_named_dataset_query_to_variant");
-    }
-
-    @Test
-    void backfillCreatesOneJoinRowPerNamedDataset() {
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM named_dataset_query", Integer.class)).isEqualTo(2);
-
-        Map<String, Object> started = joinRowOf(STARTED_DATASET);
-        assertThat(started.get("query_uuid")).isEqualTo(bytes(STARTED_QUERY));
-        assertThat(((Number) started.get("sample")).intValue()).isZero();
-        assertThat(started.get("result_type")).isNull();
-        assertThat(started.get("created_at")).isEqualTo(STARTED_QUERY_START_TIME);
-
-        Map<String, Object> unstarted = joinRowOf(UNSTARTED_DATASET);
-        assertThat(unstarted.get("query_uuid")).isEqualTo(bytes(UNSTARTED_QUERY));
-        assertThat(((Number) unstarted.get("sample")).intValue()).isZero();
-        assertThat(unstarted.get("result_type")).isNull();
-        assertThat(
-            jdbc.queryForObject(
-                "SELECT COUNT(*) FROM named_dataset_query WHERE named_dataset_uuid = ? AND created_at BETWEEN ? AND NOW(3)", Integer.class,
-                bytes(UNSTARTED_DATASET), timeBeforeMigration
-            )
-        ).isEqualTo(1);
     }
 
     @Test
@@ -150,46 +155,6 @@ class SampleDatasetMigrationMySqlTest {
             )
         ).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM named_dataset WHERE uuid = ?", Integer.class, bytes(dataset))).isEqualTo(1);
-        assertThat(joinRowCountOf(dataset)).isZero();
-    }
-
-    @Test
-    void oldStackDeleteOfBackfilledNamedDatasetRemovesItsJoinRow() {
-        assertThat(joinRowCountOf(STARTED_DATASET)).isEqualTo(1);
-
-        int deleted = jdbc.update("DELETE FROM named_dataset WHERE uuid = ?", bytes(STARTED_DATASET));
-
-        assertThat(deleted).isEqualTo(1);
-        assertThat(joinRowCountOf(STARTED_DATASET)).isZero();
-        assertThat(joinRowCountOf(UNSTARTED_DATASET)).isEqualTo(1);
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query WHERE uuid = ?", Integer.class, bytes(STARTED_QUERY))).isEqualTo(1);
-    }
-
-    @Test
-    void variantUniqueKeyRejectsDuplicateTypedRow() {
-        UUID firstSampleQuery = UUID.randomUUID();
-        UUID secondSampleQuery = UUID.randomUUID();
-        insertQueryAsOldStack(firstSampleQuery, null);
-        insertQueryAsOldStack(secondSampleQuery, null);
-        insertJoinRow(STARTED_DATASET, firstSampleQuery, true, "DATAFRAME");
-
-        assertThatThrownBy(() -> insertJoinRow(STARTED_DATASET, secondSampleQuery, true, "DATAFRAME"))
-            .isInstanceOf(DuplicateKeyException.class).hasMessageContaining("unique_named_dataset_variant");
-
-        insertJoinRow(STARTED_DATASET, secondSampleQuery, false, "DATAFRAME");
-        assertThat(joinRowCountOf(STARTED_DATASET)).isEqualTo(3);
-    }
-
-    @Test
-    void queryReferencedByJoinRowCannotBeDeleted() {
-        UUID sampleQuery = UUID.randomUUID();
-        insertQueryAsOldStack(sampleQuery, null);
-        insertJoinRow(STARTED_DATASET, sampleQuery, true, "DATAFRAME");
-
-        assertThatThrownBy(() -> jdbc.update("DELETE FROM query WHERE uuid = ?", bytes(sampleQuery)))
-            .isInstanceOf(DataIntegrityViolationException.class).hasMessageContaining("fk_named_dataset_query_query");
-
-        assertThat(joinRowCountOf(STARTED_DATASET)).isEqualTo(2);
     }
 
     @Test
@@ -215,8 +180,6 @@ class SampleDatasetMigrationMySqlTest {
         assertThat(uniqueKeyColumnsOf("query", "unique_query_variant")).containsExactly("query_to_variant_uuid", "sample", "result_type");
         assertThat(columnsOf("named_dataset")).contains("query_to_variant_uuid");
         assertThat(indexesOf("named_dataset")).contains("idx_named_dataset_query_to_variant");
-        assertThat(deleteRulesOf("query")).containsEntry("fk_query_query_to_variant", "NO ACTION");
-        assertThat(deleteRulesOf("named_dataset")).containsEntry("fk_named_dataset_query_to_variant", "NO ACTION");
     }
 
     @Test
@@ -312,6 +275,44 @@ class SampleDatasetMigrationMySqlTest {
         ).isEqualTo(bytes(generalQuery));
     }
 
+    @Test
+    void deletingANamedDatasetThatNamesAGeneralQuerySucceeds() {
+        UUID generalQuery = UUID.randomUUID();
+        insertGeneralQuery(generalQuery);
+        nameGeneralQuery(STARTED_DATASET, generalQuery);
+
+        int deleted = jdbc.update("DELETE FROM named_dataset WHERE uuid = ?", bytes(STARTED_DATASET));
+
+        assertThat(deleted).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM named_dataset WHERE uuid = ?", Integer.class, bytes(STARTED_DATASET)))
+            .isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_to_variant WHERE uuid = ?", Integer.class, bytes(generalQuery)))
+            .isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query WHERE uuid = ?", Integer.class, bytes(STARTED_QUERY))).isEqualTo(1);
+    }
+
+    /**
+     * Rebuilds the schema from nothing: V1 to V9, then the rows the stack before V10 would hold, then V10 up to the given version.
+     *
+     * @param lastVersion the last migration version to apply, 10 or later
+     * @throws IOException when a migration script cannot be read
+     */
+    private void migrateSeededSchemaThrough(int lastVersion) throws IOException {
+        jdbc.execute("DROP DATABASE IF EXISTS `picsure`");
+        jdbc.execute("CREATE DATABASE `picsure`");
+        jdbc.execute("USE `picsure`");
+        for (int version = 1; version < SAMPLE_DATASET_VERSION; version++) {
+            applyMigration(version);
+        }
+        insertQueryAsOldStack(STARTED_QUERY, STARTED_QUERY_START_TIME);
+        insertQueryAsOldStack(UNSTARTED_QUERY, null);
+        insertNamedDatasetAsOldStack(STARTED_DATASET, STARTED_QUERY, "first@example.org");
+        insertNamedDatasetAsOldStack(UNSTARTED_DATASET, UNSTARTED_QUERY, "second@example.org");
+        for (int version = SAMPLE_DATASET_VERSION; version <= lastVersion; version++) {
+            applyMigration(version);
+        }
+    }
+
     private void applyMigration(int version) throws IOException {
         List<Path> matches;
         try (Stream<Path> files = Files.list(MIGRATIONS)) {
@@ -348,13 +349,6 @@ class SampleDatasetMigrationMySqlTest {
         );
     }
 
-    private void insertJoinRow(UUID dataset, UUID query, boolean sample, String resultType) {
-        jdbc.update(
-            "INSERT INTO named_dataset_query (named_dataset_uuid, query_uuid, sample, result_type, created_at) VALUES (?, ?, ?, ?, NOW(3))",
-            bytes(dataset), bytes(query), sample, resultType
-        );
-    }
-
     private void insertGeneralQuery(UUID uuid) {
         jdbc.update("INSERT INTO query_to_variant (uuid, user_uuid, created_at) VALUES (?, ?, NOW(3))", bytes(uuid), bytes(OWNER));
     }
@@ -370,18 +364,6 @@ class SampleDatasetMigrationMySqlTest {
 
     private int nameGeneralQuery(UUID dataset, UUID generalQuery) {
         return jdbc.update("UPDATE named_dataset SET query_to_variant_uuid = ? WHERE uuid = ?", bytes(generalQuery), bytes(dataset));
-    }
-
-    private Map<String, Object> joinRowOf(UUID dataset) {
-        return jdbc.queryForMap(
-            "SELECT query_uuid, CAST(sample AS UNSIGNED) AS sample, result_type, CAST(created_at AS CHAR) AS created_at"
-                + " FROM named_dataset_query WHERE named_dataset_uuid = ?",
-            bytes(dataset)
-        );
-    }
-
-    private int joinRowCountOf(UUID dataset) {
-        return jdbc.queryForObject("SELECT COUNT(*) FROM named_dataset_query WHERE named_dataset_uuid = ?", Integer.class, bytes(dataset));
     }
 
     private List<String> columnsOf(String table) {
