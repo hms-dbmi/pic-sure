@@ -5,6 +5,7 @@ import java.util.Optional;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,7 +25,10 @@ import jakarta.validation.Valid;
  * gateway applies, the same way {@code /operations} on this service's sibling becomes {@code /picsure/operations} -- see
  * {@code pic-sure-gateway}'s {@code application.yml} route table). {@link CallerContext} resolution (401 on a missing/malformed
  * {@code Authorization} header) and {@code @Valid} field validation (400 on a missing required field) both run before
- * {@link ChatOrchestrator#handle} is ever called, so neither Bedrock nor the MCP gateway is touched on a rejected request.
+ * {@link ChatOrchestrator#handle} is ever called, so neither Bedrock nor the MCP gateway is touched on a rejected request. The handlers
+ * then require the assisted-search privilege the gateway forwards in {@code X-User-Privileges} (403 otherwise, which includes every
+ * open-access caller); the guard runs before the handler body, so a rejected caller never reaches the model, the MCP gateway or the turn
+ * store.
  *
  * <p>Each {@code requestId} runs at most once per caller ({@link TurnResultStore}): sending it again returns the stored response without
  * calling the model, and {@code GET /ai/chat/{requestId}} fetches it. A requestId reused for a different message is refused, and so is the
@@ -48,11 +52,13 @@ public class ChatController {
     @ApiResponse(responseCode = "200", description = "The model's reply and any query, facet or search state the turn changed")
     @ApiResponse(responseCode = "400", description = "A required field is missing or blank")
     @ApiResponse(responseCode = "401", description = "The Authorization header is missing or is not a bearer token")
+    @ApiResponse(responseCode = "403", description = "The caller does not hold the assisted-search privilege, or is an open-access caller")
     @ApiResponse(
         responseCode = "409", description = "This message is still being answered, under this requestId or another; fetch it with GET"
     )
     @ApiResponse(responseCode = "422", description = "This requestId was already used for a different message or state")
     @AuditEvent(type = "SEARCH", action = "ai.chat")
+    @PreAuthorize("hasAuthority('ASSISTED_SEARCH')")
     @PostMapping("/chat")
     public ChatResponse chat(@Valid @RequestBody ChatRequest request, CallerContext caller) {
         TurnResultStore.Key key = new TurnResultStore.Key(caller.owner(), request.requestId());
@@ -101,8 +107,10 @@ public class ChatController {
     @ApiResponse(responseCode = "200", description = "The reply, as the original request would have returned it")
     @ApiResponse(responseCode = "202", description = "The message is still being answered; try again shortly")
     @ApiResponse(responseCode = "401", description = "The Authorization header is missing or is not a bearer token")
+    @ApiResponse(responseCode = "403", description = "The caller does not hold the assisted-search privilege, or is an open-access caller")
     @ApiResponse(responseCode = "404", description = "No reply is stored: the message never arrived, failed, or its reply has expired")
     @AuditEvent(type = "SEARCH", action = "ai.chat.result")
+    @PreAuthorize("hasAuthority('ASSISTED_SEARCH')")
     @GetMapping("/chat/{requestId}")
     public ResponseEntity<ChatResponse> result(@PathVariable String requestId, CallerContext caller) {
         TurnResult result = results.find(new TurnResultStore.Key(caller.owner(), requestId)).orElseThrow(

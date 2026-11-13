@@ -1686,6 +1686,29 @@ class ToolUseLoopServiceTest {
     }
 
     @Test
+    void aResearcherContinuingAConversationDroppedForRoomIsToldOnceAndThenStartsFresh() {
+        ConversationStore store = new InMemoryConversationStore(
+            java.time.Duration.ofHours(1), 50, 50_000_000L, 1, 100, com.github.benmanes.caffeine.cache.Ticker.systemTicker()
+        );
+        ChatRequest other = new ChatRequest("hello", "conv-2", "req-3", null, null, null);
+        ChatRequest back = new ChatRequest("again", "conv-1", "req-4", null, null, null);
+        ChatRequest next = new ChatRequest("and more", "conv-1", "req-5", null, null, null);
+        firstTurn(store, DICTIONARY_RESULT, doneTurn("One"));
+        new ToolUseLoopService(FakeModelClient.returning(doneTurn("Two")), new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8, store)
+            .handle(other, CALLER);
+
+        ChatResponse told =
+            new ToolUseLoopService(FakeModelClient.returning(doneTurn("Three")), new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8, store)
+                .handle(back, CALLER);
+        ChatResponse silent =
+            new ToolUseLoopService(FakeModelClient.returning(doneTurn("Four")), new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8, store)
+                .handle(next, CALLER);
+
+        assertEquals(ToolUseLoopService.LIMIT_NOTICE, told.notice());
+        assertNull(silent.notice());
+    }
+
+    @Test
     void aTurnThatEndsInTheFallbackReplyIsNotKeptInTheConversation() {
         ConversationStore store = ToolUseLoopService.newConversationStore();
         ChatResponse first = new ToolUseLoopService(

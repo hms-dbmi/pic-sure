@@ -273,7 +273,8 @@ class QueryToolEndToEndTest {
     private String post(String body) throws Exception {
         String response = RestClient.create("http://localhost:" + port).post().uri("/mcp").contentType(MediaType.APPLICATION_JSON)
             .header("Accept", "application/json, text/event-stream").header("Authorization", "Bearer caller-token")
-            .header("X-Request-Id", "req-audit").header("X-User-Id", "user-e2e").body(body).retrieve().body(String.class);
+            .header("X-Request-Id", "req-audit").header("X-User-Id", "user-e2e").header("X-User-Privileges", "PIC_SURE_MCP").body(body)
+            .retrieve().body(String.class);
         JsonNode json = objectMapper.readTree(response);
         assertThat(json.has("error")).as(response).isFalse();
         return response;

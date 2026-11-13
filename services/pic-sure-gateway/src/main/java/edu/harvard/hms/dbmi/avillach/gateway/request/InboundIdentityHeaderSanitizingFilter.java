@@ -9,7 +9,8 @@ import java.util.Set;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
-import edu.harvard.hms.dbmi.avillach.commons.request.RoutedRequestPath;
+import edu.harvard.hms.dbmi.avillach.commons.audit.VerifiedCaller;
+import edu.harvard.hms.dbmi.avillach.gateway.filter.AiServiceCallerFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.McpCallerFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.ApiKeyBearer;
 import jakarta.servlet.FilterChain;
@@ -19,30 +20,29 @@ import jakarta.servlet.http.HttpServletRequestWrapper;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * Defense-in-depth, registered UNCONDITIONALLY (see {@code ObservabilityConfig}): strips the five gateway-owned {@code X-User-*} identity
+ * Defense-in-depth, registered UNCONDITIONALLY (see {@code ObservabilityConfig}): strips the gateway-owned {@code X-User-*} identity
  * headers ({@link GatewayUserResolver#HEADER_USER_ID}, {@code _SUBJECT}, {@code _EMAIL}, {@code _ROLES}, {@code _PRIVILEGES}) and
- * {@link GatewayUserResolver#HEADER_ACCESS_TYPE}, {@link GatewayUserResolver#HEADER_OPEN_SESSION_ID}, the spoofable source-address headers
- * {@code X-Real-IP} and {@code Forwarded}, and the service-to-service {@code X-PIC-SURE-INTERNAL-TOKEN} (a client-presented internal token
- * must never transit the gateway) from every inbound CLIENT request before anything downstream -- routing, the auth chain, or proxied
- * services -- can ever see a client-supplied value. <p> {@code X-Forwarded-For} is deliberately NOT stripped: the trusted front proxy
- * legitimately appends to it, and consumers ({@code AuditLoggingFilter}) take the RIGHTMOST entry -- the nearest trusted hop -- rather than
- * the client-forgeable leftmost one. {@code X-Session-Id}, {@code request-source}, and ordinary {@code X-Client-Type} values are
- * deliberately left unstripped as client telemetry. {@code X-Client-Type} is stripped whole when any of its values, or any comma-separated
- * entry within a value, is one of the reserved values {@code service} or {@code mcp} in any case, because downstream services use them to
- * identify internal calls; only {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} may set {@code mcp}, and
- * only for a verified caller. <p> {@value McpCallerFilter#TOKEN_HEADER} is always stripped, so the MCP service secret never reaches a
- * proxied service. An {@code Authorization} header carrying a PSAMA key ({@link ApiKeyBearer}) is stripped from every request except one
- * whose decoded {@link RoutedRequestPath} is exactly {@value McpCallerFilter#MCP_PATH}, the same match {@link McpCallerFilter} uses,
- * because {@code pic-sure-mcp} forwards the key on its loop-back calls to sites that enforce one. <p>
- * {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} already hides the identity headers from the client, but
- * this filter exists as an independent trust boundary: even if the DB-free auth chain were ever bypassed or misconfigured, a client's own
- * {@code X-User-Id}/{@code X-User-Privileges}/etc. must never pass through untouched -- that would be an identity/privilege-spoofing hole.
- * This filter closes that hole unconditionally, independent of anything the auth chain does. <p> Runs at order 25: after
- * {@code OpenAccessFilter} (order 20) has extracted the optional API key for PSAMA, and before the remaining DB-free auth chain
- * (introspection order 30+). This keeps the API key from downstream services, other than the MCP route, while still allowing open-access
- * validation to consume it. {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} (order 50) still runs afterward
- * and sets the gateway-resolved values on its own wrapper, which never falls through to the (already-sanitized) client request for these
- * names -- so normal propagation of resolved identity is unaffected by this filter running first.
+ * {@link GatewayUserResolver#HEADER_ACCESS_TYPE}, the spoofable source-address headers {@code X-Real-IP} and {@code Forwarded}, and the
+ * service-to-service {@code X-PIC-SURE-INTERNAL-TOKEN} (a client-presented internal token must never transit the gateway) from every
+ * inbound CLIENT request before anything downstream -- routing, the auth chain, or proxied services -- can ever see a client-supplied
+ * value. <p> {@code X-Forwarded-For} is deliberately NOT stripped: the trusted front proxy legitimately appends to it, and consumers
+ * ({@code AuditLoggingFilter}) take the RIGHTMOST entry -- the nearest trusted hop -- rather than the client-forgeable leftmost one.
+ * {@code X-Session-Id}, {@code request-source}, and ordinary {@code X-Client-Type} values are deliberately left unstripped as client
+ * telemetry. {@code X-Client-Type} is stripped whole when any of its values, or any comma-separated entry within a value, is one of the
+ * reserved values {@code service}, {@code mcp} or {@code ai-service} in any case, because downstream services use them to identify internal
+ * calls; only {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} may set {@code mcp} or {@code ai-service}, and
+ * only for a verified caller. <p> {@value McpCallerFilter#TOKEN_HEADER} and {@value AiServiceCallerFilter#TOKEN_HEADER} are always
+ * stripped, so neither service secret reaches a proxied service. An {@code Authorization} header carrying a PSAMA key
+ * ({@link ApiKeyBearer}) is stripped from every request, {@value McpCallerFilter#MCP_PATH} included, since {@code pic-sure-mcp} refuses a
+ * caller who has no privileges. <p> {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} already hides the
+ * identity headers from the client, but this filter exists as an independent trust boundary: even if the DB-free auth chain were ever
+ * bypassed or misconfigured, a client's own {@code X-User-Id}/{@code X-User-Privileges}/etc. must never pass through untouched -- that
+ * would be an identity/privilege-spoofing hole. This filter closes that hole unconditionally, independent of anything the auth chain does.
+ * <p> Runs at order 25: after {@code OpenAccessFilter} (order 20) has extracted the optional API key for PSAMA, and before the remaining
+ * DB-free auth chain (introspection order 30+). This keeps the API key from downstream services while still allowing open-access validation
+ * to consume it. {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} (order 50) still runs afterward and sets
+ * the gateway-resolved values on its own wrapper, which never falls through to the (already-sanitized) client request for these names -- so
+ * normal propagation of resolved identity is unaffected by this filter running first.
  */
 public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter {
 
@@ -56,7 +56,7 @@ public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter 
 
         private static final String AUTHORIZATION_HEADER = "Authorization";
         private static final String CLIENT_TYPE_HEADER = "X-Client-Type";
-        private static final Set<String> RESERVED_CLIENT_TYPES = Set.of("service", McpCallerFilter.CALLER);
+        private static final Set<String> RESERVED_CLIENT_TYPES = Set.of("service", VerifiedCaller.MCP, VerifiedCaller.AI_SERVICE);
 
         /**
          * Gateway-owned identity headers, spoofable source-address headers, and the internal and MCP service tokens: always hidden from the
@@ -65,15 +65,12 @@ public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter 
         private static final Set<String> STRIPPED_HEADERS = Set.of(
             GatewayUserResolver.HEADER_USER_ID, GatewayUserResolver.HEADER_USER_SUBJECT, GatewayUserResolver.HEADER_USER_EMAIL,
             GatewayUserResolver.HEADER_USER_ROLES, GatewayUserResolver.HEADER_USER_PRIVILEGES, "X-Real-IP", "Forwarded",
-            "X-PIC-SURE-INTERNAL-TOKEN", GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.HEADER_OPEN_SESSION_ID,
-            McpCallerFilter.TOKEN_HEADER
+            "X-PIC-SURE-INTERNAL-TOKEN", GatewayUserResolver.HEADER_ACCESS_TYPE, McpCallerFilter.TOKEN_HEADER,
+            AiServiceCallerFilter.TOKEN_HEADER
         );
-
-        private final boolean onMcpRoute;
 
         SanitizedIdentityHeadersRequest(HttpServletRequest request) {
             super(request);
-            this.onMcpRoute = McpCallerFilter.MCP_PATH.equals(RoutedRequestPath.of(request));
         }
 
         private static boolean isAlwaysStripped(String name) {
@@ -88,7 +85,7 @@ public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter 
         }
 
         private boolean isStrippedApiKey(String name) {
-            return AUTHORIZATION_HEADER.equalsIgnoreCase(name) && !onMcpRoute && carriesApiKey(super.getHeaders(name));
+            return AUTHORIZATION_HEADER.equalsIgnoreCase(name) && carriesApiKey(super.getHeaders(name));
         }
 
         private static boolean carriesApiKey(Enumeration<String> values) {

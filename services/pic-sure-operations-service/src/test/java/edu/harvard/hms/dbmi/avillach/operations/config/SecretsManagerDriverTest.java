@@ -15,8 +15,8 @@ import org.junit.jupiter.api.Test;
  * the build loads that class, so without this test a dropped dependency would only show up as a failed deploy.
  *
  * <p>The driver's static initializer builds a Secrets Manager client, which needs a resolvable AWS region. The test pins {@code aws.region}
- * so it runs without AWS configuration and restores the prior value afterward, so the pin does not leak into other test classes sharing
- * the same surefire JVM. No request leaves the JVM.
+ * so it runs without AWS configuration and restores the prior value afterward, so the pin does not leak into other test classes sharing the
+ * same surefire JVM. No request leaves the JVM.
  */
 class SecretsManagerDriverTest {
 

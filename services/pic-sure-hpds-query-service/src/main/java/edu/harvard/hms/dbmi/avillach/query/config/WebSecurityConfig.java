@@ -4,9 +4,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.access.intercept.AuthorizationFilter;
+
+import edu.harvard.hms.dbmi.avillach.commons.security.GatewayHeaderSecurity;
+import edu.harvard.hms.dbmi.avillach.commons.security.GatewayPrivilegesFilter;
 
 /**
  * Security posture for the single HPDS ingress. This service performs NO JWT validation of its own -- the gateway is the sole PSAMA client
@@ -32,10 +33,7 @@ public class WebSecurityConfig {
     @Bean
     @Order(10) // yields /actuator/** to ActuatorSecurityConfig's @Order(0) chain.
     SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        return http.csrf(csrf -> csrf.disable())
-            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            // Populate the SecurityContext from X-User-Privileges BEFORE authorization runs.
-            .addFilterBefore(new GatewayPrivilegesFilter(), AuthorizationFilter.class)
+        return GatewayHeaderSecurity.statelessWithGatewayPrivileges(http)
             .authorizeHttpRequests(
                 auth -> auth.requestMatchers("/actuator/health", "/actuator/info", "/openapi/**", "/swagger-ui/**", "/v3/api-docs/**")
                     .permitAll().requestMatchers("/hpds/**").authenticated().anyRequest().permitAll()

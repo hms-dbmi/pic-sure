@@ -1,6 +1,12 @@
 {
   "properties": [
     {
+      "name": "picsure.ai.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Whether this service offers the assistant. Off registers no chat endpoint, so /ai/chat answers 404 even though the service is up, and the gateway MCP settings are not required. Maps from the AI_ENABLED environment variable.",
+      "defaultValue": false
+    },
+    {
       "name": "picsure.ai.max-tool-iterations",
       "type": "java.lang.Integer",
       "description": "Hard cap on tool-call round-trips per chat turn. Hitting it returns the best answer so far, prose only, never an error. Maps from the AI_MAX_TOOL_ITERATIONS environment variable.",
@@ -34,6 +40,12 @@
       "name": "picsure.ai.mcp.gateway-url",
       "type": "java.lang.String",
       "description": "Base URL of the gateway whose /mcp route GatewayMcpToolGateway connects to. Required when picsure.ai.mcp.mode=gateway (the default). Maps from the PICSURE_GATEWAY_URL environment variable.",
+      "defaultValue": ""
+    },
+    {
+      "name": "picsure.ai.mcp.service-token",
+      "type": "java.lang.String",
+      "description": "Shared secret GatewayMcpToolGateway sends as X-PIC-SURE-AI-TOKEN on every /mcp call, so the gateway admits the call by ASSISTED_SEARCH and pic-sure-mcp does not require PIC_SURE_MCP. Required when picsure.ai.mcp.mode=gateway (the default); must equal the gateway's AI_SERVICE_TOKEN. Maps from the AI_SERVICE_TOKEN environment variable.",
       "defaultValue": ""
     },
     {
@@ -89,6 +101,18 @@
       "type": "java.lang.Long",
       "description": "Most turn results kept for one caller; the oldest go first. Never evicts another caller's results.",
       "defaultValue": 200
+    },
+    {
+      "name": "picsure.ai.conversation.max-conversations-per-owner",
+      "type": "java.lang.Integer",
+      "description": "Most conversations kept for one caller. Starting another drops their least recently used one.",
+      "defaultValue": 2
+    },
+    {
+      "name": "picsure.ai.conversation.max-owners",
+      "type": "java.lang.Integer",
+      "description": "Most callers with stored conversations or turn results. A new caller past this displaces the caller idle longest.",
+      "defaultValue": 10000
     }
   ]
 }

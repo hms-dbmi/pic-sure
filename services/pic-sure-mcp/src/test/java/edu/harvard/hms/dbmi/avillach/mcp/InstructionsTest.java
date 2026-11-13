@@ -175,7 +175,8 @@ class InstructionsTest {
 
     private JsonNode call(String body) throws Exception {
         String response = RestClient.create("http://localhost:" + port).post().uri("/mcp").contentType(MediaType.APPLICATION_JSON)
-            .header("Accept", "application/json, text/event-stream").body(body).retrieve().body(String.class);
+            .header("Accept", "application/json, text/event-stream").header("X-User-Id", "user-instructions")
+            .header("X-User-Privileges", "PIC_SURE_MCP").body(body).retrieve().body(String.class);
         JsonNode json = objectMapper.readTree(response);
         assertThat(json.has("error")).isFalse();
         return json.path("result");

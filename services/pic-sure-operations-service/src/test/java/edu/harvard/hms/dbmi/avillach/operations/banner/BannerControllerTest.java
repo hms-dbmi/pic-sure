@@ -67,9 +67,8 @@ class BannerControllerTest {
 
     @BeforeEach
     void seedPriorityAllocator() {
-        priorityAllocatorRepository.saveAndFlush(
-            new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1)
-        );
+        priorityAllocatorRepository
+            .saveAndFlush(new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1));
     }
 
     @Test
@@ -128,9 +127,8 @@ class BannerControllerTest {
             .andExpect(status().isForbidden());
         mockMvc.perform(post("/banners/{uuid}/disable", UUID.randomUUID())).andExpect(status().isForbidden());
         mockMvc.perform(post("/banners/{uuid}/archive", UUID.randomUUID())).andExpect(status().isForbidden());
-        mockMvc.perform(
-            post("/banners/{uuid}/restore", UUID.randomUUID()).contentType(MediaType.APPLICATION_JSON).content("{}")
-        ).andExpect(status().isForbidden());
+        mockMvc.perform(post("/banners/{uuid}/restore", UUID.randomUUID()).contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isForbidden());
     }
 
     @Test
@@ -147,8 +145,8 @@ class BannerControllerTest {
         ).andExpect(status().isCreated());
         mockMvc.perform(
             post("/banners").header(GatewayUserResolver.HEADER_USER_ID, "banner-manager-id")
-                .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "BANNER_MANAGEMENT")
-                .contentType(MediaType.APPLICATION_JSON).content(request)
+                .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "BANNER_MANAGEMENT").contentType(MediaType.APPLICATION_JSON)
+                .content(request)
         ).andExpect(status().isCreated());
         mockMvc.perform(
             get("/banners").header(GatewayUserResolver.HEADER_USER_ID, "banner-manager-id")
@@ -230,12 +228,15 @@ class BannerControllerTest {
         BannerOccurrence disabled = repository.save(banner(55, BannerStatus.DISABLED, NOW.minusSeconds(120), null, "Disabled"));
         BannerOccurrence saved = repository.save(banner(null, BannerStatus.SAVED, null, null, "Saved"));
 
-        mockMvc.perform(
-            adminPut(
-                "/banners/order",
-                Map.of("bannerUuids", List.of(expired.getUuid(), second.getUuid(), disabled.getUuid(), saved.getUuid(), first.getUuid()))
-            )
-        ).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(3)))
+        mockMvc
+            .perform(
+                adminPut(
+                    "/banners/order",
+                    Map.of(
+                        "bannerUuids", List.of(expired.getUuid(), second.getUuid(), disabled.getUuid(), saved.getUuid(), first.getUuid())
+                    )
+                )
+            ).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(3)))
             .andExpect(jsonPath("$[0].uuid").value(second.getUuid().toString())).andExpect(jsonPath("$[0].priority").value(1))
             .andExpect(jsonPath("$[1].uuid").value(first.getUuid().toString())).andExpect(jsonPath("$[1].priority").value(2))
             .andExpect(jsonPath("$[2].uuid").value(arrival.getUuid().toString())).andExpect(jsonPath("$[2].priority").value(3));
@@ -260,9 +261,7 @@ class BannerControllerTest {
         BannerOccurrence first = repository.save(banner(8, BannerStatus.PUBLISHED, NOW.minusSeconds(60), null, "First"));
         BannerOccurrence second = repository.save(banner(21, BannerStatus.PUBLISHED, NOW.plusSeconds(60), null, "Second"));
 
-        List<List<UUID>> invalidOrders = List.of(
-            List.of(first.getUuid(), first.getUuid()), List.of(first.getUuid(), UUID.randomUUID())
-        );
+        List<List<UUID>> invalidOrders = List.of(List.of(first.getUuid(), first.getUuid()), List.of(first.getUuid(), UUID.randomUUID()));
         for (List<UUID> invalidOrder : invalidOrders) {
             mockMvc.perform(adminPut("/banners/order", Map.of("bannerUuids", invalidOrder))).andExpect(status().isBadRequest());
             org.assertj.core.api.Assertions.assertThat(repository.findById(first.getUuid()).orElseThrow().getPriority()).isEqualTo(8);
@@ -573,7 +572,8 @@ class BannerControllerTest {
         mockMvc.perform(adminPost("/banners/{uuid}/restore", source, publishRequest("<p>Restored</p>", "Restored")))
             .andExpect(status().isCreated()).andExpect(jsonPath("$.uuid").value(not(source.toString())))
             .andExpect(jsonPath("$.status").value("PUBLISHED")).andExpect(jsonPath("$.lifecycle").value("ACTIVE"))
-            .andExpect(jsonPath("$.restoredFromUuid").value(source.toString())).andExpect(jsonPath("$.htmlContent").value("<p>Restored</p>"));
+            .andExpect(jsonPath("$.restoredFromUuid").value(source.toString()))
+            .andExpect(jsonPath("$.htmlContent").value("<p>Restored</p>"));
 
         org.assertj.core.api.Assertions.assertThat(repository.findById(source).orElseThrow().getStatus()).isEqualTo(BannerStatus.ARCHIVED);
         org.assertj.core.api.Assertions.assertThat(repository.count()).isEqualTo(2);

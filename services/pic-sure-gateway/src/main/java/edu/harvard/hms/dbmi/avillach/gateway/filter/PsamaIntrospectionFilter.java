@@ -10,6 +10,7 @@ import org.springframework.web.util.UrlPathHelper;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
+import edu.harvard.hms.dbmi.avillach.commons.audit.VerifiedCaller;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionResponse;
@@ -27,15 +28,21 @@ import jakarta.servlet.http.HttpServletResponse;
  * bearer or with a PSAMA key as the bearer) and {@code BufferingFilter} (body buffering). The shared {@link PublicEndpointPolicy} exempts
  * intentionally public routes from both authentication filters. Every other request must carry a real {@code Bearer} token (open access is
  * handled entirely upstream by {@code OpenAccessFilter}); the introspection request sends the decoded path that Spring resolved as the
- * root-level {@code "Target Service"}. It does not send or mutate the request body. On success this filter stashes {@code X-User-*} request
- * attributes, including privileges, for {@code IdentityPropagationFilter} to turn into outbound headers. On token refresh it stashes
- * {@link #ATTR_REFRESHED_TOKEN} for {@code TokenRefreshResponseFilter}. An {@code active:false} response denies access. Introspection
- * infrastructure failures ({@link PicsureException}, or any transport error) fail closed: the mapped error is written and the request is
- * never forwarded.
+ * root-level {@code "Target Service"}, and for a verified {@code pic-sure-ai-service} call also {@code "Caller"}. It does not send or
+ * mutate the request body. On success this filter stashes {@code X-User-*} request attributes, including privileges, for
+ * {@code IdentityPropagationFilter} to turn into outbound headers. On token refresh it stashes {@link #ATTR_REFRESHED_TOKEN} for
+ * {@code TokenRefreshResponseFilter}. An {@code active:false} response denies access. Introspection infrastructure failures
+ * ({@link PicsureException}, or any transport error) fail closed: the mapped error is written and the request is never forwarded.
  */
 public class PsamaIntrospectionFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(PsamaIntrospectionFilter.class);
+
+    /** Request field holding the decoded path, which most PSAMA access rules match. */
+    static final String TARGET_SERVICE_FIELD = "Target Service";
+
+    /** Request field holding the verified caller, sent only for a call from {@code pic-sure-ai-service}. */
+    static final String CALLER_FIELD = "Caller";
 
     public static final String ATTR_REFRESHED_TOKEN = "refreshedToken";
 
@@ -87,7 +94,7 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
             return;
         }
 
-        Map<String, Object> requestMeta = Map.of("Target Service", path);
+        Map<String, Object> requestMeta = requestMeta(req, path);
 
         IntrospectionResponse intro;
         try {
@@ -132,6 +139,17 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
             req.setAttribute(ATTR_REFRESHED_TOKEN, intro.token());
         }
         chain.doFilter(req, resp);
+    }
+
+    /**
+     * The request description PSAMA's access rules are evaluated against: the decoded path as {@value #TARGET_SERVICE_FIELD}, plus
+     * {@value #CALLER_FIELD} when {@link AiServiceCallerFilter} verified the call came from {@code pic-sure-ai-service}. The user's rule
+     * for the assistant ({@code ASSISTED_SEARCH}) matches on that caller, so such a call does not need the {@code /mcp} privilege.
+     */
+    private static Map<String, Object> requestMeta(HttpServletRequest req, String path) {
+        boolean verifiedAiCall = VerifiedCaller.get(req).filter(VerifiedCaller.AI_SERVICE::equals).isPresent();
+        return verifiedAiCall ? Map.of(TARGET_SERVICE_FIELD, path, CALLER_FIELD, VerifiedCaller.AI_SERVICE)
+            : Map.of(TARGET_SERVICE_FIELD, path);
     }
 
     private void introspectionFailed(HttpServletResponse resp, String reason) throws IOException {

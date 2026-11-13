@@ -25,6 +25,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -53,7 +54,9 @@ class GatewayMcpToolGatewayTest {
             post(urlEqualTo("/mcp")).withRequestBody(matchingJsonPath("$.method", equalTo("notifications/initialized")))
                 .willReturn(aResponse().withStatus(202))
         );
-        gateway = new GatewayMcpToolGateway(server.baseUrl(), new ObjectMapper(), Duration.ofSeconds(5), Duration.ofSeconds(20));
+        gateway = new GatewayMcpToolGateway(
+            server.baseUrl(), "ai-token", true, new ObjectMapper(), Duration.ofSeconds(5), Duration.ofSeconds(20)
+        );
     }
 
     @AfterEach
@@ -87,6 +90,52 @@ class GatewayMcpToolGatewayTest {
                     .withRequestBody(matchingJsonPath("$.method", equalTo(method)))
             );
         }
+    }
+
+    @Test
+    void everyCallCarriesTheServiceTokenAlongsideTheCallersAuthorization() {
+        server.stubFor(post(urlEqualTo("/mcp")).withRequestBody(matchingJsonPath("$.method", equalTo("tools/list"))).willReturn(okRpc("""
+            {"jsonrpc":"2.0","id":1,"result":{"tools":[]}}""")));
+
+        gateway.listTools(callerWith("Bearer caller-token", "req-1"));
+
+        for (String method : List.of("initialize", "notifications/initialized", "tools/list")) {
+            server.verify(
+                postRequestedFor(urlEqualTo("/mcp")).withHeader("X-PIC-SURE-AI-TOKEN", equalTo("ai-token"))
+                    .withHeader("Authorization", equalTo("Bearer caller-token"))
+                    .withRequestBody(matchingJsonPath("$.method", equalTo(method)))
+            );
+        }
+    }
+
+    @Test
+    void aBlankServiceTokenFailsFastAtStartupWhenTheAssistantIsEnabled() {
+        assertThrows(
+            IllegalStateException.class,
+            () -> new GatewayMcpToolGateway(server.baseUrl(), " ", true, new ObjectMapper(), Duration.ofSeconds(5), Duration.ofSeconds(20))
+        );
+    }
+
+    @Test
+    void aBlankGatewayUrlFailsFastAtStartupWhenTheAssistantIsEnabled() {
+        assertThrows(
+            IllegalStateException.class,
+            () -> new GatewayMcpToolGateway(" ", "ai-token", true, new ObjectMapper(), Duration.ofSeconds(5), Duration.ofSeconds(20))
+        );
+    }
+
+    @Test
+    void aBlankGatewayUrlDoesNotStopADisabledAssistantStarting() {
+        assertDoesNotThrow(
+            () -> new GatewayMcpToolGateway("", "", false, new ObjectMapper(), Duration.ofSeconds(5), Duration.ofSeconds(20))
+        );
+    }
+
+    @Test
+    void aBlankServiceTokenDoesNotStopADisabledAssistantStarting() {
+        assertDoesNotThrow(
+            () -> new GatewayMcpToolGateway(server.baseUrl(), " ", false, new ObjectMapper(), Duration.ofSeconds(5), Duration.ofSeconds(20))
+        );
     }
 
     @Test

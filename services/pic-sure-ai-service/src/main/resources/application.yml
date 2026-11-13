@@ -49,9 +49,12 @@ picsure:
       # configurable (rather than hardcoded) so a future alternative implementation -- a different
       # transport, a test double -- is a bean choice, not a code change.
       mode: ${AI_MCP_MODE:gateway}
-      # Required since mode=gateway is the default. Same gateway, same env var pic-sure-mcp itself
+      # Required when AI_ENABLED=true and mode=gateway (the default). Same gateway, same env var pic-sure-mcp itself
       # binds via picsure.mcp.gateway-url -- one gateway URL, shared across both services' deploy config.
       gateway-url: ${PICSURE_GATEWAY_URL:}
+      # Required when AI_ENABLED=true and mode=gateway (the default). Must equal the gateway's AI_SERVICE_TOKEN. Sent as X-PIC-SURE-AI-TOKEN on every
+      # /mcp call so the gateway admits the assistant's calls by ASSISTED_SEARCH and pic-sure-mcp does not demand PIC_SURE_MCP.
+      service-token: ${AI_SERVICE_TOKEN:}
       # Comma-separated gateway tool names withheld from the model (and refused if it requests them anyway). Default: the
       # adapter-code tool, which the connected UI has no use for -- its long definition is resent on every model call. Set
       # AI_MCP_EXCLUDED_TOOLS to blank to offer every tool.
@@ -73,6 +76,11 @@ picsure:
       result-ttl: ${AI_CONVERSATION_RESULT_TTL:60m}
       # Most replies kept for one caller. Bounded per caller so one caller cannot push out another's replies.
       max-results-per-owner: ${AI_CONVERSATION_MAX_RESULTS_PER_OWNER:200}
+      # Most conversations kept for one caller; starting another drops their least recently used one, and the researcher is told.
+      max-conversations-per-owner: ${AI_CONVERSATION_MAX_CONVERSATIONS_PER_OWNER:2}
+      # Most callers with stored conversations or replies. A new caller past this displaces the caller idle longest, with everything they
+      # hold, and that researcher is told their conversation was cleared. Bounds memory against callers that never repeat.
+      max-owners: ${AI_CONVERSATION_MAX_OWNERS:10000}
   # The shared X-Application-Token gate for THIS service's own /actuator/** endpoints (see
   # ActuatorSecurityConfig / the shared ActuatorSecurityHelper in pic-sure-spring-commons).
   actuator:

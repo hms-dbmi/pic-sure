@@ -1,7 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.ai.chat;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -54,15 +52,6 @@ class CallerContextTest {
         assertThat(CallerContext.from(request).accessType()).isEqualTo("open");
     }
 
-    /** A {@code picsure_s_} token with this payload; the signature is never checked by this service, so it must never be trusted. */
-    private static String sessionToken(String payloadJson) {
-        String payload = Base64.getUrlEncoder().withoutPadding().encodeToString(payloadJson.getBytes(StandardCharsets.UTF_8));
-        return "Bearer picsure_s_eyJhbGciOiJIUzI1NiJ9." + payload + ".sig";
-    }
-
-    private static final String SESSION = "8694e3d4-5cb4-410f-8431-993445e6d3f6";
-    private static final String OTHER_SESSION = "1b4e28ba-2fa1-11d2-883f-0016d3cca427";
-
     @Test
     void aLoggedInUserKeepsTheSameOwnerWhenTheirTokenIsReplaced() {
         CallerContext before = new CallerContext("Bearer jwt-1", null, "user-1", "authorized");
@@ -77,48 +66,6 @@ class CallerContextTest {
         assertThat(new CallerContext("bearer key-1", null, null).owner()).isEqualTo(new CallerContext("Bearer key-1", null, null).owner());
         assertThat(new CallerContext("Bearer Key-1", null, null).owner())
             .isNotEqualTo(new CallerContext("Bearer key-1", null, null).owner());
-    }
-
-    @Test
-    void fromReadsTheGatewayVerifiedOpenSessionId() {
-        MockHttpServletRequest request = new MockHttpServletRequest();
-        request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer picsure_s_x");
-        request.addHeader("X-Picsure-Access-Type", "open");
-        request.addHeader("X-Picsure-Open-Session-Id", SESSION);
-
-        assertThat(CallerContext.from(request).owner()).isEqualTo("session:" + SESSION);
-    }
-
-    @Test
-    void anOpenAccessSessionKeepsTheSameOwnerWhenItsTokenIsRefreshed() {
-        String first = sessionToken("{\"sub\":\"" + SESSION + "\",\"iat\":1}");
-        String refreshed = sessionToken("{\"sub\":\"" + SESSION + "\",\"iat\":500}");
-
-        // Every open-access caller has the same X-User-Id, so it must not be what tells them apart.
-        CallerContext caller = new CallerContext(first, null, "OPEN_ACCESS:localhost", "open", SESSION);
-
-        assertThat(caller.owner()).isEqualTo("session:" + SESSION)
-            .isEqualTo(new CallerContext(refreshed, null, "OPEN_ACCESS:localhost", "open", SESSION).owner());
-        assertThat(new CallerContext(first, null, "OPEN_ACCESS:localhost", "open", OTHER_SESSION).owner()).isNotEqualTo(caller.owner());
-    }
-
-    @Test
-    void aForgedTokenSubjectNeverSelectsAnotherSessionsOwner() {
-        String forged = sessionToken("{\"sub\":\"" + SESSION + "\"}");
-
-        // PSAMA granted an unverifiable key as anonymous, so the gateway sent open access but no verified session id.
-        CallerContext attacker = new CallerContext(forged, null, "OPEN_ACCESS:localhost", "open", null);
-
-        assertThat(attacker.owner()).startsWith("token:").isNotEqualTo("session:" + SESSION);
-        assertThat(new CallerContext(forged, null, "OPEN_ACCESS:localhost", "open", " ").owner()).startsWith("token:");
-    }
-
-    @Test
-    void aSessionIdIsTrustedOnlyWhenTheGatewayGrantedOpenAccess() {
-        String token = sessionToken("{\"sub\":\"" + SESSION + "\"}");
-
-        assertThat(new CallerContext(token, null, null, null, SESSION).owner()).startsWith("token:");
-        assertThat(new CallerContext(token, null, "user-1", "authorized", SESSION).owner()).isEqualTo("user:user-1");
     }
 
     @Test

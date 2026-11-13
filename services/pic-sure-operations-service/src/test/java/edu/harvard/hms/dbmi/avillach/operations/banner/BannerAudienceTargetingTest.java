@@ -73,9 +73,7 @@ class BannerAudienceTargetingTest {
 
     @BeforeEach
     void seedPriorityAllocator() {
-        allocatorRepository.saveAndFlush(
-            new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1)
-        );
+        allocatorRepository.saveAndFlush(new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1));
     }
 
     @ParameterizedTest

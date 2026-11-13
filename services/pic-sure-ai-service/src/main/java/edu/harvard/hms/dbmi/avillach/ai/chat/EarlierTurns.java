@@ -118,9 +118,11 @@ final class EarlierTurns {
             for (ToolOutput output : turn.toolResults()) {
                 state.conceptPaths.learnFrom(output.content());
                 if (ToolUseLoopService.SEARCH_CONCEPTS.equals(output.toolName())) {
-                    state.searches.learnUnmatchedTerms(
-                        ToolUseLoopService.readJson(output.argumentsJson()), ToolUseLoopService.readJson(output.content())
-                    );
+                    JsonNode arguments = ToolUseLoopService.readJson(output.argumentsJson());
+                    // A miss under a facet says nothing about the search once the researcher clears it.
+                    if (FacetSelection.listedIn(arguments).isEmpty()) {
+                        state.searches.learnUnmatchedTerms(arguments, ToolUseLoopService.readJson(output.content()));
+                    }
                 }
                 if (ToolUseLoopService.LIST_FACETS.equals(output.toolName())) {
                     state.knownFacets.learnFromListFacets(output.content());
