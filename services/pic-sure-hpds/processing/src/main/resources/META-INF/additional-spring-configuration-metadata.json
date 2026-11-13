@@ -87,7 +87,7 @@
     {
       "name": "dictionary.url",
       "type": "java.lang.String",
-      "description": "Base URL of the dictionary service root, such as http://dictionary-api. DictionaryService posts to /concepts/detail under it to fetch the concept details a PFB export writes to its data dictionary table. Blank (the default) means no dictionary is reachable, and every PFB export ends in ERROR.",
+      "description": "Base URL of the dictionary service root, such as http://dictionary-api. DictionaryService posts to /internal/concepts/export-metadata under it to fetch the concept details a PFB export writes to its data dictionary table. The gateway does not serve that path, so the URL must reach the dictionary service directly. Blank (the default) means no dictionary is reachable, and every PFB export ends in ERROR.",
       "defaultValue": ""
     },
     {
@@ -106,6 +106,12 @@
       "type": "java.lang.Boolean",
       "description": "Controls whether QueryValidator requires every v3 query to carry at least one authorization filter. True (the default) rejects a query with no authorization filter; set to false only when patient data access is controlled some other way.",
       "defaultValue": true
+    },
+    {
+      "name": "picsure.internal.token",
+      "type": "java.lang.String",
+      "description": "Shared secret DictionaryService sends on the X-PIC-SURE-INTERNAL-TOKEN header of every dictionary call, which the dictionary service checks on its /internal/** endpoints. Maps from the PICSURE_INTERNAL_TOKEN environment variable and must equal the dictionary service's own picsure.internal.token. Blank (the default) means no dictionary call is made, and every PFB export ends in ERROR.",
+      "defaultValue": ""
     },
     {
       "name": "variant.info_column_order",
