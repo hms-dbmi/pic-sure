@@ -28,6 +28,7 @@ import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 
 /**
  * Boots a real (H2) JPA context so save/get/update/dispatch are proven against an actual repository, not a mock.
@@ -751,6 +752,39 @@ class QueryPersistenceServiceTest {
         assertThat(row.isSample()).isFalse();
         assertThat(row.getResultType()).isNull();
         assertThat(generalQueryRepo.count()).isZero();
+    }
+
+    @Test
+    void everyResultTypeNameIsAcceptedOnAnOwnedAndAnOwnerlessSave() {
+        UUID owner = UUID.randomUUID();
+        UUID general = UUID.randomUUID();
+        for (ResultType resultType : ResultType.values()) {
+            UUID ownedRow = UUID.randomUUID();
+            service.save(variant(ownedRow, owner, general, false, resultType.name()));
+            UUID ownerlessRow = service
+                .save(new SaveQueryRequest("{\"q\":1}", "rr", "QUEUED", "3", null, null, null, null, null, null, false, resultType.name()));
+            entityManager.flush();
+            entityManager.clear();
+
+            assertThat(repo.findById(ownedRow).orElseThrow().getResultType()).isEqualTo(resultType.name());
+            assertThat(repo.findById(ownerlessRow).orElseThrow().getResultType()).isEqualTo(resultType.name());
+        }
+        assertThat(repo.count()).isEqualTo(2L * ResultType.values().length);
+        assertThat(generalQueryRepo.count()).isEqualTo(1);
+    }
+
+    @Test
+    void ownedSaveWithoutAResultTypeIsStoredWithNone() {
+        UUID picsureId = UUID.randomUUID();
+
+        service.save(variant(picsureId, UUID.randomUUID(), UUID.randomUUID(), true, null));
+        entityManager.flush();
+        entityManager.clear();
+
+        Query row = repo.findById(picsureId).orElseThrow();
+        assertThat(row.getResultType()).isNull();
+        assertThat(row.isSample()).isTrue();
+        assertThat(row.getQueryToVariantUuid()).isNotNull();
     }
 
     private static SaveQueryRequest owned(UUID picsureId, UUID owner, Map<String, List<String>> consents, String trigger) {

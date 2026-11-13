@@ -34,6 +34,7 @@ import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.operations.error.PicsureExceptions;
 
 /**
@@ -132,6 +133,10 @@ public class QueryPersistenceService {
      * {@code queryToVariantUuid}, or fully owned, with all five. An empty consent map counts as present. Any other mix is refused before
      * anything is read or written, so a row without an owner is never filed under a general query and a new row with an owner always is.
      *
+     * <p>A result type is either absent or the name of a {@link ResultType} constant, in the constant's own case. Any other value is
+     * refused before anything is read or written, whether or not the request has an owner and whether or not the row is already stored,
+     * because no later save rewrites the result type of a row.
+     *
      * <p>The save that inserts an owned row also inserts its general query when no row has that id yet, in the transaction of the row
      * insert, so neither is kept when the other fails. A general query that is stored under a different owner than the request names
      * refuses the save, and nothing is stored. A later save of the row neither reads nor writes the general query.
@@ -152,13 +157,14 @@ public class QueryPersistenceService {
      * @param picsureId the row id to store under, or null to have a random one assigned
      * @param req the query body, status, version, metadata, owner, consents, trigger, general query and variant to store
      * @return the id the row is stored under
-     * @throws PicsureException 400 when the request is neither legacy-shaped nor fully owned, when the status or trigger is not a known
-     *         name, or when the metadata is not base64; 409 when the row or its general query is stored under a different owner
+     * @throws PicsureException 400 when the request is neither legacy-shaped nor fully owned, when the status, trigger or result type is
+     *         not a known name, or when the metadata is not base64; 409 when the row or its general query is stored under a different owner
      * @throws DataIntegrityViolationException when the general query already holds a row of the same sample flag and result type under
      *         another id
      */
     public UUID save(UUID picsureId, SaveQueryRequest req) {
         requireLegacyOrFullyOwned(req);
+        requireKnownResultType(req.resultType());
         if (picsureId == null) {
             return insertUnderARandomId(req);
         }
@@ -301,6 +307,23 @@ public class QueryPersistenceService {
         if (ownedMembers != 0 && ownedMembers != OWNED_SAVE_MEMBERS) {
             throw PicsureExceptions
                 .badRequest("picsureId, userUuid, consents, trigger and queryToVariantUuid must be sent together or not at all");
+        }
+    }
+
+    /**
+     * Refuses a result type that is not the name of a {@link ResultType} constant. No result type at all is allowed.
+     *
+     * @param resultType the result type the request carries, or null
+     * @throws PicsureException 400 when the value is not null and no constant has that exact name
+     */
+    private static void requireKnownResultType(String resultType) {
+        if (resultType == null) {
+            return;
+        }
+        try {
+            ResultType.valueOf(resultType);
+        } catch (IllegalArgumentException e) {
+            throw new PicsureException(HttpStatus.BAD_REQUEST, "invalid_result_type", "Unknown result type: " + resultType);
         }
     }
 

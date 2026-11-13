@@ -263,6 +263,7 @@ class QueryPersistenceMySqlTest {
             picsureId, requests, outcomes, service.get(picsureId), runRepository.findByQueryUuidOrderBySubmittedAtAsc(picsureId)
         );
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_to_variant", Integer.class)).isEqualTo(1);
     }
 
     @Test

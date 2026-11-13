@@ -2,7 +2,9 @@ package edu.harvard.hms.dbmi.avillach.operations.query;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
+import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -23,6 +25,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase.Replace;
@@ -53,6 +56,8 @@ class QueryPersistenceCommittedTest {
     private static final Map<String, List<String>> TWO_STUDIES = Map.of(CONSENTS, List.of("phs1.c1", "phs2.c1"));
     private static final Map<String, List<String>> ONE_STUDY = Map.of(CONSENTS, List.of("phs1.c1"));
     private static final int RESAVE_ROUNDS = 10;
+    private static final String LONGER_THAN_THE_RESULT_TYPE_COLUMN =
+        "DATAFRAME_DATAFRAME_DATAFRAME_DATAFRAME_DATAFRAME_DATAFRAME_DATAFRAME";
 
     @Autowired
     private QueryPersistenceService service;
@@ -276,6 +281,80 @@ class QueryPersistenceCommittedTest {
         );
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"NOT_A_RESULT_TYPE", "dataframe", "Dataframe", "DATAFRAME ", "", LONGER_THAN_THE_RESULT_TYPE_COLUMN})
+    void ownedSaveWithAnUnknownResultTypeIsRefusedAndStoresNothing(String resultType) {
+        UUID picsureId = UUID.randomUUID();
+        SaveQueryRequest unknownType = new SaveQueryRequest(
+            "{\"q\":1}", picsureId.toString(), "QUEUED", "3", null, picsureId, UUID.randomUUID(), ONE_STUDY, "FIRST_SUBMIT",
+            UUID.randomUUID(), false, resultType
+        );
+
+        assertRefused(() -> service.save(unknownType), 400, "invalid_result_type", "Unknown result type: " + resultType);
+
+        assertThat(repo.count()).isZero();
+        assertThat(runRepo.count()).isZero();
+        assertThat(generalQueryRepo.count()).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"NOT_A_RESULT_TYPE", "dataframe"})
+    void ownerlessSaveWithAnUnknownResultTypeIsRefusedAndStoresNothing(String resultType) {
+        SaveQueryRequest unknownType =
+            new SaveQueryRequest("{\"q\":1}", "rr", "QUEUED", "3", null, null, null, null, null, null, false, resultType);
+
+        assertRefused(() -> service.save(unknownType), 400, "invalid_result_type", "Unknown result type: " + resultType);
+        assertRefused(() -> service.save(UUID.randomUUID(), unknownType), 400, "invalid_result_type", "Unknown result type: " + resultType);
+
+        assertThat(repo.count()).isZero();
+        assertThat(runRepo.count()).isZero();
+        assertThat(generalQueryRepo.count()).isZero();
+    }
+
+    @Test
+    void resaveWithAnUnknownResultTypeIsRefusedAndChangesNothing() {
+        UUID picsureId = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        UUID general = UUID.randomUUID();
+        service.save(variant(picsureId, owner, general, true, "DATAFRAME"));
+        StoredQuery before = service.get(picsureId);
+
+        assertRefused(
+            () -> service.save(variant(picsureId, owner, general, true, "dataframe")), 400, "invalid_result_type",
+            "Unknown result type: dataframe"
+        );
+
+        assertThat(service.get(picsureId)).isEqualTo(before);
+        assertThat(repo.findById(picsureId).orElseThrow().getResultType()).isEqualTo("DATAFRAME");
+        assertThat(runsOf(picsureId)).hasSize(1);
+    }
+
+    @Test
+    void secondRowOfOneVariantUnderAnotherIdFailsOnTheVariantKeyAndStoresNothing() {
+        UUID owner = UUID.randomUUID();
+        UUID general = UUID.randomUUID();
+        UUID storedRow = UUID.randomUUID();
+        UUID secondRow = UUID.randomUUID();
+        service.save(variant(storedRow, owner, general, true, "DATAFRAME"));
+        StoredQuery before = service.get(storedRow);
+
+        Throwable failure = catchThrowable(() -> service.save(variant(secondRow, owner, general, true, "DATAFRAME")));
+
+        assertThat(failure).isInstanceOf(DataIntegrityViolationException.class);
+        assertThat(failure).rootCause()
+            .isInstanceOfSatisfying(SQLException.class, refusal -> assertThat(refusal.getSQLState()).isEqualTo("23505"));
+        assertThat(repo.findById(secondRow)).isEmpty();
+        assertThat(repo.count()).isEqualTo(1);
+        assertThat(runsOf(secondRow)).isEmpty();
+        assertThat(service.get(storedRow)).isEqualTo(before);
+        assertThat(runsOf(storedRow)).hasSize(1);
+        Query row = repo.findById(storedRow).orElseThrow();
+        assertThat(row.getQueryToVariantUuid()).isEqualTo(general);
+        assertThat(row.isSample()).isTrue();
+        assertThat(row.getResultType()).isEqualTo("DATAFRAME");
+        assertThat(generalQueryRepo.count()).isEqualTo(1);
+    }
+
     @Test
     void fullyOwnedSaveWithAnEmptyConsentMapIsStored() {
         UUID picsureId = UUID.randomUUID();
@@ -372,6 +451,12 @@ class QueryPersistenceCommittedTest {
     private static SaveQueryRequest owned(UUID picsureId, UUID owner, Map<String, List<String>> consents, String trigger) {
         return new SaveQueryRequest(
             "{\"q\":1}", picsureId.toString(), "QUEUED", "3", null, picsureId, owner, consents, trigger, UUID.randomUUID(), false, "COUNT"
+        );
+    }
+
+    private static SaveQueryRequest variant(UUID picsureId, UUID owner, UUID general, boolean sample, String resultType) {
+        return new SaveQueryRequest(
+            "{\"q\":1}", picsureId.toString(), "QUEUED", "3", null, picsureId, owner, ONE_STUDY, "FIRST_SUBMIT", general, sample, resultType
         );
     }
 

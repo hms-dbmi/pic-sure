@@ -16,14 +16,19 @@ import org.springframework.transaction.PlatformTransactionManager;
 import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
 
 /**
- * Runs two first saves so that both look their row up before either inserts it. The lookups go through a repository that holds the first
- * two row lookups at a barrier until both threads have made theirs, which is the interleaving two simultaneous submits of a new query
- * produce. Later lookups pass straight through. The two saves store under one id, or each under the id its request carries.
+ * Runs two first saves so that both look their row up before either inserts it, and both reach the insert of their general query before
+ * either makes it. The lookups go through a repository that holds the first two row lookups at a barrier until both threads have made
+ * theirs, which is the interleaving two simultaneous submits of a new query produce. The general queries go through a repository that holds
+ * the first two {@code insertIfAbsent} calls at a second barrier, before the statement runs, until both threads have arrived. Neither
+ * thread has then written a general query, so a save that looked for the general query first and inserted it afterward would have found
+ * none in both threads. Later calls pass straight through. Both requests must name a general query, or the second barrier is never
+ * released. The two saves store under one id, or each under the id its request carries.
  */
 final class RacingFirstSaves {
 
     private static final int RACERS = 2;
     private static final Set<String> ROW_LOOKUPS = Set.of("findById", "findLockedByUuid");
+    private static final String GENERAL_QUERY_INSERT = "insertIfAbsent";
 
     private RacingFirstSaves() {}
 
@@ -110,7 +115,16 @@ final class RacingFirstSaves {
             }
             return result;
         });
-        QueryPersistenceService service = new QueryPersistenceService(heldAtLookup, runs, generalQueries, transactionManager);
+        CyclicBarrier bothReachedTheGeneralQueryInsert = new CyclicBarrier(RACERS);
+        AtomicInteger generalQueryInserts = new AtomicInteger();
+        QueryToVariantRepository heldBeforeTheInsert =
+            InterceptedRepository.of(QueryToVariantRepository.class, generalQueries, (methodName, call) -> {
+                if (GENERAL_QUERY_INSERT.equals(methodName) && generalQueryInserts.incrementAndGet() <= RACERS) {
+                    bothReachedTheGeneralQueryInsert.await(20, TimeUnit.SECONDS);
+                }
+                return call.proceed();
+            });
+        QueryPersistenceService service = new QueryPersistenceService(heldAtLookup, runs, heldBeforeTheInsert, transactionManager);
 
         try (var executor = Executors.newFixedThreadPool(RACERS)) {
             Future<SaveOutcome> firstSave = executor.submit(() -> SaveOutcome.of(() -> first.apply(service)));

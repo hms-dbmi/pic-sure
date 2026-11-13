@@ -48,8 +48,9 @@ public class InternalQueryController {
      * {@code picsureId} already stored updates that row and answers the same way.
      *
      * <p>A request that carries some but not all of {@code picsureId}, {@code userUuid}, {@code consents}, {@code trigger} and
-     * {@code queryToVariantUuid} is answered with 400, and one whose {@code picsureId} or {@code queryToVariantUuid} is stored under a
-     * different owner with 409. Neither stores anything.
+     * {@code queryToVariantUuid} is answered with 400, and so is one whose {@code resultType} is not the name of a {@code ResultType}
+     * constant. One whose {@code picsureId} or {@code queryToVariantUuid} is stored under a different owner is answered with 409. None of
+     * the three stores anything.
      *
      * <p>A request with all five that inserts a row files it under the general query {@code queryToVariantUuid} names, creating that
      * general query when it is not stored yet, and writes {@code sample} and {@code resultType} onto the row. A request for a row that is
