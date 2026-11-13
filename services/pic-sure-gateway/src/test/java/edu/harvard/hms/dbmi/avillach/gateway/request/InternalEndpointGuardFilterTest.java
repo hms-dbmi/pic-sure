@@ -13,8 +13,9 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import jakarta.servlet.FilterChain;
 
 /**
- * {@link InternalEndpointGuardFilter} runs before routing/auth: {@code /operations/internal/**} and {@code /internal/**} are
- * service-to-service only and must never be reachable through the public gateway, even with a stolen internal token.
+ * {@link InternalEndpointGuardFilter} runs before routing/auth: {@code /operations/internal/**}, {@code /dictionary/internal/**} and
+ * {@code /internal/**} are service-to-service only and must never be reachable through the public gateway, even with a stolen internal
+ * token.
  */
 class InternalEndpointGuardFilterTest {
 
@@ -51,6 +52,35 @@ class InternalEndpointGuardFilterTest {
             assertThat(response.getStatus()).as(path).isEqualTo(404);
             assertThat(response.getContentAsString()).as(path).contains("\"errorType\":\"not_found\"");
             verify(chain, never()).doFilter(any(), any());
+        }
+    }
+
+    @Test
+    void rejectsDictionaryInternalPathsAtAnyDepth() throws Exception {
+        for (
+            String path : new String[] {"/dictionary/internal", "/dictionary/internal/", "/dictionary/internal/concepts/export-metadata",
+                "/dictionary/internal/a/b/c"}
+        ) {
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            FilterChain chain = mock(FilterChain.class);
+            filter.doFilter(new MockHttpServletRequest("POST", path), response, chain);
+            assertThat(response.getStatus()).as(path).isEqualTo(404);
+            assertThat(response.getContentAsString()).as(path).contains("\"errorType\":\"not_found\"");
+            verify(chain, never()).doFilter(any(), any());
+        }
+    }
+
+    @Test
+    void passesPublicDictionaryPathsThrough() throws Exception {
+        for (
+            String path : new String[] {"/dictionary/internalized", "/dictionary/concepts/detail", "/dictionary/concepts/internal",
+                "/dictionary"}
+        ) {
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            FilterChain chain = mock(FilterChain.class);
+            filter.doFilter(new MockHttpServletRequest("POST", path), response, chain);
+            verify(chain).doFilter(any(), any());
+            assertThat(response.getStatus()).as(path).isEqualTo(200);
         }
     }
 

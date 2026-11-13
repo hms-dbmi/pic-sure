@@ -113,7 +113,7 @@ public class ConceptController {
     private static final String DETAILS_DESCRIPTION = """
         Looks up several concepts at once by path, without naming their datasets. Each result has the concept's names, \
         `description`, `dataset` and `meta`, but not its `values`, `min` or `max`; call `POST /concepts/detail/{dataset}` for \
-        those. HPDS calls this to write the data dictionary into a PFB export.
+        those.
 
         **Body**: a JSON array of concept paths, with each backslash escaped as `\\\\` the way JSON requires. A path that \
         matches no concept is left out, so the response can be shorter than the request.

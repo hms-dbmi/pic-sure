@@ -2,34 +2,45 @@ package edu.harvard.dbmi.avillach.dictionary.concept;
 
 import edu.harvard.dbmi.avillach.dictionary.concept.model.CategoricalConcept;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
+import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptExportMetadata;
+import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptExportRequest;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptShell;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.ContinuousConcept;
 import edu.harvard.dbmi.avillach.dictionary.dataset.Dataset;
 import edu.harvard.dbmi.avillach.dictionary.dataset.DatasetService;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 public class ConceptService {
 
+    /** Largest number of concept paths one export metadata request may carry. */
+    public static final int MAX_EXPORT_CONCEPT_PATHS = 5000;
+
     private final ConceptRepository conceptRepository;
     private final DatasetService datasetService;
     private final ConceptDecoratorService conceptDecoratorService;
+    private final Set<String> internalExportKeys;
 
     @Autowired
     public ConceptService(
-        ConceptRepository conceptRepository, DatasetService datasetService, ConceptDecoratorService conceptDecoratorService
+        ConceptRepository conceptRepository, DatasetService datasetService, ConceptDecoratorService conceptDecoratorService,
+        @Value("${metadata.internal_export_keys:drs_uri}") Set<String> internalExportKeys
     ) {
         this.conceptRepository = conceptRepository;
         this.datasetService = datasetService;
         this.conceptDecoratorService = conceptDecoratorService;
+        this.internalExportKeys = Set.copyOf(internalExportKeys);
     }
 
     @Cacheable("concepts")
@@ -88,5 +99,36 @@ public class ConceptService {
 
     public List<Concept> conceptsWithDetail(List<String> conceptPaths) {
         return this.conceptRepository.getConceptsByPathWithMetadata(conceptPaths);
+    }
+
+    /**
+     * Looks up what an export writes about each requested concept, with metadata keys as stored and without the no-show list applied.
+     *
+     * @param request the concept paths and the raw metadata keys to return
+     * @return one row per concept found, empty when no paths were requested; a path that matches no concept is left out
+     * @throws InvalidConceptExportRequestException if either list is null or holds a null, there are more than
+     *         {@value #MAX_EXPORT_CONCEPT_PATHS} paths, or a metadata key is not in {@code metadata.internal_export_keys}
+     */
+    public List<ConceptExportMetadata> exportMetadata(ConceptExportRequest request) {
+        List<String> conceptPaths = request.conceptPaths();
+        List<String> metaKeys = request.metaKeys();
+        if (conceptPaths == null || metaKeys == null) {
+            throw new InvalidConceptExportRequestException("conceptPaths and metaKeys are both required");
+        }
+        if (conceptPaths.size() > MAX_EXPORT_CONCEPT_PATHS) {
+            throw new InvalidConceptExportRequestException(
+                "At most " + MAX_EXPORT_CONCEPT_PATHS + " concept paths are allowed in one request but there were " + conceptPaths.size()
+            );
+        }
+        if (conceptPaths.stream().anyMatch(Objects::isNull)) {
+            throw new InvalidConceptExportRequestException("conceptPaths must not hold a null");
+        }
+        if (metaKeys.stream().anyMatch(key -> key == null || !internalExportKeys.contains(key))) {
+            throw new InvalidConceptExportRequestException("metaKeys holds a key that is not allowed for export");
+        }
+        if (conceptPaths.isEmpty()) {
+            return List.of();
+        }
+        return conceptRepository.getExportMetadata(conceptPaths, metaKeys);
     }
 }

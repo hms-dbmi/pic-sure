@@ -3,6 +3,8 @@ package edu.harvard.dbmi.avillach.dictionary;
 import static org.junit.jupiter.api.Assertions.*;
 
 import edu.harvard.dbmi.avillach.dictionary.concept.ConceptController;
+import edu.harvard.dbmi.avillach.dictionary.concept.InternalConceptController;
+import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptExportRequest;
 import edu.harvard.dbmi.avillach.dictionary.dashboard.DashboardController;
 import edu.harvard.dbmi.avillach.dictionary.dashboarddrawer.DashboardDrawerController;
 import edu.harvard.dbmi.avillach.dictionary.facet.FacetController;
@@ -36,6 +38,13 @@ class ControllerAuditEventTest {
         assertAuditEvent(c, "conceptTree", new Class[] {String.class, String.class, Integer.class}, "SEARCH", "concept.tree");
         assertAuditEvent(c, "conceptHierarchy", new Class[] {String.class, String.class}, "SEARCH", "concept.hierarchy");
         assertAuditEvent(c, "allConceptTrees", new Class[] {Integer.class}, "SEARCH", "concept.tree");
+    }
+
+    @Test
+    void internalConceptController() throws Exception {
+        assertAuditEvent(
+            InternalConceptController.class, "exportMetadata", new Class[] {ConceptExportRequest.class}, "SEARCH", "concept.export_metadata"
+        );
     }
 
     @Test
