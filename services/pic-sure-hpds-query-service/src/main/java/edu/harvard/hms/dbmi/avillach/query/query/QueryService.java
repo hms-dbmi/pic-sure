@@ -43,6 +43,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.StoredQueryConsentStripper;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.QueryTranslator;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.QueryIdentity;
 import edu.harvard.hms.dbmi.avillach.query.consent.ConsentAuthorizationService;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;

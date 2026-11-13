@@ -1,4 +1,4 @@
-package edu.harvard.hms.dbmi.avillach.query.query;
+package edu.harvard.hms.dbmi.avillach.hpds.data.query.v3;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;

@@ -53,6 +53,7 @@ import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.AuthorizationFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.QueryIdentity;
 import edu.harvard.hms.dbmi.avillach.query.consent.ConsentAuthorizationService;
 import edu.harvard.hms.dbmi.avillach.query.consent.ConsentFilterBuilder;
 import edu.harvard.hms.dbmi.avillach.query.consent.PsamaConsentClient;
