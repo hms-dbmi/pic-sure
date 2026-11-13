@@ -10,6 +10,8 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
 import java.util.Comparator;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -373,6 +375,54 @@ class NamedDatasetMySqlTest {
         assertThat(output.getAll()).doesNotContain("Could not bring dataset");
     }
 
+    /**
+     * Two datasets of one user whose stored queries are the same query derive the same owned row, and the table allows a user one dataset
+     * on a query row. The first is brought over. The second is left on its old row, by the check the step makes before it writes, so the
+     * database is never asked for the second re-point and refuses nothing.
+     */
+    @Test
+    @Timeout(120)
+    @ExtendWith(OutputCaptureExtension.class)
+    void twoDatasetsOfOneUserOnTheSameStoredQueryBringOneOverAndLeaveTheOther(CapturedOutput output) {
+        String sameQuery = "{\"query\":{\"select\":[\"\\\\demographics\\\\AGE\\\\\"],\"authorizationFilters\":[{\"conceptPath\":"
+            + "\"\\\\_consents\\\\\",\"values\":[\"phs001.c1\"]}],\"phenotypicClause\":null,\"expectedResultType\":\"DATAFRAME\"}}";
+        Query one = stored(QueryFixtures.withRandomId().setQuery(sameQuery).setVersion("3"));
+        Query other = stored(QueryFixtures.withRandomId().setQuery(sameQuery).setVersion("3"));
+        UUID datasetOnOne = datasetOfAliceStoredBeforeGeneralQueries(one, "cohort");
+        UUID datasetOnOther = datasetOfAliceStoredBeforeGeneralQueries(other, "the same cohort");
+        DatasetBringOver turnedOn =
+            new DatasetBringOver(datasetRepository, queryPersistence, transactionManager, new DatasetBringOverProperties(true));
+        NamedDatasetService reading =
+            new NamedDatasetService(datasetRepository, queryRepository, new NamedDatasetMapper(), turnedOn, transactionManager);
+
+        List<NamedDatasetDto> listed = reading.listForUser(ALICE);
+
+        UUID owned =
+            jdbc.queryForObject("SELECT uuid FROM query WHERE user_uuid = ?", (row, index) -> uuid(row.getBytes(1)), bytes(ALICE_ID));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query", Integer.class)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query WHERE user_uuid IS NOT NULL", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_to_variant", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_run", Integer.class)).isZero();
+        assertThat(listed).extracting(NamedDatasetDto::uuid).containsExactlyInAnyOrder(datasetOnOne, datasetOnOther);
+        assertThat(listed).filteredOn(answer -> answer.query().uuid().equals(owned)).singleElement()
+            .satisfies(broughtOver -> assertThat(broughtOver.queries()).containsExactly(new LinkedQueryDto(owned, false, "DATAFRAME")));
+        assertThat(listed).filteredOn(answer -> !answer.query().uuid().equals(owned)).singleElement().satisfies(left -> {
+            UUID oldRow = left.uuid().equals(datasetOnOne) ? one.getUuid() : other.getUuid();
+            assertThat(left.query().uuid()).isEqualTo(oldRow);
+            assertThat(left.queries()).isEmpty();
+            assertThat(queryIdAndGeneralQueryOf(left.uuid())).containsEntry("queryId", bytes(oldRow))
+                .containsEntry("query_to_variant_uuid", null);
+        });
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM named_dataset WHERE queryId = ?", Integer.class, bytes(owned))).isEqualTo(1);
+        Map<String, List<Map<String, Object>>> afterTheFirst = everyRow();
+
+        assertThat(reading.listForUser(ALICE)).isEqualTo(listed);
+
+        assertThat(everyRow()).isEqualTo(afterTheFirst);
+        assertThat(output.getAll().split("Brought dataset ", -1)).hasSize(2);
+        assertThat(output.getAll()).doesNotContain("Could not bring dataset").doesNotContain("Duplicate entry").doesNotContain(ALICE_EMAIL);
+    }
+
     private Map<String, Object> nameArchivedFlagAndMetadataOf(UUID dataset) {
         return jdbc
             .queryForMap("SELECT name, CAST(archived AS UNSIGNED) AS archived, metadata FROM named_dataset WHERE uuid = ?", bytes(dataset));
@@ -395,6 +445,32 @@ class NamedDatasetMySqlTest {
         return query;
     }
 
+    /** Stores a dataset of Alice on a query row the way a release without general queries stored one: with no general query. */
+    private UUID datasetOfAliceStoredBeforeGeneralQueries(Query row, String name) {
+        UUID dataset = UUID.randomUUID();
+        jdbc.update(
+            "INSERT INTO named_dataset (uuid, queryId, user, name, archived, metadata) VALUES (?, ?, ?, ?, 0, NULL)", bytes(dataset),
+            bytes(row.getUuid()), ALICE_EMAIL, name
+        );
+        return dataset;
+    }
+
+    /** Reads every row of the four tables a dataset read can write, binary values as hex text, so that two states can be compared. */
+    private Map<String, List<Map<String, Object>>> everyRow() {
+        Map<String, List<Map<String, Object>>> rows = new LinkedHashMap<>();
+        for (String table : List.of("named_dataset", "query", "query_to_variant", "query_run")) {
+            String orderedById = "query_run".equals(table) ? "run_id" : "uuid";
+            rows.put(table, jdbc.queryForList("SELECT * FROM " + table + " ORDER BY " + orderedById).stream().map(row -> {
+                Map<String, Object> comparable = new LinkedHashMap<>();
+                row.forEach(
+                    (column, value) -> comparable.put(column, value instanceof byte[] binary ? HexFormat.of().formatHex(binary) : value)
+                );
+                return comparable;
+            }).toList());
+        }
+        return rows;
+    }
+
     private static int versionOf(Path file) {
         Matcher matcher = MIGRATION_FILE.matcher(file.getFileName().toString());
         return matcher.matches() ? Integer.parseInt(matcher.group(1)) : -1;
@@ -402,5 +478,10 @@ class NamedDatasetMySqlTest {
 
     private static byte[] bytes(UUID uuid) {
         return ByteBuffer.allocate(16).putLong(uuid.getMostSignificantBits()).putLong(uuid.getLeastSignificantBits()).array();
+    }
+
+    private static UUID uuid(byte[] bytes) {
+        ByteBuffer buffer = ByteBuffer.wrap(bytes);
+        return new UUID(buffer.getLong(), buffer.getLong());
     }
 }
