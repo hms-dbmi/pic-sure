@@ -43,12 +43,6 @@
       "defaultValue": "NONE"
     },
     {
-      "name": "TARGET_STACK",
-      "type": "java.lang.String",
-      "description": "Deployment stack identifier that DictionaryService substitutes into the ___TARGET_STACK___ placeholder inside dictionary.host to build the dictionary API base URL. Blank or unset (the default) leaves the placeholder in the host string unreplaced.",
-      "defaultValue": ""
-    },
-    {
       "name": "VCF_EXCERPT_ENABLED",
       "type": "java.lang.Boolean",
       "description": "Enables VCF excerpt queries that return patient-level variant data in VariantListProcessor and VariantListV3Processor VARIANT_LIST results. Enabling it also implicitly enables AGGREGATE_VCF_EXCERPT_ENABLED, since full excerpt access implies aggregate access.",
@@ -73,9 +67,28 @@
       "defaultValue": 60
     },
     {
-      "name": "dictionary.host",
+      "name": "dictionary.batch-size",
+      "type": "java.lang.Integer",
+      "description": "Largest number of concept paths DictionaryService sends to the dictionary service in one request. An export with more paths makes one request per batch. Must be at least 1.",
+      "defaultValue": 1000
+    },
+    {
+      "name": "dictionary.connect-timeout-ms",
+      "type": "java.lang.Integer",
+      "description": "Milliseconds DictionaryService waits to open a connection to the dictionary service before the call, and the export that made it, fails.",
+      "defaultValue": 5000
+    },
+    {
+      "name": "dictionary.read-timeout-ms",
+      "type": "java.lang.Integer",
+      "description": "Milliseconds DictionaryService waits for the dictionary service to answer one batch before the call, and the export that made it, fails.",
+      "defaultValue": 30000
+    },
+    {
+      "name": "dictionary.url",
       "type": "java.lang.String",
-      "description": "Base URL template of the dictionary API that DictionaryService calls to fetch concept details. May contain a ___TARGET_STACK___ placeholder that TARGET_STACK fills in. DictionaryService is only created when this property is set, via @ConditionalOnProperty."
+      "description": "Base URL of the dictionary service root, such as http://dictionary-api. DictionaryService posts to /concepts/detail under it to fetch the concept details a PFB export writes to its data dictionary table. Blank (the default) means no dictionary is reachable, and every PFB export ends in ERROR.",
+      "defaultValue": ""
     },
     {
       "name": "hpds.genomicProcessor.remoteHosts",

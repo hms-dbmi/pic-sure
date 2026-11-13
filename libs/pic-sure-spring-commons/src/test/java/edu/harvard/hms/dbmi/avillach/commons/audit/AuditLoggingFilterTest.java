@@ -192,10 +192,10 @@ class AuditLoggingFilterTest {
     }
 
     @Test
-    void withVerifiedCallerOnlyOffTheRawXClientTypeHeaderIsStillTheCaller() throws Exception {
+    void withNoClientTypeAllowlistTheRawXClientTypeHeaderIsStillTheCaller() throws Exception {
         LoggingClient client = mock(LoggingClient.class);
         when(client.isEnabled()).thenReturn(true);
-        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of(), false);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of(), null);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
         request.addHeader("X-Client-Type", "mcp");
@@ -211,10 +211,10 @@ class AuditLoggingFilterTest {
     }
 
     @Test
-    void withVerifiedCallerOnlyOnAndNoVerifiedCallerTheHeaderIsOnlyRecordedAsAClaim() throws Exception {
+    void withClientTypeAllowlistOnAndNoVerifiedCallerAClaimedMcpIsOnlyRecordedAsAClaim() throws Exception {
         LoggingClient client = mock(LoggingClient.class);
         when(client.isEnabled()).thenReturn(true);
-        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of(), true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of(), ClientTypeAllowlist.DEFAULT);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
         request.addHeader("X-Client-Type", "mcp");
@@ -225,15 +225,90 @@ class AuditLoggingFilterTest {
 
         ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
         verify(client, times(1)).send(eventCaptor.capture());
-        assertThat(eventCaptor.getValue().getCaller()).isNull();
+        assertThat(eventCaptor.getValue().getCaller()).isEqualTo("UNKNOWN");
         assertThat(eventCaptor.getValue().getMetadata()).containsEntry("client_type_claimed", "mcp");
     }
 
     @Test
-    void withVerifiedCallerOnlyOnACallerSetByALaterFilterIsRecorded() throws Exception {
+    void withClientTypeAllowlistOnAnUnreservedHeaderIsTheCallerAndTheClaim() throws Exception {
         LoggingClient client = mock(LoggingClient.class);
         when(client.isEnabled()).thenReturn(true);
-        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of(), true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of(), ClientTypeAllowlist.DEFAULT);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("X-Client-Type", "R_ADAPTER");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(client, times(1)).send(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getCaller()).isEqualTo("R_ADAPTER");
+        assertThat(eventCaptor.getValue().getMetadata()).containsEntry("client_type_claimed", "R_ADAPTER");
+    }
+
+    @Test
+    void withClientTypeAllowlistOnAnUnlistedHeaderIsOnlyRecordedAsAClaim() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of(), ClientTypeAllowlist.DEFAULT);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("X-Client-Type", "curl-script");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(client, times(1)).send(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getCaller()).isEqualTo("UNKNOWN");
+        assertThat(eventCaptor.getValue().getMetadata()).containsEntry("client_type_claimed", "curl-script");
+    }
+
+    @Test
+    void withClientTypeAllowlistOnAnAbsentHeaderTheCallerIsUnknown() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of(), ClientTypeAllowlist.DEFAULT);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(client, times(1)).send(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getCaller()).isEqualTo("UNKNOWN");
+        assertThat(eventCaptor.getValue().getMetadata()).isNull();
+    }
+
+    @Test
+    void withClientTypeAllowlistOnAClaimedServiceCallerIsNotRecordedAsTheCaller() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of(), ClientTypeAllowlist.DEFAULT);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("X-Client-Type", "Service");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(client, times(1)).send(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getCaller()).isEqualTo("UNKNOWN");
+        assertThat(eventCaptor.getValue().getMetadata()).containsEntry("client_type_claimed", "Service");
+    }
+
+    @Test
+    void withClientTypeAllowlistOnACallerSetByALaterFilterWinsOverTheHeader() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of(), ClientTypeAllowlist.DEFAULT);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
         request.addHeader("X-Client-Type", "PYTHON_ADAPTER");
@@ -312,7 +387,7 @@ class AuditLoggingFilterTest {
     private LoggingEvent emittedFor(String rawPath) throws Exception {
         LoggingClient client = mock(LoggingClient.class);
         when(client.isEnabled()).thenReturn(true);
-        AuditLoggingFilter filter = new AuditLoggingFilter(client, routedPaths, new AuditContext(), List.of(), true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routedPaths, new AuditContext(), List.of(), ClientTypeAllowlist.DEFAULT);
         MockHttpServletResponse response = new MockHttpServletResponse();
         response.setStatus(200);
 

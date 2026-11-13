@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary.Concept;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary.DictionaryService;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary.DictionaryUnavailableException;
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaBuilder;
 import org.apache.avro.file.CodecFactory;
@@ -37,6 +38,7 @@ public class PfbWriter implements ResultWriter {
     public static final String DATA_DICTIONARY_TABLE_PREFIX = "pic-sure-data-dictionary-";
     public static final List<String> DATA_DICTIONARY_FIELDS = List.of("concept_path", "display", "dataset", "description", "drs_uri");
     private static final Logger log = LoggerFactory.getLogger(PfbWriter.class);
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final DictionaryService dictionaryService;
 
@@ -57,6 +59,18 @@ public class PfbWriter implements ResultWriter {
      * The avro formatted concept path values. Avro only allows alphanumeric values and underscores as field names
      */
     private List<String> formattedFields;
+    /**
+     * The concept paths whose observations carry timestamps, as declared before the header is materialized
+     */
+    private Set<String> timestampedPaths = Set.of();
+    /**
+     * The timestamp field of each entry in {@link #formattedFields}, index-aligned with it, null for a field that has none
+     */
+    private List<String> timestampFields;
+    /**
+     * The field names of the patient record in schema order: every formatted field, each followed by its timestamp field if it has one
+     */
+    private List<String> patientRecordFields;
     private DataFileWriter<GenericRecord> dataFileWriter;
     /**
      * Location of the file being written to
@@ -91,8 +105,6 @@ public class PfbWriter implements ResultWriter {
         this.dictionaryService = dictionaryService;
         this.patientTableName = formatFieldName(PATIENT_TABLE_PREFIX + queryId);
         this.dataDictionaryTableName = formatFieldName(DATA_DICTIONARY_TABLE_PREFIX + queryId);
-        entityFieldAssembler = SchemaBuilder.record("entity").namespace("edu.harvard.dbmi").fields();
-
 
         Schema linksSchema = SchemaBuilder.record("Link").fields().requiredString("dst").name("multiplicity")
             .type(SchemaBuilder.enumeration("Multiplicity").symbols("ONE_TO_ONE", "ONE_TO_MANY", "MANY_TO_ONE", "MANY_TO_MANY")).noDefault()
@@ -118,17 +130,79 @@ public class PfbWriter implements ResultWriter {
         relationSchema = relationRecord.endRecord();
     }
 
+    /**
+     * Records the fields of this export. Nothing is fetched or written until the first rows arrive or the writer is closed.
+     *
+     * @param data the concept paths to export, in column order
+     */
     @Override
     public void writeHeader(String[] data) {
         originalFields = List.of(data);
         formattedFields = originalFields.stream().map(this::formatFieldName).collect(Collectors.toList());
+    }
+
+    /**
+     * Records which concept paths get a timestamp field. The field is named after the concept's formatted name plus {@code _timestamp},
+     * with a numeric suffix when that name is taken, and sits right after the concept in the patient record.
+     *
+     * @param conceptPaths the concept paths, as passed to {@link #writeHeader(String[])}, that have at least one dated observation
+     * @throws IllegalStateException if the Avro header has already been written
+     */
+    @Override
+    public void declareTimestampedFields(Set<String> conceptPaths) {
+        if (dataFileWriter != null) {
+            throw new IllegalStateException("Timestamped fields must be declared before the first rows are written");
+        }
+        timestampedPaths = Set.copyOf(conceptPaths);
+    }
+
+    /**
+     * Names the timestamp field of every declared concept and lays out the patient record fields. A name that collides with another field
+     * gets the first free numeric suffix, starting at {@code _2}.
+     */
+    private void resolveTimestampFields() {
+        Set<String> takenNames = new HashSet<>(formattedFields);
+        timestampFields = new ArrayList<>();
+        patientRecordFields = new ArrayList<>();
+        for (int i = 0; i < formattedFields.size(); i++) {
+            String field = formattedFields.get(i);
+            String timestampField = null;
+            if (timestampedPaths.contains(originalFields.get(i)) && !isSingularField(field)) {
+                timestampField = field + "_timestamp";
+                for (int suffix = 2; !takenNames.add(timestampField); suffix++) {
+                    timestampField = field + "_timestamp_" + suffix;
+                }
+            }
+            timestampFields.add(timestampField);
+            patientRecordFields.add(field);
+            if (timestampField != null) {
+                patientRecordFields.add(timestampField);
+            }
+        }
+    }
+
+    private void ensureHeaderWritten() {
+        if (dataFileWriter == null) {
+            materializeHeader();
+        }
+    }
+
+    /**
+     * Fetches the concept details, then creates the Avro file and writes the metadata and data dictionary records. The dictionary is asked
+     * first, so a failed call leaves no Avro content behind.
+     *
+     * @throws DictionaryUnavailableException if the concept details cannot be fetched
+     */
+    private void materializeHeader() {
+        Map<String, Concept> conceptMap = fetchConcepts();
+        resolveTimestampFields();
 
         dataDictionarySchema = SchemaBuilder.record(dataDictionaryTableName).fields().requiredString("concept_path").name("drs_uri")
             .type(SchemaBuilder.array().items(SchemaBuilder.nullable().stringType())).noDefault().nullableString("display", "null")
             .nullableString("dataset", "null").nullableString("description", "null").endRecord();
 
         SchemaBuilder.FieldAssembler<Schema> patientRecords = SchemaBuilder.record(patientTableName).fields();
-        formattedFields.forEach(field -> {
+        patientRecordFields.forEach(field -> {
             if (isSingularField(field)) {
                 patientRecords.nullableString(field, "null");
             } else {
@@ -140,6 +214,7 @@ public class PfbWriter implements ResultWriter {
 
         Schema objectSchema = Schema.createUnion(metadataSchema, patientDataSchema, dataDictionarySchema);
 
+        entityFieldAssembler = SchemaBuilder.record("entity").namespace("edu.harvard.dbmi").fields();
         entityFieldAssembler = entityFieldAssembler.name("object").type(objectSchema).noDefault();
         entityFieldAssembler.nullableString("id", "null");
         entityFieldAssembler.requiredString("name");
@@ -147,28 +222,44 @@ public class PfbWriter implements ResultWriter {
         entitySchema = entityFieldAssembler.endRecord();
 
         DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<GenericRecord>(entitySchema);
-        dataFileWriter = new DataFileWriter<GenericRecord>(datumWriter);
+        DataFileWriter<GenericRecord> openedWriter = new DataFileWriter<GenericRecord>(datumWriter);
         try {
             log.info("Creating temp avro file at " + file.getAbsoluteFile());
-            dataFileWriter.setCodec(CodecFactory.deflateCodec(CodecFactory.DEFAULT_DEFLATE_LEVEL));
-            dataFileWriter.create(entitySchema, file);
+            openedWriter.setCodec(CodecFactory.deflateCodec(CodecFactory.DEFAULT_DEFLATE_LEVEL));
+            openedWriter.create(entitySchema, file);
+            writeMetadata(openedWriter);
+            writeDataDictionary(conceptMap, openedWriter);
         } catch (IOException e) {
+            closeAfterFailure(openedWriter, e);
             throw new UncheckedIOException(e);
+        } catch (RuntimeException e) {
+            closeAfterFailure(openedWriter, e);
+            throw e;
         }
-
-        writeMetadata();
-        writeDataDictionary();
+        dataFileWriter = openedWriter;
     }
 
-    private void writeDataDictionary() {
-        GenericRecord entityRecord = new GenericData.Record(entitySchema);;
-        Map<String, Concept> conceptMap = Map.of();
+    private void closeAfterFailure(DataFileWriter<GenericRecord> openedWriter, Exception failure) {
         try {
-            conceptMap =
-                dictionaryService.getConcepts(originalFields).stream().collect(Collectors.toMap(Concept::conceptPath, Function.identity()));
-        } catch (RuntimeException e) {
-            log.error("Error fetching concepts from dictionary service", e);
+            openedWriter.close();
+        } catch (IOException | RuntimeException closeFailure) {
+            failure.addSuppressed(closeFailure);
         }
+    }
+
+    private Map<String, Concept> fetchConcepts() {
+        List<String> conceptPaths = new ArrayList<>();
+        for (int i = 0; i < formattedFields.size(); i++) {
+            if (!"patient_id".equals(formattedFields.get(i))) {
+                conceptPaths.add(originalFields.get(i));
+            }
+        }
+        return dictionaryService.getConcepts(conceptPaths).stream()
+            .collect(Collectors.toMap(Concept::conceptPath, Function.identity(), (first, duplicate) -> first));
+    }
+
+    private void writeDataDictionary(Map<String, Concept> conceptMap, DataFileWriter<GenericRecord> openedWriter) {
+        GenericRecord entityRecord = new GenericData.Record(entitySchema);;
 
         for (int i = 0; i < formattedFields.size(); i++) {
             String formattedField = formattedFields.get(i);
@@ -186,7 +277,7 @@ public class PfbWriter implements ResultWriter {
                     String drsUriJson = meta.get("drs_uri");
                     if (drsUriJson != null) {
                         try {
-                            String[] drsUriArray = new ObjectMapper().readValue(drsUriJson, String[].class);
+                            String[] drsUriArray = OBJECT_MAPPER.readValue(drsUriJson, String[].class);
                             drsUris = List.of(drsUriArray);
                         } catch (JsonProcessingException e) {
                             log.error("Error parsing drs_uri as json: " + drsUriJson);
@@ -199,14 +290,14 @@ public class PfbWriter implements ResultWriter {
             }
             dataDictionaryData.put("drs_uri", drsUris);
 
-            log.info("Writing " + formattedField + " to data dictonary table with drs_uris: " + drsUris);
+            log.debug("Writing {} to data dictionary table with drs_uris: {}", formattedField, drsUris);
             entityRecord.put("object", dataDictionaryData);
             entityRecord.put("name", dataDictionaryTableName);
             entityRecord.put("id", formattedField);
             entityRecord.put("relations", List.of());
 
             try {
-                dataFileWriter.append(entityRecord);
+                openedWriter.append(entityRecord);
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
@@ -229,7 +320,7 @@ public class PfbWriter implements ResultWriter {
         return formattedFieldName;
     }
 
-    private void writeMetadata() {
+    private void writeMetadata(DataFileWriter<GenericRecord> openedWriter) {
         GenericRecord entityRecord = new GenericData.Record(entitySchema);
 
         List<GenericRecord> nodeList = new ArrayList<>();
@@ -239,7 +330,7 @@ public class PfbWriter implements ResultWriter {
         nodeData.put("ontology_reference", "");
         nodeData.put("values", Map.of());
         nodeData.put("links", List.of());
-        for (String field : formattedFields) {
+        for (String field : patientRecordFields) {
             GenericRecord properties = new GenericData.Record(propertiesSchema);
             properties.put("name", field);
             properties.put("ontology_reference", "");
@@ -276,7 +367,7 @@ public class PfbWriter implements ResultWriter {
         entityRecord.put("relations", List.of());
 
         try {
-            dataFileWriter.append(entityRecord);
+            openedWriter.append(entityRecord);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -289,11 +380,34 @@ public class PfbWriter implements ResultWriter {
 
     @Override
     public void writeMultiValueEntity(Collection<List<List<String>>> entities) {
+        writePatients(entities, null);
+    }
+
+    /**
+     * Writes patient rows with the timestamps of their values.
+     *
+     * @param entities one entry per patient, each holding one list of values per field
+     * @param timestamps one entry per patient, in the same order, each holding one entry per field: for a declared field a list as long as
+     *        its values, for any other field null
+     * @throws IllegalArgumentException if the two arguments differ in length, a timestamp row does not match the number of fields, or a
+     *         declared field's timestamps and values differ in length
+     */
+    @Override
+    public void writeMultiValueEntity(Collection<List<List<String>>> entities, Collection<List<List<String>>> timestamps) {
+        if (timestamps.size() != entities.size()) {
+            throw new IllegalArgumentException("Expected one timestamp row per entity");
+        }
+        writePatients(entities, timestamps.iterator());
+    }
+
+    private void writePatients(Collection<List<List<String>>> entities, Iterator<List<List<String>>> timestampRows) {
+        ensureHeaderWritten();
         entities.forEach(entity -> {
             if (entity.size() != formattedFields.size()) {
                 throw new IllegalArgumentException("Entity length much match the number of fields in this document");
             }
             GenericRecord patientData = new GenericData.Record(patientDataSchema);
+            putTimestamps(patientData, entity, timestampRows == null ? null : timestampRows.next());
             String patientId = "";
             for (int i = 0; i < formattedFields.size(); i++) {
                 if ("patient_id".equals(formattedFields.get(i))) {
@@ -323,8 +437,38 @@ public class PfbWriter implements ResultWriter {
         });
     }
 
+    /**
+     * Puts the timestamp array of every declared field into a patient record.
+     *
+     * @param patientData the patient record being built
+     * @param entity the patient's values, one list per field
+     * @param timestampRow the patient's timestamps, one entry per field, or null when the caller passed none
+     * @throws IllegalArgumentException if the row does not match the number of fields, or a declared field's timestamps and values differ
+     *         in length
+     */
+    private void putTimestamps(GenericRecord patientData, List<List<String>> entity, List<List<String>> timestampRow) {
+        if (timestampRow != null && timestampRow.size() != formattedFields.size()) {
+            throw new IllegalArgumentException("Timestamp row length must match the number of fields in this document");
+        }
+        for (int i = 0; i < formattedFields.size(); i++) {
+            String timestampField = timestampFields.get(i);
+            if (timestampField == null) {
+                continue;
+            }
+            int valueCount = entity.get(i) != null ? entity.get(i).size() : 0;
+            List<String> fieldTimestamps = timestampRow != null && timestampRow.get(i) != null ? timestampRow.get(i) : List.of();
+            if (fieldTimestamps.size() != valueCount) {
+                throw new IllegalArgumentException(
+                    "Field " + formattedFields.get(i) + " has " + valueCount + " values but " + fieldTimestamps.size() + " timestamps"
+                );
+            }
+            patientData.put(timestampField, fieldTimestamps);
+        }
+    }
+
     @Override
     public void close() {
+        ensureHeaderWritten();
         try {
             dataFileWriter.close();
         } catch (IOException e) {
