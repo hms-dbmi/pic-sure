@@ -106,13 +106,12 @@ class DatasetBringOverTest {
     private static final UUID GENERAL_ID = QueryIdentity.generalIdFor(ALICE_ID, STORED_QUERY);
 
     /** The body the step stores for {@link #STORED_BODY} and Alice. The same text is in {@code QueryServiceTest} of the query service. */
-    private static final String BROUGHT_OVER_BODY =
-        "{\"@type\":\"FederatedQueryRequest\",\"resourceUUID\":\"0e3ad2a1-9b1c-4d53-8f52-2f1d6f0a7c11\","
-            + "\"query\":{\"select\":[\"\\\\demographics\\\\AGE\\\\\"],\"authorizationFilters\":[],"
-            + "\"phenotypicClause\":{\"not\":null,\"phenotypicClauses\":["
-            + "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demographics\\\\SEX\\\\\",\"values\":[\"female\"],\"min\":null,\"max\":null,\"not\":null}],"
-            + "\"operator\":\"AND\"},\"genomicFilters\":[],\"expectedResultType\":\"DATAFRAME\","
-            + "\"picsureId\":\"024abf78-fcdc-54cc-b416-c173cc5bd4ee\",\"id\":null},\"commonAreaUUID\":\"7a1c0c5e-2f0b-4c7e-9d7a-3b1f2e4d5c6a\"}";
+    private static final String BROUGHT_OVER_BODY = "{\"@type\":\"FederatedQueryRequest\","
+        + "\"query\":{\"select\":[\"\\\\demographics\\\\AGE\\\\\"],\"authorizationFilters\":[],"
+        + "\"phenotypicClause\":{\"not\":null,\"phenotypicClauses\":["
+        + "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demographics\\\\SEX\\\\\",\"values\":[\"female\"],\"min\":null,\"max\":null,\"not\":null}],"
+        + "\"operator\":\"AND\"},\"genomicFilters\":[],\"expectedResultType\":\"DATAFRAME\","
+        + "\"picsureId\":\"024abf78-fcdc-54cc-b416-c173cc5bd4ee\",\"id\":null},\"commonAreaUUID\":\"7a1c0c5e-2f0b-4c7e-9d7a-3b1f2e4d5c6a\"}";
 
     /** A v3 query that names no consent, as text and as the record the step reads it into. */
     private static final String COUNT_QUERY_JSON =
@@ -122,7 +121,6 @@ class DatasetBringOverTest {
         new edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query(
             List.of("\\demographics\\AGE\\"), List.of(), null, List.of(), ResultType.COUNT, null, null
         );
-    private static final String LEFT_AS_IT_IS = " as it is: the query service could not read its stored request";
 
     @Autowired
     private NamedDatasetService service;
@@ -221,78 +219,60 @@ class DatasetBringOverTest {
 
         String body = queries.findById(OWNED_ID).orElseThrow().getQuery();
         assertThat(body).isEqualTo(BROUGHT_OVER_BODY).doesNotContain("phs001").doesNotContain("resourceCredentials")
-            .doesNotContain("memberOfAnOlderRelease");
+            .doesNotContain("resourceUUID").doesNotContain("memberOfAnOlderRelease");
         JsonNode query = MAPPER.readTree(body).get("query");
         assertThat(MAPPER.treeToValue(query, edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query.class))
             .isEqualTo(STORED_QUERY.setPicsureId(OWNED_ID));
     }
 
     /**
-     * The query service reads the body of an owned row as a {@link QueryRequest}, which binds {@code resourceUUID} as a UUID, and the body
-     * of an owned row is never replaced. Each value here is one the step does not take for a UUID. The last four are ones the query service
-     * would read, which the step refuses all the same, because its rule is the canonical text form.
+     * The step leaves {@code resourceUUID} off the body it stores, so a stored value that is not a UUID does not keep a dataset from being
+     * brought over. The query service reads the body of an owned row as a {@link QueryRequest}, which reads a body with no
+     * {@code resourceUUID} as one with a null resource.
      */
     @ParameterizedTest
     @ValueSource(
-        strings = {"\"not-a-uuid\"", "12", "true", "{}", "[\"0e3ad2a1-9b1c-4d53-8f52-2f1d6f0a7c11\"]",
-            "\"0e3ad2a19b1c4d538f522f1d6f0a7c11\"", "\"0e3ad2a1-9b1c-4d53-8f52-2f1d6f0a7c1\"", "\"\"", "\"   \"",
-            "\" 0e3ad2a1-9b1c-4d53-8f52-2f1d6f0a7c11 \"", "\"AAAAAAAAAAAAAAAAAAAAAA==\""}
+        strings = {"", "\"resourceUUID\":null,", "\"resourceUUID\":\"0e3ad2a1-9b1c-4d53-8f52-2f1d6f0a7c11\",",
+            "\"resourceUUID\":\"0E3AD2A1-9B1C-4D53-8F52-2F1D6F0A7C11\",", "\"resourceUUID\":\"not-a-uuid\",", "\"resourceUUID\":\"\",",
+            "\"resourceUUID\":\"   \",", "\"resourceUUID\":\" 0e3ad2a1-9b1c-4d53-8f52-2f1d6f0a7c11 \",",
+            "\"resourceUUID\":\"0e3ad2a19b1c4d538f522f1d6f0a7c11\",", "\"resourceUUID\":\"AAAAAAAAAAAAAAAAAAAAAA==\",",
+            "\"resourceUUID\":12,", "\"resourceUUID\":true,", "\"resourceUUID\":{},",
+            "\"resourceUUID\":[\"0e3ad2a1-9b1c-4d53-8f52-2f1d6f0a7c11\"],"}
     )
-    void datasetWhoseStoredRequestHasAResourceUuidThatIsNotAUuidIsLeftAndTheReadAnswers(String resourceUuid, CapturedOutput output) {
-        Query ownerless = storedOwnerless("{\"resourceUUID\":" + resourceUuid + "," + COUNT_QUERY_JSON + "}");
+    void datasetIsBroughtOverWithoutTheResourceUuidOfItsStoredRequest(String resourceUuidMember, CapturedOutput output) throws Exception {
+        UUID ownedId = QueryIdentity.idFor(ALICE_ID, COUNT_QUERY);
+        Query ownerless = storedOwnerless("{" + resourceUuidMember + COUNT_QUERY_JSON + "}");
         UUID dataset = datasetOn(ownerless);
-        Map<String, List<Map<String, Object>>> before = everyRow();
 
         List<NamedDatasetDto> listed = service.listForUser(ALICE);
         NamedDatasetDto read = service.getForUser(ALICE, dataset);
 
-        assertThat(listed).singleElement().isEqualTo(read).satisfies(answer -> {
-            assertThat(answer.uuid()).isEqualTo(dataset);
-            assertThat(answer.query().uuid()).isEqualTo(ownerless.getUuid());
-            assertThat(answer.queries()).isEmpty();
-        });
-        assertThat(everyRow()).isEqualTo(before);
-        assertThat(output.getAll().lines().filter(line -> line.contains("Left dataset "))).hasSize(2)
-            .allSatisfy(line -> assertThat(line).endsWith("Left dataset " + dataset + LEFT_AS_IT_IS));
-        assertThat(output.getAll()).doesNotContain(ALICE_EMAIL).doesNotContain("Could not bring dataset")
-            .doesNotContain("Brought dataset ");
-    }
-
-    @ParameterizedTest
-    @ValueSource(
-        strings = {"", "\"resourceUUID\":null,", "\"resourceUUID\":\"0e3ad2a1-9b1c-4d53-8f52-2f1d6f0a7c11\",",
-            "\"resourceUUID\":\"0E3AD2A1-9B1C-4D53-8F52-2F1D6F0A7C11\","}
-    )
-    void datasetWhoseStoredRequestHasACanonicalResourceUuidOrNoneIsBroughtOver(String resourceUuidMember, CapturedOutput output)
-        throws Exception {
-        UUID ownedId = QueryIdentity.idFor(ALICE_ID, COUNT_QUERY);
-        Query ownerless = storedOwnerless("{" + resourceUuidMember + COUNT_QUERY_JSON + "}");
-        UUID dataset = datasetOn(ownerless);
-        JsonNode storedResourceUuid = MAPPER.readTree(ownerless.getQuery()).get("resourceUUID");
-
-        NamedDatasetDto read = service.getForUser(ALICE, dataset);
-
+        assertThat(listed).singleElement().isEqualTo(read);
         assertThat(read.query().uuid()).isEqualTo(ownedId);
         assertThat(read.queries()).containsExactly(new LinkedQueryDto(ownedId, false, "COUNT"));
         String body = queries.findById(ownedId).orElseThrow().getQuery();
-        assertThat(MAPPER.readTree(body).get("resourceUUID")).isEqualTo(storedResourceUuid);
+        JsonNode broughtOver = MAPPER.readTree(body);
+        assertThat(broughtOver.has("resourceUUID")).isFalse();
+        assertThat(broughtOver.fieldNames()).toIterable().containsExactly("query");
         QueryRequest asTheQueryServiceReadsIt = MAPPER.readValue(body, QueryRequest.class);
-        UUID expectedResource =
-            storedResourceUuid == null || storedResourceUuid.isNull() ? null : UUID.fromString(storedResourceUuid.textValue());
-        assertThat(asTheQueryServiceReadsIt.getResourceUUID()).isEqualTo(expectedResource);
+        assertThat(asTheQueryServiceReadsIt.getResourceUUID()).isNull();
+        assertThat(MAPPER.convertValue(asTheQueryServiceReadsIt.getQuery(), edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query.class))
+            .isEqualTo(COUNT_QUERY.setPicsureId(ownedId));
+        assertThat(queries.findById(ownerless.getUuid()).orElseThrow().getQuery())
+            .isEqualTo("{" + resourceUuidMember + COUNT_QUERY_JSON + "}");
         assertThat(output.getAll())
             .contains("Brought dataset " + dataset + " over from query " + ownerless.getUuid() + " to query " + ownedId)
-            .doesNotContain("Left dataset ");
+            .doesNotContain("Left dataset ").doesNotContain("Could not bring dataset");
     }
 
     /**
-     * Pins which members of a stored request a brought-over body holds: every member but {@code resourceCredentials}, a member no release
-     * defines included, with {@code query} replaced by the v3 query under the new row id. The members are copied as they were stored, so
-     * the new body holds the stored {@code requesterEmail}. Whether to copy only a fixed list of members is not decided. A change of what
-     * is copied must change this test, so that it is made on purpose.
+     * Pins which members of a stored request a brought-over body holds: every member but {@code resourceCredentials} and
+     * {@code resourceUUID}, a member no release defines included, with {@code query} replaced by the v3 query under the new row id. The
+     * members are copied as they were stored, so the new body holds the stored {@code requesterEmail}. Whether to copy only a fixed list of
+     * members is not decided. A change of what is copied must change this test, so that it is made on purpose.
      */
     @Test
-    void broughtOverBodyHoldsEveryMemberOfTheStoredRequestButTheCredentials(CapturedOutput output) throws Exception {
+    void broughtOverBodyHoldsEveryMemberOfTheStoredRequestButTheCredentialsAndTheResourceUuid(CapturedOutput output) throws Exception {
         String stored = "{\"@type\":\"GeneralQueryRequest\",\"resourceUUID\":\"0e3ad2a1-9b1c-4d53-8f52-2f1d6f0a7c11\","
             + "\"commonAreaUUID\":\"7a1c0c5e-2f0b-4c7e-9d7a-3b1f2e4d5c6a\",\"requesterEmail\":\"requester@example.org\","
             + "\"institutionOfOrigin\":\"Example University\",\"resourceCredentials\":{\"token\":\"secret\"},"
@@ -305,18 +285,17 @@ class DatasetBringOverTest {
         String body = queries.findById(ownedId).orElseThrow().getQuery();
         JsonNode broughtOver = MAPPER.readTree(body);
         JsonNode before = MAPPER.readTree(stored);
-        List<String> copiedAsStored =
-            List.of("@type", "resourceUUID", "commonAreaUUID", "requesterEmail", "institutionOfOrigin", "memberNoReleaseDefines");
+        List<String> copiedAsStored = List.of("@type", "commonAreaUUID", "requesterEmail", "institutionOfOrigin", "memberNoReleaseDefines");
         List<String> members = new ArrayList<>();
         broughtOver.fieldNames().forEachRemaining(members::add);
         assertThat(members).containsExactlyInAnyOrder(
-            "@type", "resourceUUID", "commonAreaUUID", "requesterEmail", "institutionOfOrigin", "memberNoReleaseDefines", "query"
+            "@type", "commonAreaUUID", "requesterEmail", "institutionOfOrigin", "memberNoReleaseDefines", "query"
         );
         assertThat(copiedAsStored).allSatisfy(member -> assertThat(broughtOver.get(member)).isEqualTo(before.get(member)));
         assertThat(MAPPER.treeToValue(broughtOver.get("query"), edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query.class))
             .isEqualTo(COUNT_QUERY.setPicsureId(ownedId));
         QueryRequest asTheQueryServiceReadsIt = MAPPER.readValue(body, QueryRequest.class);
-        assertThat(asTheQueryServiceReadsIt.getResourceUUID()).isEqualTo(UUID.fromString("0e3ad2a1-9b1c-4d53-8f52-2f1d6f0a7c11"));
+        assertThat(asTheQueryServiceReadsIt.getResourceUUID()).isNull();
         assertThat(MAPPER.convertValue(asTheQueryServiceReadsIt.getQuery(), edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query.class))
             .isEqualTo(COUNT_QUERY.setPicsureId(ownedId));
         assertThat(output.getAll()).doesNotContain("requester@example.org").doesNotContain("secret").doesNotContain("Example University");

@@ -4,7 +4,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,7 +14,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -43,15 +41,17 @@ import edu.harvard.hms.dbmi.avillach.operations.query.QueryPersistenceService;
  * transaction has ended. The dataset row is locked first and the cases above are decided again on the locked row, so two requests that read
  * one dataset at the same time bring it over once. For a row with no owner: <ol> <li>The stored body is read as a v3 request with no
  * consent values, translated first when it was stored before v3. Its query goes through the v3 query record, which drops every member the
- * record does not have.</li> <li>When the stored request holds a member the query service could not read, the dataset is left as it is and
- * nothing is written. {@link #queryServiceCouldRead} says which members that is. The body of an owned row is never replaced, so a row
- * stored with such a member would fail every status, result and submit request for good.</li> <li>The row id and the general id are derived
- * from the caller's UUID and that query with {@link QueryIdentity}. They are the ids the query service derives when the caller submits the
- * same query, so a later submit of the dataset's query lands on the row stored here.</li> <li>When the caller already has another dataset
- * on the row with that id, the dataset is left as it is and nothing is written, because one user cannot have two datasets on one query
- * row.</li> <li>Otherwise {@link QueryPersistenceService#storeNeverRun} stores the general query and the owned row unless they are stored
- * already, and the dataset is pointed at the row and filed under its general query.</li> </ol> The row the dataset pointed at before is
- * never written. It keeps its id, its body and its lack of an owner.
+ * record does not have.</li> <li>The row id and the general id are derived from the caller's UUID and that query with
+ * {@link QueryIdentity}. They are the ids the query service derives when the caller submits the same query, so a later submit of the
+ * dataset's query lands on the row stored here.</li> <li>When the caller already has another dataset on the row with that id, the dataset
+ * is left as it is and nothing is written, because one user cannot have two datasets on one query row.</li> <li>Otherwise
+ * {@link QueryPersistenceService#storeNeverRun} stores the general query and the owned row unless they are stored already, and the dataset
+ * is pointed at the row and filed under its general query.</li> </ol> The row the dataset pointed at before is never written. It keeps its
+ * id, its body and its lack of an owner.
+ *
+ * <p><b>The body of the new row.</b> It holds every member of the stored request but two, with {@code query} replaced by the v3 query under
+ * the new row id. {@code resourceCredentials} is not in it, and neither is {@code resourceUUID}, whatever its stored value. The query
+ * service reads the body of an owned row with no {@code resourceUUID} and answers the status of such a row with no resource id.
  *
  * <p>The new row has no status, no consents and no run. The query service runs it the first time the caller asks for its status or result
  * or submits the query again. Its start time is the one of the old row, so the dataset keeps its creation date.
@@ -84,10 +84,6 @@ public class DatasetBringOver {
         JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
     private static final String QUERY = "query";
     private static final String RESOURCE_UUID = "resourceUUID";
-
-    /** The canonical text form of a UUID: 36 characters, hexadecimal digits in either case, hyphens after digits 8, 12, 16 and 20. */
-    private static final Pattern CANONICAL_UUID =
-        Pattern.compile("\\p{XDigit}{8}-\\p{XDigit}{4}-\\p{XDigit}{4}-\\p{XDigit}{4}-\\p{XDigit}{12}");
 
     private final NamedDatasetRepository datasets;
     private final QueryPersistenceService queries;
@@ -207,11 +203,11 @@ public class DatasetBringOver {
 
     /**
      * Points a dataset whose query row has no owner at a row the caller owns, storing that row and its general query when they are not
-     * stored yet.
+     * stored yet. The body of the owned row is the stored request without its {@code resourceUUID}, around the v3 query under the new row
+     * id.
      *
      * @return the row the dataset pointed at and the owned row it points at now, or {@link Outcome#LEFT} when the dataset was left because
-     *         its row holds no body, because the stored request holds a member the query service could not read, or because the caller
-     *         already has another dataset on the owned row
+     *         its row holds no body or because the caller already has another dataset on the owned row
      * @throws IllegalArgumentException when the stored body cannot be read as a query, which needs a body that was replaced after the read
      *         that named the dataset, as the class comment describes
      */
@@ -222,15 +218,12 @@ public class DatasetBringOver {
             return Outcome.LEFT;
         }
         ObjectNode request = stored.get();
-        if (!queryServiceCouldRead(request)) {
-            LOG.warn("Left dataset {} as it is: the query service could not read its stored request", dataset.getUuid());
-            return Outcome.LEFT;
-        }
         edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query query = v3QueryOf(request);
         UUID id = QueryIdentity.idFor(caller, query);
         if (datasets.existsByQueryUuidAndUser(id, dataset.getUser())) {
             return Outcome.LEFT;
         }
+        request.remove(RESOURCE_UUID);
         request.set(QUERY, QUERY_MAPPER.valueToTree(query.setPicsureId(id)));
         Query owned = queries.storeNeverRun(
             new NeverRunQuery(
@@ -240,26 +233,6 @@ public class DatasetBringOver {
         );
         datasets.saveAndFlush(dataset.setQuery(owned).setQueryToVariantUuid(owned.getQueryToVariantUuid()));
         return new Outcome(true, ownerless.getUuid(), id);
-    }
-
-    /**
-     * Tells whether the query service could read a body that keeps the members of a stored request beside its query.
-     *
-     * <p>The query service reads the body of an owned row as a {@code QueryRequest} of {@code pic-sure-api-model}, and a member that does
-     * not have the type that class gives it fails the read of the whole body. The class gives a type to one member beside the query:
-     * {@code resourceUUID}, a UUID. It ignores every member it does not have, and it reads the type marker {@code @type} with any value,
-     * taking an unknown one as a general request. The query is not looked at here, because this class writes it from the v3 record.
-     *
-     * <p>So the request is readable when it has no {@code resourceUUID}, a null one, or one that is text in the canonical form of a UUID.
-     * That is narrower than what the query service accepts, which also takes blank text, a UUID with spaces around it and a UUID in Base64.
-     * A request outside the rule is refused here because a stored body stays for good.
-     *
-     * @param request a stored request wrapper
-     * @return true when the request is inside that rule, so the query service can read a body that keeps its members
-     */
-    private static boolean queryServiceCouldRead(ObjectNode request) {
-        JsonNode resource = request.get(RESOURCE_UUID);
-        return resource == null || resource.isNull() || resource.isTextual() && CANONICAL_UUID.matcher(resource.textValue()).matches();
     }
 
     /**
