@@ -5,6 +5,7 @@ import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.dbmi.avillach.logging.SessionIdResolver;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.WriteListener;
 import jakarta.servlet.http.HttpServletResponse;
@@ -629,5 +630,126 @@ class AuditLoggingFilterTest {
         verify(containerStream).close();
         verifyNoMoreInteractions(containerStream);
         assertEquals(Long.valueOf(3), sentEvent().getRequest().getBytes());
+    }
+
+
+    @Test
+    void shouldLeaveBytesUnsetAfterSendErrorDiscardsAPartialBody() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> {
+            res.getOutputStream().write(new byte[100]);
+            ((HttpServletResponse) res).sendError(409);
+        };
+
+        filter.doFilter(new MockHttpServletRequest("GET", "/user/me"), response, chain);
+
+        assertNull(sentEvent().getRequest().getBytes());
+        assertEquals(409, response.getStatus());
+    }
+
+    @Test
+    void shouldLeaveBytesUnsetAfterSendErrorWithAMessage() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> ((HttpServletResponse) res).sendError(401, "Token is not valid");
+
+        filter.doFilter(new MockHttpServletRequest("GET", "/user/me"), response, chain);
+
+        assertNull(sentEvent().getRequest().getBytes());
+        assertEquals(401, response.getStatus());
+        assertEquals("Token is not valid", response.getErrorMessage());
+    }
+
+    @Test
+    void shouldLeaveBytesUnsetAndRethrowTheSameServletExceptionWhenTheChainThrows() {
+        ServletException failure = new ServletException("handler failed");
+        FilterChain chain = (req, res) -> {
+            res.getOutputStream().write(new byte[100]);
+            throw failure;
+        };
+
+        ServletException thrown = assertThrows(
+            ServletException.class,
+            () -> filter.doFilter(new MockHttpServletRequest("GET", "/user/me"), new MockHttpServletResponse(), chain)
+        );
+
+        assertSame(failure, thrown);
+        assertNull(sentEvent().getRequest().getBytes());
+    }
+
+    @Test
+    void shouldLeaveBytesUnsetAndRethrowTheSameRuntimeExceptionWhenTheChainThrows() {
+        IllegalStateException failure = new IllegalStateException("handler failed");
+        FilterChain chain = (req, res) -> {
+            throw failure;
+        };
+
+        IllegalStateException thrown = assertThrows(
+            IllegalStateException.class,
+            () -> filter.doFilter(new MockHttpServletRequest("GET", "/user/me"), new MockHttpServletResponse(), chain)
+        );
+
+        assertSame(failure, thrown);
+        assertNull(sentEvent().getRequest().getBytes());
+    }
+
+    @Test
+    void shouldKeepAFailureWhileReadingTheByteCountOutOfTheRequestPath() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/user/me") {
+            @Override
+            public boolean isAsyncStarted() {
+                throw new IllegalStateException("request is no longer usable");
+            }
+        };
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertDoesNotThrow(() -> filter.doFilter(request, response, filterChain));
+
+        verify(filterChain).doFilter(eq(request), any());
+        verify(loggingClient, never()).send(any());
+    }
+
+    @Test
+    void shouldReportZeroBytesForAHeadRequestWhoseBodyTheContainerDiscards() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> res.getOutputStream().write(new byte[122]);
+
+        filter.doFilter(new MockHttpServletRequest("HEAD", "/user/me"), response, chain);
+
+        assertEquals(Long.valueOf(0), sentEvent().getRequest().getBytes());
+    }
+
+    @Test
+    void shouldLeaveBytesUnsetForAHeadRequestThatEndsInSendError() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> ((HttpServletResponse) res).sendError(404);
+
+        filter.doFilter(new MockHttpServletRequest("HEAD", "/user/me"), response, chain);
+
+        assertNull(sentEvent().getRequest().getBytes());
+    }
+
+    @Test
+    void shouldLeaveBytesUnsetForAHeadRequestThatStartsAsync() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("HEAD", "/user/me");
+        request.setAsyncSupported(true);
+        FilterChain chain = (req, res) -> req.startAsync();
+
+        filter.doFilter(request, new MockHttpServletResponse(), chain);
+
+        assertNull(sentEvent().getRequest().getBytes());
+    }
+
+    @Test
+    void shouldReportZeroBytesAfterSendRedirectDiscardsAPartialBody() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> {
+            res.getOutputStream().write(new byte[100]);
+            ((HttpServletResponse) res).sendRedirect("/login");
+        };
+
+        filter.doFilter(new MockHttpServletRequest("GET", "/user/me"), response, chain);
+
+        assertEquals(Long.valueOf(0), sentEvent().getRequest().getBytes());
+        assertEquals("/login", response.getRedirectedUrl());
     }
 }

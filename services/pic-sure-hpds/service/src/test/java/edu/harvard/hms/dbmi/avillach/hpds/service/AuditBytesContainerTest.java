@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -24,17 +25,20 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.support.AnnotationConfigWebApplicationContext;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.DispatcherServlet;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.audit.AuditLoggingFilter;
+import jakarta.servlet.http.HttpServletResponse;
 import reactor.core.publisher.Mono;
 
 /**
@@ -45,6 +49,7 @@ class AuditBytesContainerTest {
 
     private static final int STREAMED_BODY_BYTES = 3 * 1024 * 1024 + 17;
     private static final byte[] STREAMED_BODY = randomBytes(STREAMED_BODY_BYTES);
+    private static final int DISCARDED_BODY_BYTES = 100;
 
     @TempDir
     Path baseDir;
@@ -161,6 +166,54 @@ class AuditBytesContainerTest {
         assertNull(sentEvent().getRequest().getBytes());
     }
 
+    @Test
+    void headRequestSendsNoBodyAndReportsZero() throws Exception {
+        HttpRequest request =
+            HttpRequest.newBuilder(URI.create(baseUrl + "/json")).method("HEAD", HttpRequest.BodyPublishers.noBody()).build();
+        HttpResponse<byte[]> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofByteArray());
+
+        assertEquals(200, response.statusCode());
+        assertEquals(0, response.body().length);
+        assertEquals(Long.valueOf(0), sentEvent().getRequest().getBytes());
+    }
+
+    @Test
+    void redirectSendsNoBodyAndReportsZero() throws Exception {
+        HttpResponse<byte[]> response = get("/moved");
+
+        assertEquals(302, response.statusCode());
+        assertEquals(0, response.body().length);
+        assertEquals(Long.valueOf(0), sentEvent().getRequest().getBytes());
+    }
+
+    @Test
+    void errorSentByTheExceptionResolverReachesTheClientAndReportsNoBytes() throws Exception {
+        HttpResponse<byte[]> response = get("/rejected");
+
+        assertEquals(400, response.statusCode());
+        assertTrue(new String(response.body(), StandardCharsets.UTF_8).contains("HTTP Status 400"), "the container wrote its error page");
+        assertNull(sentEvent().getRequest().getBytes());
+    }
+
+    @Test
+    void sendErrorAfterAPartialBodyReachesTheClientAndReportsNoBytes() throws Exception {
+        HttpResponse<byte[]> response = get("/conflict");
+
+        assertEquals(409, response.statusCode());
+        assertTrue(new String(response.body(), StandardCharsets.UTF_8).contains("HTTP Status 409"), "the container wrote its error page");
+        assertNotEquals(DISCARDED_BODY_BYTES, response.body().length);
+        assertNull(sentEvent().getRequest().getBytes());
+    }
+
+    @Test
+    void exceptionLeavingTheChainReachesTheClientAsTheContainerErrorAndReportsNoBytes() throws Exception {
+        HttpResponse<byte[]> response = get("/broken");
+
+        assertEquals(500, response.statusCode());
+        assertTrue(new String(response.body(), StandardCharsets.UTF_8).contains("HTTP Status 500"), "the container wrote its error page");
+        assertNull(sentEvent().getRequest().getBytes());
+    }
+
     @EnableWebMvc
     static class MvcConfig {
     }
@@ -196,6 +249,28 @@ class AuditBytesContainerTest {
         @GetMapping("/reactive")
         Mono<Map<String, String>> reactive() {
             return Mono.just(Map.of("status", "AVAILABLE"));
+        }
+
+        @GetMapping("/rejected")
+        void rejected() {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "query is not valid");
+        }
+
+        @GetMapping("/conflict")
+        void conflict(HttpServletResponse response) throws IOException {
+            response.getOutputStream().write(new byte[DISCARDED_BODY_BYTES]);
+            response.sendError(409);
+        }
+
+        @GetMapping("/moved")
+        void moved(HttpServletResponse response) throws IOException {
+            response.getOutputStream().write(new byte[DISCARDED_BODY_BYTES]);
+            response.sendRedirect("/json");
+        }
+
+        @GetMapping("/broken")
+        void broken() {
+            throw new IllegalStateException("handler failed");
         }
     }
 }

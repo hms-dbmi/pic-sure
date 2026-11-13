@@ -20,6 +20,7 @@ import edu.harvard.dbmi.avillach.logging.SessionIdResolver;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.audit.AuditAttributes;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.audit.AuditLoggingFilter;
 import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.WriteListener;
 import jakarta.servlet.http.HttpServletResponse;
@@ -568,4 +569,107 @@ class AuditLoggingFilterTest {
         assertEquals(Long.valueOf(3), sentEvent().getRequest().getBytes());
     }
 
+
+    @Test
+    void testLeavesBytesUnsetAfterSendErrorDiscardsAPartialBody() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> {
+            res.getOutputStream().write(new byte[100]);
+            ((HttpServletResponse) res).sendError(409);
+        };
+
+        filter.doFilter(mockRequest("/PIC-SURE/query/sync", "POST"), response, chain);
+
+        assertNull(sentEvent().getRequest().getBytes());
+        assertEquals(409, response.getStatus());
+    }
+
+    @Test
+    void testLeavesBytesUnsetAfterSendErrorWithAMessage() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> ((HttpServletResponse) res).sendError(401, "Token is not valid");
+
+        filter.doFilter(mockRequest("/PIC-SURE/query/sync", "POST"), response, chain);
+
+        assertNull(sentEvent().getRequest().getBytes());
+        assertEquals(401, response.getStatus());
+        assertEquals("Token is not valid", response.getErrorMessage());
+    }
+
+    @Test
+    void testLeavesBytesUnsetAndRethrowTheSameServletExceptionWhenTheChainThrows() {
+        ServletException failure = new ServletException("handler failed");
+        FilterChain chain = (req, res) -> {
+            res.getOutputStream().write(new byte[100]);
+            throw failure;
+        };
+
+        ServletException thrown = assertThrows(
+            ServletException.class, () -> filter.doFilter(mockRequest("/PIC-SURE/query/sync", "POST"), new MockHttpServletResponse(), chain)
+        );
+
+        assertSame(failure, thrown);
+        assertNull(sentEvent().getRequest().getBytes());
+    }
+
+    @Test
+    void testLeavesBytesUnsetAndRethrowTheSameRuntimeExceptionWhenTheChainThrows() {
+        IllegalStateException failure = new IllegalStateException("handler failed");
+        FilterChain chain = (req, res) -> {
+            throw failure;
+        };
+
+        IllegalStateException thrown = assertThrows(
+            IllegalStateException.class,
+            () -> filter.doFilter(mockRequest("/PIC-SURE/query/sync", "POST"), new MockHttpServletResponse(), chain)
+        );
+
+        assertSame(failure, thrown);
+        assertNull(sentEvent().getRequest().getBytes());
+    }
+
+    @Test
+    void testReportsZeroBytesForAHeadRequestWhoseBodyTheContainerDiscards() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> res.getOutputStream().write(new byte[122]);
+
+        filter.doFilter(mockRequest("/PIC-SURE/info", "HEAD"), response, chain);
+
+        assertEquals(Long.valueOf(0), sentEvent().getRequest().getBytes());
+    }
+
+    @Test
+    void testLeavesBytesUnsetForAHeadRequestThatEndsInSendError() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> ((HttpServletResponse) res).sendError(404);
+
+        filter.doFilter(mockRequest("/PIC-SURE/info", "HEAD"), response, chain);
+
+        assertNull(sentEvent().getRequest().getBytes());
+    }
+
+    @Test
+    void testLeavesBytesUnsetForAHeadRequestThatStartsAsync() throws Exception {
+        MockHttpServletRequest request = mockRequest("/PIC-SURE/info", "HEAD");
+        request.setAsyncSupported(true);
+        FilterChain chain = (req, res) -> req.startAsync();
+
+        filter.doFilter(request, new MockHttpServletResponse(), chain);
+
+        assertNull(sentEvent().getRequest().getBytes());
+    }
+
+    @Test
+    void testReportsZeroBytesAfterSendRedirectDiscardsAPartialBody() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> {
+            res.getOutputStream().write(new byte[100]);
+            ((HttpServletResponse) res).sendRedirect("/login");
+        };
+
+        filter.doFilter(mockRequest("/PIC-SURE/info", "GET"), response, chain);
+
+        assertEquals(Long.valueOf(0), sentEvent().getRequest().getBytes());
+        assertEquals("/login", response.getRedirectedUrl());
+    }
 }
