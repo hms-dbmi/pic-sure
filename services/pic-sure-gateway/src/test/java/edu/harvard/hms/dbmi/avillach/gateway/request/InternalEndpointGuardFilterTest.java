@@ -15,9 +15,9 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import jakarta.servlet.FilterChain;
 
 /**
- * {@link InternalEndpointGuardFilter} runs before routing/auth: {@code /operations/internal/**}, {@code /dictionary/internal/**} and
- * {@code /internal/**} are service-to-service only and must never be reachable through the public gateway, even with a stolen internal
- * token.
+ * {@link InternalEndpointGuardFilter} runs before routing/auth: {@code /internal/**} and {@code /<route>/internal/**} for any route, such
+ * as {@code /operations/internal/**} and {@code /dictionary/internal/**}, are service-to-service only and must never be reachable through
+ * the public gateway, even with a stolen internal token.
  */
 class InternalEndpointGuardFilterTest {
 
@@ -94,10 +94,28 @@ class InternalEndpointGuardFilterTest {
         verify(chain, never()).doFilter(any(), any());
     }
 
+    @ParameterizedTest(name = "{0} is guarded")
+    @ValueSource(
+        strings = {"/logging/internal", "/logging/internal/", "/logging/internal/audit", "/logging/%69nternal/audit",
+            "/visualization/internal", "/visualization/internal/search/auth", "/visualization/interna%6C/x", "/%6Cogging/internal/x",
+            "/hpds/internal/x", "/hpds/%69nternal/x", "/Dictionary/internal/concepts", "/mcp/internal", "/any-future-route/internal/x",
+            "/logging//internal/x", "/logging/x/../internal/y"}
+    )
+    void rejectsInternalAsTheSecondSegmentOfAnyRoute(String path) throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
+
+        filter.doFilter(new MockHttpServletRequest("POST", path), response, chain);
+
+        assertThat(response.getStatus()).as(path).isEqualTo(404);
+        assertThat(response.getContentAsString()).as(path).contains("\"errorType\":\"not_found\"");
+        verify(chain, never()).doFilter(any(), any());
+    }
+
     @ParameterizedTest(name = "{0} passes")
     @ValueSource(
-        strings = {"/dictionary/%69nternalized", "/dictionary/INTERNAL/concepts", "/Dictionary/internal/concepts",
-            "/dictionary/concepts/%64etail", "/hpds/%69nternal/x", "/"}
+        strings = {"/dictionary/%69nternalized", "/dictionary/INTERNAL/concepts", "/dictionary/Internal/concepts",
+            "/dictionary/concepts/%64etail", "/hpds/auth/%69nternal/x", "/"}
     )
     void passesEncodedPathsThatDecodeOutsideEveryGuardedPrefix(String path) throws Exception {
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -125,7 +143,10 @@ class InternalEndpointGuardFilterTest {
 
     @Test
     void passesLookalikeAndPublicPathsThrough() throws Exception {
-        for (String path : new String[] {"/hpds/auth/search/values", "/internalfoo", "/hpds/internal/x", "/operations/internalfoo"}) {
+        for (
+            String path : new String[] {"/hpds/auth/search/values", "/internalfoo", "/hpds/auth/internal/x", "/operations/internalfoo",
+                "/logging/audit", "/logging/audit/internal", "/logging/internalized", "/visualization/internals/x"}
+        ) {
             MockHttpServletResponse response = new MockHttpServletResponse();
             FilterChain chain = mock(FilterChain.class);
             filter.doFilter(new MockHttpServletRequest("GET", path), response, chain);

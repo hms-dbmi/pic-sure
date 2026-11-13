@@ -33,10 +33,11 @@ import org.springframework.test.context.DynamicPropertySource;
 import com.github.tomakehurst.wiremock.WireMockServer;
 
 /**
- * Sends real HTTP requests through a booted gateway whose dictionary and operations routes point at stubs that answer 200 to anything. A
- * request for an internal path must be answered 404 by the gateway and never reach a stub, however its letters are percent-encoded, while a
- * public path on the same route still goes through. A client-supplied {@code X-PIC-SURE-INTERNAL-TOKEN} header must not reach a stub
- * either. Every request carries a bearer that the PSAMA stub reports as active, so authentication is not what stops it.
+ * Sends real HTTP requests through a booted gateway whose dictionary, operations, logging and visualization routes point at stubs that
+ * answer 200 to anything. A request for an internal path must be answered 404 by the gateway and never reach a stub, however its letters
+ * are percent-encoded, while a public path on the same route still goes through. A client-supplied {@code X-PIC-SURE-INTERNAL-TOKEN} header
+ * must not reach a stub either. Every request carries a bearer that the PSAMA stub reports as active, so authentication is not what stops
+ * it.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class InternalEndpointGuardRouteTest {
@@ -45,6 +46,8 @@ class InternalEndpointGuardRouteTest {
 
     static WireMockServer dictionaryStub;
     static WireMockServer operationsStub;
+    static WireMockServer loggingStub;
+    static WireMockServer visualizationStub;
     static WireMockServer psamaStub;
 
     @DynamicPropertySource
@@ -57,6 +60,14 @@ class InternalEndpointGuardRouteTest {
         operationsStub.start();
         registry.add("OPERATIONS_SERVICE_URL", operationsStub::baseUrl);
 
+        loggingStub = new WireMockServer(options().bindAddress("127.0.0.1").dynamicPort().http2PlainDisabled(true));
+        loggingStub.start();
+        registry.add("LOGGING_URL", loggingStub::baseUrl);
+
+        visualizationStub = new WireMockServer(options().bindAddress("127.0.0.1").dynamicPort().http2PlainDisabled(true));
+        visualizationStub.start();
+        registry.add("VISUALIZATION_URL", visualizationStub::baseUrl);
+
         psamaStub = new WireMockServer(options().bindAddress("127.0.0.1").dynamicPort().http2PlainDisabled(true));
         psamaStub.start();
         registry.add("TOKEN_INTROSPECTION_URL", () -> psamaStub.baseUrl() + "/auth/token/inspect");
@@ -66,6 +77,8 @@ class InternalEndpointGuardRouteTest {
     static void stopStubs() {
         dictionaryStub.stop();
         operationsStub.stop();
+        loggingStub.stop();
+        visualizationStub.stop();
         psamaStub.stop();
     }
 
@@ -75,6 +88,10 @@ class InternalEndpointGuardRouteTest {
         dictionaryStub.stubFor(any(anyUrl()).willReturn(aResponse().withStatus(200).withBody("dictionary-reached")));
         operationsStub.resetAll();
         operationsStub.stubFor(any(anyUrl()).willReturn(aResponse().withStatus(200).withBody("operations-reached")));
+        loggingStub.resetAll();
+        loggingStub.stubFor(any(anyUrl()).willReturn(aResponse().withStatus(200).withBody("logging-reached")));
+        visualizationStub.resetAll();
+        visualizationStub.stubFor(any(anyUrl()).willReturn(aResponse().withStatus(200).withBody("visualization-reached")));
         psamaStub.resetAll();
         psamaStub.stubFor(
             post(urlEqualTo("/auth/token/inspect"))
@@ -127,8 +144,36 @@ class InternalEndpointGuardRouteTest {
     }
 
     /**
-     * A double-encoded letter, a matrix parameter and a dot segment are refused by the request firewall before the guard runs, so the
-     * status is the firewall's 400 or the guard's 404 depending on which answers first. Either way nothing is forwarded.
+     * The {@code logging} and {@code visualization} routes strip their first segment like the dictionary route, so an {@code internal}
+     * second segment would arrive at the service as {@code /internal}. {@code /logging} needs no login, and the guard still answers.
+     *
+     * @param rawPath the request path exactly as sent
+     */
+    @ParameterizedTest(name = "{0} is a 404 that never reaches logging or visualization")
+    @ValueSource(
+        strings = {"/logging/internal", "/logging/internal/audit", "/logging/%69nternal/audit", "/logging/interna%6C/audit",
+            "/visualization/internal", "/visualization/internal/search/auth", "/visualization/%69nternal/search/auth",
+            "/%76isualization/internal/search/auth"}
+    )
+    void internalPathsOnOtherPrefixStrippingRoutesAreNeverForwarded(String rawPath) {
+        ResponseEntity<String> response = postThroughGateway(rawPath);
+
+        assertThat(response.getStatusCode().value()).as(rawPath).isEqualTo(404);
+        loggingStub.verify(0, anyRequestedFor(anyUrl()));
+        visualizationStub.verify(0, anyRequestedFor(anyUrl()));
+    }
+
+    @Test
+    void publicLoggingAndVisualizationPathsAreForwarded() {
+        assertThat(postThroughGateway("/logging/audit").getBody()).isEqualTo("logging-reached");
+        assertThat(postThroughGateway("/visualization/internalized").getBody()).isEqualTo("visualization-reached");
+        loggingStub.verify(1, postRequestedFor(urlEqualTo("/audit")));
+        visualizationStub.verify(1, postRequestedFor(urlEqualTo("/internalized")));
+    }
+
+    /**
+     * A double-encoded letter, a matrix parameter and a dot segment are refused by the request firewall, which always runs before the guard
+     * and answers 400. The guard's own handling of these forms is covered by {@code InternalEndpointGuardFilterTest}. Nothing is forwarded.
      *
      * @param rawPath the request path exactly as sent
      */
@@ -136,14 +181,15 @@ class InternalEndpointGuardRouteTest {
     @ValueSource(
         strings = {"/dictionary/%2569nternal/concepts/export-metadata", "/dictionary/internal;x/concepts/export-metadata",
             "/dictionary/%49nternal/../internal/concepts/export-metadata", "/operations/%2569nternal/queries/abc/dispatch",
-            "/operations/internal;x/queries/abc/dispatch"}
+            "/operations/internal;x/queries/abc/dispatch", "/logging/%2569nternal/audit", "/logging/internal;x/audit"}
     )
     void formsTheFirewallRefusesAreNeverForwarded(String rawPath) {
         ResponseEntity<String> response = postThroughGateway(rawPath);
 
-        assertThat(response.getStatusCode().value()).as(rawPath).isIn(400, 404);
+        assertThat(response.getStatusCode().value()).as(rawPath).isEqualTo(400);
         dictionaryStub.verify(0, anyRequestedFor(anyUrl()));
         operationsStub.verify(0, anyRequestedFor(anyUrl()));
+        loggingStub.verify(0, anyRequestedFor(anyUrl()));
     }
 
     @ParameterizedTest(name = "{0} is forwarded to the dictionary")

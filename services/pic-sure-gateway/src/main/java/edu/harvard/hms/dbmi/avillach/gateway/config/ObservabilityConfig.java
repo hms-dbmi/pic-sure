@@ -70,9 +70,9 @@ public class ObservabilityConfig {
     }
 
     /**
-     * Registered UNCONDITIONALLY ahead of every authentication filter: {@code /operations/internal/**}, {@code /dictionary/internal/**} and
-     * {@code /internal/**} are service-to-service only and must never be reachable through the public gateway or reach PSAMA. See
-     * {@link InternalEndpointGuardFilter}'s Javadoc.
+     * Registered UNCONDITIONALLY ahead of every authentication filter: {@code /internal/**} and {@code /<route>/internal/**} for every
+     * route, such as {@code /operations/internal/**} and {@code /dictionary/internal/**}, are service-to-service only and must never be
+     * reachable through the public gateway or reach PSAMA. See {@link InternalEndpointGuardFilter}'s Javadoc.
      */
     @Bean
     public FilterRegistrationBean<InternalEndpointGuardFilter> internalEndpointGuardFilter() {
