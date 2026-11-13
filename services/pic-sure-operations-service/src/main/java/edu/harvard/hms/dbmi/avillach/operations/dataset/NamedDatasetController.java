@@ -29,8 +29,9 @@ import jakarta.validation.Valid;
  * then email-scopes every operation, requiring and keying on the caller's email ({@code GatewayUser#getEmail()}), never {@code userId}.
  * This controller is a thin HTTP adapter -- identity validation lives in the service.
  *
- * <p>The one check made on the caller's user id is on the query a request links, in {@code POST /dataset/named} and in {@code PUT
- * /dataset/named/{id}}: a query can be linked to a dataset only by the user it belongs to, and query rows record their owner by user id.
+ * <p>The caller's user id is used in two places, because query rows record their owner by user id. {@code POST /dataset/named}, and
+ * {@code PUT /dataset/named/{id}} when it names another query, point a dataset only at a query that belongs to the caller or has no owner.
+ * Every answer lists in {@code queries} only the query rows that belong to the caller.
  */
 @Tag(name = "Named datasets", description = "Saved queries a user names and reuses, scoped to the caller")
 @RestController
@@ -38,10 +39,10 @@ import jakarta.validation.Valid;
 public class NamedDatasetController {
 
     static final String UPDATE_DESCRIPTION = "Replaces the name, archived state and metadata of the dataset.\n\n"
-        + "When queryId names a query the dataset does not link yet, that query is linked as well and appears in queries. The query "
-        + "must have been submitted by the caller, or be a query stored without an owner. The link is refused when the dataset already "
-        + "holds a query with the same sample flag and result type. Linking does not change the query member of the dataset, which "
-        + "stays the query the dataset was created from.\n\nWhen queryId names a query the dataset already links, nothing is linked.";
+        + "When queryId names a query other than the one the dataset points at, the dataset is re-pointed: its query member becomes that "
+        + "query, and queries lists the stored variants of that query. The query must have been submitted by the caller, or be a query "
+        + "stored without an owner. Re-pointing is refused when the caller already has a dataset on that query.\n\n"
+        + "When queryId names the query the dataset already points at, the dataset stays on it.";
 
     private final NamedDatasetService service;
 
@@ -87,18 +88,14 @@ public class NamedDatasetController {
         return service.getForUser(user, id);
     }
 
-    @Operation(summary = "Update one of the caller's named datasets, or link another query to it", description = UPDATE_DESCRIPTION)
+    @Operation(summary = "Rename or re-point one of the caller's named datasets", description = UPDATE_DESCRIPTION)
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The updated named dataset"),
             @ApiResponse(responseCode = "401", description = "No caller email in the request"),
-            @ApiResponse(responseCode = "403", description = "The query to link belongs to another user"),
+            @ApiResponse(responseCode = "403", description = "The new queryId names a query that belongs to another user"),
             @ApiResponse(
                 responseCode = "404", description = "No named dataset with that id for the caller, or the new queryId matches no query"
-            ),
-            @ApiResponse(
-                responseCode = "409",
-                description = "The dataset already links a query with the same sample flag and result type as the query to link"
-            )}
+            ), @ApiResponse(responseCode = "409", description = "The caller already named that query")}
     )
     @AuditEvent(type = "ACCESS", action = "named_dataset.modify")
     @PutMapping("/{id}")

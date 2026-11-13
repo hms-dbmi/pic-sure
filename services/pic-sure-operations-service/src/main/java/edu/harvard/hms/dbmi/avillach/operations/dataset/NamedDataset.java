@@ -18,7 +18,14 @@ import jakarta.persistence.UniqueConstraint;
 
 import edu.harvard.hms.dbmi.avillach.operations.query.Query;
 
-/** Persistence model for named datasets and their associated queries. */
+/**
+ * Persistence model for named datasets and their associated queries.
+ *
+ * <p>{@code queryToVariantUuid} names the general query of the dataset: the {@code query_to_variant} row that the query the dataset points
+ * at is one variant of. It is a copy of that query row's own value, written whenever the dataset is created or updated, and it is null
+ * while the query row is filed under no general query. The table has a foreign key to {@code query_to_variant}, which is not mapped here:
+ * the service reads and writes the id as a plain value.
+ */
 @Schema(description = "A NamedDataset object containing query, name, user, and archived status.")
 @Entity(name = "named_dataset")
 @Table(uniqueConstraints = {@UniqueConstraint(name = "unique_queryId_user", columnNames = {"queryId", "\"user\""})})
@@ -34,6 +41,10 @@ public class NamedDataset {
     @OneToOne
     @JoinColumn(name = "queryId")
     private Query query;
+
+    @Schema(description = "The id of the general query the associated Query is a variant of")
+    @Column(name = "query_to_variant_uuid", columnDefinition = "BINARY(16)")
+    private UUID queryToVariantUuid;
 
     // Quoted because H2 reserves `user`; Hibernate renders the appropriate identifier quoting for each dialect.
     @Schema(description = "The user identifier")
@@ -85,6 +96,26 @@ public class NamedDataset {
 
     public Query getQuery() {
         return query;
+    }
+
+    /**
+     * Sets the general query of the dataset.
+     *
+     * @param queryToVariantUuid the id of the {@code query_to_variant} row, or null to file the dataset under none
+     * @return this dataset
+     */
+    public NamedDataset setQueryToVariantUuid(UUID queryToVariantUuid) {
+        this.queryToVariantUuid = queryToVariantUuid;
+        return this;
+    }
+
+    /**
+     * Returns the id of the general query of the dataset.
+     *
+     * @return the id of the {@code query_to_variant} row, or null for a dataset that is filed under none
+     */
+    public UUID getQueryToVariantUuid() {
+        return queryToVariantUuid;
     }
 
     public NamedDataset setUser(String user) {

@@ -5,17 +5,20 @@ import java.util.UUID;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
- * One entry of the {@code queries} member of {@link NamedDatasetDto}: a query linked to the dataset, with the two values that tell its
- * variant apart from the dataset's other queries.
+ * One entry of the {@code queries} member of {@link NamedDatasetDto}: a query row filed under the dataset's general query, with the two
+ * values that tell its variant apart from the other rows of that general query. The values are read from the columns of the query row, not
+ * from its stored body.
  *
- * @param queryId the id of the linked query
+ * @param queryId the id of the query row
  * @param sample whether the query is a sample query
- * @param resultType the result type the query asks for, or null when its stored body names none
+ * @param resultType the result type stored on the query row, or null when the row stores none
  */
-@Schema(description = "A query linked to a named dataset. Linking a second query with the same sample and resultType is refused.")
+@Schema(
+    description = "One stored variant of the query a named dataset points at: the same query submitted by the caller with one sample flag and one result type."
+)
 public record LinkedQueryDto(
     @Schema(
-        description = "The PIC-SURE id of the linked query.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6",
+        description = "The PIC-SURE id of the query stored for this variant.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6",
         requiredMode = Schema.RequiredMode.REQUIRED
     ) UUID queryId,
     @Schema(
@@ -23,8 +26,7 @@ public record LinkedQueryDto(
         requiredMode = Schema.RequiredMode.REQUIRED
     ) boolean sample,
     @Schema(
-        description = "The result type the query asks for, as its stored body names it. Null when the stored body names none.",
-        example = "DATAFRAME"
+        description = "The result type the query asks for. Null when none is recorded for the stored query.", example = "DATAFRAME"
     ) String resultType
 ) {
 }

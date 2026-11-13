@@ -14,8 +14,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
  * {@code query.query}, {@code query.uuid}, {@code query.startTime} and {@code query.status} off it, and derives its own {@code queryId}
  * from {@code query.uuid}. Flattening it makes the Manage Datasets page render "API Error" on an otherwise-200 response.
  *
- * <p>{@code queries} lists every query linked to the dataset, each with its variant. The nested {@code query} stays the row
- * {@code named_dataset.queryId} names, whichever other queries are linked.
+ * <p>{@code queries} lists the query rows the caller owns under the dataset's general query, each with its variant: the same query in every
+ * combination of sample flag and result type the caller has submitted. It is empty for a dataset that has no general query. The nested
+ * {@code query} is the row {@code named_dataset.queryId} names.
  */
 @Schema(description = "A saved query that a user has named, with the query it points at.")
 public record NamedDatasetDto(
@@ -39,7 +40,7 @@ public record NamedDatasetDto(
         description = "Free-form settings the client stored with the dataset, returned unchanged. The service defines no keys of its own: the keys are whatever the client sent."
     ) Map<String, Object> metadata,
     @Schema(
-        description = "Every query linked to the dataset, the earliest linked first. The query the query member holds is one of them. Clients written before this member existed ignore it.",
+        description = "The stored variants of the query the dataset points at: that query as the caller submitted it with each sample flag and result type, ordered by sample flag, then result type, then query id. The query the query member holds is one of them when the caller submitted it. Empty when the query was stored without an owner or the caller submitted none of its variants. Clients written before this member existed ignore it.",
         requiredMode = Schema.RequiredMode.REQUIRED
     ) List<LinkedQueryDto> queries
 ) {

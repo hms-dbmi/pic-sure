@@ -1,30 +1,25 @@
 package edu.harvard.hms.dbmi.avillach.operations.dataset;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.annotation.Transactional;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
-import edu.harvard.hms.dbmi.avillach.operations.dataset.NamedDatasetMapper.QueryVariant;
 import edu.harvard.hms.dbmi.avillach.operations.error.PicsureExceptions;
 import edu.harvard.hms.dbmi.avillach.operations.query.Query;
 import edu.harvard.hms.dbmi.avillach.operations.query.QueryRepository;
+import edu.harvard.hms.dbmi.avillach.operations.query.QueryVariantRow;
 
 /**
  * Manages named datasets with user scoping enforced in SQL through {@code NamedDatasetRepository}'s
@@ -38,98 +33,78 @@ import edu.harvard.hms.dbmi.avillach.operations.query.QueryRepository;
  * <p>{@code queryId} is resolved to a persisted {@code Query} via {@code QueryRepository.findById}, returning 404 when absent.
  *
  * <p>{@code NamedDataset} carries a DB-level unique constraint on {@code (queryId, user)}. Rather than a check-then-save pre-check (which
- * would race under concurrent requests), {@link #create} and {@link #update} (when it sets the query) use {@code saveAndFlush} inside a
+ * would race under concurrent requests), {@link #create} and {@link #update} (when it repoints the query) use {@code saveAndFlush} inside a
  * try/catch so the constraint violation surfaces synchronously and is translated to {@code 409 CONFLICT} via {@link PicsureException},
  * mirroring how {@code ConfigurationService} handles its name+kind conflict.
  *
- * <p>A dataset links any number of queries through {@code named_dataset_query} rows, at most one for each variant, and a variant is the
- * {@code sample} flag together with the result type. {@code named_dataset.queryId} is still written. {@link #create} sets it and adds a
- * join row for the same query. {@link #update} adds a join row when the request names a query the dataset does not link yet, and moves
- * {@code queryId} only when the dataset has none and the new query is not a sample, so it stays on the query the dataset was created from.
- * A dataset the previous release created has no join row, so the query its {@code queryId} names always counts as linked.
+ * <p>A dataset points at one query row through {@code queryId}. {@link #create} sets it, and {@link #update} moves it when the request
+ * names another query. A dataset is pointed only at a query row that belongs to the caller or has no owner. That check is made when
+ * {@code queryId} is written and at no other time: a read, and an update that names the query the dataset already points at, do not look at
+ * who owns that row.
  *
- * <p>A query is linked, by {@link #create} or by {@link #update}, only when its row belongs to the caller or has no owner. The check is
- * made when the link is written and at no other time: a read, and an update that names a query the dataset already links, return the
- * dataset's queries without looking at who owns them.
+ * <p>A dataset also names the general query of its query row, in {@code queryToVariantUuid}. A general query is a user's query whatever its
+ * result type and whether or not it is a sample, and every query row that has an owner is one variant of one. {@link #create} and
+ * {@link #update} copy the id from the query row each time, so a dataset stored without it takes it on its next update. A dataset on a
+ * query row that has no owner has no general query.
  *
- * <p>The join rows the migration created have no result type. A read derives it from the stored query body and, after its own transaction
- * has ended, stores it on the row. That write is optional. The variant key refuses it when another row of the dataset already has the same
- * variant, and the database can fail it for a reason of its own, such as a lock it waited too long for. Either way the read leaves the row
- * as it is and still answers with the derived type.
- *
- * <p>None of the public methods is transactional. Each runs its reads and writes in one transaction of its own, and stores derived result
- * types afterward, one statement at a time, so a refused statement undoes nothing else.
+ * <p>Every answer lists the dataset's {@code queries}: the query rows filed under its general query that belong to the caller, by the
+ * gateway user id. They are found by the general query alone. Nothing links a query to a dataset, no stored query body is read to list
+ * them, and a read writes nothing.
  */
 @Service
 public class NamedDatasetService {
 
-    private static final Logger LOG = LoggerFactory.getLogger(NamedDatasetService.class);
-
-    /**
-     * The name the migration gives the foreign key from a join row to its named dataset. MySQL puts it in the error of an insert whose
-     * dataset no longer exists.
-     */
-    private static final String DATASET_FOREIGN_KEY = "fk_named_dataset_query_dataset";
+    /** The canonical text form of a UUID: 36 characters, hexadecimal digits in either case, hyphens after digits 8, 12, 16 and 20. */
+    private static final Pattern CANONICAL_UUID =
+        Pattern.compile("\\p{XDigit}{8}-\\p{XDigit}{4}-\\p{XDigit}{4}-\\p{XDigit}{4}-\\p{XDigit}{12}");
 
     private final NamedDatasetRepository repo;
-    private final NamedDatasetQueryRepository links;
     private final QueryRepository queryRepo;
     private final NamedDatasetMapper mapper;
-    private final TransactionTemplate reads;
-    private final TransactionTemplate writes;
 
     /**
      * Creates the service.
      *
      * @param repo the named datasets
-     * @param links the join rows between named datasets and queries
      * @param queryRepo the query rows
      * @param mapper the mapper to the public shapes
-     * @param transactionManager the transaction manager each call opens its transaction on
      */
-    public NamedDatasetService(
-        NamedDatasetRepository repo, NamedDatasetQueryRepository links, QueryRepository queryRepo, NamedDatasetMapper mapper,
-        PlatformTransactionManager transactionManager
-    ) {
+    public NamedDatasetService(NamedDatasetRepository repo, QueryRepository queryRepo, NamedDatasetMapper mapper) {
         this.repo = repo;
-        this.links = links;
         this.queryRepo = queryRepo;
         this.mapper = mapper;
-        this.reads = new TransactionTemplate(transactionManager);
-        this.reads.setReadOnly(true);
-        this.writes = new TransactionTemplate(transactionManager);
     }
 
     /**
-     * Lists the caller's named datasets, each with its linked queries.
+     * Lists the caller's named datasets, each with the variants of its general query that belong to the caller.
      *
      * @param user the caller
      * @return the caller's datasets, archived ones included
      * @throws PicsureException 401 when the caller has no email
      */
+    @Transactional(readOnly = true)
     public List<NamedDatasetDto> listForUser(GatewayUser user) {
-        String email = requireEmail(user);
-        return afterStoringDerivedResultTypes(reads.execute(status -> view(repo.findByUser(email))));
+        return withVariants(user, repo.findByUser(requireEmail(user)));
     }
 
     /**
-     * Reads one of the caller's named datasets with its linked queries.
+     * Reads one of the caller's named datasets with the variants of its general query that belong to the caller.
      *
      * @param user the caller
      * @param id the id of the dataset
      * @return the dataset
      * @throws PicsureException 401 when the caller has no email, 404 when the caller has no dataset with the id
      */
+    @Transactional(readOnly = true)
     public NamedDatasetDto getForUser(GatewayUser user, UUID id) {
-        String email = requireEmail(user);
-        View view = reads.execute(status -> view(List.of(repo.findByUuidAndUser(id, email).orElseThrow(() -> notFound(id)))));
-        return afterStoringDerivedResultTypes(view).getFirst();
+        NamedDataset dataset = repo.findByUuidAndUser(id, requireEmail(user)).orElseThrow(() -> notFound(id));
+        return withVariants(user, List.of(dataset)).getFirst();
     }
 
     /**
-     * Names a query as a dataset of the caller. The dataset's {@code queryId} is set to the query, and a join row links the same query with
-     * the variant its body names. The query row must belong to the caller, by the gateway user id, or have no owner. That is checked before
-     * anything is saved, so a refused request stores neither a dataset nor a join row.
+     * Names a query as a dataset of the caller. The dataset's {@code queryId} is set to the query, and the dataset is filed under the
+     * general query of that query row. The query row must belong to the caller, by the gateway user id, or have no owner. That is checked
+     * before anything is saved, so a refused request stores nothing.
      *
      * @param user the caller
      * @param req the query to name and the name, archived state and metadata to store
@@ -137,224 +112,126 @@ public class NamedDatasetService {
      * @throws PicsureException 401 when the caller has no email, 404 when no query has the id, 403 when the query belongs to another user,
      *         409 when the caller already named the query
      */
+    @Transactional
     public NamedDatasetDto create(GatewayUser user, NamedDatasetRequestDto req) {
         String email = requireEmail(user);
-        View view = writes.execute(status -> {
-            Query query = resolveQuery(req.queryId());
-            requireOwnedByCallerOrOwnerless(user, query);
-            NamedDataset saved = saveOrConflict(mapper.toEntity(email, query, req), req.queryId(), email);
-            NamedDatasetQuery link = insertOrConflict(saved, query, mapper.variantOf(query));
-            return view(List.of(saved), List.of(link));
-        });
-        return afterStoringDerivedResultTypes(view).getFirst();
+        Query query = resolveQuery(req.queryId());
+        requireOwnedByCallerOrOwnerless(user, query);
+        NamedDataset created = underTheGeneralQueryOfItsRow(mapper.toEntity(email, query, req));
+        return withVariants(user, List.of(saveOrConflict(created, req.queryId(), email))).getFirst();
     }
 
     /**
-     * Updates the name, archived state and metadata of one of the caller's datasets, and links the query the request names when the dataset
-     * does not link it yet.
+     * Updates the name, archived state and metadata of one of the caller's datasets, and points the dataset at the query the request names
+     * when that is not the query it points at already.
      *
-     * <p>A query is linked already when the dataset's {@code queryId} names it or a join row holds it. Any other query is linked by a new
-     * join row, under three rules. The query row must belong to the caller, by the gateway user id, or have no owner. The dataset must not
-     * hold a query of the same variant yet. The dataset's {@code queryId} is set to the query only when the dataset has none and the query
-     * is not a sample, and is left alone otherwise.
+     * <p>The query to move to must belong to the caller, by the gateway user id, or have no owner. A request that names another user's
+     * query is refused before anything is changed. A request that names the query the dataset already points at moves nothing and makes no
+     * owner check. Either way the dataset is filed under the general query of the query row it ends up on, so moving it onto a query row
+     * that has no owner leaves it with no general query.
      *
      * @param user the caller
      * @param id the id of the dataset
-     * @param req the query to link and the name, archived state and metadata to store
+     * @param req the query to point at and the name, archived state and metadata to store
      * @return the updated dataset
-     * @throws PicsureException 401 when the caller has no email, 404 when the caller has no dataset with the id, the dataset is deleted
-     *         before the link is written, or no query has the id to link, 403 when the query to link belongs to another user, 409 when the
-     *         dataset already holds a query of the same variant or the caller already named the query the {@code queryId} would move to
+     * @throws PicsureException 401 when the caller has no email, 404 when the caller has no dataset with the id or no query has the id to
+     *         move to, 403 when the query to move to belongs to another user, 409 when the caller already named the query to move to
      */
+    @Transactional
     public NamedDatasetDto update(GatewayUser user, UUID id, NamedDatasetRequestDto req) {
         String email = requireEmail(user);
-        View view = writes.execute(status -> {
-            NamedDataset existing = repo.findByUuidAndUser(id, email).orElseThrow(() -> notFound(id));
-            List<NamedDatasetQuery> rows = new ArrayList<>(links.findByDatasets(List.of(id)));
-            Query toLink = isLinked(existing, rows, req.queryId()) ? null : resolveQuery(req.queryId());
-            QueryVariant variant = toLink == null ? null : linkableVariantOf(user, existing, rows, toLink);
-            if (toLink != null && existing.getQuery() == null && !variant.sample()) {
-                existing.setQuery(toLink);
-            }
-            existing.setName(req.name()).setArchived(req.archived()).setMetadata(req.metadata());
-            NamedDataset saved = saveOrConflict(existing, req.queryId(), email);
-            if (toLink != null) {
-                rows.add(insertOrConflict(saved, toLink, variant));
-            }
-            return view(List.of(saved), rows);
-        });
-        return afterStoringDerivedResultTypes(view).getFirst();
+        NamedDataset existing = repo.findByUuidAndUser(id, email).orElseThrow(() -> notFound(id));
+        if (existing.getQuery() == null || !existing.getQuery().getUuid().equals(req.queryId())) {
+            Query query = resolveQuery(req.queryId());
+            requireOwnedByCallerOrOwnerless(user, query);
+            existing.setQuery(query);
+        }
+        underTheGeneralQueryOfItsRow(existing);
+        existing.setName(req.name()).setArchived(req.archived()).setMetadata(req.metadata());
+        return withVariants(user, List.of(saveOrConflict(existing, req.queryId(), email))).getFirst();
     }
 
     /**
-     * Deletes one of the caller's named datasets. Its join rows go with it, removed by the database through the foreign key of
-     * {@code named_dataset_query}. The queries it linked stay.
+     * Deletes one of the caller's named datasets. The query it points at and the other variants of its general query stay.
      *
      * @param user the caller
      * @param id the id of the dataset
      * @throws PicsureException 401 when the caller has no email, 404 when the caller has no dataset with the id
      */
+    @Transactional
     public void delete(GatewayUser user, UUID id) {
-        String email = requireEmail(user);
-        writes.executeWithoutResult(status -> repo.delete(repo.findByUuidAndUser(id, email).orElseThrow(() -> notFound(id))));
+        NamedDataset existing = repo.findByUuidAndUser(id, requireEmail(user)).orElseThrow(() -> notFound(id));
+        repo.delete(existing);
     }
 
     /**
-     * The datasets of one answer, and the result types that were derived for join rows that store none.
+     * Builds the public shape of each dataset with its {@code queries}: the caller's query rows under the dataset's general query, in the
+     * order {@link QueryRepository#findVariantsOf} returns them. One query fetches the rows of all the datasets. A dataset with no general
+     * query lists none, and so does every dataset when the caller's gateway user id is not a UUID.
      *
-     * @param datasets the datasets in their public shape
-     * @param derived the result types to store, each for one join row
-     */
-    private record View(List<NamedDatasetDto> datasets, List<DerivedResultType> derived) {
-    }
-
-    /**
-     * A result type read from a query body for a join row that stores none.
-     *
-     * @param dataset the id of the named dataset of the join row
-     * @param query the id of the query of the join row
-     * @param resultType the result type the body names
-     */
-    private record DerivedResultType(UUID dataset, UUID query, String resultType) {
-    }
-
-    private View view(List<NamedDataset> datasets) {
-        if (datasets.isEmpty()) {
-            return new View(List.of(), List.of());
-        }
-        return view(datasets, links.findByDatasets(datasets.stream().map(NamedDataset::getUuid).toList()));
-    }
-
-    /**
-     * Builds the public shape of each dataset with its linked queries: the query its {@code queryId} names when no join row holds that
-     * query, then its join rows in the order given. A join row that stores no result type gets the one its query body names.
-     *
+     * @param user the caller
      * @param datasets the datasets to show
-     * @param rows the join rows of all of them, in the order they are to be returned
-     * @return the datasets and the result types that were derived
+     * @return the datasets in the order given
      */
-    private View view(List<NamedDataset> datasets, List<NamedDatasetQuery> rows) {
-        Map<UUID, List<NamedDatasetQuery>> rowsByDataset =
-            rows.stream().collect(Collectors.groupingBy(NamedDatasetQuery::getNamedDatasetUuid));
-        Map<UUID, Query> bodies = bodiesOfUntypedRows(datasets, rows);
-        List<DerivedResultType> derived = new ArrayList<>();
-        List<NamedDatasetDto> shown = new ArrayList<>();
-        for (NamedDataset dataset : datasets) {
-            List<NamedDatasetQuery> datasetRows = rowsByDataset.getOrDefault(dataset.getUuid(), List.of());
-            List<LinkedQueryDto> queries = new ArrayList<>();
-            Query named = dataset.getQuery();
-            if (named != null && datasetRows.stream().noneMatch(row -> row.getQueryUuid().equals(named.getUuid()))) {
-                QueryVariant variant = mapper.variantOf(named);
-                queries.add(new LinkedQueryDto(named.getUuid(), variant.sample(), variant.resultType()));
-            }
-            for (NamedDatasetQuery row : datasetRows) {
-                String resultType = row.getResultType();
-                if (resultType == null) {
-                    resultType = resultTypeOf(bodies.get(row.getQueryUuid()));
-                    if (resultType != null) {
-                        derived.add(new DerivedResultType(row.getNamedDatasetUuid(), row.getQueryUuid(), resultType));
-                    }
-                }
-                queries.add(new LinkedQueryDto(row.getQueryUuid(), row.isSample(), resultType));
-            }
-            shown.add(mapper.toDto(dataset, queries));
+    private List<NamedDatasetDto> withVariants(GatewayUser user, List<NamedDataset> datasets) {
+        Map<UUID, List<LinkedQueryDto>> variants = callersVariantsByGeneralQuery(user, datasets);
+        return datasets.stream().map(dataset -> {
+            UUID generalQuery = dataset.getQueryToVariantUuid();
+            return mapper.toDto(dataset, generalQuery == null ? List.of() : variants.getOrDefault(generalQuery, List.of()));
+        }).toList();
+    }
+
+    private Map<UUID, List<LinkedQueryDto>> callersVariantsByGeneralQuery(GatewayUser user, List<NamedDataset> datasets) {
+        Optional<UUID> caller = uuidOf(user);
+        Set<UUID> generalQueries = datasets.stream().map(NamedDataset::getQueryToVariantUuid).filter(Objects::nonNull)
+            .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (caller.isEmpty() || generalQueries.isEmpty()) {
+            return Map.of();
         }
-        return new View(shown, derived);
+        return queryRepo.findVariantsOf(generalQueries, caller.get()).stream().collect(
+            Collectors.groupingBy(
+                QueryVariantRow::queryToVariantUuid,
+                Collectors.mapping(row -> new LinkedQueryDto(row.uuid(), row.sample(), row.resultType()), Collectors.toList())
+            )
+        );
     }
 
     /**
-     * Returns the query rows of the join rows that store no result type, by query id. The query a dataset's {@code queryId} names is
-     * already loaded with the dataset, and only the others are fetched.
-     */
-    private Map<UUID, Query> bodiesOfUntypedRows(List<NamedDataset> datasets, List<NamedDatasetQuery> rows) {
-        Map<UUID, Query> bodies = new HashMap<>();
-        for (NamedDataset dataset : datasets) {
-            if (dataset.getQuery() != null) {
-                bodies.put(dataset.getQuery().getUuid(), dataset.getQuery());
-            }
-        }
-        Set<UUID> missing = rows.stream().filter(row -> row.getResultType() == null).map(NamedDatasetQuery::getQueryUuid)
-            .filter(query -> !bodies.containsKey(query)).collect(Collectors.toCollection(LinkedHashSet::new));
-        if (!missing.isEmpty()) {
-            queryRepo.findAllById(missing).forEach(query -> bodies.put(query.getUuid(), query));
-        }
-        return bodies;
-    }
-
-    private String resultTypeOf(Query query) {
-        return query == null ? null : mapper.variantOf(query).resultType();
-    }
-
-    /**
-     * Stores each derived result type on its join row, after the transaction that derived it has ended. A row another request filled in the
-     * meantime is left alone. The answer already carries the derived type, so a write that fails costs the caller nothing: the row keeps
-     * its null result type and the answer is returned all the same. The variant key refuses the value when another row of the dataset
-     * already has the same variant. A lock the statement waited too long for, or a database that takes no writes, fails it as well.
-     */
-    private List<NamedDatasetDto> afterStoringDerivedResultTypes(View view) {
-        for (DerivedResultType derived : view.derived()) {
-            try {
-                links.fillResultType(derived.dataset(), derived.query(), derived.resultType());
-            } catch (DataAccessException notStored) {
-                LOG.warn(
-                    "The join row of named dataset {} for query {} keeps no result type, storing {} failed: {}", derived.dataset(),
-                    derived.query(), derived.resultType(), notStored.toString()
-                );
-            }
-        }
-        return view.datasets();
-    }
-
-    private static boolean isLinked(NamedDataset dataset, List<NamedDatasetQuery> rows, UUID queryId) {
-        Query named = dataset.getQuery();
-        return (named != null && named.getUuid().equals(queryId)) || rows.stream().anyMatch(row -> row.getQueryUuid().equals(queryId));
-    }
-
-    /**
-     * Returns the variant of a query the caller may link to the dataset.
+     * Files a dataset under the general query of the query row it points at, or under none when it points at no row or that row has no
+     * general query.
      *
-     * @throws PicsureException 403 when the query belongs to another user, 409 when the dataset already holds a query of its variant
+     * @param dataset the dataset, pointing at the query row it is to keep
+     * @return the same dataset
      */
-    private QueryVariant linkableVariantOf(GatewayUser user, NamedDataset dataset, List<NamedDatasetQuery> rows, Query query) {
-        requireOwnedByCallerOrOwnerless(user, query);
-        QueryVariant variant = mapper.variantOf(query);
-        if (variantsOf(dataset, rows).contains(variant)) {
-            throw PicsureExceptions.conflict(
-                "NamedDataset " + dataset.getUuid() + " already links a query with sample " + variant.sample() + " and result type "
-                    + variant.resultType()
-            );
-        }
-        return variant;
+    private static NamedDataset underTheGeneralQueryOfItsRow(NamedDataset dataset) {
+        Query row = dataset.getQuery();
+        return dataset.setQueryToVariantUuid(row == null ? null : row.getQueryToVariantUuid());
     }
 
     /**
-     * The owner of a query row is a user UUID, and the caller is the gateway user id. The two match when the id is that UUID in its
-     * canonical text form, in either letter case. A row with no owner can be linked by anyone, because rows stored before queries had
-     * owners have none.
+     * The owner of a query row is a user UUID, and the caller is the gateway user id. A row with no owner can be named by anyone, because
+     * rows stored before queries had owners have none.
+     *
+     * @throws PicsureException 403 when the row has an owner and the caller's gateway user id is not that owner's UUID
      */
     private static void requireOwnedByCallerOrOwnerless(GatewayUser user, Query query) {
         UUID owner = query.getUserUuid();
-        if (owner != null && !owner.toString().equalsIgnoreCase(user.getUserId())) {
+        if (owner != null && !owner.equals(uuidOf(user).orElse(null))) {
             throw PicsureExceptions.forbidden("Query " + query.getUuid() + " belongs to another user");
         }
     }
 
     /**
-     * The variants a dataset already holds: the one of each join row, with a missing result type read from the query body, and the one of
-     * the query its {@code queryId} names when no join row holds that query.
+     * Returns the caller's UUID when the gateway user id is a UUID in its canonical text form, and empty otherwise. Letter case is not part
+     * of the identity: an id in upper case names the same user as its lower case form. A caller the gateway identifies some other way, such
+     * as by an API key, has no UUID and so owns no query row.
      */
-    private Set<QueryVariant> variantsOf(NamedDataset dataset, List<NamedDatasetQuery> rows) {
-        Map<UUID, Query> bodies = bodiesOfUntypedRows(List.of(dataset), rows);
-        Set<QueryVariant> variants = new LinkedHashSet<>();
-        Query named = dataset.getQuery();
-        if (named != null && rows.stream().noneMatch(row -> row.getQueryUuid().equals(named.getUuid()))) {
-            variants.add(mapper.variantOf(named));
+    private static Optional<UUID> uuidOf(GatewayUser user) {
+        String id = user.getUserId();
+        if (id == null || !CANONICAL_UUID.matcher(id).matches()) {
+            return Optional.empty();
         }
-        for (NamedDatasetQuery row : rows) {
-            String resultType = row.getResultType() != null ? row.getResultType() : resultTypeOf(bodies.get(row.getQueryUuid()));
-            variants.add(new QueryVariant(row.isSample(), resultType));
-        }
-        return variants;
+        return Optional.of(UUID.fromString(id));
     }
 
     /**
@@ -384,35 +261,6 @@ public class NamedDatasetService {
         } catch (DataIntegrityViolationException e) {
             throw PicsureExceptions.conflict("A NamedDataset for query " + queryId + " and user '" + user + "' already exists");
         }
-    }
-
-    /**
-     * Inserts the join row that links a query to a dataset. The insert is flushed here so that a key the database refuses, which a second
-     * request linking the same variant at the same moment runs into, is answered with 409.
-     *
-     * <p>The database also refuses the insert when the dataset was deleted after this request read it. That refusal names the foreign key
-     * to {@code named_dataset}, and it is answered with the 404 of a dataset the caller does not have.
-     */
-    private NamedDatasetQuery insertOrConflict(NamedDataset dataset, Query query, QueryVariant variant) {
-        NamedDatasetQuery link = new NamedDatasetQuery(
-            dataset.getUuid(), query.getUuid(), variant.sample(), variant.resultType(), Instant.now().truncatedTo(ChronoUnit.MILLIS)
-        );
-        try {
-            links.saveAndFlush(link);
-            return link;
-        } catch (DataIntegrityViolationException e) {
-            if (namesTheDatasetForeignKey(e)) {
-                throw notFound(dataset.getUuid());
-            }
-            throw PicsureExceptions.conflict(
-                "NamedDataset " + dataset.getUuid() + " already links query " + query.getUuid() + " or another query of its variant"
-            );
-        }
-    }
-
-    private static boolean namesTheDatasetForeignKey(DataIntegrityViolationException refused) {
-        String databaseError = refused.getMostSpecificCause().getMessage();
-        return databaseError != null && databaseError.contains(DATASET_FOREIGN_KEY);
     }
 
     private static PicsureException notFound(UUID id) {

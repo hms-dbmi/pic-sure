@@ -9,8 +9,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import java.sql.SQLIntegrityConstraintViolationException;
-import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -19,18 +17,20 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
-import org.springframework.transaction.PlatformTransactionManager;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
 import edu.harvard.hms.dbmi.avillach.operations.query.Query;
 import edu.harvard.hms.dbmi.avillach.operations.query.QueryRepository;
+import edu.harvard.hms.dbmi.avillach.operations.query.QueryVariantRow;
 
 /**
  * Note: a dedicated {@code PicsureNotFoundException} subclass might be expected here, but none exists in the actual
@@ -42,9 +42,9 @@ import edu.harvard.hms.dbmi.avillach.operations.query.QueryRepository;
  * gets exactly the same {@code PicsureException(NOT_FOUND)} as a genuinely-missing uuid -- there is no separate 403 branch, and existence
  * is never leaked to a non-owning caller.
  *
- * <p>The repositories and the transaction manager are mocks, so these tests pin what the service decides and which rows it asks the
- * repositories to write. What the database does with those rows is pinned by {@code NamedDatasetControllerTest} and
- * {@code NamedDatasetMySqlTest}.
+ * <p>The repositories are mocks, so these tests pin what the service decides, which rows it asks the repositories to write, and which
+ * general queries and owner it asks for the variants of. Which query rows the database returns for them is pinned by
+ * {@code NamedDatasetControllerTest} and {@code NamedDatasetMySqlTest}.
  */
 @ExtendWith(MockitoExtension.class)
 class NamedDatasetServiceTest {
@@ -56,71 +56,68 @@ class NamedDatasetServiceTest {
     /** Gateway-resolved identity for the canonical caller; the service keys datasets on {@code getEmail()}. */
     static final GatewayUser ALICE = new GatewayUser(ALICE_ID.toString(), "auth0|alice", ALICE_EMAIL, null, Set.of());
 
-    private static final String FULL_DATAFRAME =
-        "{\"query\":{\"select\":[],\"phenotypicClause\":null,\"expectedResultType\":\"DATAFRAME\"}}";
-    private static final String SAMPLE_DATAFRAME =
-        "{\"query\":{\"select\":[],\"phenotypicClause\":null,\"expectedResultType\":\"DATAFRAME\",\"sample\":true}}";
-    private static final String FULL_PFB = "{\"query\":{\"select\":[],\"phenotypicClause\":null,\"expectedResultType\":\"DATAFRAME_PFB\"}}";
-    private static final String NO_RESULT_TYPE = "{\"query\":{\"select\":[],\"phenotypicClause\":null}}";
+    private static final String STORED_BODY = "{\"query\":{\"select\":[],\"phenotypicClause\":null,\"expectedResultType\":\"DATAFRAME\"}}";
 
     @Mock
     private NamedDatasetRepository repo;
 
     @Mock
-    private NamedDatasetQueryRepository links;
-
-    @Mock
     private QueryRepository queryRepo;
-
-    @Mock
-    private PlatformTransactionManager transactionManager;
 
     private NamedDatasetService service;
 
     @BeforeEach
     void buildService() {
-        service = new NamedDatasetService(repo, links, queryRepo, new NamedDatasetMapper(), transactionManager);
+        service = new NamedDatasetService(repo, queryRepo, new NamedDatasetMapper());
     }
 
-    private static Query storedQuery(UUID owner, String body) {
+    private static Query storedQuery(UUID owner, UUID generalQuery) {
         Query query = new Query();
         query.setUuid(UUID.randomUUID());
-        query.setQuery(body).setVersion("3");
+        query.setQuery(STORED_BODY).setVersion("3");
         query.setUserUuid(owner);
+        query.setQueryToVariantUuid(generalQuery);
         return query;
+    }
+
+    private static Query ownerlessQuery() {
+        return storedQuery(null, null);
     }
 
     private static NamedDataset datasetPointingAt(Query query) {
         NamedDataset dataset = new NamedDataset().setUser(ALICE_EMAIL).setName("d1").setQuery(query).setArchived(false);
+        dataset.setQueryToVariantUuid(query == null ? null : query.getQueryToVariantUuid());
         dataset.setUuid(UUID.randomUUID());
         return dataset;
     }
 
-    private static NamedDatasetQuery joinRow(NamedDataset dataset, Query query, boolean sample, String resultType) {
-        return new NamedDatasetQuery(dataset.getUuid(), query.getUuid(), sample, resultType, Instant.parse("2026-01-02T03:04:05.678Z"));
-    }
-
-    private static NamedDatasetRequestDto linkRequest(Query query) {
+    private static NamedDatasetRequestDto requestNaming(Query query) {
         return new NamedDatasetRequestDto(query.getUuid(), "d1", false, null);
     }
 
-    private void callerOwns(NamedDataset dataset, NamedDatasetQuery... rows) {
+    private void callerOwns(NamedDataset dataset) {
         when(repo.findByUuidAndUser(dataset.getUuid(), ALICE_EMAIL)).thenReturn(Optional.of(dataset));
-        when(links.findByDatasets(List.of(dataset.getUuid()))).thenReturn(List.of(rows));
     }
 
     private void queryIsStored(Query query) {
         when(queryRepo.findById(query.getUuid())).thenReturn(Optional.of(query));
     }
 
-    private NamedDatasetQuery insertedJoinRow() {
-        ArgumentCaptor<NamedDatasetQuery> inserted = ArgumentCaptor.forClass(NamedDatasetQuery.class);
-        verify(links).saveAndFlush(inserted.capture());
-        return inserted.getValue();
+    private void savingAssignsAnId() {
+        when(repo.saveAndFlush(any())).thenAnswer(inv -> {
+            NamedDataset e = inv.getArgument(0);
+            e.setUuid(UUID.randomUUID());
+            return e;
+        });
     }
 
-    private void assertNothingWasLinked() {
-        verify(links, never()).saveAndFlush(any());
+    private NamedDataset savedDataset() {
+        ArgumentCaptor<NamedDataset> saved = ArgumentCaptor.forClass(NamedDataset.class);
+        verify(repo).saveAndFlush(saved.capture());
+        return saved.getValue();
+    }
+
+    private void assertNothingWasSaved() {
         verify(repo, never()).saveAndFlush(any());
     }
 
@@ -138,26 +135,107 @@ class NamedDatasetServiceTest {
     }
 
     @Test
-    void listReturnsTheQueriesOfEachDataset() {
-        Query first = storedQuery(ALICE_ID, FULL_DATAFRAME);
-        Query firstSample = storedQuery(ALICE_ID, SAMPLE_DATAFRAME);
-        Query second = storedQuery(ALICE_ID, FULL_PFB);
+    void readListsEveryVariantOfTheGeneralQuery() {
+        UUID firstGeneral = UUID.randomUUID();
+        UUID secondGeneral = UUID.randomUUID();
+        Query first = storedQuery(ALICE_ID, firstGeneral);
+        Query second = storedQuery(ALICE_ID, secondGeneral);
+        UUID firstSample = UUID.randomUUID();
+        UUID firstPfb = UUID.randomUUID();
         NamedDataset one = datasetPointingAt(first);
         NamedDataset two = datasetPointingAt(second);
         when(repo.findByUser(ALICE_EMAIL)).thenReturn(List.of(one, two));
-        when(links.findByDatasets(List.of(one.getUuid(), two.getUuid()))).thenReturn(
+        when(queryRepo.findVariantsOf(Set.of(firstGeneral, secondGeneral), ALICE_ID)).thenReturn(
             List.of(
-                joinRow(one, first, false, "DATAFRAME"), joinRow(two, second, false, "DATAFRAME_PFB"),
-                joinRow(one, firstSample, true, "DATAFRAME")
+                new QueryVariantRow(firstGeneral, first.getUuid(), false, "DATAFRAME"),
+                new QueryVariantRow(secondGeneral, second.getUuid(), false, "DATAFRAME"),
+                new QueryVariantRow(firstGeneral, firstPfb, false, "DATAFRAME_PFB"),
+                new QueryVariantRow(firstGeneral, firstSample, true, "DATAFRAME")
             )
         );
 
         List<NamedDatasetDto> result = service.listForUser(ALICE);
 
         assertThat(result.get(0).queries()).containsExactly(
-            new LinkedQueryDto(first.getUuid(), false, "DATAFRAME"), new LinkedQueryDto(firstSample.getUuid(), true, "DATAFRAME")
+            new LinkedQueryDto(first.getUuid(), false, "DATAFRAME"), new LinkedQueryDto(firstPfb, false, "DATAFRAME_PFB"),
+            new LinkedQueryDto(firstSample, true, "DATAFRAME")
         );
-        assertThat(result.get(1).queries()).containsExactly(new LinkedQueryDto(second.getUuid(), false, "DATAFRAME_PFB"));
+        assertThat(result.get(1).queries()).containsExactly(new LinkedQueryDto(second.getUuid(), false, "DATAFRAME"));
+        assertThat(result).extracting(dto -> dto.query().uuid()).containsExactly(first.getUuid(), second.getUuid());
+    }
+
+    @Test
+    void readOfADatasetWithNoGeneralQueryListsNoQueries() {
+        UUID general = UUID.randomUUID();
+        Query owned = storedQuery(ALICE_ID, general);
+        NamedDataset onAnOwnerlessRow = datasetPointingAt(ownerlessQuery());
+        NamedDataset onAnOwnedRow = datasetPointingAt(owned);
+        when(repo.findByUser(ALICE_EMAIL)).thenReturn(List.of(onAnOwnerlessRow, onAnOwnedRow));
+        when(queryRepo.findVariantsOf(Set.of(general), ALICE_ID))
+            .thenReturn(List.of(new QueryVariantRow(general, owned.getUuid(), false, "DATAFRAME")));
+
+        List<NamedDatasetDto> result = service.listForUser(ALICE);
+
+        assertThat(result.get(0).queries()).isEmpty();
+        assertThat(result.get(0).query().uuid()).isEqualTo(onAnOwnerlessRow.getQuery().getUuid());
+        assertThat(result.get(1).queries()).containsExactly(new LinkedQueryDto(owned.getUuid(), false, "DATAFRAME"));
+    }
+
+    @Test
+    void readOfDatasetsThatAllHaveNoGeneralQueryAsksForNoVariants() {
+        NamedDataset dataset = datasetPointingAt(ownerlessQuery());
+        callerOwns(dataset);
+
+        NamedDatasetDto dto = service.getForUser(ALICE, dataset.getUuid());
+
+        assertThat(dto.queries()).isEmpty();
+        verifyNoInteractions(queryRepo);
+    }
+
+    @Test
+    void readListsOnlyTheCallersRows() {
+        UUID general = UUID.randomUUID();
+        NamedDataset dataset = datasetPointingAt(storedQuery(BOB_ID, general));
+        callerOwns(dataset);
+        when(queryRepo.findVariantsOf(Set.of(general), ALICE_ID)).thenReturn(List.of());
+
+        NamedDatasetDto dto = service.getForUser(ALICE, dataset.getUuid());
+
+        assertThat(dto.queries()).isEmpty();
+        assertThat(dto.query().uuid()).isEqualTo(dataset.getQuery().getUuid());
+        verify(queryRepo).findVariantsOf(Set.of(general), ALICE_ID);
+    }
+
+    @Test
+    void readMatchesTheCallersRowsWhateverTheLetterCaseOfTheGatewayUserId() {
+        GatewayUser upperCase = new GatewayUser(ALICE_ID.toString().toUpperCase(), "auth0|alice", ALICE_EMAIL, null, Set.of());
+        UUID general = UUID.randomUUID();
+        Query full = storedQuery(ALICE_ID, general);
+        NamedDataset dataset = datasetPointingAt(full);
+        callerOwns(dataset);
+        when(queryRepo.findVariantsOf(Set.of(general), ALICE_ID))
+            .thenReturn(List.of(new QueryVariantRow(general, full.getUuid(), false, "DATAFRAME")));
+
+        NamedDatasetDto dto = service.getForUser(upperCase, dataset.getUuid());
+
+        assertThat(dto.queries()).containsExactly(new LinkedQueryDto(full.getUuid(), false, "DATAFRAME"));
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(
+        strings = {"auth0|alice", "open-access-host", "urn:uuid:5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11",
+            "5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f1", "1-1-1-1-1"}
+    )
+    void readForACallerWhoseGatewayUserIdIsNotACanonicalUuidListsNoQueries(String userId) {
+        GatewayUser caller = new GatewayUser(userId, "subject", ALICE_EMAIL, null, Set.of());
+        NamedDataset dataset = datasetPointingAt(storedQuery(ALICE_ID, UUID.randomUUID()));
+        callerOwns(dataset);
+        when(repo.findByUser(ALICE_EMAIL)).thenReturn(List.of(dataset));
+
+        assertThat(service.getForUser(caller, dataset.getUuid()).queries()).isEmpty();
+        assertThat(service.listForUser(caller)).singleElement().extracting(NamedDatasetDto::queries).isEqualTo(List.of());
+        verifyNoInteractions(queryRepo);
     }
 
     @Test
@@ -184,103 +262,6 @@ class NamedDatasetServiceTest {
     }
 
     @Test
-    void readIncludesTheQueryIdRowWhenItHasNoJoinRow() {
-        Query full = storedQuery(ALICE_ID, FULL_DATAFRAME);
-        NamedDataset dataset = datasetPointingAt(full);
-        callerOwns(dataset);
-
-        NamedDatasetDto dto = service.getForUser(ALICE, dataset.getUuid());
-
-        assertThat(dto.queries()).containsExactly(new LinkedQueryDto(full.getUuid(), false, "DATAFRAME"));
-        verify(links, never()).fillResultType(any(), any(), any());
-    }
-
-    @Test
-    void readListsTheQueryIdRowOnceWhenItHasAJoinRow() {
-        Query full = storedQuery(ALICE_ID, FULL_DATAFRAME);
-        Query sample = storedQuery(ALICE_ID, SAMPLE_DATAFRAME);
-        NamedDataset dataset = datasetPointingAt(full);
-        callerOwns(dataset, joinRow(dataset, full, false, "DATAFRAME"), joinRow(dataset, sample, true, "DATAFRAME"));
-
-        NamedDatasetDto dto = service.getForUser(ALICE, dataset.getUuid());
-
-        assertThat(dto.query().uuid()).isEqualTo(full.getUuid());
-        assertThat(dto.queries()).containsExactly(
-            new LinkedQueryDto(full.getUuid(), false, "DATAFRAME"), new LinkedQueryDto(sample.getUuid(), true, "DATAFRAME")
-        );
-        verify(links, never()).fillResultType(any(), any(), any());
-    }
-
-    @Test
-    void backfilledJoinRowWithNullResultTypeReadsItFromTheBody() {
-        Query full = storedQuery(null, FULL_DATAFRAME);
-        NamedDataset dataset = datasetPointingAt(full);
-        callerOwns(dataset, joinRow(dataset, full, false, null));
-
-        NamedDatasetDto dto = service.getForUser(ALICE, dataset.getUuid());
-
-        assertThat(dto.queries()).containsExactly(new LinkedQueryDto(full.getUuid(), false, "DATAFRAME"));
-        verify(links).fillResultType(dataset.getUuid(), full.getUuid(), "DATAFRAME");
-    }
-
-    @Test
-    void joinRowWithNullResultTypeForAQueryOtherThanTheQueryIdRowReadsThatQuerysBody() {
-        Query full = storedQuery(ALICE_ID, FULL_DATAFRAME);
-        Query other = storedQuery(ALICE_ID, FULL_PFB);
-        NamedDataset dataset = datasetPointingAt(full);
-        callerOwns(dataset, joinRow(dataset, full, false, "DATAFRAME"), joinRow(dataset, other, false, null));
-        when(queryRepo.findAllById(Set.of(other.getUuid()))).thenReturn(List.of(other));
-
-        NamedDatasetDto dto = service.getForUser(ALICE, dataset.getUuid());
-
-        assertThat(dto.queries()).containsExactly(
-            new LinkedQueryDto(full.getUuid(), false, "DATAFRAME"), new LinkedQueryDto(other.getUuid(), false, "DATAFRAME_PFB")
-        );
-        verify(links).fillResultType(dataset.getUuid(), other.getUuid(), "DATAFRAME_PFB");
-    }
-
-    @Test
-    void joinRowWhoseBodyNamesNoResultTypeIsReturnedWithoutOneAndNothingIsWrittenBack() {
-        Query untyped = storedQuery(null, NO_RESULT_TYPE);
-        NamedDataset dataset = datasetPointingAt(untyped);
-        callerOwns(dataset, joinRow(dataset, untyped, false, null));
-
-        NamedDatasetDto dto = service.getForUser(ALICE, dataset.getUuid());
-
-        assertThat(dto.queries()).containsExactly(new LinkedQueryDto(untyped.getUuid(), false, null));
-        verify(links, never()).fillResultType(any(), any(), any());
-    }
-
-    @Test
-    void writeBackOfADerivedResultTypeSurvivesAnExistingTypedRowForTheSameVariant() {
-        Query backfilled = storedQuery(null, FULL_DATAFRAME);
-        Query typed = storedQuery(ALICE_ID, FULL_DATAFRAME);
-        NamedDataset dataset = datasetPointingAt(backfilled);
-        callerOwns(dataset, joinRow(dataset, backfilled, false, null), joinRow(dataset, typed, false, "DATAFRAME"));
-        when(links.fillResultType(dataset.getUuid(), backfilled.getUuid(), "DATAFRAME"))
-            .thenThrow(new DataIntegrityViolationException("unique_named_dataset_variant"));
-
-        NamedDatasetDto dto = service.getForUser(ALICE, dataset.getUuid());
-
-        assertThat(dto.queries()).containsExactly(
-            new LinkedQueryDto(backfilled.getUuid(), false, "DATAFRAME"), new LinkedQueryDto(typed.getUuid(), false, "DATAFRAME")
-        );
-    }
-
-    @Test
-    void readAnswersWithTheDerivedResultTypeWhenTheWriteBackCannotGetItsLock() {
-        Query backfilled = storedQuery(null, FULL_DATAFRAME);
-        NamedDataset dataset = datasetPointingAt(backfilled);
-        callerOwns(dataset, joinRow(dataset, backfilled, false, null));
-        when(links.fillResultType(dataset.getUuid(), backfilled.getUuid(), "DATAFRAME"))
-            .thenThrow(new CannotAcquireLockException("Lock wait timeout exceeded; try restarting transaction"));
-
-        NamedDatasetDto dto = service.getForUser(ALICE, dataset.getUuid());
-
-        assertThat(dto.queries()).containsExactly(new LinkedQueryDto(backfilled.getUuid(), false, "DATAFRAME"));
-    }
-
-    @Test
     void createResolvesQueryAndReturnsDto() {
         UUID queryId = UUID.randomUUID();
         Query q = new Query();
@@ -300,98 +281,74 @@ class NamedDatasetServiceTest {
     }
 
     @Test
-    void createAddsAJoinRow() {
-        Query pfb = storedQuery(ALICE_ID, FULL_PFB);
+    void createSetsTheGeneralQueryFromItsRow() {
+        UUID general = UUID.randomUUID();
+        Query pfb = storedQuery(ALICE_ID, general);
+        UUID sample = UUID.randomUUID();
         queryIsStored(pfb);
-        when(repo.saveAndFlush(any())).thenAnswer(inv -> {
-            NamedDataset e = inv.getArgument(0);
-            e.setUuid(UUID.randomUUID());
-            return e;
-        });
+        savingAssignsAnId();
+        when(queryRepo.findVariantsOf(Set.of(general), ALICE_ID)).thenReturn(
+            List.of(new QueryVariantRow(general, pfb.getUuid(), false, "DATAFRAME_PFB"), new QueryVariantRow(general, sample, true, null))
+        );
 
-        NamedDatasetDto dto = service.create(ALICE, linkRequest(pfb));
+        NamedDatasetDto dto = service.create(ALICE, requestNaming(pfb));
 
-        NamedDatasetQuery row = insertedJoinRow();
-        assertThat(row.getNamedDatasetUuid()).isEqualTo(dto.uuid());
-        assertThat(row.getQueryUuid()).isEqualTo(pfb.getUuid());
-        assertThat(row.isSample()).isFalse();
-        assertThat(row.getResultType()).isEqualTo("DATAFRAME_PFB");
-        assertThat(row.getCreatedAt()).isNotNull();
+        NamedDataset saved = savedDataset();
+        assertThat(saved.getQuery()).isSameAs(pfb);
+        assertThat(saved.getQueryToVariantUuid()).isEqualTo(general);
         assertThat(dto.query().uuid()).isEqualTo(pfb.getUuid());
-        assertThat(dto.queries()).containsExactly(new LinkedQueryDto(pfb.getUuid(), false, "DATAFRAME_PFB"));
-    }
-
-    @Test
-    void createReadsTheSampleFlagOfTheJoinRowFromTheQueryBody() {
-        Query sample = storedQuery(ALICE_ID, SAMPLE_DATAFRAME);
-        queryIsStored(sample);
-        when(repo.saveAndFlush(any())).thenAnswer(inv -> {
-            NamedDataset e = inv.getArgument(0);
-            e.setUuid(UUID.randomUUID());
-            return e;
-        });
-
-        service.create(ALICE, linkRequest(sample));
-
-        NamedDatasetQuery row = insertedJoinRow();
-        assertThat(row.isSample()).isTrue();
-        assertThat(row.getResultType()).isEqualTo("DATAFRAME");
+        assertThat(dto.queries())
+            .containsExactly(new LinkedQueryDto(pfb.getUuid(), false, "DATAFRAME_PFB"), new LinkedQueryDto(sample, true, null));
     }
 
     @Test
     void creatingADatasetOnAnotherUsersQueryIs403AndWritesNothing() {
-        Query bobs = storedQuery(BOB_ID, FULL_DATAFRAME);
+        Query bobs = storedQuery(BOB_ID, UUID.randomUUID());
         queryIsStored(bobs);
 
-        PicsureException ex = assertThrows(PicsureException.class, () -> service.create(ALICE, linkRequest(bobs)));
+        PicsureException ex = assertThrows(PicsureException.class, () -> service.create(ALICE, requestNaming(bobs)));
 
         assertThat(ex.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
         assertThat(ex.getErrorType()).isEqualTo("forbidden");
-        assertNothingWasLinked();
+        assertNothingWasSaved();
     }
 
     @Test
     void creatingADatasetOnAnOwnedQueryIs403ForACallerWhoseGatewayUserIdIsNotAUuid() {
         GatewayUser subjectOnly = new GatewayUser("auth0|alice", "auth0|alice", ALICE_EMAIL, null, Set.of());
-        Query alices = storedQuery(ALICE_ID, FULL_DATAFRAME);
+        Query alices = storedQuery(ALICE_ID, UUID.randomUUID());
         queryIsStored(alices);
 
-        PicsureException ex = assertThrows(PicsureException.class, () -> service.create(subjectOnly, linkRequest(alices)));
+        PicsureException ex = assertThrows(PicsureException.class, () -> service.create(subjectOnly, requestNaming(alices)));
 
         assertThat(ex.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
-        assertNothingWasLinked();
+        assertNothingWasSaved();
     }
 
     @Test
-    void creatingADatasetOnAnOwnerlessQueryIsAllowed() {
-        Query ownerless = storedQuery(null, FULL_DATAFRAME);
+    void creatingADatasetOnAnOwnerlessQueryIsAllowedAndHasNoGeneralQuery() {
+        Query ownerless = ownerlessQuery();
         queryIsStored(ownerless);
-        when(repo.saveAndFlush(any())).thenAnswer(inv -> {
-            NamedDataset e = inv.getArgument(0);
-            e.setUuid(UUID.randomUUID());
-            return e;
-        });
+        savingAssignsAnId();
 
-        NamedDatasetDto dto = service.create(ALICE, linkRequest(ownerless));
+        NamedDatasetDto dto = service.create(ALICE, requestNaming(ownerless));
 
         assertThat(dto.query().uuid()).isEqualTo(ownerless.getUuid());
-        assertThat(insertedJoinRow().getQueryUuid()).isEqualTo(ownerless.getUuid());
+        assertThat(dto.queries()).isEmpty();
+        assertThat(savedDataset().getQueryToVariantUuid()).isNull();
+        verify(queryRepo, never()).findVariantsOf(any(), any());
     }
 
     @Test
     void creatingADatasetOnTheCallersOwnQueryIsAllowed() {
-        Query alices = storedQuery(ALICE_ID, FULL_DATAFRAME);
+        Query alices = storedQuery(ALICE_ID, UUID.randomUUID());
         queryIsStored(alices);
-        when(repo.saveAndFlush(any())).thenAnswer(inv -> {
-            NamedDataset e = inv.getArgument(0);
-            e.setUuid(UUID.randomUUID());
-            return e;
-        });
+        savingAssignsAnId();
 
-        NamedDatasetDto dto = service.create(ALICE, linkRequest(alices));
+        NamedDatasetDto dto = service.create(ALICE, requestNaming(alices));
 
         assertThat(dto.query().uuid()).isEqualTo(alices.getUuid());
-        assertThat(insertedJoinRow().getQueryUuid()).isEqualTo(alices.getUuid());
+        assertThat(savedDataset().getQuery()).isSameAs(alices);
     }
 
     @Test
@@ -406,7 +363,6 @@ class NamedDatasetServiceTest {
         PicsureException ex = assertThrows(PicsureException.class, () -> service.create(ALICE, req));
 
         assertThat(ex.getStatus()).isEqualTo(HttpStatus.CONFLICT);
-        verify(links, never()).saveAndFlush(any());
     }
 
     @Test
@@ -447,260 +403,203 @@ class NamedDatasetServiceTest {
 
         assertThat(dto.name()).isEqualTo("renamed");
         assertThat(dto.archived()).isTrue();
-        verify(links, never()).saveAndFlush(any());
         verifyNoInteractions(queryRepo);
     }
 
     @Test
-    void putWithAQueryThatAlreadyHasAJoinRowAddsNoSecondOne() {
-        Query full = storedQuery(ALICE_ID, FULL_DATAFRAME);
-        Query sample = storedQuery(BOB_ID, SAMPLE_DATAFRAME);
-        NamedDataset dataset = datasetPointingAt(full);
-        callerOwns(dataset, joinRow(dataset, full, false, "DATAFRAME"), joinRow(dataset, sample, true, "DATAFRAME"));
+    void putWithAnotherQueryMovesQueryIdAndTheGeneralQuery() {
+        UUID oldGeneral = UUID.randomUUID();
+        UUID newGeneral = UUID.randomUUID();
+        Query old = storedQuery(ALICE_ID, oldGeneral);
+        Query other = storedQuery(ALICE_ID, newGeneral);
+        NamedDataset dataset = datasetPointingAt(old);
+        callerOwns(dataset);
+        queryIsStored(other);
         when(repo.saveAndFlush(any())).thenAnswer(returnsFirstArg());
+        when(queryRepo.findVariantsOf(Set.of(newGeneral), ALICE_ID))
+            .thenReturn(List.of(new QueryVariantRow(newGeneral, other.getUuid(), false, "COUNT")));
 
-        NamedDatasetDto dto =
-            service.update(ALICE, dataset.getUuid(), new NamedDatasetRequestDto(sample.getUuid(), "renamed", false, null));
+        NamedDatasetDto dto = service.update(ALICE, dataset.getUuid(), new NamedDatasetRequestDto(other.getUuid(), "renamed", true, null));
 
+        NamedDataset saved = savedDataset();
+        assertThat(saved).isSameAs(dataset);
+        assertThat(saved.getQuery()).isSameAs(other);
+        assertThat(saved.getQueryToVariantUuid()).isEqualTo(newGeneral);
+        assertThat(dto.query().uuid()).isEqualTo(other.getUuid());
+        assertThat(dto.queries()).containsExactly(new LinkedQueryDto(other.getUuid(), false, "COUNT"));
         assertThat(dto.name()).isEqualTo("renamed");
-        assertThat(dto.query().uuid()).isEqualTo(full.getUuid());
-        verify(links, never()).saveAndFlush(any());
-        verifyNoInteractions(queryRepo);
+        assertThat(dto.archived()).isTrue();
     }
 
     @Test
-    void putWithANewSampleQueryLinksItAndKeepsQueryIdOnTheFullRow() {
-        Query full = storedQuery(ALICE_ID, FULL_DATAFRAME);
-        Query sample = storedQuery(ALICE_ID, SAMPLE_DATAFRAME);
+    void putOntoAnotherUsersQueryIs403AndChangesNothing() {
+        UUID general = UUID.randomUUID();
+        Query full = storedQuery(ALICE_ID, general);
+        Query bobs = storedQuery(BOB_ID, UUID.randomUUID());
         NamedDataset dataset = datasetPointingAt(full);
-        callerOwns(dataset, joinRow(dataset, full, false, "DATAFRAME"));
-        queryIsStored(sample);
-        when(repo.saveAndFlush(any())).thenAnswer(returnsFirstArg());
+        callerOwns(dataset);
+        queryIsStored(bobs);
 
-        NamedDatasetDto dto = service.update(ALICE, dataset.getUuid(), linkRequest(sample));
-
-        NamedDatasetQuery row = insertedJoinRow();
-        assertThat(row.getNamedDatasetUuid()).isEqualTo(dataset.getUuid());
-        assertThat(row.getQueryUuid()).isEqualTo(sample.getUuid());
-        assertThat(row.isSample()).isTrue();
-        assertThat(row.getResultType()).isEqualTo("DATAFRAME");
-        assertThat(dataset.getQuery()).isSameAs(full);
-        assertThat(dto.query().uuid()).isEqualTo(full.getUuid());
-        assertThat(dto.queries()).containsExactly(
-            new LinkedQueryDto(full.getUuid(), false, "DATAFRAME"), new LinkedQueryDto(sample.getUuid(), true, "DATAFRAME")
+        PicsureException ex = assertThrows(
+            PicsureException.class,
+            () -> service.update(ALICE, dataset.getUuid(), new NamedDatasetRequestDto(bobs.getUuid(), "renamed", true, null))
         );
-    }
-
-    @Test
-    void putWithANewFullQueryOfAnotherResultTypeLinksItAndKeepsQueryIdWhereItWas() {
-        Query full = storedQuery(ALICE_ID, FULL_DATAFRAME);
-        Query pfb = storedQuery(ALICE_ID, FULL_PFB);
-        NamedDataset dataset = datasetPointingAt(full);
-        callerOwns(dataset, joinRow(dataset, full, false, "DATAFRAME"));
-        queryIsStored(pfb);
-        when(repo.saveAndFlush(any())).thenAnswer(returnsFirstArg());
-
-        NamedDatasetDto dto = service.update(ALICE, dataset.getUuid(), linkRequest(pfb));
-
-        assertThat(insertedJoinRow().getQueryUuid()).isEqualTo(pfb.getUuid());
-        assertThat(dataset.getQuery()).isSameAs(full);
-        assertThat(dto.query().uuid()).isEqualTo(full.getUuid());
-    }
-
-    @Test
-    void putWithANewFullQueryMovesQueryIdWhenThePointerIsNull() {
-        Query full = storedQuery(ALICE_ID, FULL_DATAFRAME);
-        NamedDataset dataset = datasetPointingAt(null);
-        callerOwns(dataset);
-        queryIsStored(full);
-        when(repo.saveAndFlush(any())).thenAnswer(returnsFirstArg());
-
-        NamedDatasetDto dto = service.update(ALICE, dataset.getUuid(), linkRequest(full));
-
-        assertThat(dataset.getQuery()).isSameAs(full);
-        assertThat(dto.query().uuid()).isEqualTo(full.getUuid());
-        assertThat(insertedJoinRow().getQueryUuid()).isEqualTo(full.getUuid());
-    }
-
-    @Test
-    void putWithANewSampleQueryLeavesANullQueryIdNull() {
-        Query sample = storedQuery(ALICE_ID, SAMPLE_DATAFRAME);
-        NamedDataset dataset = datasetPointingAt(null);
-        callerOwns(dataset);
-        queryIsStored(sample);
-        when(repo.saveAndFlush(any())).thenAnswer(returnsFirstArg());
-
-        NamedDatasetDto dto = service.update(ALICE, dataset.getUuid(), linkRequest(sample));
-
-        assertThat(dataset.getQuery()).isNull();
-        assertThat(dto.query()).isNull();
-        assertThat(insertedJoinRow().getQueryUuid()).isEqualTo(sample.getUuid());
-    }
-
-    @Test
-    void putMovingANullQueryIdOntoAQueryTheCallerAlreadyNamedIs409() {
-        Query full = storedQuery(ALICE_ID, FULL_DATAFRAME);
-        NamedDataset dataset = datasetPointingAt(null);
-        callerOwns(dataset);
-        queryIsStored(full);
-        when(repo.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("unique_queryId_user"));
-
-        PicsureException ex = assertThrows(PicsureException.class, () -> service.update(ALICE, dataset.getUuid(), linkRequest(full)));
-
-        assertThat(ex.getStatus()).isEqualTo(HttpStatus.CONFLICT);
-        verify(links, never()).saveAndFlush(any());
-    }
-
-    @Test
-    void linkingAnotherUsersQueryIs403() {
-        Query full = storedQuery(ALICE_ID, FULL_DATAFRAME);
-        Query bobsSample = storedQuery(BOB_ID, SAMPLE_DATAFRAME);
-        NamedDataset dataset = datasetPointingAt(full);
-        callerOwns(dataset, joinRow(dataset, full, false, "DATAFRAME"));
-        queryIsStored(bobsSample);
-
-        PicsureException ex = assertThrows(PicsureException.class, () -> service.update(ALICE, dataset.getUuid(), linkRequest(bobsSample)));
 
         assertThat(ex.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
-        assertNothingWasLinked();
+        assertThat(ex.getErrorType()).isEqualTo("forbidden");
+        assertThat(dataset.getQuery()).isSameAs(full);
+        assertThat(dataset.getQueryToVariantUuid()).isEqualTo(general);
+        assertThat(dataset.getName()).isEqualTo("d1");
+        assertThat(dataset.getArchived()).isFalse();
+        assertNothingWasSaved();
     }
 
     @Test
-    void linkingAnOwnedQueryIs403ForACallerWhoseGatewayUserIdIsNotAUuid() {
+    void putOntoAnOwnedQueryIs403ForACallerWhoseGatewayUserIdIsNotAUuid() {
         GatewayUser subjectOnly = new GatewayUser("auth0|alice", "auth0|alice", ALICE_EMAIL, null, Set.of());
-        Query full = storedQuery(ALICE_ID, FULL_DATAFRAME);
-        Query sample = storedQuery(ALICE_ID, SAMPLE_DATAFRAME);
-        NamedDataset dataset = datasetPointingAt(full);
-        callerOwns(dataset, joinRow(dataset, full, false, "DATAFRAME"));
-        queryIsStored(sample);
-
-        PicsureException ex =
-            assertThrows(PicsureException.class, () -> service.update(subjectOnly, dataset.getUuid(), linkRequest(sample)));
-
-        assertThat(ex.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
-        assertNothingWasLinked();
-    }
-
-    @Test
-    void linkingTheCallersOwnQueryIgnoresTheLetterCaseOfTheGatewayUserId() {
-        GatewayUser upperCase = new GatewayUser(ALICE_ID.toString().toUpperCase(), "auth0|alice", ALICE_EMAIL, null, Set.of());
-        Query full = storedQuery(ALICE_ID, FULL_DATAFRAME);
-        Query sample = storedQuery(ALICE_ID, SAMPLE_DATAFRAME);
-        NamedDataset dataset = datasetPointingAt(full);
-        callerOwns(dataset, joinRow(dataset, full, false, "DATAFRAME"));
-        queryIsStored(sample);
-        when(repo.saveAndFlush(any())).thenAnswer(returnsFirstArg());
-
-        service.update(upperCase, dataset.getUuid(), linkRequest(sample));
-
-        assertThat(insertedJoinRow().getQueryUuid()).isEqualTo(sample.getUuid());
-    }
-
-    @Test
-    void linkingAnOwnerlessQueryIsAllowed() {
-        Query full = storedQuery(ALICE_ID, FULL_DATAFRAME);
-        Query ownerlessSample = storedQuery(null, SAMPLE_DATAFRAME);
-        NamedDataset dataset = datasetPointingAt(full);
-        callerOwns(dataset, joinRow(dataset, full, false, "DATAFRAME"));
-        queryIsStored(ownerlessSample);
-        when(repo.saveAndFlush(any())).thenAnswer(returnsFirstArg());
-
-        NamedDatasetDto dto = service.update(ALICE, dataset.getUuid(), linkRequest(ownerlessSample));
-
-        assertThat(insertedJoinRow().getQueryUuid()).isEqualTo(ownerlessSample.getUuid());
-        assertThat(dto.queries()).contains(new LinkedQueryDto(ownerlessSample.getUuid(), true, "DATAFRAME"));
-    }
-
-    @Test
-    void secondRowForTheSameVariantIs409() {
-        Query full = storedQuery(ALICE_ID, FULL_DATAFRAME);
-        Query sample = storedQuery(ALICE_ID, SAMPLE_DATAFRAME);
-        Query secondSample = storedQuery(ALICE_ID, SAMPLE_DATAFRAME);
-        NamedDataset dataset = datasetPointingAt(full);
-        callerOwns(dataset, joinRow(dataset, full, false, "DATAFRAME"), joinRow(dataset, sample, true, "DATAFRAME"));
-        queryIsStored(secondSample);
-
-        PicsureException ex =
-            assertThrows(PicsureException.class, () -> service.update(ALICE, dataset.getUuid(), linkRequest(secondSample)));
-
-        assertThat(ex.getStatus()).isEqualTo(HttpStatus.CONFLICT);
-        assertNothingWasLinked();
-    }
-
-    @Test
-    void secondRowForTheVariantOfTheQueryIdRowIs409WhenThatRowHasNoJoinRow() {
-        Query full = storedQuery(ALICE_ID, FULL_DATAFRAME);
-        Query secondFull = storedQuery(ALICE_ID, FULL_DATAFRAME);
+        Query full = storedQuery(ALICE_ID, UUID.randomUUID());
+        Query other = storedQuery(ALICE_ID, UUID.randomUUID());
         NamedDataset dataset = datasetPointingAt(full);
         callerOwns(dataset);
-        queryIsStored(secondFull);
+        queryIsStored(other);
 
-        PicsureException ex = assertThrows(PicsureException.class, () -> service.update(ALICE, dataset.getUuid(), linkRequest(secondFull)));
+        PicsureException ex =
+            assertThrows(PicsureException.class, () -> service.update(subjectOnly, dataset.getUuid(), requestNaming(other)));
 
-        assertThat(ex.getStatus()).isEqualTo(HttpStatus.CONFLICT);
-        assertNothingWasLinked();
+        assertThat(ex.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(dataset.getQuery()).isSameAs(full);
+        assertNothingWasSaved();
     }
 
     @Test
-    void secondRowForTheVariantOfABackfilledRowIs409() {
-        Query backfilled = storedQuery(null, FULL_DATAFRAME);
-        Query secondFull = storedQuery(ALICE_ID, FULL_DATAFRAME);
-        NamedDataset dataset = datasetPointingAt(backfilled);
-        callerOwns(dataset, joinRow(dataset, backfilled, false, null));
-        queryIsStored(secondFull);
-
-        PicsureException ex = assertThrows(PicsureException.class, () -> service.update(ALICE, dataset.getUuid(), linkRequest(secondFull)));
-
-        assertThat(ex.getStatus()).isEqualTo(HttpStatus.CONFLICT);
-        assertNothingWasLinked();
-    }
-
-    @Test
-    void joinRowThatLosesARaceOnTheVariantKeyIs409() {
-        Query full = storedQuery(ALICE_ID, FULL_DATAFRAME);
-        Query sample = storedQuery(ALICE_ID, SAMPLE_DATAFRAME);
+    void putOntoTheCallersOwnQueryIgnoresTheLetterCaseOfTheGatewayUserId() {
+        GatewayUser upperCase = new GatewayUser(ALICE_ID.toString().toUpperCase(), "auth0|alice", ALICE_EMAIL, null, Set.of());
+        Query full = storedQuery(ALICE_ID, UUID.randomUUID());
+        Query other = storedQuery(ALICE_ID, UUID.randomUUID());
         NamedDataset dataset = datasetPointingAt(full);
-        callerOwns(dataset, joinRow(dataset, full, false, "DATAFRAME"));
-        queryIsStored(sample);
+        callerOwns(dataset);
+        queryIsStored(other);
         when(repo.saveAndFlush(any())).thenAnswer(returnsFirstArg());
-        when(links.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("unique_named_dataset_variant"));
 
-        PicsureException ex = assertThrows(PicsureException.class, () -> service.update(ALICE, dataset.getUuid(), linkRequest(sample)));
+        NamedDatasetDto dto = service.update(upperCase, dataset.getUuid(), requestNaming(other));
 
-        assertThat(ex.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(dto.query().uuid()).isEqualTo(other.getUuid());
+        assertThat(dataset.getQueryToVariantUuid()).isEqualTo(other.getQueryToVariantUuid());
     }
 
     @Test
-    void joinRowRefusedBecauseTheDatasetWasDeletedMeanwhileIs404() {
-        Query full = storedQuery(ALICE_ID, FULL_DATAFRAME);
-        Query sample = storedQuery(ALICE_ID, SAMPLE_DATAFRAME);
+    void putOntoAnOwnerlessQueryMovesQueryIdAndClearsTheGeneralQuery() {
+        Query full = storedQuery(ALICE_ID, UUID.randomUUID());
+        Query ownerless = ownerlessQuery();
         NamedDataset dataset = datasetPointingAt(full);
-        callerOwns(dataset, joinRow(dataset, full, false, "DATAFRAME"));
-        queryIsStored(sample);
+        callerOwns(dataset);
+        queryIsStored(ownerless);
         when(repo.saveAndFlush(any())).thenAnswer(returnsFirstArg());
-        when(links.saveAndFlush(any())).thenThrow(
-            new DataIntegrityViolationException(
-                "could not execute statement",
-                new SQLIntegrityConstraintViolationException(
-                    "Cannot add or update a child row: a foreign key constraint fails (`picsure`.`named_dataset_query`, CONSTRAINT"
-                        + " `fk_named_dataset_query_dataset` FOREIGN KEY (`named_dataset_uuid`) REFERENCES `named_dataset` (`uuid`)"
-                        + " ON DELETE CASCADE)",
-                    "23000", 1452
-                )
+
+        NamedDatasetDto dto = service.update(ALICE, dataset.getUuid(), requestNaming(ownerless));
+
+        NamedDataset saved = savedDataset();
+        assertThat(saved.getQuery()).isSameAs(ownerless);
+        assertThat(saved.getQueryToVariantUuid()).isNull();
+        assertThat(dto.query().uuid()).isEqualTo(ownerless.getUuid());
+        assertThat(dto.queries()).isEmpty();
+        verify(queryRepo, never()).findVariantsOf(any(), any());
+    }
+
+    @Test
+    void putOntoADatasetThatPointsAtNoQueryPointsItAtTheQuery() {
+        UUID general = UUID.randomUUID();
+        Query full = storedQuery(ALICE_ID, general);
+        NamedDataset dataset = datasetPointingAt(null);
+        callerOwns(dataset);
+        queryIsStored(full);
+        when(repo.saveAndFlush(any())).thenAnswer(returnsFirstArg());
+
+        NamedDatasetDto dto = service.update(ALICE, dataset.getUuid(), requestNaming(full));
+
+        assertThat(dataset.getQuery()).isSameAs(full);
+        assertThat(dataset.getQueryToVariantUuid()).isEqualTo(general);
+        assertThat(dto.query().uuid()).isEqualTo(full.getUuid());
+    }
+
+    @Test
+    void putWithTheSameQueryOnlyRenames() {
+        UUID general = UUID.randomUUID();
+        Query full = storedQuery(ALICE_ID, general);
+        UUID sample = UUID.randomUUID();
+        NamedDataset dataset = datasetPointingAt(full);
+        callerOwns(dataset);
+        when(repo.saveAndFlush(any())).thenAnswer(returnsFirstArg());
+        when(queryRepo.findVariantsOf(Set.of(general), ALICE_ID)).thenReturn(
+            List.of(
+                new QueryVariantRow(general, full.getUuid(), false, "DATAFRAME"), new QueryVariantRow(general, sample, true, "DATAFRAME")
             )
         );
 
-        PicsureException ex = assertThrows(PicsureException.class, () -> service.update(ALICE, dataset.getUuid(), linkRequest(sample)));
+        NamedDatasetDto dto = service.update(ALICE, dataset.getUuid(), new NamedDatasetRequestDto(full.getUuid(), "renamed", false, null));
 
-        assertThat(ex.getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
-        assertThat(ex).hasMessage("NamedDataset " + dataset.getUuid() + " not found");
+        assertThat(dto.name()).isEqualTo("renamed");
+        assertThat(dto.query().uuid()).isEqualTo(full.getUuid());
+        assertThat(dto.queries())
+            .containsExactly(new LinkedQueryDto(full.getUuid(), false, "DATAFRAME"), new LinkedQueryDto(sample, true, "DATAFRAME"));
+        assertThat(dataset.getQuery()).isSameAs(full);
+        assertThat(dataset.getQueryToVariantUuid()).isEqualTo(general);
+        verify(queryRepo, never()).findById(any());
+    }
+
+    @Test
+    void putWithTheSameQueryTakesTheGeneralQueryOfItsRowWhenTheDatasetHasNone() {
+        UUID general = UUID.randomUUID();
+        Query full = storedQuery(ALICE_ID, general);
+        NamedDataset dataset = datasetPointingAt(full).setQueryToVariantUuid(null);
+        callerOwns(dataset);
+        when(repo.saveAndFlush(any())).thenAnswer(returnsFirstArg());
+        when(queryRepo.findVariantsOf(Set.of(general), ALICE_ID))
+            .thenReturn(List.of(new QueryVariantRow(general, full.getUuid(), false, "DATAFRAME")));
+
+        NamedDatasetDto dto = service.update(ALICE, dataset.getUuid(), requestNaming(full));
+
+        assertThat(savedDataset().getQueryToVariantUuid()).isEqualTo(general);
+        assertThat(dto.queries()).containsExactly(new LinkedQueryDto(full.getUuid(), false, "DATAFRAME"));
+    }
+
+    @Test
+    void putWithTheSameQueryMakesNoOwnerCheck() {
+        UUID general = UUID.randomUUID();
+        Query bobs = storedQuery(BOB_ID, general);
+        NamedDataset dataset = datasetPointingAt(bobs);
+        callerOwns(dataset);
+        when(repo.saveAndFlush(any())).thenAnswer(returnsFirstArg());
+
+        NamedDatasetDto dto = service.update(ALICE, dataset.getUuid(), new NamedDatasetRequestDto(bobs.getUuid(), "renamed", false, null));
+
+        assertThat(dto.name()).isEqualTo("renamed");
+        assertThat(dto.query().uuid()).isEqualTo(bobs.getUuid());
+        assertThat(dto.queries()).isEmpty();
+        verify(queryRepo, never()).findById(any());
+    }
+
+    @Test
+    void putOntoAQueryTheCallerAlreadyNamedIs409() {
+        Query full = storedQuery(ALICE_ID, UUID.randomUUID());
+        Query alreadyNamed = storedQuery(ALICE_ID, UUID.randomUUID());
+        NamedDataset dataset = datasetPointingAt(full);
+        callerOwns(dataset);
+        queryIsStored(alreadyNamed);
+        when(repo.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("unique_queryId_user"));
+
+        PicsureException ex =
+            assertThrows(PicsureException.class, () -> service.update(ALICE, dataset.getUuid(), requestNaming(alreadyNamed)));
+
+        assertThat(ex.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(ex).hasMessage("A NamedDataset for query " + alreadyNamed.getUuid() + " and user '" + ALICE_EMAIL + "' already exists");
     }
 
     @Test
     void putWithAQueryThatIsNotStoredIs404() {
-        Query full = storedQuery(ALICE_ID, FULL_DATAFRAME);
+        Query full = storedQuery(ALICE_ID, UUID.randomUUID());
         NamedDataset dataset = datasetPointingAt(full);
-        callerOwns(dataset, joinRow(dataset, full, false, "DATAFRAME"));
+        callerOwns(dataset);
         UUID unknown = UUID.randomUUID();
         when(queryRepo.findById(unknown)).thenReturn(Optional.empty());
 
@@ -709,7 +608,8 @@ class NamedDatasetServiceTest {
         );
 
         assertThat(ex.getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
-        assertNothingWasLinked();
+        assertThat(dataset.getQuery()).isSameAs(full);
+        assertNothingWasSaved();
     }
 
     @Test
@@ -732,7 +632,7 @@ class NamedDatasetServiceTest {
         service.delete(ALICE, id);
 
         verify(repo).delete(existing);
-        verifyNoInteractions(links);
+        verifyNoInteractions(queryRepo);
     }
 
     // Identity-completeness guard (moved here from the controller): a gateway-authenticated caller without an email owner key is

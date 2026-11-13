@@ -432,26 +432,7 @@ class NamedDatasetMapperTest {
     }
 
     @Test
-    void readsTheVariantOfAStoredQueryFromItsBody() {
-        assertThat(
-            mapper.variantOf(new Query().setQuery("{\"query\":{\"expectedResultType\":\"DATAFRAME_PFB\",\"sample\":true}}").setVersion("3"))
-        ).isEqualTo(new NamedDatasetMapper.QueryVariant(true, "DATAFRAME_PFB"));
-        assertThat(mapper.variantOf(new Query().setQuery("{\"query\":{\"expectedResultType\":\"DATAFRAME\"}}").setVersion("3")))
-            .isEqualTo(new NamedDatasetMapper.QueryVariant(false, "DATAFRAME"));
-        assertThat(mapper.variantOf(new Query().setQuery(LEGACY).setVersion("2")))
-            .isEqualTo(new NamedDatasetMapper.QueryVariant(false, "DATAFRAME"));
-    }
-
-    @ParameterizedTest
-    @NullSource
-    @ValueSource(strings = {"", "not json", "[]", "{\"query\":null}", "{\"query\":{\"select\":{}}}", "{\"query\":{\"select\":[]}}"})
-    void readsNoResultTypeFromABodyThatNamesNone(String stored) {
-        assertThat(mapper.variantOf(new Query().setQuery(stored).setVersion("3")))
-            .isEqualTo(new NamedDatasetMapper.QueryVariant(false, null));
-    }
-
-    @Test
-    void toDtoCarriesTheLinkedQueries() {
+    void toDtoCarriesTheListedVariants() {
         UUID full = UUID.randomUUID();
         UUID sample = UUID.randomUUID();
         NamedDataset entity = new NamedDataset().setUser("alice@example.com").setName("d1");

@@ -41,8 +41,8 @@ public class NamedDatasetMapper {
      * Builds the public shape of a named dataset.
      *
      * @param e the dataset, with the query its {@code queryId} names already loaded
-     * @param queries the dataset's linked queries, in the order they are to be returned
-     * @return the dataset with its nested query and its linked queries
+     * @param queries the variants of the dataset's general query to list, in the order they are to be returned
+     * @return the dataset with its nested query and the listed variants
      * @throws PicsureException 500 when the stored body of the nested query cannot be converted to v3
      */
     public NamedDatasetDto toDto(NamedDataset e, List<LinkedQueryDto> queries) {
@@ -59,38 +59,6 @@ public class NamedDatasetMapper {
         return new NamedDatasetQueryDto(
             q.getUuid(), convertQuery(q), q.getStartTime() == null ? null : q.getStartTime().toEpochMilli(), q.getStatus()
         );
-    }
-
-    /**
-     * The variant of a stored query: whether it is a sample query, and the result type it asks for.
-     *
-     * @param sample whether the query is a sample query
-     * @param resultType the result type the query asks for, or null when its body names none
-     */
-    public record QueryVariant(boolean sample, String resultType) {
-    }
-
-    /**
-     * Reads the variant of a stored query from its body, in the v3 form {@link #toDto} returns it in. A query stored before v3 is
-     * translated first, so it has the result type the translation gives it and is never a sample.
-     *
-     * @param q the stored query
-     * @return the variant; not a sample and with no result type when the row has no body or the body cannot be converted to v3
-     */
-    public QueryVariant variantOf(Query q) {
-        String stored = q.getQuery();
-        if (stored == null || stored.isBlank()) {
-            return new QueryVariant(false, null);
-        }
-        try {
-            JsonNode query = v3Request(q, stored).get("query");
-            JsonNode resultType = query.get("expectedResultType");
-            return new QueryVariant(
-                query.path("sample").asBoolean(false), resultType != null && resultType.isTextual() ? resultType.asText() : null
-            );
-        } catch (JsonProcessingException | UntranslatableQueryException | IllegalArgumentException e) {
-            return new QueryVariant(false, null);
-        }
     }
 
     /**
