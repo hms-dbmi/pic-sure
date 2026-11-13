@@ -251,17 +251,20 @@ class DictionaryServiceTest {
     }
 
     @Test
-    void constructor_batchSizeAboveTheDictionaryRequestCap_isRejectedNamingThePropertyAndTheCap() {
-        IllegalArgumentException thrown =
-            assertThrows(IllegalArgumentException.class, () -> new DictionaryService(BASE_URL, TOKEN, 5001, restTemplate));
+    void getConcepts_batchSizeAboveTheDictionaryRequestCap_throwsUnavailableNamingPropertyValueAndCapWithoutCalling() {
+        DictionaryService dictionaryService = new DictionaryService(BASE_URL, TOKEN, 5001, restTemplate);
+
+        DictionaryUnavailableException thrown =
+            assertThrows(DictionaryUnavailableException.class, () -> dictionaryService.getConcepts(paths(2)));
 
         assertTrue(thrown.getMessage().contains("dictionary.batch-size"), thrown.getMessage());
         assertTrue(thrown.getMessage().contains("5000"), thrown.getMessage());
         assertTrue(thrown.getMessage().contains("5001"), thrown.getMessage());
+        verifyNoInteractions(restTemplate);
     }
 
     @Test
-    void constructor_batchSizeAtTheDictionaryRequestCap_isAccepted() {
+    void getConcepts_batchSizeAtTheDictionaryRequestCap_postsOneBatch() {
         DictionaryService dictionaryService = new DictionaryService(BASE_URL, TOKEN, 5000, restTemplate);
         stubEchoingDictionary(EXPORT_URL);
 

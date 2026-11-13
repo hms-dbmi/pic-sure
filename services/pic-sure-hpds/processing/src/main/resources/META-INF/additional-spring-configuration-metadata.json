@@ -69,7 +69,7 @@
     {
       "name": "dictionary.batch-size",
       "type": "java.lang.Integer",
-      "description": "Largest number of concept paths DictionaryService sends to the dictionary service in one request. An export with more paths makes one request per batch. Must be at least 1 and at most 5000, the most concept paths the dictionary accepts in one request. A value outside that range stops the service from starting.",
+      "description": "Largest number of concept paths DictionaryService sends to the dictionary service in one request. An export with more paths makes one request per batch. Must be at least 1 and at most 5000, the most concept paths the dictionary accepts in one request. A value below 1 stops the service from starting. A value above 5000 makes every PFB export end in ERROR before any dictionary call.",
       "defaultValue": 1000
     },
     {

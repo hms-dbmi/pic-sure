@@ -34,7 +34,10 @@ public class DictionaryService {
     private static final String EXPORT_METADATA_PATH = "/internal/concepts/export-metadata";
     private static final List<String> EXPORT_META_KEYS = List.of("drs_uri");
 
-    /** Largest number of concept paths the dictionary accepts in one export metadata request. */
+    /**
+     * Largest number of concept paths the dictionary accepts in one export metadata request. Must match
+     * {@code ConceptService.MAX_EXPORT_CONCEPT_PATHS} in the dictionary service, which this module does not depend on.
+     */
     static final int MAX_BATCH_SIZE = 5000;
 
     /**
@@ -56,7 +59,7 @@ public class DictionaryService {
      * @param connectTimeoutMs milliseconds to wait for a connection to the dictionary
      * @param readTimeoutMs milliseconds to wait for the dictionary to answer one batch
      * @param batchSize largest number of concept paths sent in one request
-     * @throws IllegalArgumentException if {@code batchSize} is below one or above {@value #MAX_BATCH_SIZE}
+     * @throws IllegalArgumentException if {@code batchSize} is below one
      */
     @Autowired
     public DictionaryService(
@@ -74,17 +77,11 @@ public class DictionaryService {
      * @param internalToken shared secret the dictionary requires on its internal endpoints, blank when the deployment has none
      * @param batchSize largest number of concept paths sent in one request
      * @param restTemplate client used for every dictionary call
-     * @throws IllegalArgumentException if {@code batchSize} is below one or above {@value #MAX_BATCH_SIZE}
+     * @throws IllegalArgumentException if {@code batchSize} is below one
      */
     DictionaryService(String dictionaryUrl, String internalToken, int batchSize, RestTemplate restTemplate) {
         if (batchSize < 1) {
             throw new IllegalArgumentException("dictionary.batch-size must be at least 1 but was " + batchSize);
-        }
-        if (batchSize > MAX_BATCH_SIZE) {
-            throw new IllegalArgumentException(
-                "dictionary.batch-size must be at most " + MAX_BATCH_SIZE
-                    + ", the most concept paths the dictionary accepts in one request, but was " + batchSize
-            );
         }
         this.dictionaryUrl = dictionaryUrl == null ? "" : dictionaryUrl.strip().replaceAll("/+$", "");
         this.internalToken = internalToken == null ? "" : internalToken.strip();
@@ -107,17 +104,28 @@ public class DictionaryService {
      * @param conceptPaths the concept paths to look up
      * @return the concepts the dictionary returned across all batches
      * @throws DictionaryUnavailableException if the configured dictionary URL is blank or not an absolute http or https URL, the internal
-     *         token is blank, the dictionary rejects the token or the request, a request fails, or a response has no body
+     *         token is blank, the configured batch size is above {@value #MAX_BATCH_SIZE}, the dictionary rejects the token or the request,
+     *         a request fails, or a response has no body
      */
     public List<Concept> getConcepts(List<String> conceptPaths) {
         String exportMetadataUrl = requireAbsoluteHttpUrl() + EXPORT_METADATA_PATH;
         HttpHeaders headers = new HttpHeaders();
         headers.set(INTERNAL_TOKEN_HEADER, requireInternalToken());
+        requireBatchSizeWithinDictionaryLimit();
         List<Concept> concepts = new ArrayList<>();
         for (List<String> batch : Lists.partition(conceptPaths, batchSize)) {
             concepts.addAll(fetchBatch(exportMetadataUrl, new HttpEntity<>(new ConceptExportRequest(batch, EXPORT_META_KEYS), headers)));
         }
         return concepts;
+    }
+
+    private void requireBatchSizeWithinDictionaryLimit() {
+        if (batchSize > MAX_BATCH_SIZE) {
+            throw new DictionaryUnavailableException(
+                "dictionary.batch-size is " + batchSize + " but the dictionary accepts at most " + MAX_BATCH_SIZE
+                    + " concept paths in one request, set dictionary.batch-size to " + MAX_BATCH_SIZE + " or less"
+            );
+        }
     }
 
     private String requireInternalToken() {

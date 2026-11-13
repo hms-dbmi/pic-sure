@@ -24,7 +24,10 @@ import java.util.Set;
 @Service
 public class ConceptService {
 
-    /** Largest number of concept paths one export metadata request may carry. */
+    /**
+     * Largest number of concept paths one export metadata request may carry. Must match {@code DictionaryService.MAX_BATCH_SIZE} in HPDS
+     * processing, which this module does not depend on.
+     */
     public static final int MAX_EXPORT_CONCEPT_PATHS = 5000;
 
     private final ConceptRepository conceptRepository;
