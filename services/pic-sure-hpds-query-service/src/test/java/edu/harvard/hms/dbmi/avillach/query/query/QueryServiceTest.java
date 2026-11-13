@@ -786,7 +786,7 @@ class QueryServiceTest {
 
         ownedService.query("auth", envelope(cohortAs(ResultType.DATAFRAME_PFB, false)), TOKEN, notAUuid);
 
-        assertSavedWithoutAnOwner("rr-legacy");
+        assertSavedWithoutAnOwner("rr-legacy", ResultType.DATAFRAME_PFB);
     }
 
     @Test
@@ -938,7 +938,7 @@ class QueryServiceTest {
         JsonNode storedFilters = MAPPER.readTree(onlySave().query()).get("query").get("authorizationFilters");
         assertThat(storedFilters).hasSize(1);
         assertThat(storedFilters.get(0).get("conceptPath").asText()).isEqualTo("\\client\\");
-        assertSavedWithoutAnOwner("rr-legacy");
+        assertSavedWithoutAnOwner("rr-legacy", ResultType.DATAFRAME);
     }
 
     @Test
@@ -990,7 +990,15 @@ class QueryServiceTest {
         verify(operationsClient, never()).save(any());
     }
 
-    private void assertSavedWithoutAnOwner(String resourceResultId) {
+    /**
+     * Asserts that exactly one save was made and that it is the save of a row without an owner: it names no row id, owner, consents,
+     * trigger, general query or sample flag, and the only variant member it carries is the result type.
+     *
+     * @param resourceResultId the result id the save must carry
+     * @param resultType the result type of the query that was submitted, whose name the save must carry, or null when the save must carry
+     *        none
+     */
+    private void assertSavedWithoutAnOwner(String resourceResultId, ResultType resultType) {
         SaveQueryRequest saved = onlySave();
         assertThat(saved.picsureId()).isNull();
         assertThat(saved.userUuid()).isNull();
@@ -998,7 +1006,7 @@ class QueryServiceTest {
         assertThat(saved.trigger()).isNull();
         assertThat(saved.queryToVariantUuid()).isNull();
         assertThat(saved.sample()).isNull();
-        assertThat(saved.resultType()).isNull();
+        assertThat(saved.resultType()).isEqualTo(resultType == null ? null : resultType.name());
         assertThat(saved.resourceResultId()).isEqualTo(resourceResultId);
         verify(operationsClient, never()).find(any());
         verify(hpds, never()).query(any(HpdsTarget.class), any(), any(UUID.class));
@@ -1013,8 +1021,105 @@ class QueryServiceTest {
         QueryStatus out = ownedService.query("open", envelope(cohort()), TOKEN, user(ALICE));
 
         assertThat(out.getPicsureResultId()).isEqualTo(rowId);
-        assertSavedWithoutAnOwner("rr-open");
+        assertSavedWithoutAnOwner("rr-open", ResultType.DATAFRAME);
         verifyNoInteractions(psama);
+    }
+
+    @ParameterizedTest
+    @EnumSource(ResultType.class)
+    void submitWithoutAnOwnerSavesTheResultTypeOfItsQuery(ResultType type) {
+        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-open"));
+        when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
+
+        ownedService.query("open", envelope(cohortAs(type, false)), TOKEN, user(ALICE));
+
+        assertSavedWithoutAnOwner("rr-open", type);
+    }
+
+    @ParameterizedTest
+    @EnumSource(ResultType.class)
+    void syncSavesTheResultTypeOfItsQueryWithoutAnOwner(ResultType type) {
+        when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
+        when(hpds.querySync(any(HpdsTarget.class), any(), any()))
+            .thenReturn(new ResourceWebClient.QuerySyncResult("7".getBytes(), "hpds-sync-id"));
+
+        ownedService.querySync("open", envelope(cohortAs(type, false)), "UI", null, null);
+
+        assertSavedWithoutAnOwner("hpds-sync-id", type);
+        assertThat(onlySave().status()).isNull();
+        assertThat(onlySave().metadata()).isNull();
+    }
+
+    @Test
+    void submitWithoutAnOwnerOfAQueryWithNoResultTypeSavesNone() {
+        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-open"));
+        when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
+
+        ownedService.query("open", envelope(cohortAs(null, false)), TOKEN, user(ALICE));
+
+        assertSavedWithoutAnOwner("rr-open", null);
+        assertThat(onlySave().query()).contains("\"expectedResultType\":null");
+    }
+
+    @Test
+    void syncOfAQueryWithNoResultTypeSavesNone() {
+        when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
+        when(hpds.querySync(any(HpdsTarget.class), any(), any()))
+            .thenReturn(new ResourceWebClient.QuerySyncResult("7".getBytes(), "hpds-sync-id"));
+
+        ownedService.querySync("open", envelope(cohortAs(null, false)), "UI", null, null);
+
+        assertSavedWithoutAnOwner("hpds-sync-id", null);
+    }
+
+    @Test
+    void submitWithoutAnOwnerReadsTheResultTypeOfAnUntypedBodyShapedLikeAV3Query() {
+        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-open"));
+        when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
+        Map<String, Object> untyped = Map.of("select", List.of("\\demographics\\AGE\\"), "expectedResultType", "CROSS_COUNT");
+
+        ownedService.query("open", new GeneralQueryRequest().setQuery(untyped), TOKEN, user(ALICE));
+
+        assertSavedWithoutAnOwner("rr-open", ResultType.CROSS_COUNT);
+    }
+
+    /**
+     * A body the v3 query model cannot read is stored as before, with no result type: text, and a query in the format before v3. The save
+     * is not refused for it.
+     */
+    @ParameterizedTest
+    @MethodSource("bodiesThatAreNotV3Queries")
+    void submitAndSyncWithoutAnOwnerOfABodyThatIsNotAV3QuerySaveNoResultType(Object body) {
+        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-open"));
+        when(hpds.querySync(any(HpdsTarget.class), any(), any()))
+            .thenReturn(new ResourceWebClient.QuerySyncResult("7".getBytes(), "hpds-sync-id"));
+        when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
+
+        ownedService.query("open", new GeneralQueryRequest().setQuery(body), TOKEN, user(ALICE));
+        ownedService.querySync("open", new GeneralQueryRequest().setQuery(body), "UI", null, null);
+
+        List<SaveQueryRequest> saved = saves(2);
+        assertThat(saved).extracting(SaveQueryRequest::resultType).containsOnlyNulls();
+        assertThat(saved).extracting(SaveQueryRequest::resourceResultId).containsExactly("rr-open", "hpds-sync-id");
+        assertThat(saved).extracting(SaveQueryRequest::query).doesNotContainNull();
+    }
+
+    private static Stream<Object> bodiesThatAreNotV3Queries() {
+        return Stream.of("q", Map.of("fields", List.of("age"), "expectedResultType", "DATAFRAME"));
+    }
+
+    @Test
+    void sampleSubmitWithoutAnOwnerSavesItsResultTypeAndLeavesTheSampleFlagUnset() {
+        sampleProperties.setEnabled(true);
+        callerHoldsConsents("phs001.c1");
+        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-legacy"));
+        when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
+        GatewayUser notAUuid = new GatewayUser("auth0|alice", null, null, null, Set.of());
+
+        ownedService.query("auth", envelope(cohortAs(ResultType.DATAFRAME_PFB, true)), TOKEN, notAUuid);
+
+        assertSavedWithoutAnOwner("rr-legacy", ResultType.DATAFRAME_PFB);
+        assertThat(onlySave().query()).contains("\"sample\":true");
     }
 
     @ParameterizedTest
@@ -1032,7 +1137,7 @@ class QueryServiceTest {
         QueryStatus out = ownedService.query("auth", envelope(cohort()), TOKEN, new GatewayUser(userId, null, null, null, Set.of()));
 
         assertThat(out.getPicsureResultId()).isEqualTo(rowId);
-        assertSavedWithoutAnOwner("rr-legacy");
+        assertSavedWithoutAnOwner("rr-legacy", ResultType.DATAFRAME);
     }
 
     @Test
@@ -1042,7 +1147,7 @@ class QueryServiceTest {
         when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
 
         ownedService.query("auth", envelope(cohort()), TOKEN, null);
-        assertSavedWithoutAnOwner("rr-legacy");
+        assertSavedWithoutAnOwner("rr-legacy", ResultType.DATAFRAME);
     }
 
     @Test
@@ -1056,7 +1161,7 @@ class QueryServiceTest {
 
         consentOff.query("auth", envelope(null), TOKEN, user(ALICE));
 
-        assertSavedWithoutAnOwner("rr-legacy");
+        assertSavedWithoutAnOwner("rr-legacy", null);
     }
 
     @Test
@@ -1069,7 +1174,7 @@ class QueryServiceTest {
 
         ownedService.querySync("auth", envelope(count), "UI", TOKEN, user(ALICE));
 
-        assertSavedWithoutAnOwner("hpds-sync-id");
+        assertSavedWithoutAnOwner("hpds-sync-id", ResultType.COUNT);
     }
 
     private QueryService serviceLockingWith(QueryRowLocks locks, boolean consentAuthorizationOn) {

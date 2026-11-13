@@ -209,7 +209,7 @@ public class QueryService {
      *
      * <p>Every other submit keeps the path without an owner: the {@code open} backend, a caller with no gateway user or one whose id is not
      * a canonical UUID, and a body with no query. HPDS runs the query under a key it derives, and operations-service stores it under a
-     * random id.
+     * random id, with the result type {@link #saveWithoutAnOwner} reads from the query and nothing else that an owned row carries.
      *
      * @param backend the ingress {@code {backend}} segment
      * @param req the envelope holding the query; its query is replaced by the scoped one
@@ -242,11 +242,8 @@ public class QueryService {
         QueryStatus results = hpds.query(target, req); // Call HPDS before persisting the query.
         String metadataBase64 = buildMetadataBase64(results);
 
-        UUID picsureId = operationsClient.save(
-            new SaveQueryRequest(
-                serializeQuery(req), results.getResourceResultId(), statusName(results.getStatus()), CURRENT_VERSION, metadataBase64
-            )
-        );
+        UUID picsureId =
+            operationsClient.save(saveWithoutAnOwner(req, results.getResourceResultId(), statusName(results.getStatus()), metadataBase64));
         results.setPicsureResultId(picsureId);
 
         if (results.getResourceResultId() == null) { // Use the generated PIC-SURE id when HPDS omits its result id.
@@ -595,7 +592,8 @@ public class QueryService {
 
     /**
      * Runs a query on HPDS's synchronous route as {@link #querySync(String, QueryRequest, String, String)} describes. A synchronous query
-     * is stored without an owner whoever sends it, so the caller's identity changes nothing here.
+     * is stored without an owner whoever sends it, so the caller's identity changes nothing here. The row is stored with the result type
+     * {@link #saveWithoutAnOwner} reads from the query, and with no status and no metadata.
      *
      * @param backend the ingress {@code {backend}} segment
      * @param req the envelope holding the query
@@ -616,7 +614,7 @@ public class QueryService {
 
         ResourceWebClient.QuerySyncResult down = hpds.querySync(target, req, requestSource);
         if (down.queryMetadata() != null) {
-            operationsClient.save(new SaveQueryRequest(serializeQuery(req), down.queryMetadata(), null, CURRENT_VERSION, null));
+            operationsClient.save(saveWithoutAnOwner(req, down.queryMetadata(), null, null));
         }
 
         return new QuerySyncResponse(down.body(), down.queryMetadata());
@@ -654,6 +652,50 @@ public class QueryService {
             return MAPPER.writeValueAsString(req);
         } catch (IllegalArgumentException | JsonProcessingException e) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Incorrectly formatted request");
+        }
+    }
+
+    /**
+     * Builds the save of a row that has no owner. The request names no row id, owner, consents, trigger or general query, which is what
+     * makes operations-service store it under a random id with no owner and under no general query. It leaves {@code sample} unset, which
+     * is stored as false.
+     *
+     * <p>The one variant member it names is the result type, read from the query of {@code req}, the same query that is stored as the body,
+     * so the row does not wait for a later pass over the stored bodies to learn it. A typed v3 query gives the name of its result type. An
+     * untyped body is converted to a v3 query first, as an owned submit converts it. The result type is null when the request has no query,
+     * when the query names no result type, and when the body cannot be read as a v3 query. Such a body is still stored as it was sent, and
+     * the save is never refused for it.
+     *
+     * @param req the envelope whose query was sent to HPDS
+     * @param resourceResultId the id HPDS assigned to the result, or null when it assigned none
+     * @param status the status as a {@link PicSureStatus} constant name, or null for none
+     * @param metadataBase64 result metadata as base64 text, or null for none
+     * @return the request to send to operations-service
+     */
+    private SaveQueryRequest saveWithoutAnOwner(QueryRequest req, String resourceResultId, String status, String metadataBase64) {
+        return new SaveQueryRequest(
+            serializeQuery(req), resourceResultId, status, CURRENT_VERSION, metadataBase64, null, null, null, null, null, null,
+            resultTypeNameOf(req.getQuery())
+        );
+    }
+
+    /**
+     * Returns the result type name of a query body that may be untyped.
+     *
+     * @param queryBody the query of a request envelope: a v3 {@link Query}, an untyped body shaped like one, anything else, or null
+     * @return the constant name, or null when the body is absent, names no result type or cannot be read as a v3 query
+     */
+    private static String resultTypeNameOf(Object queryBody) {
+        if (queryBody == null) {
+            return null;
+        }
+        if (queryBody instanceof Query typed) {
+            return resultTypeName(typed.expectedResultType());
+        }
+        try {
+            return resultTypeName(MAPPER.convertValue(queryBody, Query.class).expectedResultType());
+        } catch (IllegalArgumentException notAV3Query) {
+            return null;
         }
     }
 
