@@ -19,6 +19,7 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.stream.IntStream;
 
@@ -140,12 +141,20 @@ class DictionaryServiceTest {
         when(
             restTemplate
                 .exchange(eq(EXPORT_URL), eq(HttpMethod.POST), any(HttpEntity.class), eq(DictionaryService.CONCEPT_LIST_TYPE_REFERENCE))
-        ).thenThrow(HttpClientErrorException.create(HttpStatus.BAD_REQUEST, "Bad Request", HttpHeaders.EMPTY, null, null));
+        ).thenThrow(
+            HttpClientErrorException.create(
+                HttpStatus.BAD_REQUEST, "Bad Request", HttpHeaders.EMPTY, "response-body-text".getBytes(StandardCharsets.UTF_8),
+                StandardCharsets.UTF_8
+            )
+        );
 
         DictionaryUnavailableException thrown =
             assertThrows(DictionaryUnavailableException.class, () -> dictionaryService.getConcepts(paths(2)));
 
         assertTrue(thrown.getMessage().contains(EXPORT_URL), thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("rejected the request"), thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("400"), thrown.getMessage());
+        assertFalse(thrown.getMessage().contains("response-body-text"), thrown.getMessage());
         assertFalse(thrown.getMessage().contains("picsure.internal.token"), thrown.getMessage());
     }
 
@@ -239,5 +248,25 @@ class DictionaryServiceTest {
     @Test
     void constructor_batchSizeBelowOne_isRejected() {
         assertThrows(IllegalArgumentException.class, () -> new DictionaryService(BASE_URL, TOKEN, 0, restTemplate));
+    }
+
+    @Test
+    void constructor_batchSizeAboveTheDictionaryRequestCap_isRejectedNamingThePropertyAndTheCap() {
+        IllegalArgumentException thrown =
+            assertThrows(IllegalArgumentException.class, () -> new DictionaryService(BASE_URL, TOKEN, 5001, restTemplate));
+
+        assertTrue(thrown.getMessage().contains("dictionary.batch-size"), thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("5000"), thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("5001"), thrown.getMessage());
+    }
+
+    @Test
+    void constructor_batchSizeAtTheDictionaryRequestCap_isAccepted() {
+        DictionaryService dictionaryService = new DictionaryService(BASE_URL, TOKEN, 5000, restTemplate);
+        stubEchoingDictionary(EXPORT_URL);
+
+        assertEquals(5000, dictionaryService.getConcepts(paths(5000)).size());
+        verify(restTemplate, times(1))
+            .exchange(eq(EXPORT_URL), eq(HttpMethod.POST), any(HttpEntity.class), eq(DictionaryService.CONCEPT_LIST_TYPE_REFERENCE));
     }
 }

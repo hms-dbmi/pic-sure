@@ -78,7 +78,7 @@
     {
       "name": "picsure.internal.token",
       "type": "java.lang.String",
-      "description": "Shared secret that InternalTokenFilter requires on the X-PIC-SURE-INTERNAL-TOKEN header for every /internal/** request, such as POST /internal/concepts/export-metadata. Maps from the PICSURE_INTERNAL_TOKEN environment variable. Fail-closed: when blank, every /internal/** request is rejected with 403, even one carrying a header value. No other endpoint of this service reads it.",
+      "description": "Shared secret that InternalTokenFilter requires on the X-PIC-SURE-INTERNAL-TOKEN header for every /internal/** request, such as POST /internal/concepts/export-metadata. Maps from the PICSURE_INTERNAL_TOKEN environment variable. Whitespace around the value is ignored. Fail-closed: when blank, every /internal/** request is rejected with 403, even one carrying a header value. No other endpoint of this service reads it.",
       "defaultValue": ""
     }
   ]
