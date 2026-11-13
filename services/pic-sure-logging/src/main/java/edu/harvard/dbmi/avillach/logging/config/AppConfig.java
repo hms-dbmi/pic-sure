@@ -33,7 +33,8 @@ public record AppConfig(
         Map.entry("preferred_username", "preferred_username"), Map.entry("org", "user_org"), Map.entry("country_name", "user_country_name"),
         Map.entry("nih_ico", "nih_ico"), Map.entry("eRA_commons_id", "eRA_commons_id"),
         Map.entry("user_permission_group", "user_permission_group"), Map.entry("uuid", "uuid"), Map.entry("roles", "roles"),
-        Map.entry("idp", "user_id_provider"), Map.entry("cadr_name", "cadr_name")
+        Map.entry("idp", "user_id_provider"), Map.entry("cadr_name", "cadr_name"), Map.entry("txn", "txn"),
+        Map.entry("era_commons_id", "eRA_commons_id")
     );
 
     public static AppConfig fromEnvironment() {

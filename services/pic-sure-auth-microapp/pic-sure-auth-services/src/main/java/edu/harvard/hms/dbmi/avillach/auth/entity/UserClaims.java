@@ -24,6 +24,7 @@ public class UserClaims {
     // Replaces federated_identities_ial2 for our team.
     // See: NIH-Auth-Services/CIT-IAM-RAS/issues/564
     private String user_mapping_id;
+    private String txn;
 
     public String getUser_mapping_id() {
         return user_mapping_id;
@@ -31,6 +32,20 @@ public class UserClaims {
 
     public void setUser_mapping_id(String user_mapping_id) {
         this.user_mapping_id = user_mapping_id;
+    }
+
+    /**
+     * @return the RAS transaction identifier of the login that produced these claims, or null when the passport carried none
+     */
+    public String getTxn() {
+        return txn;
+    }
+
+    /**
+     * @param txn the RAS transaction identifier from the passport, or null to leave the claim out of the token
+     */
+    public void setTxn(String txn) {
+        this.txn = txn;
     }
 
     public String getUuid() {
@@ -126,6 +141,7 @@ public class UserClaims {
         if (preferred_username != null) map.put("preferred_username", preferred_username);
         if (user_permission_group != null) map.put("user_permission_group", user_permission_group);
         if (user_mapping_id != null) map.put("user_mapping_id", user_mapping_id);
+        if (txn != null) map.put("txn", txn);
         return map;
     }
 }
