@@ -68,6 +68,8 @@ public class AuditLogService {
             putIfNotNull(fields, "platform", config.platform());
             putIfNotNull(fields, "environment", config.environment());
             putIfNotNull(fields, "hostname", config.hostname());
+            putConfigured(fields, "nih_ico", config.nihIco());
+            putConfigured(fields, "cadr_name", config.cadrName());
 
             // 5. Request fields
             flattenRequest(fields, event.request(), requestIdHeader);
@@ -129,6 +131,22 @@ public class AuditLogService {
         if (value != null) {
             map.put(key, truncate(value));
         }
+    }
+
+    /**
+     * Writes a deployment setting to the record at the current position, replacing a value a token claim supplied under the same key. Does
+     * nothing when the setting is null or blank, so a claim-supplied value stays where it is.
+     *
+     * @param fields the record being assembled
+     * @param key the record field name
+     * @param configured the configured value, or null when unset
+     */
+    private void putConfigured(LinkedHashMap<String, Object> fields, String key, String configured) {
+        if (configured == null || configured.isBlank()) {
+            return;
+        }
+        fields.remove(key);
+        fields.put(key, truncate(configured));
     }
 
     private static String truncate(String value) {

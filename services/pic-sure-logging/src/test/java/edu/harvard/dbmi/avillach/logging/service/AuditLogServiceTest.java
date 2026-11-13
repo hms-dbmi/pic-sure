@@ -3,15 +3,21 @@ package edu.harvard.dbmi.avillach.logging.service;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.logging.TestJwtBuilder;
 import edu.harvard.dbmi.avillach.logging.config.AppConfig;
 import edu.harvard.dbmi.avillach.logging.model.AuditEvent;
 import edu.harvard.dbmi.avillach.logging.model.RequestInfo;
+import net.logstash.logback.encoder.LogstashEncoder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -25,8 +31,7 @@ class AuditLogServiceTest {
     @BeforeEach
     void setUp() {
         AppConfig config = new AppConfig(
-            "test-key", "myapp", "myplatform", "staging", "myhost",
-            8080, "*",
+            "test-key", "myapp", "myplatform", "staging", "myhost", null, null, 8080, "*",
             Map.of("sub", "subject", "email", "user_email", "roles", "roles", "logged_in", "logged_in")
         );
         JwtDecodeService jwtService = new JwtDecodeService(config.jwtClaimMapping());
@@ -46,16 +51,11 @@ class AuditLogServiceTest {
     @Test
     void fullEventWithAllFields() {
         RequestInfo request = new RequestInfo(
-            "req-123", "POST", "/api/query", "limit=10",
-            "192.168.1.1", "10.0.0.5", 8443,
-            "Mozilla/5.0", "application/json", 200, 1024L, 150L,
-            "https://example.com"
+            "req-123", "POST", "/api/query", "limit=10", "192.168.1.1", "10.0.0.5", 8443, "Mozilla/5.0", "application/json", 200, 1024L,
+            150L, "https://example.com"
         );
         AuditEvent event = new AuditEvent(
-            "QUERY", "execute", "web", null, null,
-            request,
-            Map.of("query_id", "q1"),
-            Map.of("code", "500", "message", "Internal error")
+            "QUERY", "execute", "web", null, null, request, Map.of("query_id", "q1"), Map.of("code", "500", "message", "Internal error")
         );
 
         String token = TestJwtBuilder.buildToken(Map.of("sub", "user123", "email", "user@example.com"));
@@ -290,5 +290,195 @@ class AuditLogServiceTest {
         assertEquals(1, listAppender.list.size());
         String message = listAppender.list.get(0).getFormattedMessage();
         assertTrue(message.contains("caller=PYTHON_ADAPTER"));
+    }
+
+    @Test
+    void recordKeyOrderUnchangedWhenNotConfigured() throws Exception {
+        serviceWith(null, null).logEvent(fullEvent(), USER_TOKEN, null);
+
+        assertEquals(KEYS_WITHOUT_CADR_FIELDS, new ArrayList<>(lastRecord().keySet()));
+    }
+
+    @Test
+    void configuredCadrFieldsFollowHostnameAndMoveNoOtherKey() throws Exception {
+        serviceWith(NIH_ICO, CADR_NAME).logEvent(fullEvent(), USER_TOKEN, null);
+
+        List<String> expected = new ArrayList<>(KEYS_WITHOUT_CADR_FIELDS);
+        expected.addAll(expected.indexOf("hostname") + 1, List.of("nih_ico", "cadr_name"));
+        Map<String, Object> record = lastRecord();
+        assertEquals(expected, new ArrayList<>(record.keySet()));
+        assertEquals(NIH_ICO, record.get("nih_ico"));
+        assertEquals(CADR_NAME, record.get("cadr_name"));
+    }
+
+    @Test
+    void configuredCadrFieldsPresentWithoutToken() throws Exception {
+        serviceWith(NIH_ICO, CADR_NAME).logEvent(new AuditEvent("PAGE_VIEW", null, null, null, null, null, null, null), null, null);
+
+        Map<String, Object> record = lastRecord();
+        assertEquals(false, record.get("logged_in"));
+        assertEquals(NIH_ICO, record.get("nih_ico"));
+        assertEquals(CADR_NAME, record.get("cadr_name"));
+        assertEquals(
+            List.of("_time", "event_type", "logged_in", "app", "platform", "environment", "hostname", "nih_ico", "cadr_name"),
+            new ArrayList<>(record.keySet())
+        );
+    }
+
+    @Test
+    void cadrFieldsAbsentWhenNotConfiguredAndNoClaim() throws Exception {
+        serviceWith(null, null).logEvent(fullEvent(), USER_TOKEN, null);
+        Map<String, Object> withToken = lastRecord();
+        serviceWith(null, null).logEvent(fullEvent(), null, null);
+        Map<String, Object> withoutToken = lastRecord();
+
+        assertFalse(withToken.containsKey("nih_ico"));
+        assertFalse(withToken.containsKey("cadr_name"));
+        assertFalse(withoutToken.containsKey("nih_ico"));
+        assertFalse(withoutToken.containsKey("cadr_name"));
+    }
+
+    @Test
+    void configuredCadrFieldsWinOverClaims() throws Exception {
+        serviceWith(NIH_ICO, CADR_NAME).logEvent(fullEvent(), CLAIMS_TOKEN, null);
+
+        Map<String, Object> record = lastRecord();
+        List<String> expected = new ArrayList<>(KEYS_WITHOUT_CADR_FIELDS);
+        expected.addAll(expected.indexOf("hostname") + 1, List.of("nih_ico", "cadr_name"));
+        assertEquals(expected, new ArrayList<>(record.keySet()));
+        assertEquals(NIH_ICO, record.get("nih_ico"));
+        assertEquals(CADR_NAME, record.get("cadr_name"));
+    }
+
+    @Test
+    void claimsSupplyCadrFieldsWhenNotConfigured() throws Exception {
+        serviceWith(null, null).logEvent(fullEvent(), CLAIMS_TOKEN, null);
+
+        Map<String, Object> record = lastRecord();
+        List<String> expected = new ArrayList<>(KEYS_WITHOUT_CADR_FIELDS);
+        expected.addAll(expected.indexOf("user_email") + 1, List.of("nih_ico", "cadr_name"));
+        assertEquals(expected, new ArrayList<>(record.keySet()));
+        assertEquals("NCI", record.get("nih_ico"));
+        assertEquals("Claimed Repository", record.get("cadr_name"));
+    }
+
+    @Test
+    void blankCadrSettingsBehaveAsUnset() throws Exception {
+        serviceWith("  ", "").logEvent(fullEvent(), USER_TOKEN, null);
+        Map<String, Object> withoutClaims = lastRecord();
+        serviceWith("  ", "").logEvent(fullEvent(), CLAIMS_TOKEN, null);
+        Map<String, Object> withClaims = lastRecord();
+
+        assertEquals(KEYS_WITHOUT_CADR_FIELDS, new ArrayList<>(withoutClaims.keySet()));
+        List<String> expected = new ArrayList<>(KEYS_WITHOUT_CADR_FIELDS);
+        expected.addAll(expected.indexOf("user_email") + 1, List.of("nih_ico", "cadr_name"));
+        assertEquals(expected, new ArrayList<>(withClaims.keySet()));
+        assertEquals("NCI", withClaims.get("nih_ico"));
+        assertEquals("Claimed Repository", withClaims.get("cadr_name"));
+    }
+
+    @Test
+    void configuredCadrFieldsLongerThan2000AreTruncated() throws Exception {
+        serviceWith("i".repeat(3000), "c".repeat(2001)).logEvent(fullEvent(), USER_TOKEN, null);
+
+        Map<String, Object> record = lastRecord();
+        assertEquals("i".repeat(2000), record.get("nih_ico"));
+        assertEquals("c".repeat(2000), record.get("cadr_name"));
+    }
+
+    @Test
+    void configuredValueReplacesClaimMappedFromAnotherClaimName() throws Exception {
+        Map<String, String> claimMapping = new LinkedHashMap<>();
+        claimMapping.put("sub", "subject");
+        claimMapping.put("ico", "nih_ico");
+        claimMapping.put("email", "user_email");
+        claimMapping.put("logged_in", "logged_in");
+        String token = "Bearer " + TestJwtBuilder.buildToken(Map.of("sub", "user123", "email", "user@example.com", "ico", "NCI"));
+
+        serviceWith(NIH_ICO, null, claimMapping).logEvent(fullEvent(), token, null);
+
+        Map<String, Object> record = lastRecord();
+        List<String> expected = new ArrayList<>(KEYS_WITHOUT_CADR_FIELDS);
+        expected.add(expected.indexOf("hostname") + 1, "nih_ico");
+        assertEquals(expected, new ArrayList<>(record.keySet()));
+        assertEquals(NIH_ICO, record.get("nih_ico"));
+    }
+
+    @Test
+    void oneCadrSettingConfiguredLeavesTheOtherToTheClaim() throws Exception {
+        serviceWith(NIH_ICO, null).logEvent(fullEvent(), CLAIMS_TOKEN, null);
+
+        Map<String, Object> record = lastRecord();
+        assertEquals(NIH_ICO, record.get("nih_ico"));
+        assertEquals("Claimed Repository", record.get("cadr_name"));
+    }
+
+    private static final String NIH_ICO = "NHLBI";
+    private static final String CADR_NAME = "BDC - BioData Catalyst";
+    private static final String USER_TOKEN = "Bearer " + TestJwtBuilder.buildToken(Map.of("sub", "user123", "email", "user@example.com"));
+    private static final String CLAIMS_TOKEN = "Bearer " + TestJwtBuilder
+        .buildToken(Map.of("sub", "user123", "email", "user@example.com", "nih_ico", "NCI", "cadr_name", "Claimed Repository"));
+
+    private static final List<String> KEYS_WITHOUT_CADR_FIELDS = List.of(
+        "_time", "event_type", "action", "client_type", "caller", "session_id", "subject", "user_email", "logged_in", "app", "platform",
+        "environment", "hostname", "request_id", "method", "url", "query_string", "src_ip", "dest_ip", "dest_port", "http_user_agent",
+        "http_content_type", "status", "bytes", "duration", "referrer", "metadata", "error"
+    );
+
+    /**
+     * Builds a service whose claim mapping iterates in a fixed order, so the key order of a record is deterministic.
+     *
+     * @param nihIco the configured NIH institute or center, or null when unset
+     * @param cadrName the configured repository name, or null when unset
+     * @return a service that writes to the AUDIT logger
+     */
+    private static AuditLogService serviceWith(String nihIco, String cadrName) {
+        Map<String, String> claimMapping = new LinkedHashMap<>();
+        claimMapping.put("sub", "subject");
+        claimMapping.put("email", "user_email");
+        claimMapping.put("nih_ico", "nih_ico");
+        claimMapping.put("cadr_name", "cadr_name");
+        claimMapping.put("logged_in", "logged_in");
+        return serviceWith(nihIco, cadrName, claimMapping);
+    }
+
+    /**
+     * Builds a service that reads token claims through the given mapping.
+     *
+     * @param nihIco the configured NIH institute or center, or null when unset
+     * @param cadrName the configured repository name, or null when unset
+     * @param claimMapping token claim name to record field name, in the order the fields should be written
+     * @return a service that writes to the AUDIT logger
+     */
+    private static AuditLogService serviceWith(String nihIco, String cadrName, Map<String, String> claimMapping) {
+        AppConfig config = new AppConfig("test-key", "myapp", "myplatform", "staging", "myhost", nihIco, cadrName, 8080, "*", claimMapping);
+        return new AuditLogService(config, new JwtDecodeService(claimMapping));
+    }
+
+    private static AuditEvent fullEvent() {
+        RequestInfo request = new RequestInfo(
+            "req-123", "POST", "/api/query", "limit=10", "192.168.1.1", "10.0.0.5", 8443, "Mozilla/5.0", "application/json", 200, 1024L,
+            150L, "https://example.com"
+        );
+        return new AuditEvent("QUERY", "execute", "web", "FRONTEND", "sess-1", request, Map.of("query_id", "q1"), Map.of("code", "500"));
+    }
+
+    /**
+     * Encodes the most recent audit event the way the AUDIT appenders do and returns its fields in output order, without the standard
+     * logstash fields that logback.xml suppresses.
+     *
+     * @return the audit record, keyed in the order the fields are written
+     */
+    private Map<String, Object> lastRecord() throws Exception {
+        LogstashEncoder encoder = new LogstashEncoder();
+        encoder.setContext(auditLogger.getLoggerContext());
+        encoder.start();
+        byte[] json = encoder.encode(listAppender.list.get(listAppender.list.size() - 1));
+        encoder.stop();
+        LinkedHashMap<String, Object> encoded = new ObjectMapper().readValue(json, new TypeReference<LinkedHashMap<String, Object>>() {});
+        List<String> keys = new ArrayList<>(encoded.keySet());
+        LinkedHashMap<String, Object> record = new LinkedHashMap<>();
+        keys.subList(keys.indexOf("_time"), keys.size()).forEach(key -> record.put(key, encoded.get(key)));
+        return record;
     }
 }

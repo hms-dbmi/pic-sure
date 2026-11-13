@@ -7,32 +7,33 @@ import java.net.InetAddress;
 import java.util.Map;
 import java.util.function.Function;
 
+/**
+ * Settings of the audit logging service, read once from the environment at startup.
+ *
+ * @param auditApiKey key callers present in {@code X-API-Key}
+ * @param app application name written to every audit record
+ * @param platform platform identifier written to every audit record
+ * @param environment deployment environment written to every audit record
+ * @param hostname host name written to every audit record
+ * @param nihIco NIH institute or center that owns the deployment, written to every audit record as {@code nih_ico}, or null when
+ *        {@code NIH_ICO} is unset or blank
+ * @param cadrName name of the controlled-access data repository, written to every audit record as {@code cadr_name}, or null when
+ *        {@code CADR_NAME} is unset or blank
+ * @param port HTTP listen port
+ * @param allowedOrigin CORS allowed origin, {@code *} for any
+ * @param jwtClaimMapping token claim name to audit record field name
+ */
 public record AppConfig(
-    String auditApiKey,
-    String app,
-    String platform,
-    String environment,
-    String hostname,
-    int port,
-    String allowedOrigin,
-    Map<String, String> jwtClaimMapping
+    String auditApiKey, String app, String platform, String environment, String hostname, String nihIco, String cadrName, int port,
+    String allowedOrigin, Map<String, String> jwtClaimMapping
 ) {
 
     private static final Map<String, String> DEFAULT_JWT_CLAIM_MAPPING = Map.ofEntries(
-        Map.entry("sub", "subject"),
-        Map.entry("email", "user_email"),
-        Map.entry("name", "user_name"),
-        Map.entry("userid", "user_id"),
-        Map.entry("preferred_username", "preferred_username"),
-        Map.entry("org", "user_org"),
-        Map.entry("country_name", "user_country_name"),
-        Map.entry("nih_ico", "nih_ico"),
-        Map.entry("eRA_commons_id", "eRA_commons_id"),
-        Map.entry("user_permission_group", "user_permission_group"),
-        Map.entry("uuid", "uuid"),
-        Map.entry("roles", "roles"),
-        Map.entry("idp", "user_id_provider"),
-        Map.entry("cadr_name", "cadr_name")
+        Map.entry("sub", "subject"), Map.entry("email", "user_email"), Map.entry("name", "user_name"), Map.entry("userid", "user_id"),
+        Map.entry("preferred_username", "preferred_username"), Map.entry("org", "user_org"), Map.entry("country_name", "user_country_name"),
+        Map.entry("nih_ico", "nih_ico"), Map.entry("eRA_commons_id", "eRA_commons_id"),
+        Map.entry("user_permission_group", "user_permission_group"), Map.entry("uuid", "uuid"), Map.entry("roles", "roles"),
+        Map.entry("idp", "user_id_provider"), Map.entry("cadr_name", "cadr_name")
     );
 
     public static AppConfig fromEnvironment() {
@@ -49,13 +50,15 @@ public record AppConfig(
         String platform = getOrDefault(env, "PLATFORM", "unknown");
         String environment = getOrDefault(env, "ENVIRONMENT", "unknown");
         String hostname = getOrDefault(env, "HOSTNAME", getSystemHostname());
+        String nihIco = getOrDefault(env, "NIH_ICO", null);
+        String cadrName = getOrDefault(env, "CADR_NAME", null);
         String allowedOrigin = getOrDefault(env, "ALLOWED_ORIGIN", "*");
 
         int port = parsePort(env.apply("PORT"));
 
         Map<String, String> jwtClaimMapping = parseJwtClaimMapping(env.apply("JWT_CLAIM_MAPPING"));
 
-        return new AppConfig(auditApiKey, app, platform, environment, hostname, port, allowedOrigin, jwtClaimMapping);
+        return new AppConfig(auditApiKey, app, platform, environment, hostname, nihIco, cadrName, port, allowedOrigin, jwtClaimMapping);
     }
 
     private static String getOrDefault(Function<String, String> env, String key, String defaultValue) {

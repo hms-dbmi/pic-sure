@@ -151,6 +151,7 @@ Each audit event produces a single JSON line on both stdout and the rolling audi
 - Null/missing fields are omitted entirely
 - `metadata` and `error` are only included when non-empty
 - `logged_in` is always present (`true` with a valid JWT, `false` without)
+- `nih_ico` and `cadr_name` follow `hostname` when `NIH_ICO` and `CADR_NAME` are configured (see [Configuration](#configuration))
 - `_time` is generated server-side in ISO-8601 format
 - Request fields are flattened to the top level (not nested under `request`)
 - Operational/application logs go to stderr as plain text, keeping stdout clean for log shippers
@@ -166,10 +167,14 @@ All configuration is via environment variables.
 | `PLATFORM` | No | `unknown` | Platform identifier included in log output |
 | `ENVIRONMENT` | No | `unknown` | Deployment environment (e.g., `production`, `staging`) |
 | `HOSTNAME` | No | System hostname | Container hostname (auto-set by Docker) |
+| `NIH_ICO` | No | None | NIH institute or center that owns the deployment (e.g., `NHLBI`), written to every record as `nih_ico` |
+| `CADR_NAME` | No | None | Name of the controlled-access data repository (e.g., `BDC - BioData Catalyst`), written to every record as `cadr_name` |
 | `PORT` | No | `8080` | HTTP listen port |
 | `ALLOWED_ORIGIN` | No | `*` | CORS allowed origin (`*` for any) |
 | `LOG_DIR` | No | `logs` | Directory for rolling log files (`audit.log`, `app.log`) |
 | `JWT_CLAIM_MAPPING` | No | See below | JSON object mapping JWT claims to output field names |
+
+`NIH_ICO` and `CADR_NAME` describe the deployment, not the caller. When one is set and not blank, every audit record carries the field after `hostname`, including records for requests with no token, and the configured value replaces a token claim mapped to the same field. When one is unset or blank the service adds nothing: the field appears only if a token claim supplies it, in the position of the other claims.
 
 **Startup validation:** The service fails fast with a clear error message if `LOGGING_API_KEY` is missing, `PORT` is not a valid integer in range 1-65535, or `JWT_CLAIM_MAPPING` is not valid JSON.
 
@@ -290,6 +295,8 @@ docker run -d \
   -e APP=pic-sure \
   -e PLATFORM=avillach-lab \
   -e ENVIRONMENT=production \
+  -e NIH_ICO=NHLBI \
+  -e CADR_NAME="BDC - BioData Catalyst" \
   pic-sure-logging
 ```
 
