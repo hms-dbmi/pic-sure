@@ -53,14 +53,31 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     ) throws ServletException, IOException {
         request.setAttribute(AUDIT_START_TIME, System.currentTimeMillis());
 
+        ByteCountingResponseWrapper countingResponse = new ByteCountingResponseWrapper(response);
+
         try {
-            filterChain.doFilter(request, response);
+            filterChain.doFilter(request, countingResponse);
         } finally {
-            logRequest(request, response);
+            logRequest(request, response, bytesWritten(request, countingResponse));
         }
     }
 
-    private void logRequest(HttpServletRequest request, HttpServletResponse response) {
+    /**
+     * Reads the size of the response body for the audit event.
+     *
+     * @param request the request being audited
+     * @param response the counting wrapper the rest of the chain wrote to
+     * @return the number of body bytes written, 0 for a response with no body, or null when async handling has started and the body is
+     *         written after this filter has sent its event
+     */
+    private static Long bytesWritten(HttpServletRequest request, ByteCountingResponseWrapper response) {
+        if (request.isAsyncStarted()) {
+            return null;
+        }
+        return response.getByteCount();
+    }
+
+    private void logRequest(HttpServletRequest request, HttpServletResponse response, Long bytes) {
         try {
             if (loggingClient == null || !loggingClient.isEnabled()) {
                 return;
@@ -114,7 +131,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
             // Build RequestInfo
             RequestInfo requestInfo = RequestInfo.builder().method(method).url(request.getRequestURI()).srcIp(srcIp).destIp(resolvedDestIp)
                 .destPort(resolvedDestPort).httpUserAgent(request.getHeader("User-Agent")).status(responseStatus).duration(duration)
-                .httpContentType(contentType).build();
+                .httpContentType(contentType).bytes(bytes).build();
 
             // Build metadata
             Map<String, Object> metadata = new HashMap<>();

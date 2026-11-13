@@ -8,6 +8,7 @@ import java.util.Map;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -101,7 +102,7 @@ class AuditIntegrationTest {
         assertEquals("req-42", requestIdCaptor.getValue());
 
         // Verify the filter chain was invoked
-        verify(chain).doFilter(request, response);
+        verify(chain).doFilter(eq(request), any(ServletResponse.class));
     }
 
     @Test
