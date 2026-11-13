@@ -5,11 +5,17 @@ import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.dbmi.avillach.logging.SessionIdResolver;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletOutputStream;
+import jakarta.servlet.WriteListener;
+import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+
+import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -471,5 +477,157 @@ class AuditLoggingFilterTest {
         verify(loggingClient).send(captor.capture());
         assertEquals("UNLABELED", captor.getValue().getEventType());
         assertEquals("get", captor.getValue().getAction());
+    }
+
+    private LoggingEvent sentEvent() {
+        ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(captor.capture());
+        return captor.getValue();
+    }
+
+    @Test
+    void shouldReportTheBytesWrittenToTheOutputStream() throws Exception {
+        byte[] body = "{\"token\":\"abc\"}".getBytes(StandardCharsets.UTF_8);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> {
+            ServletOutputStream out = res.getOutputStream();
+            out.write(body, 0, 4);
+            out.write(body[4]);
+            out.write(body, 5, body.length - 5);
+        };
+
+        filter.doFilter(new MockHttpServletRequest("POST", "/authentication/ras"), response, chain);
+
+        assertEquals(Long.valueOf(body.length), sentEvent().getRequest().getBytes());
+        assertArrayEquals(body, response.getContentAsByteArray());
+    }
+
+    @Test
+    void shouldReportZeroBytesWhenNoBodyIsWritten() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(new MockHttpServletRequest("POST", "/logout"), response, filterChain);
+
+        assertEquals(Long.valueOf(0), sentEvent().getRequest().getBytes());
+    }
+
+    @Test
+    void shouldReportWriterOutputInTheResponseEncoding() throws Exception {
+        String text = "na\u00efve \u2603 \uD83D\uDE00";
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> {
+            res.setCharacterEncoding("UTF-8");
+            PrintWriter writer = res.getWriter();
+            writer.print(text);
+            writer.println();
+            writer.write('x');
+        };
+
+        filter.doFilter(new MockHttpServletRequest("GET", "/user/me"), response, chain);
+
+        byte[] expected = (text + System.lineSeparator() + "x").getBytes(StandardCharsets.UTF_8);
+        assertEquals(Long.valueOf(expected.length), sentEvent().getRequest().getBytes());
+        assertArrayEquals(expected, response.getContentAsByteArray());
+    }
+
+    @Test
+    void shouldCountASurrogatePairSplitAcrossTwoWrites() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> {
+            res.setCharacterEncoding("UTF-8");
+            PrintWriter writer = res.getWriter();
+            writer.write('\uD83D');
+            writer.write('\uDE00');
+        };
+
+        filter.doFilter(new MockHttpServletRequest("GET", "/user/me"), response, chain);
+
+        assertEquals(Long.valueOf(4), sentEvent().getRequest().getBytes());
+    }
+
+    @Test
+    void shouldReportWriterOutputInTheDefaultEncoding() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> res.getWriter().write("caf\u00e9 \u2603");
+
+        filter.doFilter(new MockHttpServletRequest("GET", "/user/me"), response, chain);
+
+        assertEquals("ISO-8859-1", response.getCharacterEncoding());
+        assertEquals(Long.valueOf(6), sentEvent().getRequest().getBytes());
+        assertEquals(6, response.getContentAsByteArray().length);
+    }
+
+    @Test
+    void shouldStartTheCountOverWhenTheBufferIsReset() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> {
+            res.getOutputStream().write(new byte[100]);
+            res.resetBuffer();
+            res.getOutputStream().write(new byte[7]);
+        };
+
+        filter.doFilter(new MockHttpServletRequest("GET", "/user/me"), response, chain);
+
+        assertEquals(Long.valueOf(7), sentEvent().getRequest().getBytes());
+        assertEquals(7, response.getContentAsByteArray().length);
+    }
+
+    @Test
+    void shouldLeaveBytesUnsetWhileAnAsyncResponseIsStillPending() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/user/me");
+        request.setAsyncSupported(true);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> req.startAsync();
+
+        filter.doFilter(request, response, chain);
+
+        assertNull(sentEvent().getRequest().getBytes());
+    }
+
+    @Test
+    void shouldPassFlushToTheResponseAtOnce() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        boolean[] committedAfterFlush = new boolean[1];
+        FilterChain chain = (req, res) -> {
+            ServletOutputStream out = res.getOutputStream();
+            out.write(new byte[3]);
+            assertFalse(response.isCommitted());
+            out.flush();
+            committedAfterFlush[0] = response.isCommitted();
+        };
+
+        filter.doFilter(new MockHttpServletRequest("GET", "/user/me"), response, chain);
+
+        assertTrue(committedAfterFlush[0]);
+    }
+
+    @Test
+    void shouldPassNonBlockingCallsToTheContainerStream() throws Exception {
+        ServletOutputStream containerStream = mock(ServletOutputStream.class);
+        when(containerStream.isReady()).thenReturn(true);
+        HttpServletResponse response = mock(HttpServletResponse.class);
+        when(response.getOutputStream()).thenReturn(containerStream);
+        when(response.getStatus()).thenReturn(200);
+        WriteListener listener = mock(WriteListener.class);
+        boolean[] ready = new boolean[1];
+        FilterChain chain = (req, res) -> {
+            ServletOutputStream out = res.getOutputStream();
+            out.setWriteListener(listener);
+            ready[0] = out.isReady();
+            out.write(new byte[5], 1, 3);
+            out.flush();
+            out.close();
+        };
+
+        filter.doFilter(new MockHttpServletRequest("GET", "/user/me"), response, chain);
+
+        assertTrue(ready[0]);
+        verify(containerStream).setWriteListener(listener);
+        verify(containerStream).isReady();
+        verify(containerStream).write(any(byte[].class), eq(1), eq(3));
+        verify(containerStream).flush();
+        verify(containerStream).close();
+        verifyNoMoreInteractions(containerStream);
+        assertEquals(Long.valueOf(3), sentEvent().getRequest().getBytes());
     }
 }

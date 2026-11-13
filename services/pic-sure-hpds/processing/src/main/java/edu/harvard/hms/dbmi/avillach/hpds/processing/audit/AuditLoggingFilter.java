@@ -49,8 +49,10 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
 
         long startTime = System.currentTimeMillis();
 
+        ByteCountingResponseWrapper countingResponse = new ByteCountingResponseWrapper(response);
+
         try {
-            filterChain.doFilter(request, response);
+            filterChain.doFilter(request, countingResponse);
         } finally {
             try {
                 if (loggingClient == null || !loggingClient.isEnabled()) {
@@ -81,7 +83,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
                 // Response info
                 int responseStatus = response.getStatus();
                 String contentType = response.getContentType();
-                Long bytes = parseContentLength(response.getHeader("Content-Length"));
+                Long bytes = bytesWritten(request, countingResponse);
 
                 String queryString = request.getQueryString();
                 RequestInfo requestInfo = RequestInfo.builder().method(method).url(fullPath).queryString(queryString).srcIp(srcIp)
@@ -144,14 +146,18 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
         return request.getRemoteAddr();
     }
 
-    static Long parseContentLength(String header) {
-        if (header == null) {
+    /**
+     * Reads the size of the response body for the audit event.
+     *
+     * @param request the request being audited
+     * @param response the counting wrapper the rest of the chain wrote to
+     * @return the number of body bytes written, 0 for a response with no body, or null when async handling has started and the body is
+     *         written after this filter has sent its event
+     */
+    private static Long bytesWritten(HttpServletRequest request, ByteCountingResponseWrapper response) {
+        if (request.isAsyncStarted()) {
             return null;
         }
-        try {
-            return Long.parseLong(header);
-        } catch (NumberFormatException e) {
-            return null;
-        }
+        return response.getByteCount();
     }
 }
