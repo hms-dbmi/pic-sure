@@ -107,14 +107,20 @@ class AppConfigTest {
     }
 
     @Test
-    void defaultMappingStillReadsCadrClaims() {
+    void defaultJwtClaimMappingHasExactlyTheExpectedEntries() {
         Map<String, String> env = new HashMap<>();
         env.put("LOGGING_API_KEY", "test-key");
 
         AppConfig config = AppConfig.fromEnvironment(envWith(env));
 
-        assertEquals("nih_ico", config.jwtClaimMapping().get("nih_ico"));
-        assertEquals("cadr_name", config.jwtClaimMapping().get("cadr_name"));
+        Map<String, String> expected = Map.ofEntries(
+            Map.entry("sub", "subject"), Map.entry("email", "user_email"), Map.entry("name", "user_name"), Map.entry("userid", "user_id"),
+            Map.entry("preferred_username", "preferred_username"), Map.entry("org", "user_org"),
+            Map.entry("country_name", "user_country_name"), Map.entry("nih_ico", "nih_ico"), Map.entry("eRA_commons_id", "eRA_commons_id"),
+            Map.entry("user_permission_group", "user_permission_group"), Map.entry("uuid", "uuid"), Map.entry("roles", "roles"),
+            Map.entry("idp", "user_id_provider"), Map.entry("cadr_name", "cadr_name")
+        );
+        assertEquals(expected, config.jwtClaimMapping());
     }
 
     @Test

@@ -370,8 +370,38 @@ class AuditLogServiceTest {
         Map<String, Object> withClaims = lastRecord();
 
         assertEquals(KEYS_WITHOUT_CADR_FIELDS, new ArrayList<>(withoutClaims.keySet()));
+        List<String> expected = new ArrayList<>(KEYS_WITHOUT_CADR_FIELDS);
+        expected.addAll(expected.indexOf("user_email") + 1, List.of("nih_ico", "cadr_name"));
+        assertEquals(expected, new ArrayList<>(withClaims.keySet()));
         assertEquals("NCI", withClaims.get("nih_ico"));
         assertEquals("Claimed Repository", withClaims.get("cadr_name"));
+    }
+
+    @Test
+    void configuredCadrFieldsLongerThan2000AreTruncated() throws Exception {
+        serviceWith("i".repeat(3000), "c".repeat(2001)).logEvent(fullEvent(), USER_TOKEN, null);
+
+        Map<String, Object> record = lastRecord();
+        assertEquals("i".repeat(2000), record.get("nih_ico"));
+        assertEquals("c".repeat(2000), record.get("cadr_name"));
+    }
+
+    @Test
+    void configuredValueReplacesClaimMappedFromAnotherClaimName() throws Exception {
+        Map<String, String> claimMapping = new LinkedHashMap<>();
+        claimMapping.put("sub", "subject");
+        claimMapping.put("ico", "nih_ico");
+        claimMapping.put("email", "user_email");
+        claimMapping.put("logged_in", "logged_in");
+        String token = "Bearer " + TestJwtBuilder.buildToken(Map.of("sub", "user123", "email", "user@example.com", "ico", "NCI"));
+
+        serviceWith(NIH_ICO, null, claimMapping).logEvent(fullEvent(), token, null);
+
+        Map<String, Object> record = lastRecord();
+        List<String> expected = new ArrayList<>(KEYS_WITHOUT_CADR_FIELDS);
+        expected.add(expected.indexOf("hostname") + 1, "nih_ico");
+        assertEquals(expected, new ArrayList<>(record.keySet()));
+        assertEquals(NIH_ICO, record.get("nih_ico"));
     }
 
     @Test
@@ -409,6 +439,18 @@ class AuditLogServiceTest {
         claimMapping.put("nih_ico", "nih_ico");
         claimMapping.put("cadr_name", "cadr_name");
         claimMapping.put("logged_in", "logged_in");
+        return serviceWith(nihIco, cadrName, claimMapping);
+    }
+
+    /**
+     * Builds a service that reads token claims through the given mapping.
+     *
+     * @param nihIco the configured NIH institute or center, or null when unset
+     * @param cadrName the configured repository name, or null when unset
+     * @param claimMapping token claim name to record field name, in the order the fields should be written
+     * @return a service that writes to the AUDIT logger
+     */
+    private static AuditLogService serviceWith(String nihIco, String cadrName, Map<String, String> claimMapping) {
         AppConfig config = new AppConfig("test-key", "myapp", "myplatform", "staging", "myhost", nihIco, cadrName, 8080, "*", claimMapping);
         return new AuditLogService(config, new JwtDecodeService(claimMapping));
     }
