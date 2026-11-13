@@ -57,8 +57,8 @@ public class MultiValueQueryV3Processor implements HpdsV3Processor {
     /**
      * Writes one row per matching patient, holding every value the patient has for each selected concept. For a
      * {@link ResultType#DATAFRAME_PFB} query, the selected concepts are first scanned for dated observations among the matching patients,
-     * and the writer is told which concepts are dated before the first row is appended. Rows of such a query carry the ISO-8601 time of
-     * each value of a dated concept. Every other query, and a PFB query with no dated concept, appends values only.
+     * and the result stream is told which concepts are dated before the first row is appended. Rows of such a query carry the ISO-8601 time
+     * of each value of a dated concept. Every other query, and a PFB query with no dated concept, appends values only.
      *
      * @param query the query to run
      * @param result the result that receives the rows and is closed when the last batch is written
@@ -69,7 +69,7 @@ public class MultiValueQueryV3Processor implements HpdsV3Processor {
         log.info("Processing " + idList.size() + " rows for result " + result.getId());
         Set<String> datedConcepts = findDatedConcepts(query, idList);
         if (!datedConcepts.isEmpty()) {
-            result.declareTimestampedFields(datedConcepts);
+            result.getStream().declareTimestampedFields(datedConcepts);
         }
         Lists.partition(new ArrayList<>(idList), idBatchSize).forEach(patientIds -> {
             Map<String, ColumnObservations> pathToObservations = buildResult(query, new TreeSet<>(patientIds), datedConcepts);
@@ -89,7 +89,8 @@ public class MultiValueQueryV3Processor implements HpdsV3Processor {
             if (datedConcepts.isEmpty()) {
                 result.appendMultiValueResults(fieldValuesPerPatient);
             } else {
-                result.appendMultiValueResults(fieldValuesPerPatient, fieldTimestampsPerPatient(query, patientIds, pathToObservations));
+                result.getStream()
+                    .appendMultiValueResults(fieldValuesPerPatient, fieldTimestampsPerPatient(query, patientIds, pathToObservations));
             }
         });
         result.closeWriter();

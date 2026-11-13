@@ -16,7 +16,6 @@ import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 
@@ -215,27 +214,6 @@ public class AsyncResult implements Runnable, Comparable<AsyncResult> {
 
     public void appendMultiValueResults(List<List<List<String>>> dataEntries) {
         stream.appendMultiValueResults(dataEntries);
-    }
-
-    /**
-     * Appends rows together with a timestamp for each value.
-     *
-     * @param dataEntries one entry per row, each holding one list of values per header field
-     * @param timestamps the timestamps of those values, in the shape
-     *        {@link ResultWriter#writeMultiValueEntity(java.util.Collection, java.util.Collection)} describes
-     */
-    public void appendMultiValueResults(List<List<List<String>>> dataEntries, List<List<List<String>>> timestamps) {
-        stream.appendMultiValueResults(dataEntries, timestamps);
-    }
-
-    /**
-     * Tells the writer which concept paths have dated observations. Must be called before the first rows are appended.
-     *
-     * @param conceptPaths the concept paths with at least one dated observation
-     * @throws IllegalStateException if the writer has already fixed its columns
-     */
-    public void declareTimestampedFields(Set<String> conceptPaths) {
-        stream.declareTimestampedFields(conceptPaths);
     }
 
     public void appendResultStore(ResultStore resultStore) {

@@ -5,6 +5,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.ResultStoreStream;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary.DictionaryService;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.io.PfbWriter;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.timeseries.TimeSeriesConversionService;
@@ -37,7 +38,6 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -59,6 +59,9 @@ class MultiValueQueryV3ProcessorTest {
 
     @Mock
     private AsyncResult result;
+
+    @Mock
+    private ResultStoreStream stream;
 
     @Mock
     private DictionaryService dictionaryService;
@@ -119,8 +122,7 @@ class MultiValueQueryV3ProcessorTest {
 
         processor(10).runQuery(query, result);
 
-        verify(result, never()).declareTimestampedFields(anySet());
-        verify(result, never()).appendMultiValueResults(any(), any());
+        verify(result, never()).getStream();
         verify(result).appendMultiValueResults(List.of(List.of(List.of("1"), List.of("first", "second"))));
         verify(result).closeWriter();
     }
@@ -133,8 +135,7 @@ class MultiValueQueryV3ProcessorTest {
 
         processor(10).runQuery(query, result);
 
-        verify(result, never()).declareTimestampedFields(anySet());
-        verify(result, never()).appendMultiValueResults(any(), any());
+        verify(result, never()).getStream();
         verify(result).appendMultiValueResults(List.of(List.of(List.of("1"), List.of("undated"))));
     }
 
@@ -144,11 +145,13 @@ class MultiValueQueryV3ProcessorTest {
         givenPatientsAndColumns(query, 1, 2);
         givenCube(cube(VISIT_PATH, new KeyAndValue<>(1, "undated", null), new KeyAndValue<>(2, "dated", VISIT_TIME)));
 
+        when(result.getStream()).thenReturn(stream);
+
         processor(1).runQuery(query, result);
 
-        InOrder order = inOrder(result);
-        order.verify(result).declareTimestampedFields(Set.of(VISIT_PATH));
-        order.verify(result, times(2)).appendMultiValueResults(valuesCaptor.capture(), timestampsCaptor.capture());
+        InOrder order = inOrder(stream, result);
+        order.verify(stream).declareTimestampedFields(Set.of(VISIT_PATH));
+        order.verify(stream, times(2)).appendMultiValueResults(valuesCaptor.capture(), timestampsCaptor.capture());
         order.verify(result).closeWriter();
         verify(result, never()).appendMultiValueResults(any());
         assertEquals(
@@ -173,8 +176,7 @@ class MultiValueQueryV3ProcessorTest {
 
         verify(phenotypicObservationStore, times(1)).getCube(VISIT_PATH);
         verify(queryExecutor, times(1)).useResidentCubesFirst(any(), any(Integer.class));
-        verify(result, never()).declareTimestampedFields(anySet());
-        verify(result, never()).appendMultiValueResults(any(), any());
+        verify(result, never()).getStream();
         verify(result).appendMultiValueResults(List.of(List.of(List.of("1"), List.of("dated"))));
     }
 
@@ -190,12 +192,14 @@ class MultiValueQueryV3ProcessorTest {
             )
         );
 
+        when(result.getStream()).thenReturn(stream);
+
         processor(10).runQuery(query, result);
 
-        verify(result).declareTimestampedFields(Set.of(VISIT_PATH));
+        verify(stream).declareTimestampedFields(Set.of(VISIT_PATH));
         verify(phenotypicObservationStore, times(2)).getCube(AGE_PATH);
         verify(phenotypicObservationStore, times(2)).getCube(VISIT_PATH);
-        verify(result).appendMultiValueResults(valuesCaptor.capture(), timestampsCaptor.capture());
+        verify(stream).appendMultiValueResults(valuesCaptor.capture(), timestampsCaptor.capture());
         assertEquals(
             Arrays.asList(
                 List.of(List.of("1"), List.of("80"), List.of("epoch", "undated", "unset", "later")),
@@ -222,8 +226,7 @@ class MultiValueQueryV3ProcessorTest {
 
         processor(10).runQuery(query, result);
 
-        verify(result, never()).declareTimestampedFields(anySet());
-        verify(result, never()).appendMultiValueResults(any(), any());
+        verify(result, never()).getStream();
         verify(result).appendMultiValueResults(List.of(Arrays.asList(List.of("1"), null)));
         verify(result).closeWriter();
     }
@@ -235,10 +238,12 @@ class MultiValueQueryV3ProcessorTest {
         KeyAndValue<Double>[] observations = new KeyAndValue[] {new KeyAndValue<>(1, 80.5, VISIT_TIME), new KeyAndValue<>(1, 81.0, null)};
         givenCube(new PhenoCube<>(AGE_PATH, Double.class).setSortedByKey(observations));
 
+        when(result.getStream()).thenReturn(stream);
+
         processor(10).runQuery(query, result);
 
-        verify(result).declareTimestampedFields(Set.of(AGE_PATH));
-        verify(result).appendMultiValueResults(valuesCaptor.capture(), timestampsCaptor.capture());
+        verify(stream).declareTimestampedFields(Set.of(AGE_PATH));
+        verify(stream).appendMultiValueResults(valuesCaptor.capture(), timestampsCaptor.capture());
         assertEquals(List.of(List.of(List.of("1"), List.of("80.5", "81.0"))), valuesCaptor.getValue());
         assertEquals(
             List.of(Arrays.asList(null, Arrays.asList(conversionService.toISOString(VISIT_TIME), null))), timestampsCaptor.getValue()
