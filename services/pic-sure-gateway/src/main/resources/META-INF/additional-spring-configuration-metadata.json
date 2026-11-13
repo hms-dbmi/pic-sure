@@ -11,6 +11,16 @@
       "type": "java.util.List<java.lang.String>",
       "description": "X-Client-Type values the gateway accepts from callers, matched case-insensitively. A request carrying any other value is rejected with 400 unexpected_caller_type; an absent header is recorded as UNKNOWN. The reserved values mcp and service cannot be listed.",
       "defaultValue": "PYTHON_ADAPTER,R_ADAPTER,FRONTEND"
+    },
+    {
+      "name": "DEST_IP",
+      "type": "java.lang.String",
+      "description": "IP address recorded as the destination IP on audit log events sent by AuditLoggingFilter. When unset (the default) or blank, the filter falls back to the current request's local address (HttpServletRequest#getLocalAddr())."
+    },
+    {
+      "name": "DEST_PORT",
+      "type": "java.lang.String",
+      "description": "Port number recorded as the destination port on audit log events sent by AuditLoggingFilter. Read as text so a bad value cannot stop startup. When unset (the default), blank or not a number, the filter falls back to the current request's local port (HttpServletRequest#getLocalPort()); a value that is not a number is logged once as a warning."
     }
   ]
 }
