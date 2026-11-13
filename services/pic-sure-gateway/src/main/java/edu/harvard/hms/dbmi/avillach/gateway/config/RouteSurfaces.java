@@ -10,12 +10,13 @@ import java.util.List;
  * {@code startsWith(prefix + "/")}) — never a bare {@code startsWith}. So {@code /logging} covers {@code /logging} and {@code /logging/x}
  * but NOT {@code /loggingAdmin/x}, which is a different route.
  *
- * <p><b>Raw-requestURI safety.</b> Callers match on the raw {@code getRequestURI()} (not a decoded/normalized path). That is safe against
- * matrix-parameter (e.g. {@code /hpds;x=y}), encoded-slash ({@code %2F}) and double-slash ({@code //}) evasion ONLY because Spring
- * Security's default {@link org.springframework.security.web.firewall.StrictHttpFirewall} rejects those requests BEFORE the auth filters
- * run — so a path that reaches this matcher has already been normalized/blocked upstream. A future custom {@code HttpFirewall} that relaxes
- * those defaults would reopen the seam (a request could then present a raw URI that this segment-safe match reads as unowned/owned
- * differently than the backend resolves it); revisit this matching if the firewall is ever relaxed.
+ * <p><b>Do not match a raw request URI for a security decision.</b> This class compares the string it is given and decodes nothing, so a
+ * caller that passes the raw {@code getRequestURI()} can be evaded. Spring Security's default
+ * {@link org.springframework.security.web.firewall.StrictHttpFirewall} rejects matrix parameters (e.g. {@code /hpds;x=y}), encoded slashes
+ * ({@code %2F}) and double slashes ({@code //}), but it lets a percent-encoded letter through: {@code /%68pds/x} reaches the filters, reads
+ * here as unowned, and is then decoded and routed as {@code /hpds/x}. A filter that allows, denies or strips by path must match the decoded
+ * path from {@link edu.harvard.hms.dbmi.avillach.commons.request.RoutedRequestPath}, which resolves the path the way routing does. The
+ * route drift-guard test passes configured route patterns, not request URIs, so it is not affected.
  */
 public final class RouteSurfaces {
 

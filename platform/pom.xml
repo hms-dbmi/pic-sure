@@ -42,7 +42,7 @@
              remotely reachable flaws in the HTTP/1.1, HTTP/2 and RTSP codecs; drop this
              override once the Spring BOM catches up. -->
         <netty.version>4.1.138.Final</netty.version>
-        <log4j2.version>2.25.5</log4j2.version>
+        <log4j2.version>2.26.1</log4j2.version>
         <postgresql.version>42.7.12</postgresql.version>
         <bouncycastle.version>1.84</bouncycastle.version>
         <!-- Not Spring-managed at all; it arrives transitively at 1.24.0 in test scope.

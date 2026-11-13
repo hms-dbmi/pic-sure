@@ -186,6 +186,18 @@ class OpenApiDocumentTest {
     }
 
     @Test
+    void internalEndpointsAreHidden() throws Exception {
+        JsonNode document = document();
+
+        List<String> paths = new ArrayList<>();
+        document.path("paths").fieldNames().forEachRemaining(paths::add);
+        assertThat(paths).isNotEmpty().noneMatch(path -> path.contains("/internal"));
+        List<String> schemas = new ArrayList<>();
+        document.path("components").path("schemas").fieldNames().forEachRemaining(schemas::add);
+        assertThat(schemas).doesNotContain("ConceptExportRequest", "ConceptExportMetadata");
+    }
+
+    @Test
     void legacySearchBindsATypedRequest() throws Exception {
         JsonNode document = document();
 

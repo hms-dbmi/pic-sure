@@ -101,4 +101,30 @@ public class JsonBlobParser {
 
         return metadata;
     }
+
+    /**
+     * Parses aggregated concept metadata into a map that keeps every key exactly as stored, unlike {@link #parseMetaData(String)}, which
+     * rewrites keys as capitalized words.
+     *
+     * @param jsonMetaData a JSON array of objects, each with a {@code key} and a {@code value}
+     * @return the values by raw key, in array order, where the first value wins if a key repeats
+     * @throws IllegalStateException if the text is not such an array or an entry has no key
+     */
+    public Map<String, String> parseRawMetaData(String jsonMetaData) {
+        List<Map<String, String>> entries;
+        try {
+            entries = objectMapper.readValue(jsonMetaData, new TypeReference<List<Map<String, String>>>() {});
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Concept metadata is not a JSON array of key and value objects", e);
+        }
+        Map<String, String> metadata = new LinkedHashMap<>();
+        for (Map<String, String> entry : entries) {
+            String key = entry.get("key");
+            if (key == null) {
+                throw new IllegalStateException("Concept metadata entry has no key: " + entry);
+            }
+            metadata.putIfAbsent(key, entry.get("value"));
+        }
+        return metadata;
+    }
 }

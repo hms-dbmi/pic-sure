@@ -65,9 +65,21 @@
       "description": "Comma-separated list of concept_node_meta keys, for example stigmatized, whose matching concepts have their search rank multiplier set to zero. A matching concept stays in search results but sorts last instead of being excluded."
     },
     {
+      "name": "metadata.internal_export_keys",
+      "type": "java.util.Set<java.lang.String>",
+      "description": "Comma-separated list of concept_node_meta keys that POST /internal/concepts/export-metadata may return. A request that asks for any other key answers 400. metadata.no_show_list does not apply to that endpoint.",
+      "defaultValue": "drs_uri"
+    },
+    {
       "name": "metadata.no_show_list",
       "type": "java.util.Set<java.lang.String>",
       "description": "Comma-separated list of concept_node_meta keys excluded from concept metadata responses."
+    },
+    {
+      "name": "picsure.internal.token",
+      "type": "java.lang.String",
+      "description": "Shared secret that InternalTokenFilter requires on the X-PIC-SURE-INTERNAL-TOKEN header for every /internal/** request, such as POST /internal/concepts/export-metadata. Maps from the PICSURE_INTERNAL_TOKEN environment variable. Whitespace around the value is ignored. Fail-closed: when blank, every /internal/** request is rejected with 403, even one carrying a header value. No other endpoint of this service reads it.",
+      "defaultValue": ""
     }
   ]
 }
