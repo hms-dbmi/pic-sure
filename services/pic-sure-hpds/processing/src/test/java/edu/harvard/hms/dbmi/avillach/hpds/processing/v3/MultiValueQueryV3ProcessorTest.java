@@ -88,7 +88,8 @@ class MultiValueQueryV3ProcessorTest {
     }
 
     /**
-     * Stubs the patient subset and the column metadata of a query, the way the query executor answers for known concept paths.
+     * Stubs the patient subset and the column metadata of a query, the way the query executor answers for known concept paths. The column
+     * index lists every column twice, as the real executor does.
      *
      * @param query the query under test
      * @param patientIds the patients the query matches
@@ -101,6 +102,7 @@ class MultiValueQueryV3ProcessorTest {
             dictionary.put(path, new ColumnMeta().setName(path));
             columnIndex.add(columnIndex.size() + 1);
         }
+        columnIndex.addAll(List.copyOf(columnIndex));
         when(queryExecutor.getDictionary()).thenReturn(dictionary);
         when(queryExecutor.useResidentCubesFirst(query.select(), query.select().size() + 1)).thenReturn(columnIndex);
     }
@@ -191,6 +193,8 @@ class MultiValueQueryV3ProcessorTest {
         processor(10).runQuery(query, result);
 
         verify(result).declareTimestampedFields(Set.of(VISIT_PATH));
+        verify(phenotypicObservationStore, times(2)).getCube(AGE_PATH);
+        verify(phenotypicObservationStore, times(2)).getCube(VISIT_PATH);
         verify(result).appendMultiValueResults(valuesCaptor.capture(), timestampsCaptor.capture());
         assertEquals(
             Arrays.asList(
@@ -206,6 +210,39 @@ class MultiValueQueryV3ProcessorTest {
             ), timestampsCaptor.getValue()
         );
         assertEquals("1970-01-01T00:00:00Z", conversionService.toISOString(0L));
+        assertEquals(4, valuesCaptor.getValue().get(0).get(2).size());
+        assertEquals(4, timestampsCaptor.getValue().get(0).get(2).size());
+    }
+
+    @Test
+    void runQuery_cubeMissing_notDeclaredAndRowHasNoValues() {
+        Query query = query(ResultType.DATAFRAME_PFB, VISIT_PATH);
+        givenPatientsAndColumns(query, 1);
+        when(phenotypicObservationStore.getCube(VISIT_PATH)).thenReturn(Optional.empty());
+
+        processor(10).runQuery(query, result);
+
+        verify(result, never()).declareTimestampedFields(anySet());
+        verify(result, never()).appendMultiValueResults(any(), any());
+        verify(result).appendMultiValueResults(List.of(Arrays.asList(List.of("1"), null)));
+        verify(result).closeWriter();
+    }
+
+    @Test
+    void runQuery_numericCubeWithTimestamps_declaredAndAligned() {
+        Query query = query(ResultType.DATAFRAME_PFB, AGE_PATH);
+        givenPatientsAndColumns(query, 1);
+        KeyAndValue<Double>[] observations = new KeyAndValue[] {new KeyAndValue<>(1, 80.5, VISIT_TIME), new KeyAndValue<>(1, 81.0, null)};
+        givenCube(new PhenoCube<>(AGE_PATH, Double.class).setSortedByKey(observations));
+
+        processor(10).runQuery(query, result);
+
+        verify(result).declareTimestampedFields(Set.of(AGE_PATH));
+        verify(result).appendMultiValueResults(valuesCaptor.capture(), timestampsCaptor.capture());
+        assertEquals(List.of(List.of(List.of("1"), List.of("80.5", "81.0"))), valuesCaptor.getValue());
+        assertEquals(
+            List.of(Arrays.asList(null, Arrays.asList(conversionService.toISOString(VISIT_TIME), null))), timestampsCaptor.getValue()
+        );
     }
 
     @Test

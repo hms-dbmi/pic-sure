@@ -38,6 +38,30 @@ public class PfbWriterTest {
     private static final String[] HEADER = {"patient_id", AGE_PATH, STROKE_PATH};
     private static final List<String> REQUESTED_PATHS = List.of(AGE_PATH, STROKE_PATH);
 
+    /**
+     * The entity schema of an export of {@link #HEADER} for query id {@code pinned-query} with no timestamp field, as the writer produced
+     * it before timestamp fields existed.
+     */
+    private static final String PINNED_UNDATED_SCHEMA =
+        "{\"type\":\"record\",\"name\":\"entity\",\"namespace\":\"edu.harvard.dbmi\",\"fields\":[{\"name\":\"object\",\"type\":[{\"type\":\"record\",\"name\":\"metadata\",\"namespace\":\"\",\"fields\":[{\"name\":\"misc\",\"type\":\"string\"},"
+            + "{\"name\":\"nodes\",\"type\":{\"type\":\"array\",\"items\":{\"type\":\"record\",\"name\":\"nodes\",\"fields\":[{\"name\":\"name\",\"type\":\"string\"},"
+            + "{\"name\":\"ontology_reference\",\"type\":[\"string\",\"null\"],\"default\":\"null\"},"
+            + "{\"name\":\"links\",\"type\":{\"type\":\"array\",\"items\":{\"type\":\"record\",\"name\":\"Link\",\"fields\":[{\"name\":\"dst\",\"type\":\"string\"},"
+            + "{\"name\":\"multiplicity\",\"type\":{\"type\":\"enum\",\"name\":\"Multiplicity\",\"symbols\":[\"ONE_TO_ONE\",\"ONE_TO_MANY\",\"MANY_TO_ONE\",\"MANY_TO_MANY\"]}}]}}},"
+            + "{\"name\":\"properties\",\"type\":{\"type\":\"array\",\"items\":{\"type\":\"record\",\"name\":\"Property\",\"fields\":[{\"name\":\"name\",\"type\":\"string\"},"
+            + "{\"name\":\"ontology_reference\",\"type\":\"string\"},"
+            + "{\"name\":\"values\",\"type\":{\"type\":\"map\",\"values\":[\"string\",\"null\"]}}]}}},"
+            + "{\"name\":\"values\",\"type\":{\"type\":\"map\",\"values\":[\"string\",\"null\"]}}]}}}]},{\"type\":\"record\",\"name\":\"pic_sure_patients_pinned_query\",\"namespace\":\"\",\"fields\":[{\"name\":\"patient_id\",\"type\":[\"string\",\"null\"],\"default\":\"null\"},"
+            + "{\"name\":\"_demographics_age_\",\"type\":{\"type\":\"array\",\"items\":[\"string\",\"null\"]}},"
+            + "{\"name\":\"_phs123_stroke_\",\"type\":{\"type\":\"array\",\"items\":[\"string\",\"null\"]}}]},{\"type\":\"record\",\"name\":\"pic_sure_data_dictionary_pinned_query\",\"namespace\":\"\",\"fields\":[{\"name\":\"concept_path\",\"type\":\"string\"},"
+            + "{\"name\":\"drs_uri\",\"type\":{\"type\":\"array\",\"items\":[\"string\",\"null\"]}},"
+            + "{\"name\":\"display\",\"type\":[\"string\",\"null\"],\"default\":\"null\"},"
+            + "{\"name\":\"dataset\",\"type\":[\"string\",\"null\"],\"default\":\"null\"},"
+            + "{\"name\":\"description\",\"type\":[\"string\",\"null\"],\"default\":\"null\"}]}]},"
+            + "{\"name\":\"id\",\"type\":[\"string\",\"null\"],\"default\":\"null\"},{\"name\":\"name\",\"type\":\"string\"},"
+            + "{\"name\":\"relations\",\"type\":{\"type\":\"array\",\"items\":{\"type\":\"record\",\"name\":\"Relation\",\"namespace\":\"\",\"fields\":[{\"name\":\"dst_name\",\"type\":\"string\"},"
+            + "{\"name\":\"dst_id\",\"type\":\"string\"}]}}}]}";
+
     @Mock
     private DictionaryService dictionaryService;
 
@@ -354,6 +378,61 @@ public class PfbWriterTest {
         assertEquals(avroSchemaJson(avroFile), avroSchemaJson(undatedFile));
         assertEquals(List.of("patient_id", "_demographics_age_", "_phs123_stroke_"), fieldNames(readPatientRows(undatedFile).get(0)));
         assertEquals(List.of("patient_id", "_demographics_age_", "_phs123_stroke_"), patientNodeProperties(undatedFile));
+    }
+
+    @Test
+    public void nothingDeclared_schemaMatchesPinnedLiteral() {
+        Mockito.when(dictionaryService.getConcepts(REQUESTED_PATHS)).thenReturn(List.of());
+        PfbWriter pfbWriter = new PfbWriter(avroFile, "pinned-query", dictionaryService);
+        pfbWriter.writeHeader(HEADER);
+
+        pfbWriter.writeMultiValueEntity(List.of(patientRow("123", "80", "Y")));
+        pfbWriter.close();
+
+        assertEquals(PINNED_UNDATED_SCHEMA, avroSchemaJson(avroFile));
+    }
+
+    @Test
+    public void declareTimestampedFields_twiceBeforeRows_secondReplacesFirst() {
+        PfbWriter pfbWriter = new PfbWriter(avroFile, UUID.randomUUID().toString(), dictionaryService);
+        Mockito.when(dictionaryService.getConcepts(REQUESTED_PATHS)).thenReturn(List.of());
+        pfbWriter.writeHeader(HEADER);
+        pfbWriter.declareTimestampedFields(Set.of(AGE_PATH));
+        pfbWriter.declareTimestampedFields(Set.of(STROKE_PATH));
+
+        pfbWriter
+            .writeMultiValueEntity(List.of(patientRow("123", "80", "Y")), List.of(timestampRow(null, List.of("2020-01-01T00:00:00Z"))));
+        pfbWriter.close();
+
+        GenericRecord patient = readPatientRows(avroFile).get(0);
+        assertEquals(List.of("patient_id", "_demographics_age_", "_phs123_stroke_", "_phs123_stroke__timestamp"), fieldNames(patient));
+        assertEquals(List.of("2020-01-01T00:00:00Z"), texts(patient, "_phs123_stroke__timestamp"));
+    }
+
+    @Test
+    public void declaredFields_avroFileCannotBeCreated_retryWritesSameTimestampField() {
+        File missingDirectory = tempDir.resolve("missing").toFile();
+        File unreachableFile = new File(missingDirectory, "result.avro");
+        PfbWriter pfbWriter = new PfbWriter(unreachableFile, UUID.randomUUID().toString(), dictionaryService);
+        Mockito.when(dictionaryService.getConcepts(REQUESTED_PATHS)).thenReturn(List.of());
+        pfbWriter.writeHeader(HEADER);
+        pfbWriter.declareTimestampedFields(Set.of(STROKE_PATH));
+        List<List<List<String>>> rows = List.of(patientRow("123", "80", "Y"));
+        List<List<List<String>>> timestamps = List.of(timestampRow(null, List.of("2020-01-01T00:00:00Z")));
+
+        assertThrows(UncheckedIOException.class, () -> pfbWriter.writeMultiValueEntity(rows, timestamps));
+
+        assertTrue(missingDirectory.mkdir());
+        pfbWriter.writeMultiValueEntity(rows, timestamps);
+        pfbWriter.close();
+
+        GenericRecord patient = readPatientRows(unreachableFile).get(0);
+        assertEquals(List.of("patient_id", "_demographics_age_", "_phs123_stroke_", "_phs123_stroke__timestamp"), fieldNames(patient));
+        assertEquals(List.of("2020-01-01T00:00:00Z"), texts(patient, "_phs123_stroke__timestamp"));
+        assertEquals(
+            List.of("patient_id", "_demographics_age_", "_phs123_stroke_", "_phs123_stroke__timestamp"),
+            patientNodeProperties(unreachableFile)
+        );
     }
 
     @Test
