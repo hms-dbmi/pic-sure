@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.auth.filter;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.OptionalLong;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
@@ -34,6 +35,8 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
 
     private static final String AUDIT_START_TIME = "audit_start_time";
 
+    private static final String HEAD_METHOD = "HEAD";
+
     @Value("${DEST_IP:#{null}}")
     private String destIp;
 
@@ -53,14 +56,50 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     ) throws ServletException, IOException {
         request.setAttribute(AUDIT_START_TIME, System.currentTimeMillis());
 
+        ByteCountingResponseWrapper countingResponse = new ByteCountingResponseWrapper(response);
+        boolean chainCompleted = false;
+
         try {
-            filterChain.doFilter(request, response);
+            filterChain.doFilter(request, countingResponse);
+            chainCompleted = true;
         } finally {
-            logRequest(request, response);
+            logRequest(request, response, countingResponse, chainCompleted);
         }
     }
 
-    private void logRequest(HttpServletRequest request, HttpServletResponse response) {
+    /**
+     * Reads the size of the response body for the audit event. The size is the body bytes handed to the container, before compression or
+     * chunk framing. <p> It is left unset when the container writes the body after this filter has sent its event: an exception left the
+     * chain, async handling has started, or {@code sendError} was called. Otherwise it is 0 for a HEAD request, whose body the container
+     * discards, after {@code sendRedirect}, and for a response with no body. Unset wins over 0.
+     *
+     * @param request the request being audited
+     * @param response the counting wrapper the rest of the chain wrote to
+     * @param chainCompleted whether the rest of the chain returned without throwing
+     * @return the number of body bytes, or null to leave the field unset
+     */
+    private static Long bytesWritten(HttpServletRequest request, ByteCountingResponseWrapper response, boolean chainCompleted) {
+        if (!chainCompleted || request.isAsyncStarted()) {
+            return null;
+        }
+        OptionalLong byteCount = response.getByteCount();
+        if (byteCount.isEmpty()) {
+            return null;
+        }
+        return HEAD_METHOD.equals(request.getMethod()) ? 0L : byteCount.getAsLong();
+    }
+
+    /**
+     * Builds and sends the audit event for a finished request. Nothing thrown while doing so reaches the caller.
+     *
+     * @param request the request being audited
+     * @param response the response the status and content type are read from
+     * @param countingResponse the counting wrapper the rest of the chain wrote to
+     * @param chainCompleted whether the rest of the chain returned without throwing
+     */
+    private void logRequest(
+        HttpServletRequest request, HttpServletResponse response, ByteCountingResponseWrapper countingResponse, boolean chainCompleted
+    ) {
         try {
             if (loggingClient == null || !loggingClient.isEnabled()) {
                 return;
@@ -110,11 +149,12 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
             // Response info
             int responseStatus = response.getStatus();
             String contentType = response.getContentType();
+            Long bytes = bytesWritten(request, countingResponse, chainCompleted);
 
             // Build RequestInfo
             RequestInfo requestInfo = RequestInfo.builder().method(method).url(request.getRequestURI()).srcIp(srcIp).destIp(resolvedDestIp)
                 .destPort(resolvedDestPort).httpUserAgent(request.getHeader("User-Agent")).status(responseStatus).duration(duration)
-                .httpContentType(contentType).build();
+                .httpContentType(contentType).bytes(bytes).build();
 
             // Build metadata
             Map<String, Object> metadata = new HashMap<>();
