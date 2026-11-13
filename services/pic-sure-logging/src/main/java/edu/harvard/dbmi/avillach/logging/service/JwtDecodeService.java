@@ -62,7 +62,7 @@ public class JwtDecodeService {
 
             return result;
         } catch (Exception e) {
-            log.warn("Failed to decode JWT: {}", e.getMessage());
+            log.warn("Failed to decode JWT: {}", e.getClass().getSimpleName());
             return Map.of("logged_in", false);
         }
     }

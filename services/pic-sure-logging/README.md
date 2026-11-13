@@ -101,7 +101,7 @@ Only `event_type` is required. All other fields are optional. Unknown fields are
 | `400 Bad Request` | Invalid JSON or missing `event_type` |
 | `401 Unauthorized` | Missing or invalid API key |
 | `413 Content Too Large` | Request body exceeds 1 MiB (1,048,576 bytes) |
-| `500 Internal Server Error` | Unexpected failure |
+| `500 Internal Server Error` | The event could not be assembled or submitted. The Javalin version returned 202 here. The shared logging client sends asynchronously, logs a warning on any non-2xx response, and does not retry |
 
 ### GET /health
 
@@ -176,7 +176,7 @@ All configuration is via environment variables.
 
 **Startup validation:** The service fails fast with a clear error message if `LOGGING_API_KEY` is missing, `PORT` is not a valid integer in range 1-65535, or `JWT_CLAIM_MAPPING` is invalid. Mapping input claims and output fields must be non-blank, output fields must be unique and non-reserved, and `logged_in` is reserved as both an input claim and an output field.
 
-Actuator endpoints are disabled by default. Any endpoints enabled through `PICSURE_ACTUATOR_EXPOSURE` are unauthenticated because this service does not configure Spring Security; expose them only on a trusted network or behind an authenticating proxy.
+Actuator endpoints are disabled by default. Any endpoints enabled through `PICSURE_ACTUATOR_EXPOSURE` are unauthenticated because this service does not configure Spring Security. The gateway routes `/logging/**` as a public prefix with no token check, so enabling an endpoint here also makes `/logging/actuator/*` reachable from outside. Before enabling any endpoint, move management to a port the gateway does not publish or add authentication.
 
 ## JWT Claim Extraction
 
@@ -265,7 +265,7 @@ PIC-SURE-Logging/
 
 **Design decisions:**
 - Spring Boot 3.5.16, no Spring Security -- the API key is a servlet filter
-- Actuator is off by default (`PICSURE_ACTUATOR_EXPOSURE=none`); opted-in endpoints are unauthenticated
+- Actuator is off by default (`PICSURE_ACTUATOR_EXPOSURE=none`); opted-in endpoints are unauthenticated and, through the gateway's public `/logging/**` route, internet-reachable
 - No database or persistent state -- pure log enrichment and forwarding
 - JWT decode-only (no verification) -- trusts upstream authentication
 - Constant-time API key comparison via `MessageDigest.isEqual()` to prevent timing attacks
@@ -287,7 +287,7 @@ This separation allows log shippers to capture clean JSON from stdout while oper
 
 ## Metrics
 
-The following Micrometer counters are registered at startup. Expose the `prometheus` Actuator endpoint only on a trusted network or behind an authenticating proxy, as described under Configuration.
+The following Micrometer counters are registered at startup. Do not expose the `prometheus` Actuator endpoint without the precautions described under Configuration.
 
 | Metric | Meaning |
 |---|---|
@@ -309,10 +309,11 @@ The Dockerfile is single-stage: it copies the jar that the Maven reactor has alr
 built into `target/`. Its multi-architecture Corretto 25 base image is pinned by
 digest, and it runs as the fixed numeric UID/GID `10001:10001`.
 
-The container creates `/app/logs` with that ownership. When bind-mounting a host
-directory there (including the Compose `./logs:/app/logs` mount), ensure the host
-directory is writable by UID/GID `10001:10001`; Docker does not change the
-ownership of bind-mounted files.
+The container creates `/app/logs` with that ownership. The Compose file mounts a
+named volume there, which inherits that ownership. When bind-mounting a host
+directory instead, ensure it is writable by UID/GID `10001:10001`; Docker does not
+change the ownership of bind-mounted files, and an unwritable directory leaves
+`audit.log` and `app.log` empty while stdout keeps working.
 
 ### Running
 
