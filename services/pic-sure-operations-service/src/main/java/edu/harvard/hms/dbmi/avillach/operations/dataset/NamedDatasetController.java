@@ -28,11 +28,25 @@ import jakarta.validation.Valid;
  * an authenticated caller for all of {@code /dataset/**} (the gateway must have supplied {@code X-User-Id}); {@link NamedDatasetService}
  * then email-scopes every operation, requiring and keying on the caller's email ({@code GatewayUser#getEmail()}), never {@code userId}.
  * This controller is a thin HTTP adapter -- identity validation lives in the service.
+ *
+ * <p>The caller's user id is used in two places, because query rows record their owner by user id. {@code POST /dataset/named}, and
+ * {@code PUT /dataset/named/{id}} when it names another query, point a dataset only at a query that belongs to the caller or has no owner.
+ * Every answer lists in {@code queries} only the query rows that belong to the caller.
  */
 @Tag(name = "Named datasets", description = "Saved queries a user names and reuses, scoped to the caller")
 @RestController
 @RequestMapping("/dataset/named")
 public class NamedDatasetController {
+
+    static final String UPDATE_DESCRIPTION = "Replaces the name, archived state and metadata of the dataset.\n\n"
+        + "When queryId names a query other than the one the dataset points at, the dataset is re-pointed: its query member becomes that "
+        + "query, and queries lists the stored variants of that query. The query must have been submitted by the caller, or be a query "
+        + "stored without an owner. Another dataset of the caller may already point at that query.\n\n"
+        + "When queryId names the query the dataset already points at, the dataset stays on it.";
+
+    static final String SAVE_REFUSED = "The request is not valid: a required member is missing, the name is longer than 255 characters or "
+        + "has a character the pattern does not allow, the metadata takes more than 65,535 bytes as JSON, or the dataset cannot be "
+        + "stored with these values";
 
     private final NamedDatasetService service;
 
@@ -54,9 +68,10 @@ public class NamedDatasetController {
     @Operation(summary = "Name a query as a dataset for the caller")
     @ApiResponses(
         {@ApiResponse(responseCode = "201", description = "The created named dataset"),
+            @ApiResponse(responseCode = "400", description = SAVE_REFUSED),
             @ApiResponse(responseCode = "401", description = "No caller email in the request"),
-            @ApiResponse(responseCode = "404", description = "Query not found"),
-            @ApiResponse(responseCode = "409", description = "The caller already named that query")}
+            @ApiResponse(responseCode = "403", description = "The query belongs to another user"),
+            @ApiResponse(responseCode = "404", description = "Query not found")}
     )
     @AuditEvent(type = "ACCESS", action = "named_dataset.modify")
     @PostMapping("")
@@ -77,13 +92,15 @@ public class NamedDatasetController {
         return service.getForUser(user, id);
     }
 
-    @Operation(summary = "Rename or re-point one of the caller's named datasets")
+    @Operation(summary = "Rename or re-point one of the caller's named datasets", description = UPDATE_DESCRIPTION)
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The updated named dataset"),
+            @ApiResponse(responseCode = "400", description = SAVE_REFUSED),
             @ApiResponse(responseCode = "401", description = "No caller email in the request"),
+            @ApiResponse(responseCode = "403", description = "The new queryId names a query that belongs to another user"),
             @ApiResponse(
                 responseCode = "404", description = "No named dataset with that id for the caller, or the new queryId matches no query"
-            ), @ApiResponse(responseCode = "409", description = "The caller already named that query")}
+            )}
     )
     @AuditEvent(type = "ACCESS", action = "named_dataset.modify")
     @PutMapping("/{id}")

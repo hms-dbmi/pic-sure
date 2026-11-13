@@ -12,7 +12,9 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +27,8 @@ import com.github.tomakehurst.wiremock.client.WireMock;
 
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.query.config.AggregateProperties;
 import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
@@ -74,6 +78,21 @@ class AggregateBackendClientTest {
         assertThat(resp.getHeaders().getFirst(AggregateBackendClient.QUERY_METADATA_FIELD)).isEqualTo("abc");
         assertThat(AggregateBackendClient.QUERY_METADATA_FIELD).isEqualTo("queryMetadata");
         hpds.verify(postRequestedFor(urlEqualTo("/v3/query/sync")).withHeader("Authorization", WireMock.equalTo("Bearer open-token")));
+    }
+
+    @Test
+    void querySyncPostsTheQueryWithoutItsPicsureId() {
+        String clientId = "8694e3d4-5cb4-410f-8431-993445e6d3f6";
+        hpds.stubFor(post(urlEqualTo("/v3/query/sync")).willReturn(aResponse().withStatus(200).withBody("42")));
+        Query query = new Query(List.of(), List.of(), null, List.of(), ResultType.COUNT, UUID.fromString(clientId), null);
+
+        client().querySync(req(query));
+
+        hpds.verify(
+            postRequestedFor(urlEqualTo("/v3/query/sync"))
+                .withRequestBody(matchingJsonPath("$.query.expectedResultType", WireMock.equalTo("COUNT")))
+                .withRequestBody(WireMock.notContaining(clientId))
+        );
     }
 
     @Test

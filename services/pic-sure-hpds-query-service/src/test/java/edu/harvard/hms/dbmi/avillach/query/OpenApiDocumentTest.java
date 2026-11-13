@@ -175,8 +175,59 @@ class OpenApiDocumentTest {
         );
         assertThat(operation(document, "get", STATUS).path("description").asText())
             .contains("| `QUEUED` |", "| `PENDING` |", "| `AVAILABLE` |", "| `ERROR` |", "Step 2");
-        assertThat(operation(document, "get", RESULT).path("description").asText()).contains("Step 3", "answers 400", "DATAFRAME_PFB");
-        assertThat(operation(document, "get", SIGNED_URL).path("description").asText()).contains("`signedUrl`", "answers 400");
+        assertThat(operation(document, "get", RESULT).path("description").asText())
+            .contains("Step 3", "still queued or running, this answers 409", "failed, it answers 400", "DATAFRAME_PFB");
+        assertThat(operation(document, "get", SIGNED_URL).path("description").asText())
+            .contains("`signedUrl`", "still queued or running, this answers 409", "failed, it answers 400");
+    }
+
+    @Test
+    void resultAndSignedUrlDocumentNotReadyUnder409AndAFailedQueryUnder400() throws Exception {
+        JsonNode document = document();
+
+        for (String path : List.of(RESULT, SIGNED_URL)) {
+            JsonNode responses = operation(document, "get", path).path("responses");
+            assertThat(responses.path("409").path("description").asText()).as("GET %s 409", path).contains("still queued or running");
+            assertThat(responses.path("400").path("description").asText()).as("GET %s 400", path).contains("a query that failed")
+                .doesNotContain("not ready");
+        }
+        assertThat(operation(document, "get", STATUS).path("responses").has("409")).isFalse();
+    }
+
+    @Test
+    void resultAndSignedUrlNameTheNotReadyErrorTypeAndEveryCaseThatAnswersIt() throws Exception {
+        JsonNode document = document();
+
+        for (String path : List.of(RESULT, SIGNED_URL)) {
+            JsonNode operation = operation(document, "get", path);
+            assertThat(operation.path("description").asText()).as("GET %s description", path)
+                .contains("answers 409 with error type `result_not_ready`", "run again", "consents changed", "no longer holds the result");
+            assertThat(operation.path("responses").path("409").path("description").asText()).as("GET %s 409", path)
+                .contains("`result_not_ready`", "ran it again", "Poll the status");
+            assertThat(operation.path("responses").path("400").path("description").asText()).as("GET %s 400", path)
+                .contains("`sample_disabled`");
+        }
+    }
+
+    @Test
+    void storedQueryReadsDocumentTheOwnerCheckTheConsentCheckAndTheWaitForTheRow() throws Exception {
+        JsonNode document = document();
+
+        for (String path : List.of(STATUS, RESULT, SIGNED_URL)) {
+            JsonNode operation = operation(document, "get", path);
+            assertThat(operation.path("description").asText()).as("GET %s description", path)
+                .contains("Only the user who submitted the query");
+            JsonNode responses = operation.path("responses");
+            assertThat(responses.path("403").path("description").asText()).as("GET %s 403", path)
+                .contains("not the user who submitted the query", "`forbidden`", "holds no consents", "`consent_denied`");
+            assertThat(responses.path("503").path("description").asText()).as("GET %s 503", path)
+                .contains("Backend not configured", "another request for the same query", "`service_unavailable`");
+            assertThat(responses.path("502").path("description").asText()).as("GET %s 502", path).contains("query save");
+        }
+        assertThat(operation(document, "get", STATUS).path("description").asText())
+            .contains("consents changed", "no longer holds the result", "run again", "keep polling");
+        assertThat(operation(document, "get", STATUS).path("responses").path("400").path("description").asText())
+            .contains("Unknown backend", "`sample_disabled`");
     }
 
     @Test
@@ -269,6 +320,20 @@ class OpenApiDocumentTest {
     }
 
     @Test
+    void metadataDocumentsAReadForEveryCallerTheGatewayAdmitsThatReturnsNoConsentValues() throws Exception {
+        JsonNode operation = operation(document(), "get", METADATA);
+
+        assertThat(operation.path("description").asText()).contains(
+            "same gateway access as the other query routes", "no owner or consent check", "any caller the gateway admits who has the id",
+            "not only the user who submitted it", "never carries consent values", "`authorizationFilters`"
+        ).doesNotContainIgnoringCase("signed-in", "no authorization", "without a token", "unauthenticated", "anonymous");
+        JsonNode responses = operation.path("responses");
+        assertThat(responses.has("200")).isTrue();
+        assertThat(responses.has("403")).as("GET %s 403", METADATA).isFalse();
+        assertThat(responses.path("502").path("description").asText()).as("GET %s 502", METADATA).isEqualTo("Query lookup failed.");
+    }
+
+    @Test
     void syncAndResultBodiesAreDocumentedByMediaTypeAndResultType() throws Exception {
         JsonNode document = document();
 
@@ -286,6 +351,28 @@ class OpenApiDocumentTest {
         assertThat(examples.path("VARIANT_COUNT_FOR_QUERY without genomic filters").path("value").path("count").isTextual()).isTrue();
         assertThat(examples.path("VARIANT_COUNT_FOR_QUERY without genomic filters").path("value").path("count").asText()).isEqualTo("0");
         assertThat(sync.path("schema").path("description").asText()).doesNotContain("obfuscated");
+    }
+
+    @Test
+    void submitAndSyncDocumentTheSampleRefusalsUnder400() throws Exception {
+        JsonNode document = document();
+        JsonNode authDocument = groupDocument("auth");
+
+        for (JsonNode submit : List.of(operation(document, "post", QUERY), operation(authDocument, "post", "/hpds/auth/query"))) {
+            assertThat(submit.path("responses").path("400").path("description").asText()).contains(
+                "a query with `sample` set to true while sample datasets are turned off (error type `sample_disabled`)",
+                "on a backend other than auth", "or with a result type other than DATAFRAME, DATAFRAME_PFB and DATAFRAME_TIMESERIES",
+                "a query on auth with no `expectedResultType` that the caller has not run before",
+                "An expected result type is required for a query that has not run before"
+            );
+        }
+        for (JsonNode sync : List.of(operation(document, "post", SYNC), operation(authDocument, "post", "/hpds/auth/query/sync"))) {
+            assertThat(sync.path("responses").path("400").path("description").asText()).doesNotContain("has not run before");
+            assertThat(sync.path("responses").path("400").path("description").asText()).contains(
+                "a result type not served inline", "a query with `sample` set to true, which this endpoint never runs",
+                "error type `sample_disabled` while sample datasets are turned off"
+            );
+        }
     }
 
     private JsonNode groupDocument(String group) throws Exception {

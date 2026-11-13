@@ -17,6 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Stream;
@@ -47,6 +48,7 @@ import com.github.tomakehurst.wiremock.client.WireMock;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureExceptionAdvice;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
 
@@ -249,6 +251,27 @@ class HpdsQueryRequestBindingTest {
             .andExpect(jsonPath("$.errorType").value("bad_request"));
 
         hpds.verify(0, anyRequestedFor(anyUrl()));
+    }
+
+    @Test
+    void openSyncBodyWithSampleIs400() throws Exception {
+        String withSample = "{\"query\":{\"expectedResultType\":\"COUNT\",\"sample\":true}}";
+
+        mockMvc.perform(identified(post("/hpds/open/query/sync")).content(withSample)).andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errorType").value("bad_request"))
+            .andExpect(jsonPath("$.message").value(PicsureExceptionAdvice.BODY_UNREADABLE));
+
+        hpds.verify(0, anyRequestedFor(anyUrl()));
+    }
+
+    @Test
+    void springMapperWritesSampleOnlyWhenTrue() throws Exception {
+        Query plain = new Query(List.of(), List.of(), null, List.of(), ResultType.COUNT, null, null);
+        Query sample = new Query(List.of(), List.of(), null, List.of(), ResultType.DATAFRAME, null, null, true);
+
+        assertThat(springMapper.readTree(springMapper.writeValueAsString(plain)).has("sample")).isFalse();
+        assertThat(springMapper.readTree(springMapper.writeValueAsString(sample)).path("sample").asBoolean()).isTrue();
+        assertThat(springMapper.readValue(springMapper.writeValueAsString(sample), Query.class)).isEqualTo(sample);
     }
 
     @Test

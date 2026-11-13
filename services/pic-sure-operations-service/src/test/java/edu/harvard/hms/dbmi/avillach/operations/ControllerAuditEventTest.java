@@ -48,6 +48,7 @@ class ControllerAuditEventTest {
             Map.entry("NamedDatasetController.delete", "ACCESS named_dataset.delete"),
             Map.entry("InternalQueryController.save", "OTHER internal_query.save"),
             Map.entry("InternalQueryController.get", "OTHER internal_query.read"),
+            Map.entry("InternalQueryController.variants", "OTHER internal_query.list_variants"),
             Map.entry("InternalQueryController.update", "OTHER internal_query.update"),
             Map.entry("InternalQueryController.dispatch", "OTHER internal_query.dispatch")
         )

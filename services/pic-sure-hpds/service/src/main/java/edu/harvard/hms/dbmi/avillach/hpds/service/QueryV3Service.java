@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -47,7 +48,7 @@ public class QueryV3Service {
     private final QueryValidator queryValidator;
     private final LoggingClient loggingClient;
 
-    HashMap<String, AsyncResult> results = new HashMap<>();
+    final ConcurrentHashMap<String, AsyncResult> results = new ConcurrentHashMap<>();
 
 
     @Autowired
@@ -79,71 +80,296 @@ public class QueryV3Service {
         smallTaskExecutor = createExecutor(smallTaskExecutionQueue, smallTaskThreads);
     }
 
+    /**
+     * Submits a query for asynchronous execution under the key from {@link #resultKeyFor(Query)}.
+     *
+     * <p>The query is validated before the result map is read or changed. A query the validator rejects with an
+     * {@link IllegalArgumentException} gets a job in {@code ERROR} that is returned but never stored, so whatever the key held stays as it
+     * was. Any other validation failure is thrown to the caller, and also leaves the key untouched.
+     *
+     * <p>A valid submit returns the job that is still queued or running under the key, and enqueues nothing, when that job was built from
+     * the same query, as {@link #isSameQuery} defines it. In every other case a new job built from the submitted query takes over the key
+     * and is enqueued: the key is unused, the stored job finished or failed, or the stored job was built from a query that differs in
+     * anything that shapes the result. A replaced job that is still queued or running is not cancelled. It runs to its end, but no lookup
+     * by key reaches it again.
+     *
+     * <p>The new job and its temporary file are built before the result map is locked, so a slow build never holds up another submit. When
+     * two submits race, the map keeps one job and the other is discarded together with its file.
+     *
+     * @param query the query to run
+     * @return the job stored under the key with its queue depth set, or an unstored job in {@code ERROR} for a rejected query
+     * @throws IOException when the temporary result file cannot be created
+     */
     public AsyncResult runQuery(Query query) throws IOException {
-        AsyncResult result = initializeResult(query);
+        return runQuery(query, resultKeyFor(query));
+    }
+
+    /**
+     * Submits a query for asynchronous execution under a key the caller of this method chose, with everything else as
+     * {@link #runQuery(Query)} describes it. The write endpoint passes {@link #contentKeyFor(Query)}, so the {@code picsureId} of its body
+     * cannot name the key of another job.
+     *
+     * @param query the query to run
+     * @param resultKey the key the job is stored under
+     * @return the job stored under the key with its queue depth set, or an unstored job in {@code ERROR} for a rejected query
+     * @throws IOException when the temporary result file cannot be created
+     */
+    public AsyncResult runQuery(Query query, UUID resultKey) throws IOException {
+        HpdsV3Processor processor = processorFor(query);
+        String queryId = resultKey.toString();
 
         try {
             queryValidator.validate(query);
-            if (query.select().size() > SMALL_JOB_LIMIT) {
-                result.setJobQueue(largeTaskExecutor);
-            } else {
-                result.setJobQueue(smallTaskExecutor);
-            }
-
-            result.enqueue();
-
-            if (loggingClient != null && loggingClient.isEnabled()) {
-                try {
-                    loggingClient.send(
-                        LoggingEvent.builder("QUERY").action("query.enqueued").metadata(
-                            Map.of(
-                                "query_id", result.getId(), "result_type", String.valueOf(query.expectedResultType()), "field_count",
-                                String.valueOf(query.select().size()), "queue", query.select().size() > SMALL_JOB_LIMIT ? "large" : "small"
-                            )
-                        ).build()
-                    );
-                } catch (Exception e) {
-                    log.warn("Failed to send audit log event", e);
-                }
-            }
         } catch (IllegalArgumentException e) {
-            result.setStatus(AsyncResult.Status.ERROR);
-            return result;
+            AsyncResult rejected = newResult(query, processor, queryId).setStatus(AsyncResult.Status.ERROR);
+            discard(rejected);
+            return rejected;
         }
-        return getStatusFor(result.getId());
+
+        AsyncResult stored = results.get(queryId);
+        if (isReusableFor(stored, query)) {
+            return withQueueDepth(stored);
+        }
+
+        AsyncResult candidate = newResult(query, processor, queryId);
+        stored = results.compute(queryId, (key, existing) -> isReusableFor(existing, query) ? existing : candidate);
+        if (stored != candidate) {
+            discard(candidate);
+            return withQueueDepth(stored);
+        }
+
+        enqueue(candidate);
+        sendEnqueuedEvent(candidate);
+        return withQueueDepth(candidate);
     }
 
-    private AsyncResult initializeResult(Query query) throws IOException {
-
-        HpdsV3Processor p = switch (query.expectedResultType()) {
+    /**
+     * Picks the processor for a query's result type.
+     *
+     * @param query the submitted query
+     * @return the processor that computes the result
+     * @throws RuntimeException when the result type has no asynchronous processor
+     */
+    private HpdsV3Processor processorFor(Query query) {
+        return switch (query.expectedResultType()) {
             case PATIENTS -> patientProcessor;
             case DATAFRAME_TIMESERIES -> timeseriesProcessor;
             case COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT -> countProcessor;
             case DATAFRAME_PFB, DATAFRAME -> multiValueQueryProcessor;
             default -> throw new RuntimeException("UNSUPPORTED RESULT TYPE");
         };
-
-        String queryId = UUIDv5.UUIDFromString(query.toString()).toString();
-        ResultWriter writer;
-        if (ResultType.DATAFRAME_PFB.equals(query.expectedResultType())) {
-            writer = new PfbWriter(File.createTempFile("result-" + System.nanoTime(), ".avro"), queryId, dictionaryService);
-        } else {
-            writer = new CsvWriter(File.createTempFile("result-" + System.nanoTime(), ".sstmp"));
-        }
-
-        query = query.generateId();
-        AsyncResult result = new AsyncResult(query, p, writer).setStatus(AsyncResult.Status.PENDING)
-            .setQueuedTime(System.currentTimeMillis()).setId(queryId).setLoggingClient(loggingClient);
-        results.put(result.getId(), result);
-        return result;
     }
 
+    /**
+     * Builds a pending job with its own temporary result file and its executor already chosen. The job is neither stored nor enqueued. When
+     * the build fails after the file was created, the writer that holds the file open is closed and the file is deleted.
+     *
+     * @param query the submitted query
+     * @param processor the processor for the query's result type
+     * @param queryId the key the job is stored under
+     * @return the new job
+     * @throws IOException when the temporary result file cannot be created
+     */
+    private AsyncResult newResult(Query query, HpdsV3Processor processor, String queryId) throws IOException {
+        boolean pfb = ResultType.DATAFRAME_PFB.equals(query.expectedResultType());
+        File file = File.createTempFile("result-" + System.nanoTime(), pfb ? ".avro" : ".sstmp");
+        ResultWriter writer = null;
+        try {
+            writer = pfb ? new PfbWriter(file, queryId, dictionaryService) : new CsvWriter(file);
+            return new AsyncResult(query.generateId(), processor, writer).setStatus(AsyncResult.Status.PENDING)
+                .setQueuedTime(System.currentTimeMillis()).setId(queryId).setLoggingClient(loggingClient)
+                .setJobQueue(runsOnSmallExecutor(query) ? smallTaskExecutor : largeTaskExecutor);
+        } catch (RuntimeException e) {
+            closeAfterFailedBuild(writer, e);
+            Files.deleteIfExists(file.toPath());
+            throw e;
+        }
+    }
+
+    /**
+     * Closes the writer of a job whose build failed, so its temporary file is not left open. A failure to close is attached to the build
+     * failure as a suppressed exception and never replaces it.
+     *
+     * @param writer the writer the failed build opened, or null when the build failed before it opened one
+     * @param buildFailure the exception the build failed with
+     */
+    private static void closeAfterFailedBuild(ResultWriter writer, RuntimeException buildFailure) {
+        if (writer == null) {
+            return;
+        }
+        try {
+            writer.close();
+        } catch (RuntimeException closeFailure) {
+            buildFailure.addSuppressed(closeFailure);
+        }
+    }
+
+    /**
+     * Closes the writer of a job that will never run and deletes its temporary file.
+     *
+     * @param unused a job that is not stored and not enqueued
+     */
+    private static void discard(AsyncResult unused) {
+        try {
+            unused.closeWriter();
+            Files.deleteIfExists(unused.getTempFilePath());
+        } catch (IOException | RuntimeException e) {
+            log.warn("Could not remove the temporary file of an unused job", e);
+        }
+    }
+
+    /**
+     * Hands a stored job to its executor. A job the executor does not accept, for any reason, is left in {@code ERROR}, so a stored job is
+     * always either enqueued or in a terminal state.
+     *
+     * @param result the stored job
+     */
+    private static void enqueue(AsyncResult result) {
+        try {
+            result.enqueue();
+        } catch (RuntimeException | Error e) {
+            result.setStatus(AsyncResult.Status.ERROR);
+            throw e;
+        }
+    }
+
+    /**
+     * Sends the audit event for an enqueued job. A failure to send is logged and never reaches the caller.
+     *
+     * @param result the enqueued job
+     */
+    private void sendEnqueuedEvent(AsyncResult result) {
+        try {
+            if (loggingClient != null && loggingClient.isEnabled()) {
+                Query query = result.getQuery();
+                loggingClient.send(
+                    LoggingEvent.builder("QUERY").action("query.enqueued")
+                        .metadata(
+                            Map.of(
+                                "query_id", result.getId(), "result_type", String.valueOf(query.expectedResultType()), "field_count",
+                                String.valueOf(query.select().size()), "queue", runsOnSmallExecutor(query) ? "small" : "large"
+                            )
+                        ).build()
+                );
+            }
+        } catch (Exception e) {
+            log.warn("Failed to send audit log event", e);
+        }
+    }
+
+    /**
+     * Tells whether a submit can take the stored job instead of creating one.
+     *
+     * @param stored the job under the submit's key, or null when the key is unused
+     * @param submitted the query of the new submit
+     * @return true when the stored job is still queued or running and was built from the same query as the submit
+     */
+    private static boolean isReusableFor(AsyncResult stored, Query submitted) {
+        return stored != null && isInFlight(stored) && isSameQuery(stored.getQuery(), submitted);
+    }
+
+    /**
+     * Tells whether a job is still queued or running.
+     *
+     * @param result the stored job
+     * @return true for {@code PENDING}, {@code RUNNING} and {@code RETRY}
+     */
+    private static boolean isInFlight(AsyncResult result) {
+        return switch (result.getStatus()) {
+            case PENDING, RUNNING, RETRY -> true;
+            case SUCCESS, ERROR -> false;
+        };
+    }
+
+    /**
+     * Tells whether two queries ask for the same result, so that a job built from one can serve a submit of the other.
+     *
+     * <p>Every component that shapes the result has to be equal: {@code select}, {@code authorizationFilters}, {@code phenotypicClause},
+     * {@code genomicFilters}, {@code expectedResultType} and {@code sample}. The authorization filters are compared as sets, so their order
+     * does not matter. Everything else is compared as it stands: {@code select} in order, because its order is the column order of an
+     * export, and the clauses of a subquery and the genomic filters in order too, so a reordered query counts as a different one and gets a
+     * new job. An absent list equals an empty one.
+     *
+     * <p>{@code id} and {@code picsureId} are not compared. {@code id} is a random value given to each job's query, and {@code picsureId}
+     * is the key both queries were already found under.
+     *
+     * @param running the query of the stored job
+     * @param submitted the query of the new submit
+     * @return true when both ask for the same result
+     */
+    private static boolean isSameQuery(Query running, Query submitted) {
+        return hasSameAuthorizationFilters(running, submitted) && running.select().equals(submitted.select())
+            && Objects.equals(running.phenotypicClause(), submitted.phenotypicClause())
+            && running.genomicFilters().equals(submitted.genomicFilters()) && running.expectedResultType() == submitted.expectedResultType()
+            && running.sample() == submitted.sample();
+    }
+
+    /**
+     * Compares the authorization filters of two queries as sets, so the order of the filters does not matter.
+     *
+     * @param running the query of the stored job
+     * @param submitted the query of the new submit
+     * @return true when both carry the same filters
+     */
+    private static boolean hasSameAuthorizationFilters(Query running, Query submitted) {
+        return new HashSet<>(running.authorizationFilters()).equals(new HashSet<>(submitted.authorizationFilters()));
+    }
+
+    /**
+     * Looks up the job stored under an id and sets its queue depth.
+     *
+     * @param queryId the result key
+     * @return the job, or null when no job is stored under the id
+     */
     public AsyncResult getStatusFor(String queryId) {
         AsyncResult asyncResult = results.get(queryId);
-        int queueDepth =
-            asyncResult.getQuery().select().size() > SMALL_JOB_LIMIT ? largeTaskExecutionQueue.size() : smallTaskExecutionQueue.size();
         // note: code copied from this method in QueryService was removed, it was obviously not working
+        return asyncResult == null ? null : withQueueDepth(asyncResult);
+    }
+
+    /**
+     * Sets a job's queue depth to the number of jobs waiting on the executor it belongs to.
+     *
+     * @param asyncResult the job
+     * @return the same job
+     */
+    private AsyncResult withQueueDepth(AsyncResult asyncResult) {
+        int queueDepth = runsOnSmallExecutor(asyncResult.getQuery()) ? smallTaskExecutionQueue.size() : largeTaskExecutionQueue.size();
         return asyncResult.setQueueDepth(queueDepth);
+    }
+
+    /**
+     * Decides which executor a query belongs to. A sample query always runs on the small executor, whatever its column count, so it never
+     * waits behind a long full export. Any other query runs there only when it selects no more than {@code SMALL_JOB_LIMIT} columns.
+     *
+     * @param query the submitted query
+     * @return true for the small executor, false for the large one
+     */
+    private boolean runsOnSmallExecutor(Query query) {
+        return query.sample() || query.select().size() <= SMALL_JOB_LIMIT;
+    }
+
+    /**
+     * Returns the key a query's result is stored under. A query that carries a {@code picsureId} is stored under that id, so the caller
+     * chooses the key. Any other query is stored under a UUIDv5 hash of its content.
+     *
+     * @param query the query
+     * @return the result key
+     */
+    public static UUID resultKeyFor(Query query) {
+        return query.picsureId() != null ? query.picsureId() : contentKeyFor(query);
+    }
+
+    /**
+     * Returns the UUIDv5 hash of a query's content with its {@code picsureId} left out. Two queries that differ only in {@code picsureId}
+     * share this key, so the value a caller puts there cannot choose it. For a query without a {@code picsureId} it is the same key as
+     * {@link #resultKeyFor(Query)}.
+     *
+     * @param query the query
+     * @return the content key
+     */
+    public static UUID contentKeyFor(Query query) {
+        return UUIDv5.UUIDFromString(query.setPicsureId(null).toString());
     }
 
     public AsyncResult getResultFor(UUID queryId) {

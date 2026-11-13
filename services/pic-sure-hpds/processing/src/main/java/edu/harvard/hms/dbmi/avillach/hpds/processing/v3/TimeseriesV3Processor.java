@@ -36,16 +36,19 @@ public class TimeseriesV3Processor implements HpdsV3Processor {
 
     private final PhenotypicObservationStore phenotypicObservationStore;
 
+    private final CohortSampler cohortSampler;
+
     private final int idBatchSize;
 
     @Autowired
     public TimeseriesV3Processor(
         QueryExecutor queryExecutor, TimeSeriesConversionService conversionService, PhenotypicObservationStore phenotypicObservationStore,
-        @Value("${ID_BATCH_SIZE:0}") int idBatchSize
+        CohortSampler cohortSampler, @Value("${ID_BATCH_SIZE:0}") int idBatchSize
     ) {
         this.queryExecutor = queryExecutor;
         this.conversionService = conversionService;
         this.phenotypicObservationStore = phenotypicObservationStore;
+        this.cohortSampler = cohortSampler;
         this.idBatchSize = idBatchSize;
     }
 
@@ -59,7 +62,8 @@ public class TimeseriesV3Processor implements HpdsV3Processor {
 
     @Override
     public void runQuery(Query query, AsyncResult result) {
-        Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
+        Set<Integer> cohort = queryExecutor.getPatientSubsetForQuery(query);
+        Set<Integer> idList = query.sample() ? cohortSampler.sample(query, cohort) : cohort;
 
         if (idBatchSize > 0) {
             try {

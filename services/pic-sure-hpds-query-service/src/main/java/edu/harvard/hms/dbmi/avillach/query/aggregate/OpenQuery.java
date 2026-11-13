@@ -17,14 +17,16 @@ import io.swagger.v3.oas.annotations.media.Schema;
  * The query an open access request carries: a v3 query without genomic data. Only {@code phenotypicClause} and {@code expectedResultType}
  * are documented. {@code select}, {@code genomicFilters}, {@code authorizationFilters}, {@code picsureId} and {@code id} are still read,
  * because clients send them empty or null on every query, but they are hidden from the OpenAPI document, and a non-empty
- * {@code genomicFilters} is refused rather than dropped, so a genomic query is never answered as if it had no genomic filter.
+ * {@code genomicFilters} is refused rather than dropped, so a genomic query is never answered as if it had no genomic filter. A
+ * {@code picsureId} is read and then discarded before the query reaches the open backend, by
+ * {@link edu.harvard.hms.dbmi.avillach.query.hpds.HpdsQueryBody}, so a caller never chooses the id a result is stored under.
  *
  * @param select accepted for compatibility; no open access result type reads it
  * @param authorizationFilters accepted for compatibility and passed through unchanged
  * @param phenotypicClause the phenotypic filters
  * @param genomicFilters accepted only when absent or empty
  * @param expectedResultType the result to compute
- * @param picsureId accepted for compatibility and passed through unchanged
+ * @param picsureId accepted for compatibility and never sent to the open backend
  * @param id accepted for compatibility and passed through unchanged
  */
 @Schema(description = "A query on open access: phenotypic filters and a result type. Genomic filters are not accepted.")

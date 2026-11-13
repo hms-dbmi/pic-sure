@@ -1,5 +1,7 @@
 package edu.harvard.dbmi.avillach.domain;
 
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -34,8 +36,39 @@ public record StoredQuery(
         description = "Result metadata as base64-encoded UTF-8 JSON, or null when none was recorded.",
         example = "eyJwaWNzdXJlUXVlcnlJZCI6Ijg2OTRlM2Q0LTVjYjQtNDEwZi04NDMxLTk5MzQ0NWU2ZDNmNiJ9"
     ) String metadata, @Schema(description = "When the query was saved, in epoch milliseconds.", example = "1790777100000") Long startTime,
-    @Schema(description = "When the query first became AVAILABLE, in epoch milliseconds.", example = "1790777100000") Long readyTime
+    @Schema(description = "When the query first became AVAILABLE, in epoch milliseconds.", example = "1790777100000") Long readyTime,
+    @Schema(
+        description = "The UUID of the user who owns the row, or null for a row stored without an owner.",
+        example = "5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11"
+    ) UUID userUuid,
+    @Schema(
+        description = "The consents of the latest run, as consent concept path to sorted consent values, or null when none were recorded.",
+        example = "{\"\\\\_consents\\\\\":[\"phs000001.c1\"]}"
+    ) Map<String, List<String>> consents,
+    @Schema(
+        description = "The id of the latest recorded run of the query, or null when no run was recorded.",
+        example = "0b6d6a0e-3c56-4c0b-9a38-0b1f5c1f3a77"
+    ) UUID runId
 ) {
+
+    /**
+     * Builds a stored query with timing and no owner, consents or run, the shape of a row stored without an owner.
+     *
+     * @param picsureId the PIC-SURE id of the query
+     * @param query the stored query request as a JSON string
+     * @param resourceResultId the id HPDS assigned to the result
+     * @param status the status as a {@link PicSureStatus} constant name
+     * @param version the query format version
+     * @param metadata result metadata as base64 text
+     * @param startTime when the query was saved, in epoch milliseconds
+     * @param readyTime when the query first became AVAILABLE, in epoch milliseconds
+     */
+    public StoredQuery(
+        UUID picsureId, String query, String resourceResultId, String status, String version, String metadata, Long startTime,
+        Long readyTime
+    ) {
+        this(picsureId, query, resourceResultId, status, version, metadata, startTime, readyTime, null, null, null);
+    }
 
     /**
      * Builds a stored query that carries no timing, for callers that do not read the two server-owned timestamps.

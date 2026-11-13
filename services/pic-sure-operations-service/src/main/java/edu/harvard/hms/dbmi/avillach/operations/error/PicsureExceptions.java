@@ -27,6 +27,11 @@ public final class PicsureExceptions {
         return new PicsureException(HttpStatus.UNAUTHORIZED, "unauthorized", message);
     }
 
+    /** 403 with a caller-supplied message. */
+    public static PicsureException forbidden(String message) {
+        return new PicsureException(HttpStatus.FORBIDDEN, "forbidden", message);
+    }
+
     public static PicsureException badRequest(String message) {
         return new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", message);
     }

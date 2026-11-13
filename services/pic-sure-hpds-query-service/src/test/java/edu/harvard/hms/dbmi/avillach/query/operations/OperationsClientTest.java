@@ -15,11 +15,16 @@ import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.client.RestClient;
 
@@ -27,6 +32,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 
 import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.dbmi.avillach.domain.StoredQueryVariant;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
@@ -67,10 +73,13 @@ class OperationsClientTest {
 
         assertThat(result).isEqualTo(id);
         ops.verify(
-            postRequestedFor(urlEqualTo("/operations/internal/queries")).withHeader("X-PIC-SURE-INTERNAL-TOKEN", equalTo("test-token"))
-                .withRequestBody(
-                    equalToJson("{\"query\":\"{}\",\"resourceResultId\":null,\"status\":\"QUEUED\",\"version\":\"v1\",\"metadata\":null}")
+            postRequestedFor(urlEqualTo("/operations/internal/queries")).withHeader(
+                "X-PIC-SURE-INTERNAL-TOKEN", equalTo("test-token")
+            ).withRequestBody(
+                equalToJson(
+                    "{\"query\":\"{}\",\"resourceResultId\":null,\"status\":\"QUEUED\",\"version\":\"v1\",\"metadata\":null,\"picsureId\":null,\"userUuid\":null,\"consents\":null,\"trigger\":null,\"queryToVariantUuid\":null,\"sample\":null,\"resultType\":null}"
                 )
+            )
         );
     }
 
@@ -87,7 +96,9 @@ class OperationsClientTest {
 
         ops.verify(
             postRequestedFor(urlEqualTo("/operations/internal/queries")).withRequestBody(
-                equalTo("{\"query\":\"{}\",\"resourceResultId\":null,\"status\":\"QUEUED\",\"version\":\"3\",\"metadata\":null}")
+                equalTo(
+                    "{\"query\":\"{}\",\"resourceResultId\":null,\"status\":\"QUEUED\",\"version\":\"3\",\"metadata\":null,\"picsureId\":null,\"userUuid\":null,\"consents\":null,\"trigger\":null,\"queryToVariantUuid\":null,\"sample\":null,\"resultType\":null}"
+                )
             )
         );
     }
@@ -108,6 +119,82 @@ class OperationsClientTest {
         ops.stubFor(post(urlEqualTo("/operations/internal/queries")).willReturn(aResponse().withStatus(500)));
 
         assertThatThrownBy(() -> client().save(new SaveQueryRequest("{}", null, "QUEUED", "v1", null)))
+            .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
+    }
+
+    @Test
+    void variantsOfGetsTheVariantsOfAGeneralQueryForOneOwnerInTheOrderTheyAreListed() {
+        UUID general = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        String url = "/operations/internal/queries/variants?queryToVariantUuid=" + general + "&userUuid=" + owner;
+        ops.stubFor(
+            get(urlEqualTo(url)).willReturn(
+                okJson(
+                    "[{\"picsureId\":\"" + first + "\",\"sample\":true,\"resultType\":\"DATAFRAME_PFB\",\"createdAt\":1790777100000},"
+                        + "{\"picsureId\":\"" + second + "\",\"sample\":false,\"resultType\":null,\"createdAt\":null}]"
+                )
+            )
+        );
+
+        List<StoredQueryVariant> variants = client().variantsOf(general, owner);
+
+        assertThat(variants).containsExactly(
+            new StoredQueryVariant(first, true, "DATAFRAME_PFB", 1790777100000L), new StoredQueryVariant(second, false, null, null)
+        );
+        ops.verify(getRequestedFor(urlEqualTo(url)).withHeader("X-PIC-SURE-INTERNAL-TOKEN", equalTo("test-token")));
+    }
+
+    @Test
+    void variantsOfAnEmptyListIsAnAnswer() {
+        UUID general = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        ops.stubFor(
+            get(urlEqualTo("/operations/internal/queries/variants?queryToVariantUuid=" + general + "&userUuid=" + owner))
+                .willReturn(okJson("[]"))
+        );
+
+        assertThat(client().variantsOf(general, owner)).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {400, 403, 404, 500, 503})
+    void variantsOfAFailureStatusThrowsBadGateway(int status) {
+        UUID general = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        ops.stubFor(
+            get(urlEqualTo("/operations/internal/queries/variants?queryToVariantUuid=" + general + "&userUuid=" + owner))
+                .willReturn(aResponse().withStatus(status))
+        );
+
+        assertThatThrownBy(() -> client().variantsOf(general, owner))
+            .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
+    }
+
+    @Test
+    void variantsOfAnAnswerWithNoListThrowsBadGateway() {
+        UUID general = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        ops.stubFor(
+            get(urlEqualTo("/operations/internal/queries/variants?queryToVariantUuid=" + general + "&userUuid=" + owner))
+                .willReturn(okJson("null"))
+        );
+
+        assertThatThrownBy(() -> client().variantsOf(general, owner))
+            .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
+    }
+
+    @Test
+    void variantsOfAnAnswerThatIsNotAListThrowsBadGateway() {
+        UUID general = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        ops.stubFor(
+            get(urlEqualTo("/operations/internal/queries/variants?queryToVariantUuid=" + general + "&userUuid=" + owner))
+                .willReturn(okJson("{\"picsureId\":\"" + general + "\"}"))
+        );
+
+        assertThatThrownBy(() -> client().variantsOf(general, owner))
             .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
     }
 
@@ -161,7 +248,7 @@ class OperationsClientTest {
                 "X-PIC-SURE-INTERNAL-TOKEN", equalTo("test-token")
             ).withRequestBody(
                 equalToJson(
-                    "{\"status\":\"COMPLETE\",\"resourceResultId\":\"r-1\",\"metadata\":null,\"query\":\"{\\\"query\\\":{}}\",\"version\":\"3\"}"
+                    "{\"status\":\"COMPLETE\",\"resourceResultId\":\"r-1\",\"metadata\":null,\"query\":\"{\\\"query\\\":{}}\",\"version\":\"3\",\"runId\":null}"
                 )
             )
         );
@@ -173,6 +260,196 @@ class OperationsClientTest {
         ops.stubFor(patch(urlEqualTo("/operations/internal/queries/" + id)).willReturn(aResponse().withStatus(500)));
 
         assertThatThrownBy(() -> client().update(id, new UpdateQueryRequest("COMPLETE", null, null, null, null)))
+            .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
+    }
+
+    @Test
+    void updateRefusedForAStaleRunThrowsBadGateway() {
+        UUID id = UUID.randomUUID();
+        ops.stubFor(
+            patch(urlEqualTo("/operations/internal/queries/" + id)).willReturn(
+                aResponse().withStatus(409).withHeader("Content-Type", "application/json")
+                    .withBody("{\"errorType\":\"conflict\",\"message\":\"stale\",\"requestId\":null}")
+            )
+        );
+
+        assertThatThrownBy(() -> client().update(id, new UpdateQueryRequest("AVAILABLE", null, null, null, null, UUID.randomUUID())))
+            .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
+    }
+
+    @Test
+    void updateOfTheLatestRunIsSentWithItsRunIdAndReportedAsApplied() {
+        UUID id = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        ops.stubFor(patch(urlEqualTo("/operations/internal/queries/" + id)).willReturn(aResponse().withStatus(204)));
+
+        boolean applied = client().updateLatestRun(id, new UpdateQueryRequest("AVAILABLE", null, null, null, null, runId));
+
+        assertThat(applied).isTrue();
+        ops.verify(
+            patchRequestedFor(urlEqualTo("/operations/internal/queries/" + id)).withRequestBody(
+                equalToJson(
+                    "{\"status\":\"AVAILABLE\",\"resourceResultId\":null,\"metadata\":null,\"query\":null,\"version\":null,\"runId\":\""
+                        + runId + "\"}"
+                )
+            )
+        );
+    }
+
+    @Test
+    void updateOfARunThatIsNoLongerTheLatestIsReportedAsNotAppliedAndDoesNotThrow() {
+        UUID id = UUID.randomUUID();
+        ops.stubFor(
+            patch(urlEqualTo("/operations/internal/queries/" + id)).willReturn(
+                aResponse().withStatus(409).withHeader("Content-Type", "application/json")
+                    .withBody("{\"errorType\":\"conflict\",\"message\":\"stale\",\"requestId\":null}")
+            )
+        );
+
+        boolean applied = client().updateLatestRun(id, new UpdateQueryRequest("AVAILABLE", null, null, null, null, UUID.randomUUID()));
+
+        assertThat(applied).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {400, 404, 500})
+    void updateOfTheLatestRunThatFailsForAnyOtherReasonThrowsBadGateway(int answer) {
+        UUID id = UUID.randomUUID();
+        ops.stubFor(patch(urlEqualTo("/operations/internal/queries/" + id)).willReturn(aResponse().withStatus(answer)));
+
+        assertThatThrownBy(
+            () -> client().updateLatestRun(id, new UpdateQueryRequest("AVAILABLE", null, null, null, null, UUID.randomUUID()))
+        ).isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
+    }
+
+    @Test
+    void updateRefusedForTheBodyOfAnOwnedRowThrowsBadGateway() {
+        UUID id = UUID.randomUUID();
+        ops.stubFor(patch(urlEqualTo("/operations/internal/queries/" + id)).willReturn(aResponse().withStatus(400)));
+
+        assertThatThrownBy(() -> client().update(id, new UpdateQueryRequest("PENDING", "rr", null, "{\"query\":{}}", "3")))
+            .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
+    }
+
+    @Test
+    void saveRefusedForADifferentOwnerIsAServerFaultThatRepeatsNothingOperationsSaid() {
+        UUID id = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        ops.stubFor(
+            post(urlEqualTo("/operations/internal/queries")).willReturn(
+                aResponse().withStatus(409).withHeader("Content-Type", "application/json").withBody(
+                    "{\"errorType\":\"conflict\",\"message\":\"Query " + id + " belongs to a different owner\",\"requestId\":null}"
+                )
+            )
+        );
+        SaveQueryRequest request = new SaveQueryRequest("{}", id.toString(), "QUEUED", "3", null, id, owner, Map.of(), "FIRST_SUBMIT");
+
+        assertThatThrownBy(() -> client().save(request)).isInstanceOfSatisfying(PicsureException.class, e -> {
+            assertThat(e.getStatus()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+            assertThat(e.getErrorType()).isEqualTo("internal_server_error");
+            assertThat(e.getMessage()).isEqualTo("The query could not be stored").doesNotContain("owner").doesNotContain("belongs")
+                .doesNotContain(owner.toString()).doesNotContain(id.toString());
+        });
+    }
+
+    @Test
+    void saveSendsIdOwnerConsentsAndTrigger() {
+        UUID id = UUID.fromString("8694e3d4-5cb4-510f-8431-993445e6d3f6");
+        UUID owner = UUID.fromString("5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11");
+        ops.stubFor(
+            post(urlEqualTo("/operations/internal/queries")).willReturn(
+                aResponse().withStatus(201).withHeader("Content-Type", "application/json").withBody("{\"picsureId\":\"" + id + "\"}")
+            )
+        );
+
+        UUID saved = client().save(
+            new SaveQueryRequest(
+                "{}", id.toString(), "PENDING", "3", null, id, owner, Map.of("\\_consents\\", List.of("phs001.c1", "phs001.c2")),
+                "FIRST_SUBMIT"
+            )
+        );
+
+        assertThat(saved).isEqualTo(id);
+        ops.verify(
+            postRequestedFor(urlEqualTo("/operations/internal/queries")).withRequestBody(
+                equalToJson(
+                    "{\"query\":\"{}\",\"resourceResultId\":\"" + id + "\",\"status\":\"PENDING\",\"version\":\"3\",\"metadata\":null,"
+                        + "\"picsureId\":\"" + id + "\",\"userUuid\":\"" + owner + "\","
+                        + "\"consents\":{\"\\\\_consents\\\\\":[\"phs001.c1\",\"phs001.c2\"]},\"trigger\":\"FIRST_SUBMIT\","
+                        + "\"queryToVariantUuid\":null,\"sample\":null,\"resultType\":null}"
+                )
+            )
+        );
+    }
+
+    @Test
+    void saveSendsTheGeneralIdSampleAndResultType() {
+        UUID id = UUID.fromString("8694e3d4-5cb4-510f-8431-993445e6d3f6");
+        UUID owner = UUID.fromString("5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11");
+        UUID general = UUID.fromString("3d2f7c1a-9b4e-5c6d-8e7f-0a1b2c3d4e5f");
+        ops.stubFor(
+            post(urlEqualTo("/operations/internal/queries")).willReturn(
+                aResponse().withStatus(201).withHeader("Content-Type", "application/json").withBody("{\"picsureId\":\"" + id + "\"}")
+            )
+        );
+
+        UUID saved = client().save(
+            new SaveQueryRequest(
+                "{}", id.toString(), "PENDING", "3", null, id, owner, Map.of(), "FIRST_SUBMIT", general, true, "DATAFRAME_PFB"
+            )
+        );
+
+        assertThat(saved).isEqualTo(id);
+        ops.verify(
+            postRequestedFor(urlEqualTo("/operations/internal/queries")).withRequestBody(
+                equalTo(
+                    "{\"query\":\"{}\",\"resourceResultId\":\"" + id + "\",\"status\":\"PENDING\",\"version\":\"3\",\"metadata\":null,"
+                        + "\"picsureId\":\"" + id + "\",\"userUuid\":\"" + owner + "\",\"consents\":{},\"trigger\":\"FIRST_SUBMIT\","
+                        + "\"queryToVariantUuid\":\"" + general + "\",\"sample\":true,\"resultType\":\"DATAFRAME_PFB\"}"
+                )
+            )
+        );
+    }
+
+    @Test
+    void findReturnsTheStoredQueryWithItsOwnerConsentsAndRun() {
+        UUID id = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        UUID run = UUID.randomUUID();
+        ops.stubFor(
+            get(urlEqualTo("/operations/internal/queries/" + id)).willReturn(
+                aResponse().withStatus(200).withHeader("Content-Type", "application/json").withBody(
+                    "{\"picsureId\":\"" + id + "\",\"query\":\"{}\",\"resourceResultId\":\"" + id + "\",\"status\":\"PENDING\","
+                        + "\"version\":\"3\",\"metadata\":null,\"userUuid\":\"" + owner + "\","
+                        + "\"consents\":{\"\\\\_consents\\\\\":[\"phs001.c1\"]},\"runId\":\"" + run + "\"}"
+                )
+            )
+        );
+
+        Optional<StoredQuery> found = client().find(id);
+
+        assertThat(found).hasValueSatisfying(stored -> {
+            assertThat(stored.picsureId()).isEqualTo(id);
+            assertThat(stored.userUuid()).isEqualTo(owner);
+            assertThat(stored.consents()).containsEntry("\\_consents\\", List.of("phs001.c1"));
+            assertThat(stored.runId()).isEqualTo(run);
+        });
+    }
+
+    @Test
+    void findReturnsEmptyForAnUnknownId() {
+        UUID id = UUID.randomUUID();
+        ops.stubFor(get(urlEqualTo("/operations/internal/queries/" + id)).willReturn(aResponse().withStatus(404)));
+
+        assertThat(client().find(id)).isEmpty();
+    }
+
+    @Test
+    void findServerErrorThrowsBadGateway() {
+        UUID id = UUID.randomUUID();
+        ops.stubFor(get(urlEqualTo("/operations/internal/queries/" + id)).willReturn(aResponse().withStatus(500)));
+
+        assertThatThrownBy(() -> client().find(id))
             .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
     }
 }

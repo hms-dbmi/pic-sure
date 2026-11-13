@@ -23,30 +23,44 @@ public class FileSharingV3Service {
 
     private static final Logger LOG = LoggerFactory.getLogger(FileSharingV3Service.class);
 
-    private final QueryV3Service queryService;
     private final FileSystemV3Service fileWriter;
     private final VariantListV3Processor variantListProcessor;
     private final LoggingClient loggingClient;
 
-    public FileSharingV3Service(QueryV3Service queryService, FileSystemV3Service fileWriter, VariantListV3Processor variantListProcessor, LoggingClient loggingClient) {
-        this.queryService = queryService;
+    public FileSharingV3Service(FileSystemV3Service fileWriter, VariantListV3Processor variantListProcessor, LoggingClient loggingClient) {
         this.fileWriter = fileWriter;
         this.variantListProcessor = variantListProcessor;
         this.loggingClient = loggingClient;
     }
 
-    public boolean createPhenotypicData(Query query) {
-        boolean success = createAndWriteData(query, "phenotypic_data.csv");
+    /**
+     * Writes a finished job's result into the query's shared directory as {@code phenotypic_data.csv}.
+     *
+     * @param query the query of the write request, which names the shared directory by its {@code picsureId}
+     * @param result the job the write request submitted. It is never looked up by key again, so a later submit that takes over the key
+     *        cannot change which file is written
+     * @return true when the file was written, false when the job has no result or the write failed
+     */
+    public boolean createPhenotypicData(Query query, AsyncResult result) {
+        boolean success = createAndWriteData(query, result, "phenotypic_data.csv");
         if (success) {
-            sendFileWrittenEvent(query.id().toString(), "phenotypic");
+            sendFileWrittenEvent(QueryV3Service.resultKeyFor(query).toString(), "phenotypic");
         }
         return success;
     }
 
-    public boolean createPatientList(Query query) {
-        boolean success = createAndWriteData(query, "patients.txt");
+    /**
+     * Writes a finished job's result into the query's shared directory as {@code patients.txt}.
+     *
+     * @param query the query of the write request, which names the shared directory by its {@code picsureId}
+     * @param result the job the write request submitted. It is never looked up by key again, so a later submit that takes over the key
+     *        cannot change which file is written
+     * @return true when the file was written, false when the job has no result or the write failed
+     */
+    public boolean createPatientList(Query query, AsyncResult result) {
+        boolean success = createAndWriteData(query, result, "patients.txt");
         if (success) {
-            sendFileWrittenEvent(query.id().toString(), "patients");
+            sendFileWrittenEvent(QueryV3Service.resultKeyFor(query).toString(), "patients");
         }
         return success;
     }
@@ -55,7 +69,7 @@ public class FileSharingV3Service {
         String vcf = variantListProcessor.runVcfExcerptQuery(query, true);
         boolean success = fileWriter.writeResultToFile("genomic_data.tsv", vcf, query.picsureId().toString());
         if (success) {
-            sendFileWrittenEvent(query.id().toString(), "genomic");
+            sendFileWrittenEvent(QueryV3Service.resultKeyFor(query).toString(), "genomic");
         }
         return success;
     }
@@ -63,22 +77,18 @@ public class FileSharingV3Service {
     private void sendFileWrittenEvent(String queryId, String dataType) {
         if (loggingClient != null && loggingClient.isEnabled()) {
             try {
-                loggingClient.send(LoggingEvent.builder("DATA_ACCESS")
-                    .action("data.file.written")
-                    .metadata(Map.of(
-                        "query_id", queryId,
-                        "data_type", dataType
-                    ))
-                    .build());
+                loggingClient.send(
+                    LoggingEvent.builder("DATA_ACCESS").action("data.file.written")
+                        .metadata(Map.of("query_id", queryId, "data_type", dataType)).build()
+                );
             } catch (Exception e) {
                 LOG.warn("Failed to send audit log event", e);
             }
         }
     }
 
-    private boolean createAndWriteData(Query query, String fileName) {
-        AsyncResult result = queryService.getResultFor(query.id());
-        if (result == null || result.getStatus() != AsyncResult.Status.SUCCESS) {
+    private boolean createAndWriteData(Query query, AsyncResult result, String fileName) {
+        if (result.getStatus() != AsyncResult.Status.SUCCESS) {
             return false;
         }
         return fileWriter.writeResultToFile(fileName, result, query.picsureId().toString());
