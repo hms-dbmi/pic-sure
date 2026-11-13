@@ -152,13 +152,6 @@ public class CSVLoader {
             String conceptPath = conceptPathFor(conceptPathFromRow, textValueFromRow, ROLL_UP_VAR_NAMES);
             // This is not getDouble because we need to handle null values, not coerce them into 0s
             String numericValue = record.get(NUMERIC_VALUE);
-            if ((numericValue == null || numericValue.isEmpty()) && textValueFromRow != null) {
-                try {
-                    numericValue = Double.parseDouble(textValueFromRow) + "";
-                } catch (NumberFormatException e) {
-
-                }
-            }
             boolean isAlpha = (numericValue == null || numericValue.isEmpty());
             if (currentConcept[0] == null || !currentConcept[0].name.equals(conceptPath)) {
                 log.debug(conceptPath);
