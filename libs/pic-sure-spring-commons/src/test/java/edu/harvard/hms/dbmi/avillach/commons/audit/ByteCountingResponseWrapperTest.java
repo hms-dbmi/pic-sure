@@ -2,9 +2,11 @@ package edu.harvard.hms.dbmi.avillach.commons.audit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
@@ -34,6 +36,12 @@ class ByteCountingResponseWrapperTest {
 
     @Mock
     private PrintWriter containerWriter;
+
+    @Mock
+    private ServletOutputStream replacementStream;
+
+    @Mock
+    private PrintWriter replacementWriter;
 
     @Mock
     private WriteListener writeListener;
@@ -245,5 +253,132 @@ class ByteCountingResponseWrapperTest {
 
         assertThat(response.isCommitted()).isFalse();
         assertThat(response.getHeaderNames()).isEmpty();
+    }
+
+    @Test
+    void sendErrorWithAStatusReachesTheContainerAndMarksTheBodyAsTheContainers() throws Exception {
+        ByteCountingResponseWrapper wrapper = new ByteCountingResponseWrapper(containerResponse);
+
+        boolean before = wrapper.isBodyWrittenByContainer();
+        wrapper.sendError(400);
+
+        assertThat(before).isFalse();
+        verify(containerResponse).sendError(400);
+        assertThat(wrapper.isBodyWrittenByContainer()).isTrue();
+    }
+
+    @Test
+    void sendErrorWithAMessageReachesTheContainerAndMarksTheBodyAsTheContainers() throws Exception {
+        ByteCountingResponseWrapper wrapper = new ByteCountingResponseWrapper(containerResponse);
+
+        wrapper.sendError(403, "rejected");
+
+        verify(containerResponse).sendError(403, "rejected");
+        assertThat(wrapper.isBodyWrittenByContainer()).isTrue();
+    }
+
+    @Test
+    void aSendErrorTheContainerRefusesLeavesTheCountStanding() throws Exception {
+        doThrow(new IllegalStateException("committed")).when(containerResponse).sendError(500);
+        ByteCountingResponseWrapper wrapper = new ByteCountingResponseWrapper(containerResponse);
+
+        assertThatThrownBy(() -> wrapper.sendError(500)).isInstanceOf(IllegalStateException.class).hasMessage("committed");
+        assertThat(wrapper.isBodyWrittenByContainer()).isFalse();
+    }
+
+    @Test
+    void sendRedirectReachesTheContainerAndTheCountIsZero() throws Exception {
+        when(containerResponse.getOutputStream()).thenReturn(containerStream);
+        ByteCountingResponseWrapper wrapper = new ByteCountingResponseWrapper(containerResponse);
+        wrapper.getOutputStream().write(new byte[100]);
+
+        wrapper.sendRedirect("/elsewhere");
+
+        verify(containerResponse).sendRedirect("/elsewhere");
+        assertThat(wrapper.getByteCount()).isZero();
+        assertThat(wrapper.isBodyWrittenByContainer()).isFalse();
+    }
+
+    @Test
+    void aWriterAskedForAfterTheStreamStillThrowsFromTheWrappedResponse() throws Exception {
+        IllegalStateException refusal = new IllegalStateException("getOutputStream() has already been called");
+        when(containerResponse.getOutputStream()).thenReturn(containerStream);
+        when(containerResponse.getWriter()).thenThrow(refusal);
+        ByteCountingResponseWrapper wrapper = new ByteCountingResponseWrapper(containerResponse);
+
+        wrapper.getOutputStream();
+
+        assertThatThrownBy(wrapper::getWriter).isSameAs(refusal);
+    }
+
+    @Test
+    void aStreamAskedForAfterTheWriterStillThrowsFromTheWrappedResponse() throws Exception {
+        IllegalStateException refusal = new IllegalStateException("getWriter() has already been called");
+        when(containerResponse.getWriter()).thenReturn(containerWriter);
+        when(containerResponse.getOutputStream()).thenThrow(refusal);
+        ByteCountingResponseWrapper wrapper = new ByteCountingResponseWrapper(containerResponse);
+
+        wrapper.getWriter();
+
+        assertThatThrownBy(wrapper::getOutputStream).isSameAs(refusal);
+    }
+
+    @Test
+    void aStreamTheContainerNowRefusesIsNotServedFromTheCache() throws Exception {
+        IllegalStateException refusal = new IllegalStateException("getWriter() has already been called");
+        when(containerResponse.getOutputStream()).thenReturn(containerStream).thenThrow(refusal);
+        ByteCountingResponseWrapper wrapper = new ByteCountingResponseWrapper(containerResponse);
+
+        wrapper.getOutputStream();
+
+        assertThatThrownBy(wrapper::getOutputStream).isSameAs(refusal);
+    }
+
+    @Test
+    void aWriterTheContainerNowRefusesIsNotServedFromTheCache() throws Exception {
+        IllegalStateException refusal = new IllegalStateException("getOutputStream() has already been called");
+        when(containerResponse.getWriter()).thenReturn(containerWriter).thenThrow(refusal);
+        ByteCountingResponseWrapper wrapper = new ByteCountingResponseWrapper(containerResponse);
+
+        wrapper.getWriter();
+
+        assertThatThrownBy(wrapper::getWriter).isSameAs(refusal);
+    }
+
+    @Test
+    void theCountingStreamIsReplacedWhenTheContainerReturnsADifferentStream() throws Exception {
+        when(containerResponse.getOutputStream()).thenReturn(containerStream, replacementStream);
+        ByteCountingResponseWrapper wrapper = new ByteCountingResponseWrapper(containerResponse);
+        byte[] body = new byte[3];
+
+        ServletOutputStream first = wrapper.getOutputStream();
+        ServletOutputStream second = wrapper.getOutputStream();
+        second.write(body, 0, 3);
+
+        assertThat(second).isNotSameAs(first);
+        verify(replacementStream).write(body, 0, 3);
+        verifyNoInteractions(containerStream);
+        assertThat(wrapper.getByteCount()).isEqualTo(3);
+    }
+
+    @Test
+    void theCountingWriterIsReplacedWhenTheContainerReturnsADifferentWriter() throws Exception {
+        when(containerResponse.getWriter()).thenReturn(containerWriter, replacementWriter);
+        ByteCountingResponseWrapper wrapper = new ByteCountingResponseWrapper(containerResponse);
+
+        PrintWriter first = wrapper.getWriter();
+        PrintWriter second = wrapper.getWriter();
+        second.write("abc");
+
+        assertThat(second).isNotSameAs(first);
+        verify(replacementWriter).write("abc", 0, 3);
+        verifyNoInteractions(containerWriter);
+    }
+
+    @Test
+    void theSameWriterIsReturnedWhileTheContainerReturnsTheSameWriter() throws Exception {
+        ByteCountingResponseWrapper wrapper = new ByteCountingResponseWrapper(new MockHttpServletResponse());
+
+        assertThat(wrapper.getWriter()).isSameAs(wrapper.getWriter());
     }
 }

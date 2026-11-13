@@ -20,17 +20,21 @@ import jakarta.servlet.http.HttpServletResponseWrapper;
 
 /**
  * Response wrapper that counts the body bytes written through it and changes nothing else. Every write goes straight to the wrapped
- * response, so the body is never held here, and headers, status, flushing and commit timing are those of the wrapped response. <p> Bytes
- * written through {@link #getOutputStream()} are counted exactly. Characters written through {@link #getWriter()} are counted as the number
- * of bytes they encode to in the response's character encoding. The count is the body as written to the response, before any compression or
- * transfer encoding the container applies, and it does not include a body the container writes outside this wrapper, such as an error page
- * rendered after {@code sendError}.
+ * response, so the body is never held here, and headers, status, flushing and commit timing are those of the wrapped response. <p> The
+ * count is the body bytes handed to the container, before any compression or chunk framing the container applies. Bytes written through
+ * {@link #getOutputStream()} are counted exactly. Characters written through {@link #getWriter()} are counted as the number of bytes they
+ * encode to in the response's character encoding. <p> The count is not always what the client receives. After either {@code sendError}
+ * overload the container renders the body itself, outside this wrapper, so {@link #isBodyWrittenByContainer()} returns true and the count
+ * says nothing about the response. After {@link #sendRedirect(String)} the container discards whatever was buffered, so the count is 0. A
+ * {@link #reset()} or {@link #resetBuffer()} returns the count to 0 with the discarded body.
  */
 public final class ByteCountingResponseWrapper extends HttpServletResponseWrapper {
 
     private final AtomicLong byteCount = new AtomicLong();
     private CountingOutputStream outputStream;
     private CountingPrintWriter writer;
+    private volatile boolean bodyWrittenByContainer;
+    private volatile boolean bodyDiscardedByRedirect;
 
     /**
      * Wraps a response so the bytes written to its body can be read back with {@link #getByteCount()}.
@@ -42,24 +46,76 @@ public final class ByteCountingResponseWrapper extends HttpServletResponseWrappe
     }
 
     /**
-     * Returns the number of body bytes written so far.
+     * Returns the number of body bytes written so far. The value does not describe the response when {@link #isBodyWrittenByContainer()} is
+     * true.
      *
-     * @return the byte count, 0 when nothing has been written
+     * @return the byte count, 0 when nothing has been written or the response was redirected
      */
     public long getByteCount() {
-        return byteCount.get();
+        return bodyDiscardedByRedirect ? 0 : byteCount.get();
+    }
+
+    /**
+     * Tells whether {@code sendError} was called, which leaves the container to render the body after this wrapper is out of the picture.
+     *
+     * @return true when the body the client receives is the container's and was not counted here
+     */
+    public boolean isBodyWrittenByContainer() {
+        return bodyWrittenByContainer;
+    }
+
+    /**
+     * Passes the error to the wrapped response and records that the container now writes the body.
+     *
+     * @param sc the error status code
+     * @throws IOException if the wrapped response fails to send the error
+     * @throws IllegalStateException if the response is already committed, in which case the count still stands
+     */
+    @Override
+    public void sendError(int sc) throws IOException {
+        super.sendError(sc);
+        bodyWrittenByContainer = true;
+    }
+
+    /**
+     * Passes the error to the wrapped response and records that the container now writes the body.
+     *
+     * @param sc the error status code
+     * @param msg the error message
+     * @throws IOException if the wrapped response fails to send the error
+     * @throws IllegalStateException if the response is already committed, in which case the count still stands
+     */
+    @Override
+    public void sendError(int sc, String msg) throws IOException {
+        super.sendError(sc, msg);
+        bodyWrittenByContainer = true;
+    }
+
+    /**
+     * Passes the redirect to the wrapped response and reports 0 bytes from then on, since the container discards the buffered body.
+     *
+     * @param location the redirect target
+     * @throws IOException if the wrapped response fails to send the redirect
+     * @throws IllegalStateException if the response is already committed, in which case the count still stands
+     */
+    @Override
+    public void sendRedirect(String location) throws IOException {
+        super.sendRedirect(location);
+        bodyDiscardedByRedirect = true;
     }
 
     /**
      * Returns a stream that passes every call to the wrapped response's stream and counts the bytes it accepts.
      *
-     * @return the counting stream, the same instance on every call until the response is reset
+     * @return the counting stream, the same instance for as long as the wrapped response returns the same stream
      * @throws IOException if the wrapped response cannot provide its stream
+     * @throws IllegalStateException if the wrapped response refuses, as it does once its writer has been obtained
      */
     @Override
     public ServletOutputStream getOutputStream() throws IOException {
-        if (outputStream == null) {
-            outputStream = new CountingOutputStream(super.getOutputStream(), byteCount);
+        ServletOutputStream delegate = super.getOutputStream();
+        if (outputStream == null || outputStream.delegate != delegate) {
+            outputStream = new CountingOutputStream(delegate, byteCount);
         }
         return outputStream;
     }
@@ -67,13 +123,14 @@ public final class ByteCountingResponseWrapper extends HttpServletResponseWrappe
     /**
      * Returns a writer that passes every call to the wrapped response's writer and counts the bytes the characters encode to.
      *
-     * @return the counting writer, the same instance on every call until the response is reset
+     * @return the counting writer, the same instance for as long as the wrapped response returns the same writer
      * @throws IOException if the wrapped response cannot provide its writer
+     * @throws IllegalStateException if the wrapped response refuses, as it does once its stream has been obtained
      */
     @Override
     public PrintWriter getWriter() throws IOException {
-        if (writer == null) {
-            PrintWriter delegate = super.getWriter();
+        PrintWriter delegate = super.getWriter();
+        if (writer == null || writer.delegate != delegate) {
             writer = new CountingPrintWriter(delegate, new EncodedLengthCounter(resolveCharset(getCharacterEncoding()), byteCount));
         }
         return writer;

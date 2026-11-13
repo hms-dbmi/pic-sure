@@ -8,6 +8,8 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -102,10 +104,19 @@ class AuditDestinationAndBytesTest {
         return rest.exchange(URI.create("http://127.0.0.1:" + port + path), method, entity, byte[].class);
     }
 
-    private RequestInfo emittedRequest() {
+    /**
+     * Waits for the one event whose {@code url} is the given path. The mock can sit in a Spring context other test classes use, so an event
+     * for some other request arriving late is ignored.
+     *
+     * @param path the request path of the calling test, used by no other test in this class
+     * @return the request details of that event
+     */
+    private RequestInfo emittedRequest(String path) {
         ArgumentCaptor<LoggingEvent> emitted = ArgumentCaptor.forClass(LoggingEvent.class);
-        verify(loggingClient, timeout(5000)).send(emitted.capture(), any(), any());
-        return emitted.getValue().getRequest();
+        verify(loggingClient, timeout(5000)).send(argThat(event -> path.equals(event.getRequest().getUrl())), any(), any());
+        verify(loggingClient, atLeastOnce()).send(emitted.capture(), any(), any());
+        return emitted.getAllValues().stream().map(LoggingEvent::getRequest).filter(info -> path.equals(info.getUrl())).findFirst()
+            .orElseThrow();
     }
 
     private static byte[] resultRows(int rows) {
@@ -125,7 +136,7 @@ class AuditDestinationAndBytesTest {
         byte[] expected = JSON_BODY.getBytes(StandardCharsets.UTF_8);
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).isEqualTo(expected);
-        RequestInfo info = emittedRequest();
+        RequestInfo info = emittedRequest("/hpds/auth/query/sync");
         assertThat(info.getDestIp()).isEqualTo("127.0.0.1");
         assertThat(info.getDestPort()).isEqualTo(port);
         assertThat(info.getBytes()).isEqualTo(expected.length);
@@ -140,42 +151,68 @@ class AuditDestinationAndBytesTest {
     @ValueSource(strings = {"text/event-stream", "application/octet-stream"})
     void aStreamedResponseReportsEveryByteAndReachesTheClientUnchanged(String contentType) {
         byte[] body = resultRows(12_000);
+        String path = "/hpds/auth/query/" + contentType.replace('/', '-') + "/result";
         hpdsStub.stubFor(
-            get(urlEqualTo("/hpds/auth/query/abc-123/result")).willReturn(
+            get(urlEqualTo(path)).willReturn(
                 aResponse().withStatus(200).withHeader("Content-Type", contentType).withBody(body).withChunkedDribbleDelay(8, 400)
             )
         );
 
-        ResponseEntity<byte[]> response = call(HttpMethod.GET, "/hpds/auth/query/abc-123/result", true);
+        ResponseEntity<byte[]> response = call(HttpMethod.GET, path, true);
 
         assertThat(body.length).isGreaterThan(250_000);
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getHeaders().getContentLength()).isEqualTo(-1);
         assertThat(response.getBody()).isEqualTo(body);
-        RequestInfo info = emittedRequest();
+        RequestInfo info = emittedRequest(path);
         assertThat(info.getBytes()).isEqualTo(body.length);
         assertThat(info.getDestPort()).isEqualTo(port);
     }
 
     @Test
     void aProxiedResponseWithNoBodyReportsZeroBytes() {
-        hpdsStub.stubFor(get(urlEqualTo("/hpds/auth/query/abc-123/status")).willReturn(aResponse().withStatus(204)));
+        hpdsStub.stubFor(get(urlEqualTo("/hpds/auth/query/no-body/status")).willReturn(aResponse().withStatus(204)));
 
-        ResponseEntity<byte[]> response = call(HttpMethod.GET, "/hpds/auth/query/abc-123/status", true);
+        ResponseEntity<byte[]> response = call(HttpMethod.GET, "/hpds/auth/query/no-body/status", true);
 
         assertThat(response.getStatusCode().value()).isEqualTo(204);
         assertThat(response.getBody()).isNull();
-        assertThat(emittedRequest().getBytes()).isZero();
+        assertThat(emittedRequest("/hpds/auth/query/no-body/status").getBytes()).isZero();
     }
 
     @Test
     void anErrorBodyTheGatewayWritesItselfIsCounted() {
-        ResponseEntity<byte[]> response = call(HttpMethod.GET, "/hpds/auth/query/abc-123/status", false);
+        ResponseEntity<byte[]> response = call(HttpMethod.GET, "/hpds/auth/query/no-token/status", false);
 
         assertThat(response.getStatusCode().value()).isEqualTo(401);
         assertThat(response.getBody()).isNotEmpty();
-        RequestInfo info = emittedRequest();
+        RequestInfo info = emittedRequest("/hpds/auth/query/no-token/status");
         assertThat(info.getStatus()).isEqualTo(401);
         assertThat(info.getBytes()).isEqualTo(response.getBody().length);
+    }
+
+    /**
+     * Spring Security's firewall refuses a path with a semicolon by calling {@code sendError}, and the container writes the error body on
+     * its own dispatch after the event is emitted. The client still gets that body and the event carries no size for it.
+     */
+    @Test
+    void aRequestTheFirewallRejectsKeepsItsErrorBodyAndReportsNoBytes() {
+        ResponseEntity<byte[]> response = call(HttpMethod.GET, "/hpds/a;b/c", true);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(400);
+        assertThat(response.getBody()).isNotEmpty();
+        RequestInfo info = emittedRequest("/hpds/a;b/c");
+        assertThat(info.getStatus()).isEqualTo(400);
+        assertThat(info.getBytes()).isNull();
+    }
+
+    /** The gateway writes its 401 body as it would for a GET, and the container drops it because the method is HEAD. */
+    @Test
+    void aHeadRequestReportsZeroBytes() {
+        ResponseEntity<byte[]> response = call(HttpMethod.HEAD, "/hpds/auth/query/head/status", false);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(401);
+        assertThat(response.getBody()).isNull();
+        assertThat(emittedRequest("/hpds/auth/query/head/status").getBytes()).isZero();
     }
 }

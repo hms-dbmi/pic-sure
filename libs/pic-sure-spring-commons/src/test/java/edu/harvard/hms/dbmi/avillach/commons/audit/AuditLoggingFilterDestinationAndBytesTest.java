@@ -11,6 +11,8 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -78,6 +80,19 @@ class AuditLoggingFilterDestinationAndBytesTest {
         assertThat(info.getDestPort()).isEqualTo(443);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"", "   "})
+    void aBlankConfiguredAddressIsTreatedAsUnset(String blank) throws Exception {
+        AuditLoggingFilter filter =
+            new AuditLoggingFilter(client, null, new AuditContext(), List.of(), ClientTypeAllowlist.DEFAULT, blank, 443);
+
+        RequestInfo info = emitted(filter, requestArrivingOn("10.0.0.7", 8080), new MockHttpServletResponse(), (req, res) -> {
+        });
+
+        assertThat(info.getDestIp()).isEqualTo("10.0.0.7");
+        assertThat(info.getDestPort()).isEqualTo(443);
+    }
+
     @Test
     void aConfiguredAddressAloneLeavesThePortAsTheLocalPort() throws Exception {
         AuditLoggingFilter filter =
@@ -134,18 +149,79 @@ class AuditLoggingFilterDestinationAndBytesTest {
     }
 
     @Test
-    void bytesIsStillReportedWhenTheChainThrowsAfterWriting() throws Exception {
+    void bytesIsUnsetAndTheExceptionIsUnchangedWhenTheChainThrowsAfterWriting() throws Exception {
         AuditLoggingFilter filter = new AuditLoggingFilter(client, null, new AuditContext(), List.of());
         byte[] partial = new byte[10];
+        IllegalStateException failure = new IllegalStateException("upstream closed");
 
         assertThatThrownBy(() -> filter.doFilter(requestArrivingOn("10.0.0.7", 8080), new MockHttpServletResponse(), (req, res) -> {
             res.getOutputStream().write(partial);
-            throw new IllegalStateException("upstream closed");
-        })).isInstanceOf(IllegalStateException.class).hasMessage("upstream closed");
+            throw failure;
+        })).isSameAs(failure);
 
         ArgumentCaptor<LoggingEvent> event = ArgumentCaptor.forClass(LoggingEvent.class);
         verify(client).send(event.capture());
-        assertThat(event.getValue().getRequest().getBytes()).isEqualTo(10);
+        assertThat(event.getValue().getRequest().getBytes()).isNull();
+    }
+
+    @Test
+    void bytesIsUnsetAfterSendErrorBecauseTheContainerWritesTheBody() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, null, new AuditContext(), List.of());
+
+        RequestInfo info = emitted(filter, requestArrivingOn("10.0.0.7", 8080), response, (req, res) -> {
+            res.getOutputStream().write(new byte[10]);
+            ((HttpServletResponse) res).sendError(400, "rejected");
+        });
+
+        assertThat(info.getBytes()).isNull();
+        assertThat(info.getStatus()).isEqualTo(400);
+        assertThat(response.getErrorMessage()).isEqualTo("rejected");
+    }
+
+    @Test
+    void bytesIsUnsetAfterSendErrorWithOnlyAStatus() throws Exception {
+        RequestInfo info = emittedFor((req, res) -> ((HttpServletResponse) res).sendError(404));
+
+        assertThat(info.getBytes()).isNull();
+        assertThat(info.getStatus()).isEqualTo(404);
+    }
+
+    @Test
+    void bytesIsUnsetWhenAsynchronousProcessingHasStarted() throws Exception {
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, null, new AuditContext(), List.of());
+        MockHttpServletRequest request = requestArrivingOn("10.0.0.7", 8080);
+        request.setAsyncSupported(true);
+
+        RequestInfo info = emitted(filter, request, new MockHttpServletResponse(), (req, res) -> {
+            res.getOutputStream().write(new byte[10]);
+            req.startAsync();
+        });
+
+        assertThat(info.getBytes()).isNull();
+    }
+
+    @Test
+    void bytesIsZeroForAHeadRequestWhateverTheHandlerWrote() throws Exception {
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, null, new AuditContext(), List.of());
+        MockHttpServletRequest request = requestArrivingOn("10.0.0.7", 8080);
+        request.setMethod("HEAD");
+
+        RequestInfo info =
+            emitted(filter, request, new MockHttpServletResponse(), (req, res) -> res.getOutputStream().write(new byte[122]));
+
+        assertThat(info.getBytes()).isZero();
+    }
+
+    @Test
+    void bytesIsZeroAfterARedirect() throws Exception {
+        RequestInfo info = emittedFor((req, res) -> {
+            res.getOutputStream().write(new byte[10]);
+            ((HttpServletResponse) res).sendRedirect("/elsewhere");
+        });
+
+        assertThat(info.getBytes()).isZero();
+        assertThat(info.getStatus()).isEqualTo(302);
     }
 
     @Test

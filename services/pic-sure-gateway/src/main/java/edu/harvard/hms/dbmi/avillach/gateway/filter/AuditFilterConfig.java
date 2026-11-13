@@ -3,6 +3,8 @@ package edu.harvard.hms.dbmi.avillach.gateway.filter;
 import java.util.List;
 import java.util.regex.Pattern;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -23,7 +25,8 @@ import edu.harvard.dbmi.avillach.logging.LoggingClientFactory;
  * {@code McpCallerFilter}, and otherwise from the client-sent {@code X-Client-Type} (for example {@code PYTHON_ADAPTER}) when that value is
  * on the {@link ClientTypeAllowlist}. The raw header is also kept as metadata {@code client_type_claimed}. Events report {@code DEST_IP}
  * and {@code DEST_PORT} as the destination when those are set, the same settings the other services read, and otherwise the address and
- * port the request arrived on.
+ * port the request arrived on. A blank {@code DEST_IP}, or a {@code DEST_PORT} that is blank or not a number, counts as unset, so a bad
+ * audit setting never stops the gateway from starting.
  */
 @Configuration
 public class AuditFilterConfig {
@@ -37,6 +40,8 @@ public class AuditFilterConfig {
      */
     static final int AUDIT_FILTER_ORDER = -101;
 
+    private static final Logger logger = LoggerFactory.getLogger(AuditFilterConfig.class);
+
     // Leading service prefix(es), e.g. "/query", "/hpds/auth/query".
     private static final String PFX = "^(?:/[a-z0-9-]+)+?";
 
@@ -44,7 +49,7 @@ public class AuditFilterConfig {
     private String destIp;
 
     @Value("${DEST_PORT:#{null}}")
-    private Integer destPort;
+    private String destPort;
 
     @Bean
     public LoggingClient loggingClient() {
@@ -77,11 +82,29 @@ public class AuditFilterConfig {
         // /bin/continuous, or /logging. Gateway-local actuator and API-documentation paths are also skipped.
         AuditLoggingFilter filter = new AuditLoggingFilter(
             client, routes, audit, List.of("/info/", "/bin/continuous", "/logging", "/actuator", "/openapi", "/swagger-ui"), clientTypes,
-            destIp, destPort
+            destIp, destPortFrom(destPort)
         );
         var registration = new FilterRegistrationBean<>(filter);
         registration.setOrder(AUDIT_FILTER_ORDER);
         registration.addUrlPatterns("/*");
         return registration;
+    }
+
+    /**
+     * Reads the configured {@code DEST_PORT}. A value that is not a number is logged once as a warning and treated as unset.
+     *
+     * @param configured the raw setting, possibly null or blank
+     * @return the port, or null when the setting is absent, blank or not a number
+     */
+    static Integer destPortFrom(String configured) {
+        if (configured == null || configured.isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(configured.trim());
+        } catch (NumberFormatException e) {
+            logger.warn("DEST_PORT is not a number, so audit events report the port each request arrived on");
+            return null;
+        }
     }
 }
