@@ -1,8 +1,10 @@
 package edu.harvard.dbmi.avillach.logging.service;
 
-import edu.harvard.dbmi.avillach.logging.config.AppConfig;
+import edu.harvard.dbmi.avillach.logging.config.LoggingProperties;
 import edu.harvard.dbmi.avillach.logging.model.AuditEvent;
 import edu.harvard.dbmi.avillach.logging.model.RequestInfo;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,12 +20,16 @@ public class AuditLogService {
     private static final Logger appLog = LoggerFactory.getLogger(AuditLogService.class);
     private static final int MAX_STRING_LENGTH = 2000;
 
-    private final AppConfig config;
+    private final LoggingProperties config;
     private final JwtDecodeService jwtDecodeService;
+    private final Counter submittedCounter;
+    private final Counter submissionFailedCounter;
 
-    public AuditLogService(AppConfig config, JwtDecodeService jwtDecodeService) {
+    public AuditLogService(LoggingProperties config, JwtDecodeService jwtDecodeService, MeterRegistry meterRegistry) {
         this.config = config;
         this.jwtDecodeService = jwtDecodeService;
+        this.submittedCounter = meterRegistry.counter("picsure.audit.submitted");
+        this.submissionFailedCounter = meterRegistry.counter("picsure.audit.submission.failed");
     }
 
     public void logEvent(AuditEvent event, String authorizationHeader, String requestIdHeader) {
@@ -86,8 +92,11 @@ public class AuditLogService {
             }
 
             auditLog.info("{}", entries(fields));
+            submittedCounter.increment();
         } catch (Exception e) {
-            appLog.error("Failed to assemble audit log event", e);
+            submissionFailedCounter.increment();
+            appLog.error("Failed to assemble or submit audit log event", e);
+            throw new AuditLogException("Failed to assemble or submit audit log event: " + e.getMessage(), e);
         }
     }
 

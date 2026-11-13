@@ -41,7 +41,7 @@ WildFly modules have since been removed; every remaining service is part of this
 | services/pic-sure-hpds-query-service | reactor | 25 | — | done |
 | services/pic-sure-hpds | reactor | 25 | PIC-SURE-HPDS Build / PIC-SURE HPDS Build | done (HTTP rationalization deferred, FO-1) |
 | services/pic-sure-auth-microapp | reactor | 25 | PIC-SURE Auth Micro-App Build - Jenkinsfile / PIC-SURE Auth Micro App Build | done |
-| services/pic-sure-logging | reactor | 25 (Javalin) | PIC-SURE Logging Build and Deploy / PIC-SURE Logging Build | done |
+| services/pic-sure-logging | reactor | 25 (Spring Boot) | PIC-SURE Logging Build and Deploy / PIC-SURE Logging Build | done |
 | services/picsure-dictionary | reactor | 25 | PIC-SURE Dictionary API Build and Deploy (+3 DB jobs) / PIC-SURE Dictionary Build | done |
 | services/pic-sure-visualization-service | reactor | 25 | PIC-SURE Visualization Build and Deploy / PIC-SURE Visualization Build | done |
 
