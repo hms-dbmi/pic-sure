@@ -75,4 +75,27 @@ class InMemoryConversationStoreTest {
 
         assertTrue(store.turns(KEY).isEmpty());
     }
+
+    @Test
+    void conversationsPastTheTotalSizeAreEvictedWhileTheStoreKeepsWhatFits() throws Exception {
+        // "reply to xx" turns weigh 15 characters each; a budget of 40 holds two conversations, not three.
+        InMemoryConversationStore store = new InMemoryConversationStore(Duration.ofMinutes(60), 50, 40, nanos::get);
+        List<ConversationStore.Key> keys = List.of(
+            new ConversationStore.Key("owner-a", "c1"), new ConversationStore.Key("owner-a", "c2"),
+            new ConversationStore.Key("owner-a", "c3")
+        );
+
+        keys.forEach(key -> store.append(key, turn("one")));
+
+        long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+        while (kept(store, keys) > 2 && System.nanoTime() < deadline) {
+            Thread.sleep(10);
+        }
+        assertTrue(kept(store, keys) <= 2, "the budget cannot hold all three");
+        assertTrue(kept(store, keys) >= 1, "eviction stops once the rest fits");
+    }
+
+    private static long kept(InMemoryConversationStore store, List<ConversationStore.Key> keys) {
+        return keys.stream().filter(key -> !store.turns(key).isEmpty()).count();
+    }
 }
