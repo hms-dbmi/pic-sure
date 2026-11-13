@@ -320,42 +320,37 @@ public class PfbWriter implements ResultWriter {
         return formattedFieldName;
     }
 
+    /**
+     * Builds the metadata node of one table, with one property per field and no links, values or ontology references.
+     *
+     * @param tableName the name of the table the node describes
+     * @param fields the field names of that table, in schema order
+     * @return the node record
+     */
+    private GenericRecord nodeFor(String tableName, List<String> fields) {
+        List<GenericRecord> propertiesList = new ArrayList<>();
+        for (String field : fields) {
+            GenericRecord properties = new GenericData.Record(propertiesSchema);
+            properties.put("name", field);
+            properties.put("ontology_reference", "");
+            properties.put("values", Map.of());
+            propertiesList.add(properties);
+        }
+        GenericRecord nodeData = new GenericData.Record(nodeSchema);
+        nodeData.put("name", tableName);
+        nodeData.put("ontology_reference", "");
+        nodeData.put("values", Map.of());
+        nodeData.put("links", List.of());
+        nodeData.put("properties", propertiesList);
+        return nodeData;
+    }
+
     private void writeMetadata(DataFileWriter<GenericRecord> openedWriter) {
         GenericRecord entityRecord = new GenericData.Record(entitySchema);
 
         List<GenericRecord> nodeList = new ArrayList<>();
-        List<GenericRecord> propertiesList = new ArrayList<>();
-        GenericRecord nodeData = new GenericData.Record(nodeSchema);
-        nodeData.put("name", this.patientTableName);
-        nodeData.put("ontology_reference", "");
-        nodeData.put("values", Map.of());
-        nodeData.put("links", List.of());
-        for (String field : patientRecordFields) {
-            GenericRecord properties = new GenericData.Record(propertiesSchema);
-            properties.put("name", field);
-            properties.put("ontology_reference", "");
-            properties.put("values", Map.of());
-            propertiesList.add(properties);
-        }
-        nodeData.put("properties", propertiesList);
-        nodeList.add(nodeData);
-
-
-        propertiesList = new ArrayList<>();
-        nodeData = new GenericData.Record(nodeSchema);
-        nodeData.put("name", this.dataDictionaryTableName);
-        nodeData.put("ontology_reference", "");
-        nodeData.put("values", Map.of());
-        nodeData.put("links", List.of());
-        for (String field : DATA_DICTIONARY_FIELDS) {
-            GenericRecord properties = new GenericData.Record(propertiesSchema);
-            properties.put("name", field);
-            properties.put("ontology_reference", "");
-            properties.put("values", Map.of());
-            propertiesList.add(properties);
-        }
-        nodeData.put("properties", propertiesList);
-        nodeList.add(nodeData);
+        nodeList.add(nodeFor(this.patientTableName, patientRecordFields));
+        nodeList.add(nodeFor(this.dataDictionaryTableName, DATA_DICTIONARY_FIELDS));
 
         GenericRecord metadata = new GenericData.Record(metadataSchema);
         metadata.put("misc", "");
