@@ -32,14 +32,4 @@ public interface NamedDatasetRepository extends JpaRepository<NamedDataset, UUID
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<NamedDataset> findLockedByUuidAndUser(UUID uuid, String user);
-
-    /**
-     * Tells whether a user already has a dataset that points at a query row. The table allows one dataset for each pair of query row and
-     * user, so a second dataset of that user cannot be pointed at the row.
-     *
-     * @param queryUuid the id of the query row
-     * @param user the email the datasets are stored under
-     * @return true when a dataset of the user points at the query row
-     */
-    boolean existsByQueryUuidAndUser(UUID queryUuid, String user);
 }

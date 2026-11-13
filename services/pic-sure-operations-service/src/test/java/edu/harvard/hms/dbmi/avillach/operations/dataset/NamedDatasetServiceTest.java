@@ -595,6 +595,64 @@ class NamedDatasetServiceTest {
         verify(queryRepo, never()).findById(any());
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void putWithTheSameOwnerlessQueryKeepsTheGeneralQueryTheDatasetIsUnder(boolean archived) {
+        UUID derived = UUID.randomUUID();
+        Query ownerless = ownerlessQuery();
+        NamedDataset dataset = datasetPointingAt(ownerless).setQueryToVariantUuid(derived);
+        callerOwns(dataset);
+        when(repo.saveAndFlush(any())).thenAnswer(returnsFirstArg());
+        when(queryRepo.findVariantsOf(Set.of(derived), ALICE_ID))
+            .thenReturn(List.of(new QueryVariantRow(derived, UUID.randomUUID(), true, "DATAFRAME", null)));
+
+        NamedDatasetDto dto =
+            service.update(ALICE, dataset.getUuid(), new NamedDatasetRequestDto(ownerless.getUuid(), "renamed", archived, null));
+
+        NamedDataset saved = savedDataset();
+        assertThat(saved.getQuery()).isSameAs(ownerless);
+        assertThat(saved.getQueryToVariantUuid()).isEqualTo(derived);
+        assertThat(dto.name()).isEqualTo("renamed");
+        assertThat(dto.archived()).isEqualTo(archived);
+        assertThat(dto.queries()).hasSize(1);
+        verify(queryRepo, never()).findById(any());
+    }
+
+    @Test
+    void putFromOneOwnerlessQueryOntoAnotherClearsTheGeneralQuery() {
+        Query other = ownerlessQuery();
+        NamedDataset dataset = datasetPointingAt(ownerlessQuery()).setQueryToVariantUuid(UUID.randomUUID());
+        callerOwns(dataset);
+        queryIsStored(other);
+        when(repo.saveAndFlush(any())).thenAnswer(returnsFirstArg());
+
+        NamedDatasetDto dto = service.update(ALICE, dataset.getUuid(), requestNaming(other));
+
+        NamedDataset saved = savedDataset();
+        assertThat(saved.getQuery()).isSameAs(other);
+        assertThat(saved.getQueryToVariantUuid()).isNull();
+        assertThat(dto.queries()).isEmpty();
+        verify(queryRepo, never()).findVariantsOf(any(), any());
+    }
+
+    @Test
+    void putFromAnOwnerlessQueryOntoAnOwnedOneTakesTheGeneralQueryOfThatRow() {
+        UUID general = UUID.randomUUID();
+        Query owned = storedQuery(ALICE_ID, general);
+        NamedDataset dataset = datasetPointingAt(ownerlessQuery()).setQueryToVariantUuid(UUID.randomUUID());
+        callerOwns(dataset);
+        queryIsStored(owned);
+        when(repo.saveAndFlush(any())).thenAnswer(returnsFirstArg());
+        when(queryRepo.findVariantsOf(Set.of(general), ALICE_ID))
+            .thenReturn(List.of(new QueryVariantRow(general, owned.getUuid(), false, "DATAFRAME", null)));
+
+        service.update(ALICE, dataset.getUuid(), requestNaming(owned));
+
+        NamedDataset saved = savedDataset();
+        assertThat(saved.getQuery()).isSameAs(owned);
+        assertThat(saved.getQueryToVariantUuid()).isEqualTo(general);
+    }
+
     @Test
     void putOntoAQueryTheCallerAlreadyNamedIs409() {
         Query full = storedQuery(ALICE_ID, UUID.randomUUID());

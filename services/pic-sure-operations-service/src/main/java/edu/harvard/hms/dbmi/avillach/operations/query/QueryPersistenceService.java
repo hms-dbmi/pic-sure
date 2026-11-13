@@ -55,11 +55,10 @@ import edu.harvard.hms.dbmi.avillach.operations.error.PicsureExceptions;
  * <p>It is also the only writer of the {@code query_to_variant} table. The save that inserts a row with an owner files it under its general
  * query, and creates the general query in the same transaction when it is not stored yet. General queries are never changed or deleted.
  *
- * <p>{@link #storeNeverRun} inserts an owned row that has not been sent to HPDS: it has no status, no consents and no run. The query
- * service runs such a row the first time its owner asks for its status or result, or submits its query again.
+ * <p>{@link #ensureGeneralQuery} stores a general query with no query row under it, for a named dataset whose stored query its user has not
+ * run yet.
  *
- * <p>Every insert of a row stamps {@code created_at}: a save with or without an owner with the time of the insert, and
- * {@link #storeNeverRun} with the start time it is given, or the time of the insert when it is given none. Nothing writes the column
+ * <p>Every insert of a row stamps {@code created_at} with the time of the insert, with or without an owner. Nothing writes the column
  * afterward.
  *
  * <p>A save onto a stored row and an update both lock the query row before they read anything else, so two writers of one row run one after
@@ -74,7 +73,6 @@ public class QueryPersistenceService {
     private static final int MYSQL_DUPLICATE_ENTRY = 1062;
     private static final int OWNED_SAVE_MEMBERS = 5;
     private static final int UUID_BYTES = 16;
-    private static final String NEVER_RUN_VERSION = "3";
 
     private final QueryRepository repo;
     private final QueryRunRepository runs;
@@ -194,60 +192,32 @@ public class QueryPersistenceService {
     }
 
     /**
-     * Stores an owned row that has never run, unless a row is already stored under its id. The new row has the given body, start time,
-     * owner, general query, sample flag and result type, version {@code "3"} and its own id as its result id. Its creation time is the
-     * given start time, which for a row brought over from an older one is the start time of that older row, or the time of this call when
-     * no start time is given. It has no status, no consents, no ready time and no metadata, and no {@code query_run} row is written. Null
-     * consents are what makes the query service run the row on its first status, result or submit request, because no consents a caller
-     * holds equal them.
+     * Makes sure a general query is stored and belongs to the given owner, without storing a query row under it. The row is inserted when
+     * no row has the id, and a stored row is left exactly as it is. A named dataset is filed this way under the general query of a stored
+     * query its user has not run yet, so the rows a later submit of that query saves are found under the dataset.
      *
-     * <p>The general query is stored first when no row has its id yet. A general query stored under another owner refuses the call.
+     * <p>The method runs in the caller's transaction when the caller has one, and in a transaction of its own otherwise. The row is read
+     * with a shared lock after the insert, so a general query another transaction committed after the first plain read of the caller's
+     * transaction is found. When the method throws inside a caller's transaction, that transaction can only roll back.
      *
-     * <p>A row already stored under the id is returned as it is and nothing of it is written, so its status, consents, start time and runs
-     * stay. Such a row must belong to the same owner.
-     *
-     * <p><b>Transactions.</b> The method runs in the caller's transaction when the caller has one, and in a transaction of its own
-     * otherwise. Either way the general query and the row are both stored or neither is. It is written for a caller whose transaction has
-     * already read other rows, which the save methods are not: on MySQL a plain read returns the rows as they were at the first plain read
-     * of the transaction, so it can miss a general query or a row another transaction has committed since. Both lookups here are locking
-     * reads, which return the latest committed row. The general query is read with a shared lock after the insert that leaves a stored row
-     * alone, and the row is read with {@link QueryRepository#findLockedByUuid}. The general query is always touched before the row, which
-     * is the order a save takes the same locks in.
-     *
-     * <p>When the method throws inside a caller's transaction, that transaction can only roll back. Two calls that insert one new id at the
-     * same time do not both succeed: the database fails one of them, on the primary key or as the loser of a lock cycle, and that call
-     * throws. A call made afterward finds the row.
-     *
-     * @param row the row to store
-     * @return the row stored under the id: the one this call inserted, or the one that was already there. Inside a caller's transaction it
-     *         is a managed entity
-     * @throws PicsureException 409 when the general query, or the row already stored under the id, belongs to a different owner
-     * @throws DataIntegrityViolationException when the database refuses the row, for example because the general query already holds a row
-     *         of the same sample flag and result type under another id
+     * @param generalId the id of the general query
+     * @param owner the UUID of the user the general query must belong to
+     * @return the id of the general query
+     * @throws PicsureException 409 when the general query is stored under a different owner
      */
-    public Query storeNeverRun(NeverRunQuery row) {
-        return transactions.execute(status -> {
-            storedGeneralQuery(row.queryToVariantUuid(), row.userUuid(), generalQueries::findSharedByUuid);
-            Optional<Query> stored = repo.findLockedByUuid(row.picsureId());
-            if (stored.isPresent()) {
-                if (!row.userUuid().equals(stored.get().getUserUuid())) {
-                    throw PicsureExceptions.conflict("Query " + row.picsureId() + " belongs to a different owner");
-                }
-                return stored.get();
-            }
-            Query entity = new Query();
-            entity.setUuid(row.picsureId());
-            entity.setQuery(stripResourceCredentials(row.query()));
-            entity.setResourceResultId(row.picsureId().toString());
-            entity.setVersion(NEVER_RUN_VERSION);
-            entity.setUserUuid(row.userUuid());
-            entity.setQueryToVariantUuid(row.queryToVariantUuid());
-            entity.setSample(row.sample());
-            entity.setResultType(row.resultType() == null ? null : row.resultType().name());
-            entity.setStartTime(row.startTime());
-            entity.setCreatedAt(row.startTime() == null ? insertTime() : row.startTime().truncatedTo(ChronoUnit.MILLIS));
-            return repo.saveAndFlush(entity);
-        });
+    public UUID ensureGeneralQuery(UUID generalId, UUID owner) {
+        return transactions.execute(status -> storedGeneralQuery(generalId, owner, generalQueries::findSharedByUuid));
+    }
+
+    /**
+     * Returns the owner of a stored general query. The row is read with a shared lock, in the caller's transaction when the caller has one,
+     * so the answer is the latest committed row.
+     *
+     * @param generalId the id of the general query
+     * @return the UUID of the user the general query belongs to, or empty when no general query has the id
+     */
+    public Optional<UUID> ownerOfGeneralQuery(UUID generalId) {
+        return transactions.execute(status -> generalQueries.findSharedByUuid(generalId).map(QueryToVariant::getUserUuid));
     }
 
     /**

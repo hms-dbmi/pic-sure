@@ -27,7 +27,7 @@
     {
       "name": "picsure.operations.dataset-bring-over.enabled",
       "type": "java.lang.Boolean",
-      "description": "Whether a read of named datasets brings the caller's datasets over to query rows the caller owns. A dataset saved before query rows had owners points at a row with no owner and lists no variants. When true, the first list or read by its user stores an owned query row and its general query from the dataset's stored query, with no status, no consents and no run, and points the dataset at that row. The row the dataset pointed at before is not changed. Leave it false while a stack without query owners still reads the same database, because that stack cannot read the row a brought-over dataset names. When false, a dataset read writes nothing.",
+      "description": "Whether a read of named datasets files the caller's datasets under the general query of their stored query. A dataset saved before query rows had owners points at a row with no owner and lists no variants. When true, a list or read by its user derives the general query id from the dataset's stored query and the user, stores that general query if it is not stored yet, and writes it on the dataset. No query row is stored or changed and the dataset's queryId stays as it is, so a stack without general queries reads the dataset as before. When false, a dataset read writes nothing.",
       "defaultValue": false
     }
   ]

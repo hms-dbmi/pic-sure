@@ -45,10 +45,13 @@ import edu.harvard.hms.dbmi.avillach.operations.query.QueryVariantRow;
  * {@code queryId} is written and at no other time: a read, and an update that names the query the dataset already points at, do not look at
  * who owns that row.
  *
- * <p>A dataset also names the general query of its query row, in {@code queryToVariantUuid}. A general query is a user's query whatever its
- * result type and whether or not it is a sample, and every query row that has an owner is one variant of one. {@link #create} and
- * {@link #update} copy the id from the query row each time, so a dataset stored without it takes it on its next update. A dataset on a
- * query row that has no owner has no general query.
+ * <p>A dataset also names a general query, in {@code queryToVariantUuid}. A general query is a user's query whatever its result type and
+ * whether or not it is a sample, and every query row that has an owner is one variant of one. For a dataset on a query row that has an
+ * owner it is the general query of that row: {@link #create} and {@link #update} copy the id from the row each time, so a dataset stored
+ * without it takes it on its next update. A query row with no owner is under no general query. A dataset on such a row is created with
+ * none, and {@link DatasetBringOver} files it under the one derived from the stored query for the user who reads it. {@link #update} keeps
+ * that general query while the dataset stays on the row and clears it when the dataset is moved to another row with no owner, so the next
+ * read derives it again.
  *
  * <p>Every answer lists the dataset's {@code queries}: the query rows filed under its general query that belong to the caller, by the
  * gateway user id. They are found by the general query alone. Nothing links a query to a dataset, and no stored query body is read to list
@@ -57,11 +60,11 @@ import edu.harvard.hms.dbmi.avillach.operations.query.QueryVariantRow;
  * <p>The two reads, {@link #listForUser} and {@link #getForUser}, are the only callers of {@link DatasetBringOver}. Each reads in a
  * read-only transaction and answers from it. When {@link DatasetBringOver#notSettled} names datasets among the ones that transaction
  * loaded, the read transaction ends first, {@link DatasetBringOver#settle} then handles each of them in a write transaction of its own, and
- * when that changed anything the read is made once more and answered from the new state. A caller whose gateway user id is not a UUID is
- * never passed to that step, and with the step turned off, which is the default, it names no dataset: a read is then one read-only
- * transaction and writes nothing. A dataset the step cannot bring over is answered as it was read. The two reads are called with no
- * transaction open, as the controller calls them. Inside a caller's transaction the read and the writes would all join it, and one dataset
- * that fails would leave that whole transaction to roll back.
+ * when that changed anything the read is made once more and answered from the new state. That step writes the general query of a dataset
+ * and never its {@code queryId}. A caller whose gateway user id is not a UUID is never passed to that step, and with the step turned off,
+ * which is the default, it names no dataset: a read is then one read-only transaction and writes nothing. A dataset the step cannot file is
+ * answered as it was read. The two reads are called with no transaction open, as the controller calls them. Inside a caller's transaction
+ * the read and the writes would all join it, and one dataset that fails would leave that whole transaction to roll back.
  */
 @Service
 public class NamedDatasetService {
@@ -82,7 +85,7 @@ public class NamedDatasetService {
      * @param repo the named datasets
      * @param queryRepo the query rows
      * @param mapper the mapper to the public shapes
-     * @param bringOver the step that brings the datasets a read loaded over to query rows the caller owns
+     * @param bringOver the step that files the datasets a read loaded under the general query of their stored query
      * @param transactionManager the transaction manager the two reads open their read-only transactions on
      */
     public NamedDatasetService(
@@ -99,7 +102,7 @@ public class NamedDatasetService {
 
     /**
      * Lists the caller's named datasets, each with the variants of its general query that belong to the caller. Datasets of the caller that
-     * {@link DatasetBringOver} has work for are brought over first, as the class comment describes.
+     * {@link DatasetBringOver} has work for are filed under their general query first, as the class comment describes.
      *
      * @param user the caller
      * @return the caller's datasets, archived ones included
@@ -111,8 +114,8 @@ public class NamedDatasetService {
     }
 
     /**
-     * Reads one of the caller's named datasets with the variants of its general query that belong to the caller. The dataset is brought
-     * over first when {@link DatasetBringOver} has work for it, as the class comment describes.
+     * Reads one of the caller's named datasets with the variants of its general query that belong to the caller. The dataset is filed under
+     * its general query first when {@link DatasetBringOver} has work for it, as the class comment describes.
      *
      * @param user the caller
      * @param id the id of the dataset
@@ -163,9 +166,9 @@ public class NamedDatasetService {
     }
 
     /**
-     * Names a query as a dataset of the caller. The dataset's {@code queryId} is set to the query, and the dataset is filed under the
-     * general query of that query row. The query row must belong to the caller, by the gateway user id, or have no owner. That is checked
-     * before anything is saved, so a refused request stores nothing.
+     * Names a query as a dataset of the caller. The dataset's {@code queryId} is set to the query. The dataset is filed under the general
+     * query of that query row when the row has an owner, and under none when it has no owner. The query row must belong to the caller, by
+     * the gateway user id, or have no owner. That is checked before anything is saved, so a refused request stores nothing.
      *
      * @param user the caller
      * @param req the query to name and the name, archived state and metadata to store
@@ -178,7 +181,7 @@ public class NamedDatasetService {
         String email = requireEmail(user);
         Query query = resolveQuery(req.queryId());
         requireOwnedByCallerOrOwnerless(user, query);
-        NamedDataset created = underTheGeneralQueryOfItsRow(mapper.toEntity(email, query, req));
+        NamedDataset created = mapper.toEntity(email, query, req).setQueryToVariantUuid(generalQueryOfAnOwnedRow(query));
         return withVariants(user, List.of(saveOrConflict(created, req.queryId(), email))).getFirst();
     }
 
@@ -188,8 +191,12 @@ public class NamedDatasetService {
      *
      * <p>The query to move to must belong to the caller, by the gateway user id, or have no owner. A request that names another user's
      * query is refused before anything is changed. A request that names the query the dataset already points at moves nothing and makes no
-     * owner check. Either way the dataset is filed under the general query of the query row it ends up on, so moving it onto a query row
-     * that has no owner leaves it with no general query.
+     * owner check.
+     *
+     * <p>The general query of the dataset follows the query row it ends up on. A row that has an owner gives the dataset its own general
+     * query. A row with no owner that the dataset is moved onto leaves the dataset with no general query, and the next read derives one. A
+     * row with no owner that the dataset was on already leaves the general query of the dataset as it is, so a rename or an archive keeps
+     * it.
      *
      * @param user the caller
      * @param id the id of the dataset
@@ -202,12 +209,16 @@ public class NamedDatasetService {
     public NamedDatasetDto update(GatewayUser user, UUID id, NamedDatasetRequestDto req) {
         String email = requireEmail(user);
         NamedDataset existing = repo.findByUuidAndUser(id, email).orElseThrow(() -> notFound(id));
-        if (existing.getQuery() == null || !existing.getQuery().getUuid().equals(req.queryId())) {
+        boolean moved = existing.getQuery() == null || !existing.getQuery().getUuid().equals(req.queryId());
+        if (moved) {
             Query query = resolveQuery(req.queryId());
             requireOwnedByCallerOrOwnerless(user, query);
             existing.setQuery(query);
         }
-        underTheGeneralQueryOfItsRow(existing);
+        Query row = existing.getQuery();
+        if (row.getUserUuid() != null || moved) {
+            existing.setQueryToVariantUuid(generalQueryOfAnOwnedRow(row));
+        }
         existing.setName(req.name()).setArchived(req.archived()).setMetadata(req.metadata());
         return withVariants(user, List.of(saveOrConflict(existing, req.queryId(), email))).getFirst();
     }
@@ -258,15 +269,13 @@ public class NamedDatasetService {
     }
 
     /**
-     * Files a dataset under the general query of the query row it points at, or under none when it points at no row or that row has no
-     * general query.
+     * Returns the general query a dataset on the given query row takes from that row.
      *
-     * @param dataset the dataset, pointing at the query row it is to keep
-     * @return the same dataset
+     * @param row the query row a dataset points at
+     * @return the general query of the row when the row has an owner, and null when it has none
      */
-    private static NamedDataset underTheGeneralQueryOfItsRow(NamedDataset dataset) {
-        Query row = dataset.getQuery();
-        return dataset.setQueryToVariantUuid(row == null ? null : row.getQueryToVariantUuid());
+    private static UUID generalQueryOfAnOwnedRow(Query row) {
+        return row.getUserUuid() == null ? null : row.getQueryToVariantUuid();
     }
 
     /**

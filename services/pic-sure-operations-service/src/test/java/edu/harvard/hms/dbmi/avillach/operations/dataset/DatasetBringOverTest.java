@@ -1,12 +1,12 @@
 package edu.harvard.hms.dbmi.avillach.operations.dataset;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,23 +24,21 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Operator;
@@ -55,13 +53,9 @@ import edu.harvard.hms.dbmi.avillach.operations.query.QueryPersistenceService;
 import edu.harvard.hms.dbmi.avillach.operations.query.QueryRepository;
 
 /**
- * Covers the step that brings a caller's datasets over when they are read, through the two reads of {@link NamedDatasetService}, on H2 with
- * the step turned on. No test transaction is open, so every read and every write commits or rolls back as it does in the deployed service,
- * and each test deletes the rows it committed.
- *
- * <p>{@link #BROUGHT_OVER_BODY} is the body the step stores for {@link #STORED_BODY}. {@code QueryServiceTest} in the query service feeds
- * the same text to the status, result and submit paths, so the body asserted here is the body proven readable there. Change the two
- * together.
+ * Covers the step that files a caller's datasets under the general query of their stored query when they are read, through the two reads of
+ * {@link NamedDatasetService}, on H2 with the step turned on. No test transaction is open, so every read and every write commits or rolls
+ * back as it does in the deployed service, and each test deletes the rows it committed.
  */
 @SpringBootTest(properties = "picsure.operations.dataset-bring-over.enabled=true")
 @ExtendWith(OutputCaptureExtension.class)
@@ -73,6 +67,7 @@ class DatasetBringOverTest {
     private static final UUID ALICE_ID = UUID.fromString("5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11");
     private static final GatewayUser ALICE = new GatewayUser(ALICE_ID.toString(), "auth0|alice", ALICE_EMAIL, null, Set.of());
     private static final UUID BOB_ID = UUID.fromString("7c1b1f0e-2a3b-4c4d-8e5f-0a1b2c3d4e5f");
+    private static final GatewayUser BOB_WITH_ALICES_EMAIL = new GatewayUser(BOB_ID.toString(), "auth0|bob", ALICE_EMAIL, null, Set.of());
     private static final Instant SAVED_LONG_AGO = Instant.parse("2025-03-04T05:06:07Z");
     private static final String CONSENTS = "\\_consents\\";
 
@@ -102,25 +97,19 @@ class DatasetBringOverTest {
             ), List.of(), ResultType.DATAFRAME, null, null
         );
 
+    /** The ids the query service derives when Alice submits {@link #STORED_QUERY}: of the row it saves and of its general query. */
     private static final UUID OWNED_ID = QueryIdentity.idFor(ALICE_ID, STORED_QUERY);
     private static final UUID GENERAL_ID = QueryIdentity.generalIdFor(ALICE_ID, STORED_QUERY);
 
-    /** The body the step stores for {@link #STORED_BODY} and Alice. The same text is in {@code QueryServiceTest} of the query service. */
-    private static final String BROUGHT_OVER_BODY = "{\"@type\":\"FederatedQueryRequest\","
-        + "\"query\":{\"select\":[\"\\\\demographics\\\\AGE\\\\\"],\"authorizationFilters\":[],"
-        + "\"phenotypicClause\":{\"not\":null,\"phenotypicClauses\":["
-        + "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demographics\\\\SEX\\\\\",\"values\":[\"female\"],\"min\":null,\"max\":null,\"not\":null}],"
-        + "\"operator\":\"AND\"},\"genomicFilters\":[],\"expectedResultType\":\"DATAFRAME\","
-        + "\"picsureId\":\"024abf78-fcdc-54cc-b416-c173cc5bd4ee\",\"id\":null},\"commonAreaUUID\":\"7a1c0c5e-2f0b-4c7e-9d7a-3b1f2e4d5c6a\"}";
-
-    /** A v3 query that names no consent, as text and as the record the step reads it into. */
-    private static final String COUNT_QUERY_JSON =
-        "\"query\":{\"select\":[\"\\\\demographics\\\\AGE\\\\\"],\"authorizationFilters\":[],\"phenotypicClause\":null,"
-            + "\"genomicFilters\":[],\"expectedResultType\":\"COUNT\"}";
+    /** A v3 query that names no consent, as a stored body and as the record the step reads it into. */
+    private static final String COUNT_BODY =
+        "{\"query\":{\"select\":[\"\\\\demographics\\\\AGE\\\\\"],\"authorizationFilters\":[],\"phenotypicClause\":null,"
+            + "\"genomicFilters\":[],\"expectedResultType\":\"COUNT\"}}";
     private static final edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query COUNT_QUERY =
         new edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query(
             List.of("\\demographics\\AGE\\"), List.of(), null, List.of(), ResultType.COUNT, null, null
         );
+    private static final UUID COUNT_GENERAL_ID = QueryIdentity.generalIdFor(ALICE_ID, COUNT_QUERY);
 
     @Autowired
     private NamedDatasetService service;
@@ -152,7 +141,7 @@ class DatasetBringOverTest {
     }
 
     @Test
-    void listBringsOverADatasetOnAnOwnerlessRow(CapturedOutput output) {
+    void listFilesADatasetOnAnOwnerlessRowUnderTheDerivedGeneralQueryAndKeepsItsQueryId(CapturedOutput output) {
         Query ownerless = storedOwnerless(STORED_BODY);
         UUID dataset = datasetOn(ownerless);
         Map<String, Object> ownerlessBefore = rowOf("query", ownerless.getUuid());
@@ -161,21 +150,23 @@ class DatasetBringOverTest {
 
         assertThat(listed).singleElement().satisfies(answer -> {
             assertThat(answer.uuid()).isEqualTo(dataset);
-            assertThat(answer.query().uuid()).isEqualTo(OWNED_ID);
-            assertThat(answer.queries()).containsExactly(new LinkedQueryDto(OWNED_ID, false, "DATAFRAME"));
+            assertThat(answer.query().uuid()).isEqualTo(ownerless.getUuid());
+            assertThat(answer.queries()).isEmpty();
         });
-        assertThat(rowOf("named_dataset", dataset)).containsEntry("queryId", hex(OWNED_ID))
-            .containsEntry("query_to_variant_uuid", hex(GENERAL_ID));
+        assertThat(rowOf("named_dataset", dataset)).containsEntry("queryId", hex(ownerless.getUuid()))
+            .containsEntry("query_to_variant_uuid", hex(GENERAL_ID)).containsEntry("name", "cohort");
         assertThat(rowOf("query_to_variant", GENERAL_ID)).containsEntry("user_uuid", hex(ALICE_ID));
-        assertThat(rowOf("query", ownerless.getUuid())).isEqualTo(ownerlessBefore).containsEntry("user_uuid", null);
-        assertThat(count("query")).isEqualTo(2);
-        assertThat(output.getAll())
-            .contains("Brought dataset " + dataset + " over from query " + ownerless.getUuid() + " to query " + OWNED_ID)
+        assertThat(rowOf("query", ownerless.getUuid())).isEqualTo(ownerlessBefore).containsEntry("user_uuid", null)
+            .containsEntry("query_to_variant_uuid", null);
+        assertThat(count("query")).isEqualTo(1);
+        assertThat(count("query_to_variant")).isEqualTo(1);
+        assertThat(count("query_run")).isZero();
+        assertThat(output.getAll()).contains("Brought dataset " + dataset + " over to general query " + GENERAL_ID)
             .doesNotContain(ALICE_EMAIL).doesNotContain("phs001").doesNotContain("demographics");
     }
 
     @Test
-    void bringingOverInsertsOneQueryRowAndUpdatesNone() {
+    void bringingOverInsertsNoQueryRowAndUpdatesNone() {
         datasetOn(storedOwnerless(STORED_BODY));
         Statistics statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
         statistics.setStatisticsEnabled(true);
@@ -184,121 +175,13 @@ class DatasetBringOverTest {
 
             service.listForUser(ALICE);
 
-            assertThat(statistics.getEntityStatistics(Query.class.getName()).getInsertCount()).isEqualTo(1);
+            assertThat(statistics.getEntityStatistics(Query.class.getName()).getInsertCount()).isZero();
             assertThat(statistics.getEntityStatistics(Query.class.getName()).getUpdateCount()).isZero();
             assertThat(statistics.getEntityStatistics(NamedDataset.class.getName()).getUpdateCount()).isEqualTo(1);
         } finally {
             statistics.setStatisticsEnabled(false);
         }
-    }
-
-    @Test
-    void broughtOverRowHasNoConsentsNoStatusNoRunAndTheOldStartTime() {
-        Query ownerless = storedOwnerless(STORED_BODY);
-        datasetOn(ownerless);
-
-        service.listForUser(ALICE);
-
-        Map<String, Object> owned = rowOf("query", OWNED_ID);
-        assertThat(owned).containsEntry("user_uuid", hex(ALICE_ID)).containsEntry("version", "3")
-            .containsEntry("resourceResultId", OWNED_ID.toString()).containsEntry("consents", null).containsEntry("status", null)
-            .containsEntry("readyTime", null).containsEntry("metadata", null).containsEntry("query_to_variant_uuid", hex(GENERAL_ID))
-            .containsEntry("sample", false).containsEntry("result_type", "DATAFRAME");
-        Query loaded = queries.findById(OWNED_ID).orElseThrow();
-        assertThat(loaded.getStartTime()).isEqualTo(SAVED_LONG_AGO).isEqualTo(ownerless.getStartTime());
-        assertThat(loaded.getConsents()).isNull();
-        assertThat(loaded.getStatus()).isNull();
-        assertThat(count("query_run")).isZero();
-    }
-
-    @Test
-    void broughtOverBodyIsTheV3QueryWithoutConsentValues() throws Exception {
-        datasetOn(storedOwnerless(STORED_BODY));
-
-        service.listForUser(ALICE);
-
-        String body = queries.findById(OWNED_ID).orElseThrow().getQuery();
-        assertThat(body).isEqualTo(BROUGHT_OVER_BODY).doesNotContain("phs001").doesNotContain("resourceCredentials")
-            .doesNotContain("resourceUUID").doesNotContain("memberOfAnOlderRelease");
-        JsonNode query = MAPPER.readTree(body).get("query");
-        assertThat(MAPPER.treeToValue(query, edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query.class))
-            .isEqualTo(STORED_QUERY.setPicsureId(OWNED_ID));
-    }
-
-    /**
-     * The step leaves {@code resourceUUID} off the body it stores, so a stored value that is not a UUID does not keep a dataset from being
-     * brought over. The query service reads the body of an owned row as a {@link QueryRequest}, which reads a body with no
-     * {@code resourceUUID} as one with a null resource.
-     */
-    @ParameterizedTest
-    @ValueSource(
-        strings = {"", "\"resourceUUID\":null,", "\"resourceUUID\":\"0e3ad2a1-9b1c-4d53-8f52-2f1d6f0a7c11\",",
-            "\"resourceUUID\":\"0E3AD2A1-9B1C-4D53-8F52-2F1D6F0A7C11\",", "\"resourceUUID\":\"not-a-uuid\",", "\"resourceUUID\":\"\",",
-            "\"resourceUUID\":\"   \",", "\"resourceUUID\":\" 0e3ad2a1-9b1c-4d53-8f52-2f1d6f0a7c11 \",",
-            "\"resourceUUID\":\"0e3ad2a19b1c4d538f522f1d6f0a7c11\",", "\"resourceUUID\":\"AAAAAAAAAAAAAAAAAAAAAA==\",",
-            "\"resourceUUID\":12,", "\"resourceUUID\":true,", "\"resourceUUID\":{},",
-            "\"resourceUUID\":[\"0e3ad2a1-9b1c-4d53-8f52-2f1d6f0a7c11\"],"}
-    )
-    void datasetIsBroughtOverWithoutTheResourceUuidOfItsStoredRequest(String resourceUuidMember, CapturedOutput output) throws Exception {
-        UUID ownedId = QueryIdentity.idFor(ALICE_ID, COUNT_QUERY);
-        Query ownerless = storedOwnerless("{" + resourceUuidMember + COUNT_QUERY_JSON + "}");
-        UUID dataset = datasetOn(ownerless);
-
-        List<NamedDatasetDto> listed = service.listForUser(ALICE);
-        NamedDatasetDto read = service.getForUser(ALICE, dataset);
-
-        assertThat(listed).singleElement().isEqualTo(read);
-        assertThat(read.query().uuid()).isEqualTo(ownedId);
-        assertThat(read.queries()).containsExactly(new LinkedQueryDto(ownedId, false, "COUNT"));
-        String body = queries.findById(ownedId).orElseThrow().getQuery();
-        JsonNode broughtOver = MAPPER.readTree(body);
-        assertThat(broughtOver.has("resourceUUID")).isFalse();
-        assertThat(broughtOver.fieldNames()).toIterable().containsExactly("query");
-        QueryRequest asTheQueryServiceReadsIt = MAPPER.readValue(body, QueryRequest.class);
-        assertThat(asTheQueryServiceReadsIt.getResourceUUID()).isNull();
-        assertThat(MAPPER.convertValue(asTheQueryServiceReadsIt.getQuery(), edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query.class))
-            .isEqualTo(COUNT_QUERY.setPicsureId(ownedId));
-        assertThat(queries.findById(ownerless.getUuid()).orElseThrow().getQuery())
-            .isEqualTo("{" + resourceUuidMember + COUNT_QUERY_JSON + "}");
-        assertThat(output.getAll())
-            .contains("Brought dataset " + dataset + " over from query " + ownerless.getUuid() + " to query " + ownedId)
-            .doesNotContain("Left dataset ").doesNotContain("Could not bring dataset");
-    }
-
-    /**
-     * Pins which members of a stored request a brought-over body holds: every member but {@code resourceCredentials} and
-     * {@code resourceUUID}, a member no release defines included, with {@code query} replaced by the v3 query under the new row id. The
-     * members are copied as they were stored, so the new body holds the stored {@code requesterEmail}. Whether to copy only a fixed list of
-     * members is not decided. A change of what is copied must change this test, so that it is made on purpose.
-     */
-    @Test
-    void broughtOverBodyHoldsEveryMemberOfTheStoredRequestButTheCredentialsAndTheResourceUuid(CapturedOutput output) throws Exception {
-        String stored = "{\"@type\":\"GeneralQueryRequest\",\"resourceUUID\":\"0e3ad2a1-9b1c-4d53-8f52-2f1d6f0a7c11\","
-            + "\"commonAreaUUID\":\"7a1c0c5e-2f0b-4c7e-9d7a-3b1f2e4d5c6a\",\"requesterEmail\":\"requester@example.org\","
-            + "\"institutionOfOrigin\":\"Example University\",\"resourceCredentials\":{\"token\":\"secret\"},"
-            + "\"memberNoReleaseDefines\":{\"kept\":[1,true,null]}," + COUNT_QUERY_JSON + "}";
-        UUID ownedId = QueryIdentity.idFor(ALICE_ID, COUNT_QUERY);
-        datasetOn(storedOwnerless(stored));
-
-        service.listForUser(ALICE);
-
-        String body = queries.findById(ownedId).orElseThrow().getQuery();
-        JsonNode broughtOver = MAPPER.readTree(body);
-        JsonNode before = MAPPER.readTree(stored);
-        List<String> copiedAsStored = List.of("@type", "commonAreaUUID", "requesterEmail", "institutionOfOrigin", "memberNoReleaseDefines");
-        List<String> members = new ArrayList<>();
-        broughtOver.fieldNames().forEachRemaining(members::add);
-        assertThat(members).containsExactlyInAnyOrder(
-            "@type", "commonAreaUUID", "requesterEmail", "institutionOfOrigin", "memberNoReleaseDefines", "query"
-        );
-        assertThat(copiedAsStored).allSatisfy(member -> assertThat(broughtOver.get(member)).isEqualTo(before.get(member)));
-        assertThat(MAPPER.treeToValue(broughtOver.get("query"), edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query.class))
-            .isEqualTo(COUNT_QUERY.setPicsureId(ownedId));
-        QueryRequest asTheQueryServiceReadsIt = MAPPER.readValue(body, QueryRequest.class);
-        assertThat(asTheQueryServiceReadsIt.getResourceUUID()).isNull();
-        assertThat(MAPPER.convertValue(asTheQueryServiceReadsIt.getQuery(), edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query.class))
-            .isEqualTo(COUNT_QUERY.setPicsureId(ownedId));
-        assertThat(output.getAll()).doesNotContain("requester@example.org").doesNotContain("secret").doesNotContain("Example University");
+        assertThat(count("query")).isEqualTo(1);
     }
 
     @Test
@@ -310,22 +193,19 @@ class DatasetBringOverTest {
         Query ownerless = storedOwnerless(beforeV3, null);
         UUID dataset = datasetOn(ownerless);
         edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query asTheCallerWouldSubmitIt = queryTheDatasetApiReturnsFor(ownerless);
-        UUID expectedId = QueryIdentity.idFor(ALICE_ID, asTheCallerWouldSubmitIt);
+        UUID expectedGeneral = QueryIdentity.generalIdFor(ALICE_ID, asTheCallerWouldSubmitIt);
 
         NamedDatasetDto read = service.getForUser(ALICE, dataset);
 
-        assertThat(read.query().uuid()).isEqualTo(expectedId);
-        assertThat(read.queries()).containsExactly(new LinkedQueryDto(expectedId, false, "COUNT"));
-        Query owned = queries.findById(expectedId).orElseThrow();
-        assertThat(owned.getVersion()).isEqualTo("3");
-        assertThat(owned.getQueryToVariantUuid()).isEqualTo(QueryIdentity.generalIdFor(ALICE_ID, asTheCallerWouldSubmitIt));
-        assertThat(owned.getQuery()).doesNotContain("phs001").doesNotContain("categoryFilters").contains("phenotypicClause");
-        JsonNode stored = MAPPER.readTree(owned.getQuery()).get("query");
-        assertThat(MAPPER.treeToValue(stored, edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query.class))
-            .isEqualTo(asTheCallerWouldSubmitIt.setPicsureId(expectedId));
+        assertThat(read.query().uuid()).isEqualTo(ownerless.getUuid());
+        assertThat(rowOf("named_dataset", dataset)).containsEntry("queryId", hex(ownerless.getUuid()))
+            .containsEntry("query_to_variant_uuid", hex(expectedGeneral));
         assertThat(asTheCallerWouldSubmitIt.allFilters()).extracting(PhenotypicFilter::conceptPath)
             .containsExactlyInAnyOrder("\\demographics\\SEX\\", "\\demographics\\AGE\\");
-        assertThat(queries.findById(ownerless.getUuid()).orElseThrow().getQuery()).isEqualTo(beforeV3);
+        Query unchanged = queries.findById(ownerless.getUuid()).orElseThrow();
+        assertThat(unchanged.getQuery()).isEqualTo(beforeV3);
+        assertThat(unchanged.getVersion()).isNull();
+        assertThat(count("query")).isEqualTo(1);
     }
 
     @Test
@@ -435,17 +315,19 @@ class DatasetBringOverTest {
 
     @Test
     void getBringsOverTheOneDataset() {
-        UUID read = datasetOn(storedOwnerless(STORED_BODY));
-        Query other = storedOwnerless("{\"query\":{\"select\":[],\"phenotypicClause\":null,\"expectedResultType\":\"COUNT\"}}");
+        Query ownerless = storedOwnerless(STORED_BODY);
+        UUID read = datasetOn(ownerless);
+        Query other = storedOwnerless(COUNT_BODY);
         UUID notRead = datasetOn(other);
 
         NamedDatasetDto answer = service.getForUser(ALICE, read);
 
-        assertThat(answer.query().uuid()).isEqualTo(OWNED_ID);
-        assertThat(answer.queries()).containsExactly(new LinkedQueryDto(OWNED_ID, false, "DATAFRAME"));
+        assertThat(answer.query().uuid()).isEqualTo(ownerless.getUuid());
+        assertThat(rowOf("named_dataset", read)).containsEntry("queryId", hex(ownerless.getUuid()))
+            .containsEntry("query_to_variant_uuid", hex(GENERAL_ID));
         assertThat(rowOf("named_dataset", notRead)).containsEntry("queryId", hex(other.getUuid()))
             .containsEntry("query_to_variant_uuid", null);
-        assertThat(count("query")).isEqualTo(3);
+        assertThat(count("query")).isEqualTo(2);
         assertThat(count("query_to_variant")).isEqualTo(1);
     }
 
@@ -487,6 +369,21 @@ class DatasetBringOverTest {
     }
 
     @Test
+    void datasetOnTheCallersOwnRowUnderAnotherGeneralQueryIsCorrected() {
+        UUID general = QueryFixtures.storedGeneralQuery(jdbc, ALICE_ID);
+        UUID stale = QueryFixtures.storedGeneralQuery(jdbc, ALICE_ID);
+        Query own = queries.save(QueryFixtures.variant(ALICE_ID, general, false, "DATAFRAME"));
+        UUID dataset = datasetOn(own);
+        jdbc.update("UPDATE named_dataset SET query_to_variant_uuid = ? WHERE uuid = ?", bytes(stale), bytes(dataset));
+
+        NamedDatasetDto answer = service.getForUser(ALICE, dataset);
+
+        assertThat(answer.queries()).containsExactly(new LinkedQueryDto(own.getUuid(), false, "DATAFRAME"));
+        assertThat(rowOf("named_dataset", dataset)).containsEntry("queryId", hex(own.getUuid()))
+            .containsEntry("query_to_variant_uuid", hex(general));
+    }
+
+    @Test
     void datasetOnAnotherUsersRowIsLeft(CapturedOutput output) {
         UUID bobsGeneral = QueryFixtures.storedGeneralQuery(jdbc, BOB_ID);
         Query bobs = queries.save(QueryFixtures.variant(BOB_ID, bobsGeneral, false, "DATAFRAME"));
@@ -504,27 +401,20 @@ class DatasetBringOverTest {
     }
 
     @Test
-    void anExistingOwnedRowIsReusedAndNotOverwritten() {
-        Map<String, List<String>> consents = Map.of(CONSENTS, List.of("phs001.c1"));
-        String submittedBody = "{\"query\":{\"select\":[\"\\\\demographics\\\\AGE\\\\\"]},\"submitted\":\"by the caller\"}";
-        queryPersistence.save(
-            new SaveQueryRequest(
-                submittedBody, OWNED_ID.toString(), "AVAILABLE", "3",
-                Base64.getEncoder().encodeToString("{}".getBytes(StandardCharsets.UTF_8)), OWNED_ID, ALICE_ID, consents, "FIRST_SUBMIT",
-                GENERAL_ID, false, "DATAFRAME"
-            )
-        );
+    void aGeneralQueryTheCallerAlreadyHasIsReusedAndItsRowsAreListed() {
+        saveAsTheQueryServiceDoes(OWNED_ID, false, "DATAFRAME");
         Map<String, Object> ownedBefore = rowOf("query", OWNED_ID);
-        UUID dataset = datasetOn(storedOwnerless(STORED_BODY));
+        Map<String, Object> generalBefore = rowOf("query_to_variant", GENERAL_ID);
+        Query ownerless = storedOwnerless(STORED_BODY);
+        UUID dataset = datasetOn(ownerless);
 
         NamedDatasetDto answer = service.listForUser(ALICE).getFirst();
 
-        assertThat(answer.query().uuid()).isEqualTo(OWNED_ID);
-        assertThat(answer.query().status()).isEqualTo(PicSureStatus.AVAILABLE);
+        assertThat(answer.query().uuid()).isEqualTo(ownerless.getUuid());
         assertThat(answer.queries()).containsExactly(new LinkedQueryDto(OWNED_ID, false, "DATAFRAME"));
         assertThat(rowOf("query", OWNED_ID)).isEqualTo(ownedBefore);
-        assertThat(queries.findById(OWNED_ID).orElseThrow().getQuery()).isEqualTo(submittedBody);
-        assertThat(rowOf("named_dataset", dataset)).containsEntry("queryId", hex(OWNED_ID))
+        assertThat(rowOf("query_to_variant", GENERAL_ID)).isEqualTo(generalBefore);
+        assertThat(rowOf("named_dataset", dataset)).containsEntry("queryId", hex(ownerless.getUuid()))
             .containsEntry("query_to_variant_uuid", hex(GENERAL_ID));
         assertThat(count("query")).isEqualTo(2);
         assertThat(count("query_run")).isEqualTo(1);
@@ -532,19 +422,40 @@ class DatasetBringOverTest {
     }
 
     @Test
-    void secondDatasetWithTheSameQueryIsLeft(CapturedOutput output) {
+    void aRowSavedUnderTheGeneralQueryAfterTheBringOverIsListedInTheDataset() {
+        Query ownerless = storedOwnerless(STORED_BODY);
+        UUID dataset = datasetOn(ownerless);
+        assertThat(service.getForUser(ALICE, dataset).queries()).isEmpty();
+        UUID sampleRow = UUID.randomUUID();
+
+        saveAsTheQueryServiceDoes(OWNED_ID, false, "DATAFRAME");
+        saveAsTheQueryServiceDoes(sampleRow, true, "DATAFRAME");
+
+        NamedDatasetDto read = service.getForUser(ALICE, dataset);
+        assertThat(read.query().uuid()).isEqualTo(ownerless.getUuid());
+        assertThat(read.queries())
+            .containsExactly(new LinkedQueryDto(OWNED_ID, false, "DATAFRAME"), new LinkedQueryDto(sampleRow, true, "DATAFRAME"));
+        assertThat(service.listForUser(ALICE)).singleElement().isEqualTo(read);
+        assertThat(rowOf("named_dataset", dataset)).containsEntry("queryId", hex(ownerless.getUuid()))
+            .containsEntry("query_to_variant_uuid", hex(GENERAL_ID));
+        assertThat(count("query_to_variant")).isEqualTo(1);
+    }
+
+    @Test
+    void twoDatasetsThatHoldTheSameQueryGetTheSameGeneralQuery(CapturedOutput output) {
         Query one = storedOwnerless(STORED_BODY);
         Query other = storedOwnerless(STORED_BODY);
-        datasetOn(one);
-        datasetOn(other);
+        UUID onOne = datasetOn(one);
+        UUID onOther = datasetOn(other);
 
         List<NamedDatasetDto> listed = service.listForUser(ALICE);
 
-        assertThat(listed).extracting(answer -> answer.query().uuid()).hasSize(2).containsOnlyOnce(OWNED_ID)
-            .containsAnyOf(one.getUuid(), other.getUuid());
-        assertThat(listed).filteredOn(answer -> !answer.query().uuid().equals(OWNED_ID)).singleElement()
-            .satisfies(left -> assertThat(left.queries()).isEmpty());
-        assertThat(count("query")).isEqualTo(3);
+        assertThat(listed).extracting(answer -> answer.query().uuid()).containsExactlyInAnyOrder(one.getUuid(), other.getUuid());
+        assertThat(rowOf("named_dataset", onOne)).containsEntry("queryId", hex(one.getUuid()))
+            .containsEntry("query_to_variant_uuid", hex(GENERAL_ID));
+        assertThat(rowOf("named_dataset", onOther)).containsEntry("queryId", hex(other.getUuid()))
+            .containsEntry("query_to_variant_uuid", hex(GENERAL_ID));
+        assertThat(count("query")).isEqualTo(2);
         assertThat(count("query_to_variant")).isEqualTo(1);
         Map<String, List<Map<String, Object>>> afterTheFirst = everyRow();
 
@@ -552,7 +463,116 @@ class DatasetBringOverTest {
 
         assertThat(everyRow()).isEqualTo(afterTheFirst);
         assertThat(output.getAll()).doesNotContain("Could not bring dataset");
+        assertThat(output.getAll().split("Brought dataset ", -1)).hasSize(3);
+    }
+
+    @Test
+    void aSecondUserWithTheSameEmailDoesNotOverwriteTheGeneralQueryOfTheFirst(CapturedOutput output) {
+        Query ownerless = storedOwnerless(STORED_BODY);
+        UUID dataset = datasetOn(ownerless);
+        List<NamedDatasetDto> asAlice = service.listForUser(ALICE);
+        saveAsTheQueryServiceDoes(OWNED_ID, false, "DATAFRAME");
+        Map<String, List<Map<String, Object>>> afterAlice = everyRow();
+
+        List<NamedDatasetDto> asBob = service.listForUser(BOB_WITH_ALICES_EMAIL);
+        NamedDatasetDto readAsBob = service.getForUser(BOB_WITH_ALICES_EMAIL, dataset);
+
+        assertThat(asBob).singleElement().isEqualTo(readAsBob).isEqualTo(asAlice.getFirst());
+        assertThat(readAsBob.queries()).isEmpty();
+        assertThat(everyRow()).isEqualTo(afterAlice);
+        assertThat(rowOf("named_dataset", dataset)).containsEntry("query_to_variant_uuid", hex(GENERAL_ID));
+        assertThat(count("query_to_variant")).isEqualTo(1);
+        assertThat(service.getForUser(ALICE, dataset).queries()).containsExactly(new LinkedQueryDto(OWNED_ID, false, "DATAFRAME"));
+        assertThat(output.getAll()).doesNotContain("Could not bring dataset");
         assertThat(output.getAll().split("Brought dataset ", -1)).hasSize(2);
+    }
+
+    @Test
+    void aRenameAndAnArchiveKeepTheGeneralQuery() {
+        Query ownerless = storedOwnerless(STORED_BODY);
+        UUID dataset = datasetOn(ownerless);
+        service.listForUser(ALICE);
+        saveAsTheQueryServiceDoes(OWNED_ID, false, "DATAFRAME");
+
+        NamedDatasetDto renamed = service.update(ALICE, dataset, new NamedDatasetRequestDto(ownerless.getUuid(), "renamed", false, null));
+
+        assertThat(renamed.name()).isEqualTo("renamed");
+        assertThat(renamed.queries()).containsExactly(new LinkedQueryDto(OWNED_ID, false, "DATAFRAME"));
+        assertThat(rowOf("named_dataset", dataset)).containsEntry("queryId", hex(ownerless.getUuid()))
+            .containsEntry("query_to_variant_uuid", hex(GENERAL_ID)).containsEntry("name", "renamed");
+
+        NamedDatasetDto archived = service.update(ALICE, dataset, new NamedDatasetRequestDto(ownerless.getUuid(), "renamed", true, null));
+
+        assertThat(archived.archived()).isTrue();
+        assertThat(archived.queries()).containsExactly(new LinkedQueryDto(OWNED_ID, false, "DATAFRAME"));
+        assertThat(rowOf("named_dataset", dataset)).containsEntry("queryId", hex(ownerless.getUuid()))
+            .containsEntry("query_to_variant_uuid", hex(GENERAL_ID));
+    }
+
+    @Test
+    void aPutOntoAnOwnedRowTakesTheGeneralQueryOfThatRow() {
+        UUID dataset = datasetOn(storedOwnerless(STORED_BODY));
+        service.listForUser(ALICE);
+        UUID general = QueryFixtures.storedGeneralQuery(jdbc, ALICE_ID);
+        Query own = queries.save(QueryFixtures.variant(ALICE_ID, general, false, "COUNT"));
+
+        NamedDatasetDto moved = service.update(ALICE, dataset, new NamedDatasetRequestDto(own.getUuid(), "cohort", false, null));
+
+        assertThat(moved.query().uuid()).isEqualTo(own.getUuid());
+        assertThat(moved.queries()).containsExactly(new LinkedQueryDto(own.getUuid(), false, "COUNT"));
+        assertThat(rowOf("named_dataset", dataset)).containsEntry("queryId", hex(own.getUuid()))
+            .containsEntry("query_to_variant_uuid", hex(general));
+        Map<String, List<Map<String, Object>>> afterThePut = everyRow();
+
+        assertThat(service.getForUser(ALICE, dataset)).isEqualTo(moved);
+
+        assertThat(everyRow()).isEqualTo(afterThePut);
+    }
+
+    @Test
+    void aPutOntoAnotherOwnerlessRowClearsTheGeneralQueryAndTheNextReadDerivesTheNewOne() {
+        UUID dataset = datasetOn(storedOwnerless(STORED_BODY));
+        service.listForUser(ALICE);
+        Query other = storedOwnerless(COUNT_BODY);
+
+        NamedDatasetDto moved = service.update(ALICE, dataset, new NamedDatasetRequestDto(other.getUuid(), "cohort", false, null));
+
+        assertThat(moved.query().uuid()).isEqualTo(other.getUuid());
+        assertThat(moved.queries()).isEmpty();
+        assertThat(rowOf("named_dataset", dataset)).containsEntry("queryId", hex(other.getUuid()))
+            .containsEntry("query_to_variant_uuid", null);
+
+        NamedDatasetDto read = service.getForUser(ALICE, dataset);
+
+        assertThat(read.query().uuid()).isEqualTo(other.getUuid());
+        assertThat(rowOf("named_dataset", dataset)).containsEntry("queryId", hex(other.getUuid()))
+            .containsEntry("query_to_variant_uuid", hex(COUNT_GENERAL_ID));
+        assertThat(rowOf("query_to_variant", COUNT_GENERAL_ID)).containsEntry("user_uuid", hex(ALICE_ID));
+        assertThat(count("query")).isEqualTo(2);
+    }
+
+    /**
+     * A stack that does not know the general query column moves {@code queryId} and leaves the column, so the dataset is under the general
+     * query of the query it pointed at before. The next read by its user files it under the one of the query it points at now.
+     */
+    @Test
+    void aDatasetWhoseQueryIdWasMovedUnderneathIsFiledAgainOnTheNextRead(CapturedOutput output) {
+        UUID dataset = datasetOn(storedOwnerless(STORED_BODY));
+        service.listForUser(ALICE);
+        Query other = storedOwnerless(COUNT_BODY);
+        jdbc.update("UPDATE named_dataset SET queryId = ? WHERE uuid = ?", bytes(other.getUuid()), bytes(dataset));
+        assertThat(rowOf("named_dataset", dataset)).containsEntry("query_to_variant_uuid", hex(GENERAL_ID));
+
+        NamedDatasetDto read = service.getForUser(ALICE, dataset);
+
+        assertThat(read.query().uuid()).isEqualTo(other.getUuid());
+        assertThat(rowOf("named_dataset", dataset)).containsEntry("queryId", hex(other.getUuid()))
+            .containsEntry("query_to_variant_uuid", hex(COUNT_GENERAL_ID));
+        assertThat(rowOf("query_to_variant", GENERAL_ID)).containsEntry("user_uuid", hex(ALICE_ID));
+        assertThat(count("query_to_variant")).isEqualTo(2);
+        assertThat(count("query")).isEqualTo(2);
+        assertThat(output.getAll()).contains("Brought dataset " + dataset + " over to general query " + COUNT_GENERAL_ID)
+            .doesNotContain("Could not bring dataset");
     }
 
     @Test
@@ -560,13 +580,13 @@ class DatasetBringOverTest {
         Query ownerless = storedOwnerless(STORED_BODY);
         UUID dataset = datasetOn(ownerless);
         Map<String, List<Map<String, Object>>> before = everyRow();
-        NamedDatasetRepository refusingTheRepoint = InterceptedRepository.of(NamedDatasetRepository.class, datasets, (methodName, call) -> {
+        NamedDatasetRepository refusingTheWrite = InterceptedRepository.of(NamedDatasetRepository.class, datasets, (methodName, call) -> {
             if ("saveAndFlush".equals(methodName)) {
                 throw new DataIntegrityViolationException("refused for " + ALICE_EMAIL);
             }
             return call.proceed();
         });
-        NamedDatasetService failing = serviceWith(refusingTheRepoint, true);
+        NamedDatasetService failing = serviceWith(refusingTheWrite, true);
 
         List<NamedDatasetDto> listed = failing.listForUser(ALICE);
         NamedDatasetDto read = failing.getForUser(ALICE, dataset);
@@ -584,24 +604,23 @@ class DatasetBringOverTest {
     @Test
     void aDatasetThatFailsDoesNotStopTheNext(CapturedOutput output) {
         datasetOn(storedOwnerless(STORED_BODY));
-        datasetOn(storedOwnerless("{\"query\":{\"select\":[],\"phenotypicClause\":null,\"expectedResultType\":\"COUNT\"}}"));
-        AtomicInteger repoints = new AtomicInteger();
-        NamedDatasetRepository refusingTheFirstRepoint =
+        datasetOn(storedOwnerless(COUNT_BODY));
+        AtomicInteger writes = new AtomicInteger();
+        NamedDatasetRepository refusingTheFirstWrite =
             InterceptedRepository.of(NamedDatasetRepository.class, datasets, (methodName, call) -> {
-                if ("saveAndFlush".equals(methodName) && repoints.incrementAndGet() == 1) {
+                if ("saveAndFlush".equals(methodName) && writes.incrementAndGet() == 1) {
                     throw new DataIntegrityViolationException("refused");
                 }
                 return call.proceed();
             });
 
-        List<NamedDatasetDto> listed = serviceWith(refusingTheFirstRepoint, true).listForUser(ALICE);
+        List<NamedDatasetDto> listed = serviceWith(refusingTheFirstWrite, true).listForUser(ALICE);
 
-        assertThat(repoints).hasValue(2);
+        assertThat(writes).hasValue(2);
         assertThat(listed).hasSize(2);
-        assertThat(listed).filteredOn(answer -> answer.queries().isEmpty()).hasSize(1);
-        assertThat(listed).filteredOn(answer -> !answer.queries().isEmpty()).singleElement()
-            .satisfies(broughtOver -> assertThat(broughtOver.queries().getFirst().queryId()).isEqualTo(broughtOver.query().uuid()));
-        assertThat(count("query")).isEqualTo(3);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM named_dataset WHERE query_to_variant_uuid IS NULL", Integer.class))
+            .isEqualTo(1);
+        assertThat(count("query")).isEqualTo(2);
         assertThat(count("query_to_variant")).isEqualTo(1);
         assertThat(output.getAll().split("Could not bring dataset ", -1)).hasSize(2);
         assertThat(output.getAll().split("Brought dataset ", -1)).hasSize(2);
@@ -617,6 +636,19 @@ class DatasetBringOverTest {
             assertThat(answer.query().uuid()).isEqualTo(noBody.getUuid());
             assertThat(answer.queries()).isEmpty();
         });
+
+        assertThat(everyRow()).isEqualTo(before);
+        assertThat(output.getAll()).doesNotContain("Could not bring dataset").doesNotContain("Brought dataset ");
+    }
+
+    @Test
+    void datasetWhoseStoredBodyCannotBeReadIsLeft(CapturedOutput output) {
+        datasetOn(storedOwnerless("not a query"));
+        Map<String, List<Map<String, Object>>> before = everyRow();
+
+        assertThatThrownBy(() -> service.listForUser(ALICE)).isInstanceOfSatisfying(
+            PicsureException.class, unreadable -> assertThat(unreadable.getStatus()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR)
+        );
 
         assertThat(everyRow()).isEqualTo(before);
         assertThat(output.getAll()).doesNotContain("Could not bring dataset").doesNotContain("Brought dataset ");
@@ -638,6 +670,18 @@ class DatasetBringOverTest {
     /** Counts the entity rows inserted, updated and deleted since the statistics were last cleared. */
     private static long writesCounted(Statistics statistics) {
         return statistics.getEntityInsertCount() + statistics.getEntityUpdateCount() + statistics.getEntityDeleteCount();
+    }
+
+    /**
+     * Saves a row of Alice under the general query of {@link #STORED_QUERY}, as the query service does when she submits a variant of it.
+     */
+    private void saveAsTheQueryServiceDoes(UUID picsureId, boolean sample, String resultType) {
+        queryPersistence.save(
+            new SaveQueryRequest(
+                "{\"query\":{\"select\":[\"\\\\demographics\\\\AGE\\\\\"]}}", picsureId.toString(), "AVAILABLE", "3", null, picsureId,
+                ALICE_ID, Map.of(CONSENTS, List.of("phs001.c1")), "FIRST_SUBMIT", GENERAL_ID, sample, resultType
+            )
+        );
     }
 
     private Query storedOwnerless(String body) {

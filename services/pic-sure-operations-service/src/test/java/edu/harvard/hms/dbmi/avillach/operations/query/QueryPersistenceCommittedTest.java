@@ -42,7 +42,6 @@ import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
-import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 
 /**
  * Runs saves and updates in the transactions the service opens itself, on H2, with no test transaction around them. A refusal is therefore
@@ -58,7 +57,6 @@ class QueryPersistenceCommittedTest {
     private static final Map<String, List<String>> TWO_STUDIES = Map.of(CONSENTS, List.of("phs1.c1", "phs2.c1"));
     private static final Map<String, List<String>> ONE_STUDY = Map.of(CONSENTS, List.of("phs1.c1"));
     private static final int RESAVE_ROUNDS = 10;
-    private static final Instant NEVER_RUN_START = Instant.parse("2025-03-04T05:06:07Z");
     private static final String LONGER_THAN_THE_RESULT_TYPE_COLUMN =
         "DATAFRAME_DATAFRAME_DATAFRAME_DATAFRAME_DATAFRAME_DATAFRAME_DATAFRAME";
 
@@ -430,183 +428,66 @@ class QueryPersistenceCommittedTest {
     }
 
     @Test
-    void storeNeverRunInsertsAnOwnedRowWithNoStatusNoConsentsAndNoRun() {
-        NeverRunQuery neverRun = neverRun(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
-
-        Query returned = service.storeNeverRun(neverRun);
-
-        assertThat(returned.getUuid()).isEqualTo(neverRun.picsureId());
-        Query row = repo.findById(neverRun.picsureId()).orElseThrow();
-        assertThat(row.getUserUuid()).isEqualTo(neverRun.userUuid());
-        assertThat(row.getQueryToVariantUuid()).isEqualTo(neverRun.queryToVariantUuid());
-        assertThat(row.isSample()).isTrue();
-        assertThat(row.getResultType()).isEqualTo("DATAFRAME_PFB");
-        assertThat(row.getQuery()).isEqualTo(neverRun.query());
-        assertThat(row.getVersion()).isEqualTo("3");
-        assertThat(row.getResourceResultId()).isEqualTo(neverRun.picsureId().toString());
-        assertThat(row.getStartTime()).isEqualTo(NEVER_RUN_START);
-        assertThat(row.getCreatedAt()).isEqualTo(NEVER_RUN_START);
-        assertThat(row.getStatus()).isNull();
-        assertThat(row.getConsents()).isNull();
-        assertThat(row.getReadyTime()).isNull();
-        assertThat(row.getMetadata()).isNull();
-        assertThat(runsOf(neverRun.picsureId())).isEmpty();
-        assertThat(generalQueryRepo.findById(neverRun.queryToVariantUuid())).get().extracting(QueryToVariant::getUserUuid)
-            .isEqualTo(neverRun.userUuid());
-        StoredQuery asTheQueryServiceReadsIt = service.get(neverRun.picsureId());
-        assertThat(asTheQueryServiceReadsIt.status()).isNull();
-        assertThat(asTheQueryServiceReadsIt.consents()).isNull();
-        assertThat(asTheQueryServiceReadsIt.runId()).isNull();
-        assertThat(asTheQueryServiceReadsIt.userUuid()).isEqualTo(neverRun.userUuid());
-    }
-
-    @Test
-    void storeNeverRunStoresARowWithNoResultTypeAndNoStartTime() {
-        UUID picsureId = UUID.randomUUID();
-
-        service.storeNeverRun(new NeverRunQuery(picsureId, UUID.randomUUID(), UUID.randomUUID(), false, null, "{\"query\":{}}", null));
-
-        Query row = repo.findById(picsureId).orElseThrow();
-        assertThat(row.getResultType()).isNull();
-        assertThat(row.getStartTime()).isNull();
-        assertThat(row.isSample()).isFalse();
-    }
-
-    @Test
-    void storeNeverRunWithoutAStartTimeStampsTheCreationTimeWithTheTimeOfTheInsert() {
-        Instant inserted = Instant.parse("2026-03-04T05:06:07.008Z");
-        QueryPersistenceService stoppedClock =
-            new QueryPersistenceService(repo, runRepo, generalQueryRepo, transactionManager, Clock.fixed(inserted, ZoneOffset.UTC));
-        UUID picsureId = UUID.randomUUID();
-
-        stoppedClock.storeNeverRun(new NeverRunQuery(picsureId, UUID.randomUUID(), UUID.randomUUID(), false, null, "{\"query\":{}}", null));
-
-        Query row = repo.findById(picsureId).orElseThrow();
-        assertThat(row.getStartTime()).isNull();
-        assertThat(row.getCreatedAt()).isEqualTo(inserted);
-    }
-
-    @Test
-    void storeNeverRunLeavesTheCreationTimeOfARowAlreadyStoredUnderTheId() {
-        Instant inserted = Instant.parse("2026-03-04T05:06:07.008Z");
-        QueryPersistenceService stoppedClock =
-            new QueryPersistenceService(repo, runRepo, generalQueryRepo, transactionManager, Clock.fixed(inserted, ZoneOffset.UTC));
-        NeverRunQuery neverRun = neverRun(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
-        stoppedClock.save(variant(neverRun.picsureId(), neverRun.userUuid(), neverRun.queryToVariantUuid(), true, "DATAFRAME_PFB"));
-
-        service.storeNeverRun(neverRun);
-
-        assertThat(repo.findById(neverRun.picsureId()).orElseThrow().getCreatedAt()).isEqualTo(inserted);
-    }
-
-    @Test
-    void storeNeverRunReturnsARowAlreadyStoredUnderTheIdAndWritesNothingOfIt() {
-        UUID picsureId = UUID.randomUUID();
-        UUID owner = UUID.randomUUID();
+    void ensureGeneralQueryStoresAGeneralQueryWithNoQueryRow() {
         UUID general = UUID.randomUUID();
-        service.save(variant(picsureId, owner, general, false, "COUNT"));
-        service.update(picsureId, new UpdateQueryRequest("AVAILABLE", null, null, null, null));
-        StoredQuery before = service.get(picsureId);
+        UUID owner = UUID.randomUUID();
 
-        Query returned = service.storeNeverRun(neverRun(picsureId, owner, general));
+        assertThat(service.ensureGeneralQuery(general, owner)).isEqualTo(general);
 
-        assertThat(returned.getStatus()).isEqualTo(PicSureStatus.AVAILABLE);
-        assertThat(service.get(picsureId)).isEqualTo(before);
-        Query row = repo.findById(picsureId).orElseThrow();
-        assertThat(row.isSample()).isFalse();
-        assertThat(row.getResultType()).isEqualTo("COUNT");
-        assertThat(row.getQuery()).isEqualTo("{\"q\":1}");
-        assertThat(runsOf(picsureId)).hasSize(1);
+        assertThat(generalQueryRepo.findById(general)).get().extracting(QueryToVariant::getUserUuid).isEqualTo(owner);
+        assertThat(service.ownerOfGeneralQuery(general)).contains(owner);
+        assertThat(repo.count()).isZero();
+        assertThat(runRepo.count()).isZero();
+    }
+
+    @Test
+    void ensureGeneralQueryLeavesAStoredGeneralQueryOfTheSameOwnerAsItIs() {
+        UUID general = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        service.save(variant(UUID.randomUUID(), owner, general, false, "COUNT"));
+        QueryToVariant before = generalQueryRepo.findById(general).orElseThrow();
+
+        assertThat(service.ensureGeneralQuery(general, owner)).isEqualTo(general);
+
+        QueryToVariant after = generalQueryRepo.findById(general).orElseThrow();
+        assertThat(after.getUserUuid()).isEqualTo(before.getUserUuid());
+        assertThat(after.getCreatedAt()).isEqualTo(before.getCreatedAt());
+        assertThat(generalQueryRepo.count()).isEqualTo(1);
         assertThat(repo.count()).isEqualTo(1);
-        assertThat(generalQueryRepo.count()).isEqualTo(1);
     }
 
     @Test
-    void storeNeverRunRefusesARowStoredUnderAnotherOwnerOrNoneAndStoresNothing() {
-        UUID ownedByAStranger = UUID.randomUUID();
-        service.save(owned(ownedByAStranger, UUID.randomUUID(), ONE_STUDY, "FIRST_SUBMIT"));
-        UUID ownerless = service.save(new SaveQueryRequest("{\"q\":1}", "rr", "AVAILABLE", "3", null));
-        StoredQuery strangersBefore = service.get(ownedByAStranger);
-        StoredQuery ownerlessBefore = service.get(ownerless);
-
-        for (UUID taken : List.of(ownedByAStranger, ownerless)) {
-            assertRefused(
-                () -> service.storeNeverRun(neverRun(taken, UUID.randomUUID(), UUID.randomUUID())), 409, "conflict",
-                "Query " + taken + " belongs to a different owner"
-            );
-        }
-
-        assertThat(service.get(ownedByAStranger)).isEqualTo(strangersBefore);
-        assertThat(service.get(ownerless)).isEqualTo(ownerlessBefore);
-        assertThat(repo.count()).isEqualTo(2);
-        assertThat(generalQueryRepo.count()).isEqualTo(1);
-        assertThat(runRepo.count()).isEqualTo(1);
-    }
-
-    @Test
-    void storeNeverRunRefusesAGeneralQueryOfAnotherOwnerAndStoresNothing() {
-        UUID strangersRow = UUID.randomUUID();
+    void ensureGeneralQueryRefusesAGeneralQueryOfAnotherOwnerAndStoresNothing() {
         UUID strangersGeneral = UUID.randomUUID();
-        service.save(variant(strangersRow, UUID.randomUUID(), strangersGeneral, false, "COUNT"));
-        UUID picsureId = UUID.randomUUID();
+        UUID stranger = UUID.randomUUID();
+        service.save(variant(UUID.randomUUID(), stranger, strangersGeneral, false, "COUNT"));
 
         assertRefused(
-            () -> service.storeNeverRun(neverRun(picsureId, UUID.randomUUID(), strangersGeneral)), 409, "conflict",
+            () -> service.ensureGeneralQuery(strangersGeneral, UUID.randomUUID()), 409, "conflict",
             "General query " + strangersGeneral + " belongs to a different owner"
         );
 
-        assertThat(repo.findById(picsureId)).isEmpty();
-        assertThat(repo.count()).isEqualTo(1);
+        assertThat(service.ownerOfGeneralQuery(strangersGeneral)).contains(stranger);
         assertThat(generalQueryRepo.count()).isEqualTo(1);
     }
 
     @Test
-    void storeNeverRunJoinsACallersTransactionAndIsUndoneWithIt() {
-        NeverRunQuery neverRun = neverRun(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
-        TransactionTemplate callersTransaction = new TransactionTemplate(transactionManager);
-
-        callersTransaction.executeWithoutResult(status -> {
-            service.storeNeverRun(neverRun);
-            assertThat(repo.findById(neverRun.picsureId())).isPresent();
-            status.setRollbackOnly();
-        });
-
-        assertThat(repo.findById(neverRun.picsureId())).isEmpty();
-        assertThat(generalQueryRepo.findById(neverRun.queryToVariantUuid())).isEmpty();
-    }
-
-    @Test
-    void storeNeverRunThatIsRefusedInsideACallersTransactionLeavesThatTransactionToRollBack() {
-        UUID taken = UUID.randomUUID();
-        service.save(owned(taken, UUID.randomUUID(), ONE_STUDY, "FIRST_SUBMIT"));
+    void ensureGeneralQueryJoinsACallersTransactionAndIsUndoneWithIt() {
         UUID general = UUID.randomUUID();
         TransactionTemplate callersTransaction = new TransactionTemplate(transactionManager);
 
-        assertThatThrownBy(
-            () -> callersTransaction.executeWithoutResult(status -> service.storeNeverRun(neverRun(taken, UUID.randomUUID(), general)))
-        ).isInstanceOf(PicsureException.class);
+        callersTransaction.executeWithoutResult(status -> {
+            service.ensureGeneralQuery(general, UUID.randomUUID());
+            assertThat(service.ownerOfGeneralQuery(general)).isPresent();
+            status.setRollbackOnly();
+        });
 
         assertThat(generalQueryRepo.findById(general)).isEmpty();
     }
 
     @Test
-    void aNeverRunQueryNeedsAnIdAnOwnerAGeneralQueryAndABody() {
-        UUID id = UUID.randomUUID();
-
-        assertThatThrownBy(() -> new NeverRunQuery(null, id, id, false, null, "{}", null)).isInstanceOf(NullPointerException.class)
-            .hasMessage("picsureId is null");
-        assertThatThrownBy(() -> new NeverRunQuery(id, null, id, false, null, "{}", null)).isInstanceOf(NullPointerException.class)
-            .hasMessage("userUuid is null");
-        assertThatThrownBy(() -> new NeverRunQuery(id, id, null, false, null, "{}", null)).isInstanceOf(NullPointerException.class)
-            .hasMessage("queryToVariantUuid is null");
-        assertThatThrownBy(() -> new NeverRunQuery(id, id, id, false, null, null, null)).isInstanceOf(NullPointerException.class)
-            .hasMessage("query is null");
-    }
-
-    private static NeverRunQuery neverRun(UUID picsureId, UUID owner, UUID general) {
-        return new NeverRunQuery(
-            picsureId, owner, general, true, ResultType.DATAFRAME_PFB, "{\"query\":{\"select\":[],\"sample\":true}}", NEVER_RUN_START
-        );
+    void ownerOfAGeneralQueryThatIsNotStoredIsEmpty() {
+        assertThat(service.ownerOfGeneralQuery(UUID.randomUUID())).isEmpty();
     }
 
     private QueryRunRepository failingRunInserts(AtomicInteger runInserts) {

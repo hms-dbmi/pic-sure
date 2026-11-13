@@ -64,8 +64,8 @@ import edu.harvard.hms.dbmi.avillach.operations.query.QueryRepository;
  *
  * <p>Nothing here runs inside a test transaction: each service call commits or rolls back as it does in the deployed service.
  *
- * <p>The step that brings datasets over on a read is off in this context, as it is by default, so the reads of the other tests write
- * nothing. The test of that step builds a service with the step turned on.
+ * <p>The step that files datasets under a general query on a read is off in this context, as it is by default, so the reads of the other
+ * tests write nothing. The tests of that step build a service with the step turned on.
  *
  * <p>The migration set in this module has no {@code query.version} column, which the entity maps. Deployed databases get it from a separate
  * baseline, so the test adds it after the scripts.
@@ -82,6 +82,11 @@ class NamedDatasetMySqlTest {
     private static final UUID ALICE_ID = UUID.fromString("5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11");
     private static final GatewayUser ALICE = new GatewayUser(ALICE_ID.toString(), "auth0|alice", ALICE_EMAIL, null, Set.of());
     private static final UUID BOB_ID = UUID.fromString("7c1b1f0e-2a3b-4c4d-8e5f-0a1b2c3d4e5f");
+
+    /** A stored request of a stack without query owners: a v3 dataframe query that carries the consent values of its run. */
+    private static final String COHORT_BODY =
+        "{\"query\":{\"select\":[\"\\\\demographics\\\\AGE\\\\\"],\"authorizationFilters\":[{\"conceptPath\":\"\\\\_consents\\\\\","
+            + "\"values\":[\"phs001.c1\"]}],\"phenotypicClause\":null,\"expectedResultType\":\"DATAFRAME\"}}";
 
     @Container
     static final MySQLContainer<?> MYSQL =
@@ -318,19 +323,9 @@ class NamedDatasetMySqlTest {
         edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query cohort = new edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query(
             List.of("\\demographics\\AGE\\"), List.of(), null, List.of(), ResultType.DATAFRAME, null, null
         );
-        UUID ownedId = QueryIdentity.idFor(ALICE_ID, cohort);
         UUID generalId = QueryIdentity.generalIdFor(ALICE_ID, cohort);
-        Query ownerless = stored(
-            QueryFixtures.withRandomId().setQuery(
-                "{\"query\":{\"select\":[\"\\\\demographics\\\\AGE\\\\\"],\"authorizationFilters\":[{\"conceptPath\":\"\\\\_consents\\\\\","
-                    + "\"values\":[\"phs001.c1\"]}],\"phenotypicClause\":null,\"expectedResultType\":\"DATAFRAME\"}}"
-            ).setVersion("3")
-        );
-        UUID dataset = UUID.randomUUID();
-        jdbc.update(
-            "INSERT INTO named_dataset (uuid, queryId, user, name, archived, metadata) VALUES (?, ?, ?, 'cohort', 0, NULL)", bytes(dataset),
-            bytes(ownerless.getUuid()), ALICE_EMAIL
-        );
+        Query ownerless = stored(QueryFixtures.withRandomId().setQuery(COHORT_BODY).setVersion("3"));
+        UUID dataset = datasetOfAliceStoredBeforeGeneralQueries(ownerless, "cohort");
         CyclicBarrier bothReadTheDatasetBeforeEitherLockedIt = new CyclicBarrier(2);
         AtomicInteger lockAttempts = new AtomicInteger();
         NamedDatasetRepository heldBeforeTheLock =
@@ -340,10 +335,7 @@ class NamedDatasetMySqlTest {
                 }
                 return call.proceed();
             });
-        DatasetBringOver turnedOn =
-            new DatasetBringOver(heldBeforeTheLock, queryPersistence, transactionManager, new DatasetBringOverProperties(true));
-        NamedDatasetService racing =
-            new NamedDatasetService(heldBeforeTheLock, queryRepository, new NamedDatasetMapper(), turnedOn, transactionManager);
+        NamedDatasetService racing = readingWithTheStepTurnedOn(heldBeforeTheLock);
 
         List<List<NamedDatasetDto>> answers;
         try (var executor = Executors.newFixedThreadPool(2)) {
@@ -355,72 +347,88 @@ class NamedDatasetMySqlTest {
         assertThat(lockAttempts).hasValue(2);
         assertThat(answers).allSatisfy(answer -> assertThat(answer).singleElement().satisfies(listed -> {
             assertThat(listed.uuid()).isEqualTo(dataset);
-            assertThat(listed.query().uuid()).isEqualTo(ownedId);
-            assertThat(listed.queries()).containsExactly(new LinkedQueryDto(ownedId, false, "DATAFRAME"));
+            assertThat(listed.query().uuid()).isEqualTo(ownerless.getUuid());
+            assertThat(listed.queries()).isEmpty();
         }));
-        assertThat(queryIdAndGeneralQueryOf(dataset)).containsEntry("queryId", bytes(ownedId))
+        assertThat(queryIdAndGeneralQueryOf(dataset)).containsEntry("queryId", bytes(ownerless.getUuid()))
             .containsEntry("query_to_variant_uuid", bytes(generalId));
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query", Integer.class)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query", Integer.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_to_variant", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT user_uuid FROM query_to_variant WHERE uuid = ?", byte[].class, bytes(generalId)))
+            .isEqualTo(bytes(ALICE_ID));
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_run", Integer.class)).isZero();
-        assertThat(
-            jdbc.queryForObject(
-                "SELECT COUNT(*) FROM query WHERE uuid = ? AND user_uuid = ? AND query_to_variant_uuid = ? AND consents IS NULL"
-                    + " AND status IS NULL AND sample = 0 AND result_type = 'DATAFRAME' AND version = '3' AND resourceResultId = ?",
-                Integer.class, bytes(ownedId), bytes(ALICE_ID), bytes(generalId), ownedId.toString()
-            )
-        ).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT user_uuid FROM query WHERE uuid = ?", byte[].class, bytes(ownerless.getUuid()))).isNull();
         assertThat(output.getAll().split("Brought dataset ", -1)).hasSize(2);
         assertThat(output.getAll()).doesNotContain("Could not bring dataset");
     }
 
     /**
-     * Two datasets of one user whose stored queries are the same query derive the same owned row, and the table allows a user one dataset
-     * on a query row. The first is brought over. The second is left on its old row, by the check the step makes before it writes, so the
-     * database is never asked for the second re-point and refuses nothing.
+     * Two datasets of one user whose stored queries are the same query derive the same general query. Both are filed under it, each stays
+     * on its own query row, and the general query is stored once.
      */
     @Test
     @Timeout(120)
     @ExtendWith(OutputCaptureExtension.class)
-    void twoDatasetsOfOneUserOnTheSameStoredQueryBringOneOverAndLeaveTheOther(CapturedOutput output) {
-        String sameQuery = "{\"query\":{\"select\":[\"\\\\demographics\\\\AGE\\\\\"],\"authorizationFilters\":[{\"conceptPath\":"
-            + "\"\\\\_consents\\\\\",\"values\":[\"phs001.c1\"]}],\"phenotypicClause\":null,\"expectedResultType\":\"DATAFRAME\"}}";
-        Query one = stored(QueryFixtures.withRandomId().setQuery(sameQuery).setVersion("3"));
-        Query other = stored(QueryFixtures.withRandomId().setQuery(sameQuery).setVersion("3"));
+    void twoDatasetsOfOneUserOnTheSameStoredQueryAreFiledUnderOneGeneralQuery(CapturedOutput output) {
+        Query one = stored(QueryFixtures.withRandomId().setQuery(COHORT_BODY).setVersion("3"));
+        Query other = stored(QueryFixtures.withRandomId().setQuery(COHORT_BODY).setVersion("3"));
         UUID datasetOnOne = datasetOfAliceStoredBeforeGeneralQueries(one, "cohort");
         UUID datasetOnOther = datasetOfAliceStoredBeforeGeneralQueries(other, "the same cohort");
-        DatasetBringOver turnedOn =
-            new DatasetBringOver(datasetRepository, queryPersistence, transactionManager, new DatasetBringOverProperties(true));
-        NamedDatasetService reading =
-            new NamedDatasetService(datasetRepository, queryRepository, new NamedDatasetMapper(), turnedOn, transactionManager);
+        NamedDatasetService reading = readingWithTheStepTurnedOn(datasetRepository);
 
         List<NamedDatasetDto> listed = reading.listForUser(ALICE);
 
-        UUID owned =
-            jdbc.queryForObject("SELECT uuid FROM query WHERE user_uuid = ?", (row, index) -> uuid(row.getBytes(1)), bytes(ALICE_ID));
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query", Integer.class)).isEqualTo(3);
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query WHERE user_uuid IS NOT NULL", Integer.class)).isEqualTo(1);
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_to_variant", Integer.class)).isEqualTo(1);
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_run", Integer.class)).isZero();
         assertThat(listed).extracting(NamedDatasetDto::uuid).containsExactlyInAnyOrder(datasetOnOne, datasetOnOther);
-        assertThat(listed).filteredOn(answer -> answer.query().uuid().equals(owned)).singleElement()
-            .satisfies(broughtOver -> assertThat(broughtOver.queries()).containsExactly(new LinkedQueryDto(owned, false, "DATAFRAME")));
-        assertThat(listed).filteredOn(answer -> !answer.query().uuid().equals(owned)).singleElement().satisfies(left -> {
-            UUID oldRow = left.uuid().equals(datasetOnOne) ? one.getUuid() : other.getUuid();
-            assertThat(left.query().uuid()).isEqualTo(oldRow);
-            assertThat(left.queries()).isEmpty();
-            assertThat(queryIdAndGeneralQueryOf(left.uuid())).containsEntry("queryId", bytes(oldRow))
-                .containsEntry("query_to_variant_uuid", null);
-        });
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM named_dataset WHERE queryId = ?", Integer.class, bytes(owned))).isEqualTo(1);
+        byte[] general = jdbc.queryForObject("SELECT uuid FROM query_to_variant", byte[].class);
+        assertThat(queryIdAndGeneralQueryOf(datasetOnOne)).containsEntry("queryId", bytes(one.getUuid()))
+            .containsEntry("query_to_variant_uuid", general);
+        assertThat(queryIdAndGeneralQueryOf(datasetOnOther)).containsEntry("queryId", bytes(other.getUuid()))
+            .containsEntry("query_to_variant_uuid", general);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query", Integer.class)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query WHERE user_uuid IS NOT NULL", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_run", Integer.class)).isZero();
         Map<String, List<Map<String, Object>>> afterTheFirst = everyRow();
 
         assertThat(reading.listForUser(ALICE)).isEqualTo(listed);
 
         assertThat(everyRow()).isEqualTo(afterTheFirst);
-        assertThat(output.getAll().split("Brought dataset ", -1)).hasSize(2);
+        assertThat(output.getAll().split("Brought dataset ", -1)).hasSize(3);
         assertThat(output.getAll()).doesNotContain("Could not bring dataset").doesNotContain("Duplicate entry").doesNotContain(ALICE_EMAIL);
+    }
+
+    /**
+     * A stack that does not know the general query column stores and moves datasets with the columns it knows. A dataset it moved keeps the
+     * general query of the query it pointed at before, and the next read by its user files it under the one of its query now.
+     */
+    @Test
+    void aDatasetAnOlderStackMovedIsFiledUnderTheGeneralQueryOfItsQueryOnTheNextRead() {
+        Query cohort = stored(QueryFixtures.withRandomId().setQuery(COHORT_BODY).setVersion("3"));
+        Query count = stored(
+            QueryFixtures.withRandomId().setQuery("{\"query\":{\"select\":[],\"phenotypicClause\":null,\"expectedResultType\":\"COUNT\"}}")
+                .setVersion("3")
+        );
+        UUID dataset = datasetOfAliceStoredBeforeGeneralQueries(cohort, "cohort");
+        NamedDatasetService reading = readingWithTheStepTurnedOn(datasetRepository);
+        reading.getForUser(ALICE, dataset);
+        Object generalOfTheCohort = queryIdAndGeneralQueryOf(dataset).get("query_to_variant_uuid");
+        jdbc.update("UPDATE named_dataset SET queryId = ?, name = 'counts' WHERE uuid = ?", bytes(count.getUuid()), bytes(dataset));
+
+        NamedDatasetDto read = reading.getForUser(ALICE, dataset);
+
+        Object generalOfTheCount = queryIdAndGeneralQueryOf(dataset).get("query_to_variant_uuid");
+        assertThat(read.query().uuid()).isEqualTo(count.getUuid());
+        assertThat(generalOfTheCohort).isNotNull();
+        assertThat(generalOfTheCount).isNotNull().isNotEqualTo(generalOfTheCohort);
+        assertThat(queryIdAndGeneralQueryOf(dataset)).containsEntry("queryId", bytes(count.getUuid()));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_to_variant WHERE user_uuid = ?", Integer.class, bytes(ALICE_ID)))
+            .isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query", Integer.class)).isEqualTo(2);
+    }
+
+    private NamedDatasetService readingWithTheStepTurnedOn(NamedDatasetRepository datasets) {
+        DatasetBringOver turnedOn =
+            new DatasetBringOver(datasets, queryPersistence, transactionManager, new DatasetBringOverProperties(true));
+        return new NamedDatasetService(datasets, queryRepository, new NamedDatasetMapper(), turnedOn, transactionManager);
     }
 
     private Map<String, Object> nameArchivedFlagAndMetadataOf(UUID dataset) {
@@ -478,10 +486,5 @@ class NamedDatasetMySqlTest {
 
     private static byte[] bytes(UUID uuid) {
         return ByteBuffer.allocate(16).putLong(uuid.getMostSignificantBits()).putLong(uuid.getLeastSignificantBits()).array();
-    }
-
-    private static UUID uuid(byte[] bytes) {
-        ByteBuffer buffer = ByteBuffer.wrap(bytes);
-        return new UUID(buffer.getLong(), buffer.getLong());
     }
 }

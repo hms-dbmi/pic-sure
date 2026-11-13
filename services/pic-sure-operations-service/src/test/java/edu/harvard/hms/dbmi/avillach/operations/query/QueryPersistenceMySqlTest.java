@@ -48,7 +48,6 @@ import edu.harvard.dbmi.avillach.domain.StoredQueryVariant;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
-import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 
 /**
  * Runs the query persistence path against the schema the migrations build, on a real MySQL. Hibernate creates nothing here: the tables come
@@ -67,7 +66,6 @@ class QueryPersistenceMySqlTest {
     private static final Path MIGRATIONS = Path.of("db", "sql");
     private static final Pattern MIGRATION_FILE = Pattern.compile("V(\\d+)__.+\\.sql");
     private static final String CONSENTS = "\\_consents\\";
-    private static final Instant NEVER_RUN_START = Instant.parse("2025-03-04T05:06:07Z");
 
     @Container
     static final MySQLContainer<?> MYSQL =
@@ -413,82 +411,38 @@ class QueryPersistenceMySqlTest {
     }
 
     @Test
-    void neverRunRowIsStoredWithSqlNullConsentsAndStatusInTheMigratedColumns() {
-        NeverRunQuery neverRun = neverRun(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
-
-        service.storeNeverRun(neverRun);
-
-        Map<String, Object> row = jdbc.queryForMap(
-            "SELECT user_uuid, query_to_variant_uuid, consents IS NULL AS no_consents, status IS NULL AS no_status,"
-                + " readyTime IS NULL AS no_ready_time, metadata IS NULL AS no_metadata, CAST(sample AS UNSIGNED) AS sample, result_type,"
-                + " resourceResultId, version, startTime FROM query WHERE uuid = ?",
-            bytes(neverRun.picsureId())
-        );
-        assertThat(row.get("user_uuid")).isEqualTo(bytes(neverRun.userUuid()));
-        assertThat(row.get("query_to_variant_uuid")).isEqualTo(bytes(neverRun.queryToVariantUuid()));
-        assertThat(List.of(row.get("no_consents"), row.get("no_status"), row.get("no_ready_time"), row.get("no_metadata")))
-            .allSatisfy(isNull -> assertThat(((Number) isNull).intValue()).isEqualTo(1));
-        assertThat(((Number) row.get("sample")).intValue()).isZero();
-        assertThat(row.get("result_type")).isEqualTo("DATAFRAME");
-        assertThat(row.get("resourceResultId")).isEqualTo(neverRun.picsureId().toString());
-        assertThat(row.get("version")).isEqualTo("3");
-        assertThat(queryRepository.findById(neverRun.picsureId()).orElseThrow().getStartTime()).isEqualTo(NEVER_RUN_START);
-        assertThat(
-            jdbc.queryForObject("SELECT user_uuid FROM query_to_variant WHERE uuid = ?", byte[].class, bytes(neverRun.queryToVariantUuid()))
-        ).isEqualTo(bytes(neverRun.userUuid()));
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_run", Integer.class)).isZero();
-        StoredQuery stored = service.get(neverRun.picsureId());
-        assertThat(stored.consents()).isNull();
-        assertThat(stored.status()).isNull();
-        assertThat(stored.runId()).isNull();
-    }
-
-    @Test
     @Timeout(60)
-    void neverRunRowFindsAGeneralQueryCommittedAfterTheFirstReadOfTheCallersTransaction() {
+    void ensureGeneralQueryFindsAGeneralQueryCommittedAfterTheFirstReadOfTheCallersTransaction() {
         UUID owner = UUID.randomUUID();
         UUID general = UUID.randomUUID();
-        NeverRunQuery neverRun = neverRun(UUID.randomUUID(), owner, general);
-        UUID anotherVariant = UUID.randomUUID();
+        UUID variant = UUID.randomUUID();
 
-        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+        UUID ensured = new TransactionTemplate(transactionManager).execute(status -> {
             queryRepository.findById(UUID.randomUUID());
-            committedByAnotherTransaction(() -> service.save(variant(anotherVariant, owner, general, true, "DATAFRAME")));
+            committedByAnotherTransaction(() -> service.save(variant(variant, owner, general, true, "DATAFRAME")));
             assertThat(generalQueryRepository.findById(general)).isEmpty();
 
-            service.storeNeverRun(neverRun);
+            return service.ensureGeneralQuery(general, owner);
         });
 
+        assertThat(ensured).isEqualTo(general);
+        assertThat(service.ownerOfGeneralQuery(general)).contains(owner);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_to_variant", Integer.class)).isEqualTo(1);
-        assertThat(
-            jdbc.queryForObject(
-                "SELECT COUNT(*) FROM query WHERE query_to_variant_uuid = ? AND user_uuid = ?", Integer.class, bytes(general), bytes(owner)
-            )
-        ).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query", Integer.class)).isEqualTo(1);
     }
 
     @Test
-    @Timeout(60)
-    void neverRunRowCommittedByAnotherTransactionAfterTheFirstReadOfTheCallersTransactionIsReturnedAsItIs() {
+    void ensureGeneralQueryStoresTheGeneralQueryInTheMigratedColumnsAndNoQueryRow() {
         UUID owner = UUID.randomUUID();
         UUID general = UUID.randomUUID();
-        NeverRunQuery neverRun = neverRun(UUID.randomUUID(), owner, general);
 
-        Query returned = new TransactionTemplate(transactionManager).execute(status -> {
-            queryRepository.findById(UUID.randomUUID());
-            committedByAnotherTransaction(() -> service.save(variant(neverRun.picsureId(), owner, general, false, "DATAFRAME")));
-            assertThat(queryRepository.findById(neverRun.picsureId())).isEmpty();
+        service.ensureGeneralQuery(general, owner);
 
-            return service.storeNeverRun(neverRun);
-        });
-
-        assertThat(returned.getStatus()).isEqualTo(PicSureStatus.QUEUED);
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query", Integer.class)).isEqualTo(1);
-        StoredQuery stored = service.get(neverRun.picsureId());
-        assertThat(stored.status()).isEqualTo("QUEUED");
-        assertThat(stored.query()).isEqualTo("{\"q\":1}");
-        assertThat(stored.consents()).containsExactlyEntriesOf(Map.of(CONSENTS, List.of("phs1.c1")));
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_run", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT user_uuid FROM query_to_variant WHERE uuid = ?", byte[].class, bytes(general)))
+            .isEqualTo(bytes(owner));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_to_variant WHERE created_at IS NOT NULL", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query_run", Integer.class)).isZero();
     }
 
     @Test
@@ -517,15 +471,12 @@ class QueryPersistenceMySqlTest {
     }
 
     @Test
-    void ownerlessAndNeverRunInsertsStoreACreationTime() {
+    void ownerlessInsertStoresACreationTime() {
         Instant inserted = Instant.parse("2026-03-04T05:06:07.008Z");
-        NeverRunQuery neverRun = neverRun(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
 
         UUID ownerless = serviceAt(inserted).save(new SaveQueryRequest("{\"q\":1}", "rr-1", "QUEUED", "3", null));
-        serviceAt(inserted).storeNeverRun(neverRun);
 
         assertThat(createdAtOf(ownerless)).isEqualTo(inserted);
-        assertThat(createdAtOf(neverRun.picsureId())).isEqualTo(NEVER_RUN_START);
     }
 
     @Test
@@ -567,12 +518,6 @@ class QueryPersistenceMySqlTest {
         } catch (InterruptedException | ExecutionException | TimeoutException failed) {
             throw new IllegalStateException(failed);
         }
-    }
-
-    private static NeverRunQuery neverRun(UUID picsureId, UUID owner, UUID general) {
-        return new NeverRunQuery(
-            picsureId, owner, general, false, ResultType.DATAFRAME, "{\"query\":{\"select\":[],\"phenotypicClause\":null}}", NEVER_RUN_START
-        );
     }
 
     private static SaveQueryRequest owned(UUID picsureId, UUID owner, Map<String, List<String>> consents, String trigger) {
