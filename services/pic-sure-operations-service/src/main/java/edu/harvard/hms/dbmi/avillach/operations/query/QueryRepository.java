@@ -7,9 +7,12 @@ import java.util.UUID;
 
 import jakarta.persistence.LockModeType;
 
+import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 /** Spring Data repository for queries; {@code findById} and {@code save} are inherited from {@link JpaRepository}. */
 public interface QueryRepository extends JpaRepository<Query, UUID> {
@@ -41,4 +44,46 @@ public interface QueryRepository extends JpaRepository<Query, UUID> {
             + " order by q.sample, q.resultType, q.uuid"
     )
     List<QueryVariantRow> findVariantsOf(@Param("generalQueries") Collection<UUID> generalQueries, @Param("owner") UUID owner);
+
+    /**
+     * Reads the first rows that have no result type, in the order the database sorts their ids. The rows are read in a short read-only
+     * transaction of their own and come back detached. They are for reading only: saving one would write every column back with the values
+     * it was loaded with.
+     *
+     * @param limit the largest number of rows to return
+     * @return the rows, with their bodies, or an empty list when every row has a result type
+     */
+    @Transactional(readOnly = true)
+    @org.springframework.data.jpa.repository.Query("select q from query q where q.resultType is null order by q.uuid")
+    List<Query> findFirstWithoutResultType(Limit limit);
+
+    /**
+     * Reads the next rows that have no result type and whose id the database sorts after the given one, in that same order. Passing the
+     * last id of the page before makes each call move on, whether or not the rows of that page were given a result type since. The rows are
+     * read and returned as {@link #findFirstWithoutResultType} does.
+     *
+     * @param after the id every returned row comes after
+     * @param limit the largest number of rows to return
+     * @return the rows, with their bodies, or an empty list when no later row lacks a result type
+     */
+    @Transactional(readOnly = true)
+    @org.springframework.data.jpa.repository.Query("select q from query q where q.resultType is null and q.uuid > :after order by q.uuid")
+    List<Query> findWithoutResultTypeAfter(@Param("after") UUID after, Limit limit);
+
+    /**
+     * Stores a result type on a row that has none, with one statement that names only that column. A row that already has a result type
+     * when the statement runs is left as it is, so the write never replaces a value another writer stored, and no other column of the row
+     * is read or written. Called outside a transaction, the statement runs in one of its own that ends with the call. It waits for a
+     * transaction that holds the row lock, and then sees the row as that transaction left it.
+     *
+     * @param uuid the id of the row
+     * @param resultType the result type name to store
+     * @return 1 when the row was given the result type; 0 when it already had one, or no row has the id
+     */
+    @Modifying
+    @Transactional
+    @org.springframework.data.jpa.repository.Query(
+        "update query q set q.resultType = :resultType where q.uuid = :uuid and q.resultType is null"
+    )
+    int setResultTypeWhereAbsent(@Param("uuid") UUID uuid, @Param("resultType") String resultType);
 }

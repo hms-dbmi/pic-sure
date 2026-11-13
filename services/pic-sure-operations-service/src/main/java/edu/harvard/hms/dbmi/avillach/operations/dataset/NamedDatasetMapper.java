@@ -9,17 +9,15 @@ import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.node.NullNode;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.StoredQueryConsentStripper;
-import edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.QueryTranslator;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.UntranslatableQueryException;
 import edu.harvard.hms.dbmi.avillach.operations.query.Query;
+import edu.harvard.hms.dbmi.avillach.operations.query.StoredQueryBody;
 
 /**
  * Translates between the {@code pic-sure-api-data} {@link NamedDataset} entity and this service's DTOs. Pure field mapping -- the
@@ -32,10 +30,6 @@ public class NamedDatasetMapper {
     private static final ObjectMapper QUERY_MAPPER =
         JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
     private static final Logger log = LogManager.getLogger(NamedDatasetMapper.class);
-    private static final List<String> LEGACY_FIELDS = List.of(
-        "categoryFilters", "numericFilters", "fields", "crossCountFields", "requiredFields", "anyRecordOf", "anyRecordOfMulti",
-        "variantInfoFilters", "expectedResultType"
-    );
 
     /**
      * Builds the public shape of a named dataset.
@@ -72,60 +66,13 @@ public class NamedDatasetMapper {
             return stored;
         }
         try {
-            ObjectNode wrapper = v3Request(q, stored);
+            ObjectNode wrapper = StoredQueryBody.v3Request(q, stored);
             StoredQueryConsentStripper.strip(wrapper);
             return QUERY_MAPPER.writeValueAsString(wrapper);
         } catch (JsonProcessingException | UntranslatableQueryException | IllegalArgumentException e) {
             log.warn("Unable to convert saved query {} to v3", q.getUuid());
             throw new PicsureException(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error", "Unable to convert saved query to v3");
         }
-    }
-
-    /**
-     * Parses a stored request body into a wrapper object whose {@code query} member is the query as a v3 object. The stored
-     * {@code resourceCredentials} are dropped and the other members beside the query are kept.
-     *
-     * @param q the row the body belongs to, which decides the stored format
-     * @param stored the body of the row, not blank
-     * @return the wrapper
-     * @throws IllegalArgumentException when the body or its query is not a JSON object, or is not a query this service recognizes
-     */
-    private static ObjectNode v3Request(Query q, String stored) throws JsonProcessingException, UntranslatableQueryException {
-        ObjectNode request = requireObject(QUERY_MAPPER.readTree(stored));
-        request.remove("resourceCredentials");
-        JsonNode body = request.has("query") ? request.get("query") : request;
-        // Some historical requests JSON-encode their inner query a second time.
-        ObjectNode query = requireObject(body.isTextual() ? QUERY_MAPPER.readTree(body.textValue()) : body);
-        ObjectNode wrapper = request.has("query") ? request : QUERY_MAPPER.createObjectNode();
-        wrapper.set("query", toV3(query, isV3(q)));
-        return wrapper;
-    }
-
-    private static ObjectNode toV3(ObjectNode query, boolean v3) throws JsonProcessingException, UntranslatableQueryException {
-        if (!v3) {
-            // Reject unrelated objects before lenient V2 deserialization can silently turn them into empty queries.
-            if (LEGACY_FIELDS.stream().noneMatch(query::has)) {
-                throw new IllegalArgumentException("Unrecognized saved V2 query");
-            }
-            var legacy = QUERY_MAPPER.treeToValue(query, edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.class);
-            return QUERY_MAPPER.valueToTree(QueryTranslator.translate(legacy));
-        }
-        // Validate types without dropping historical extra fields. The frontend needs the v3 discriminator even when null.
-        QUERY_MAPPER.treeToValue(query, edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query.class);
-        query.putIfAbsent("phenotypicClause", NullNode.getInstance());
-        return query;
-    }
-
-    private static ObjectNode requireObject(JsonNode node) {
-        if (node instanceof ObjectNode object) {
-            return object;
-        }
-        throw new IllegalArgumentException("Expected a query object");
-    }
-
-    /** The stored version determines the format: "3" is V3; all other values, including null, are V2. */
-    static boolean isV3(Query query) {
-        return "3".equals(query.getVersion());
     }
 
     /** {@code user} is the caller's EMAIL (owner key); {@code query} is pre-resolved by the service. */

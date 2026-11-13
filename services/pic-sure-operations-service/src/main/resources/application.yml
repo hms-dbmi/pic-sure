@@ -29,6 +29,10 @@ picsure:
     # and update queries. Fail-closed: left blank, InternalTokenFilter rejects every
     # /internal/** request rather than treating an unconfigured secret as "wide open".
     internal-token: ${QUERY_SERVICE_INTERNAL_TOKEN:}
+    result-type-backfill:
+      enabled: true
+      batch-size: 200
+      pause: 250ms
   # The X-Application-Token gate for /actuator/** (ActuatorSecurityConfig + the shared
   # ActuatorSecurityHelper in pic-sure-spring-commons). Shallow health/liveness/readiness stay open regardless.
   actuator:
