@@ -191,6 +191,35 @@ class OpenAccessFilterTest {
     }
 
     @Test
+    void sessionGrantSetsTheVerifiedSessionIdAttribute() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(new OpenAccessValidation(true, "SESSION", "session-1", null, null, null));
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+
+        BufferedRequestWrapper req = wrap(null);
+        f.doFilter(req, mock(HttpServletResponse.class), mock(FilterChain.class));
+
+        assertThat(req.getAttribute(GatewayUserResolver.HEADER_OPEN_SESSION_ID)).isEqualTo("session-1");
+    }
+
+    @Test
+    void anAnonymousOrNonSessionGrantSetsNoSessionIdAttribute() throws Exception {
+        // PSAMA evaluates an unverifiable key as anonymous (no key identity); an API key grant is not a session either.
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(true))
+            .thenReturn(new OpenAccessValidation(true, "USER", "key-1", "pfx", null, null));
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+
+        BufferedRequestWrapper anonymous = wrap(null);
+        f.doFilter(anonymous, mock(HttpServletResponse.class), mock(FilterChain.class));
+        BufferedRequestWrapper apiKey = wrap(null);
+        f.doFilter(apiKey, mock(HttpServletResponse.class), mock(FilterChain.class));
+
+        assertThat(anonymous.getAttribute(GatewayUserResolver.HEADER_OPEN_SESSION_ID)).isNull();
+        assertThat(apiKey.getAttribute(GatewayUserResolver.HEADER_OPEN_SESSION_ID)).isNull();
+    }
+
+    @Test
     void denialSetsNoAccessTypeAttribute() throws Exception {
         PsamaClient client = mock(PsamaClient.class);
         when(client.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(false));

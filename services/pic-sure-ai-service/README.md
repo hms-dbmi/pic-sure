@@ -120,7 +120,7 @@ touching the dispatch loop, the controller, or anything else in the service).
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `AI_ENABLED` | no, default `false` | `true` registers the chat endpoint. Left `false`, no chat endpoint exists, so `/ai/chat` and `/ai/chat/{requestId}` answer 404 while the service stays up: set it to `true` wherever the assistant should be offered. The UI is switched separately (`ENABLE_ASSISTED_SEARCH` for Explorer, `ENABLE_ASSISTED_SEARCH_DISCOVER` for Discover). |
+| `AI_ENABLED` | no, default `false` | `true` registers the chat endpoint. Left `false`, no chat endpoint exists, so `/ai/chat` and `/ai/chat/{requestId}` answer 404 while the service stays up. The service still starts as it would enabled, so `PICSURE_GATEWAY_URL` is required even then (see below). Set it to `true` wherever the assistant should be offered. The UI is switched separately (`ENABLE_ASSISTED_SEARCH` for Explorer, `ENABLE_ASSISTED_SEARCH_DISCOVER` for Discover). |
 | `AI_MODEL_PROVIDER` | no, default `aws-sdk` | `aws-sdk` or `http` — which `ConverseModelClient` is active. |
 | `BEDROCK_REGION` | no, default `us-east-1` | AWS region, `aws-sdk` provider only. |
 | `BEDROCK_MODEL_ID` | no, default `openai.gpt-oss-120b-1:0` | Bedrock model id, `aws-sdk` provider only. The model must support Converse tool use and be in the deployment's IAM allowlist — see [Choosing a model](#choosing-a-model). |
@@ -142,7 +142,7 @@ touching the dispatch loop, the controller, or anything else in the service).
 | `AI_CONVERSATION_MAX_TURNS` | no, default `50` | Turns kept per conversation; the oldest go first (and their provenance with them: a path from a dropped turn is refused, never wrongly allowed). |
 | `AI_CONVERSATION_MAX_TOTAL_CHARS` | no, default `50000000` | Bound on everything all conversations hold, in characters; least recently used go first. |
 | `AI_CONVERSATION_RESULT_TTL` | no, default `60m` | How long a turn's reply stays retrievable by `requestId`. Must be at least the idle timeout; startup fails otherwise, since a late retry would run the turn twice. |
-| `AI_CONVERSATION_MAX_RESULTS` | no, default `10000` | Most turn replies kept at once. |
+| `AI_CONVERSATION_MAX_RESULTS_PER_OWNER` | no, default `200` | Most turn replies kept for one caller; the oldest go first. A caller past this can run an old `requestId` again, but cannot push out anyone else's replies. |
 | `PICSURE_ACTUATOR_EXPOSURE` | no, default `none` (the Docker image sets `health`) | Same actuator-gating convention as every other PIC-SURE service. |
 | `PICSURE_ACTUATOR_REQUIRE_TOKEN` | no, default `true` | Whether `/actuator/**` needs the `X-Application-Token` header. |
 | `PICSURE_APPLICATION_TOKEN` | no | `X-Application-Token` value for `/actuator/**`. |
@@ -320,7 +320,7 @@ only blocks their harmful form:
 
 ## Build and test
 
-JDK 25 is enforced. Build from the `api/` root, not from inside the module: the installed `pic-sure-spring-commons` jar can lag
+JDK 25 is enforced. Build from the repository root, not from inside the module: the installed `pic-sure-spring-commons` jar can lag
 the source, so `-am` is needed to build the siblings too.
 
 ```
@@ -328,8 +328,8 @@ mvn -pl services/pic-sure-ai-service -am test -Dsurefire.failIfNoSpecifiedTests=
 ```
 
 The `-Dtest` pattern keeps upstream modules' tests from running. `ArchitectureTest` fails the build if anything outside
-`ai.model` touches Bedrock or Spring AI types. Spotless is not clean across the repo, so format only the files you touched
-(`mvn spotless:apply -DspotlessFiles='.*/(A|B)\.java'`).
+`ai.model` touches Bedrock or Spring AI types. Both this module and `pic-sure-mcp` are Spotless-clean and CI runs `spotless:check` on them, so run
+`mvn -pl services/pic-sure-ai-service spotless:apply` before you push.
 
 Model-behavior regressions are checked with a separate chat-test runner (a suite of single- and multi-turn questions run against a
 locally built service); it is not part of this repo. Unit tests cannot show them.
@@ -338,7 +338,7 @@ locally built service); it is not part of this repo. Unit tests cannot show them
 
 Not deployed to any environment yet; the assistant is switched on per environment with `AI_ENABLED` here and
 `ENABLE_ASSISTED_SEARCH` / `ENABLE_ASSISTED_SEARCH_DISCOVER` in the UI. `openai.gpt-oss-120b-1:0` is the MVP model. Open work
-(guardrails and audit, prompt-injection hardening, a shared conversation store) is tracked in `docs/assisted-search/TRACKER.md`.
+(guardrails and audit, prompt-injection hardening, a shared conversation store) is tracked under `docs/assisted-search/tracker/`.
 
 ## AWS credentials for the `aws-sdk` provider
 
