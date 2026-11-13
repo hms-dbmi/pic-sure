@@ -25,7 +25,11 @@ import jakarta.servlet.http.HttpServletResponse;
  * {@link LoggingClient}. Both the skip check and route matching use {@link RoutedRequestPath}, the decoded path a path-pattern router
  * matches, so an encoded spelling of a path is skipped or gets the same event type and action exactly as its plain spelling does; the
  * event's {@code url} stays the raw request URI. {@code shouldNotFilter} is deliberately {@code protected} and non-final so gateway
- * subclasses can widen the skip set for pass-through paths.
+ * subclasses can widen the skip set for pass-through paths. <p> Each event reports {@code dest_ip} and {@code dest_port}, the configured
+ * values when present and otherwise the request's local address and port, and {@code bytes}, the number of response body bytes written
+ * while the rest of the chain ran, counted by a {@link ByteCountingResponseWrapper}. The event is emitted when the chain returns on the
+ * request thread, so a handler that keeps writing after starting asynchronous processing is reported with the bytes written up to that
+ * point.
  */
 public class AuditLoggingFilter extends OncePerRequestFilter {
 
@@ -36,6 +40,8 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     private final AuditContext audit;
     private final List<String> skipContains;
     private final ClientTypeAllowlist clientTypes;
+    private final String destIp;
+    private final Integer destPort;
 
     /**
      * Creates a filter that records the client-supplied {@code X-Client-Type} header as the audit event's {@code caller}.
@@ -64,11 +70,32 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     public AuditLoggingFilter(
         LoggingClient client, AuditRouteTable routes, AuditContext audit, List<String> skipContains, ClientTypeAllowlist clientTypes
     ) {
+        this(client, routes, audit, skipContains, clientTypes, null, null);
+    }
+
+    /**
+     * Creates a filter that reports a configured destination address and port in place of the request's local ones. The first five
+     * arguments are as for {@link #AuditLoggingFilter(LoggingClient, AuditRouteTable, AuditContext, List, ClientTypeAllowlist)}.
+     *
+     * @param client see the four-argument constructor
+     * @param routes see the four-argument constructor
+     * @param audit see the four-argument constructor
+     * @param skipContains see the four-argument constructor
+     * @param clientTypes see the five-argument constructor
+     * @param destIp the value reported as {@code dest_ip}; when null, the request's local address is reported
+     * @param destPort the value reported as {@code dest_port}; when null, the request's local port is reported
+     */
+    public AuditLoggingFilter(
+        LoggingClient client, AuditRouteTable routes, AuditContext audit, List<String> skipContains, ClientTypeAllowlist clientTypes,
+        String destIp, Integer destPort
+    ) {
         this.client = client;
         this.routes = routes;
         this.audit = audit;
         this.skipContains = skipContains != null ? List.copyOf(skipContains) : List.of();
         this.clientTypes = clientTypes;
+        this.destIp = destIp;
+        this.destPort = destPort;
     }
 
     @Override
@@ -99,18 +126,19 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
         throws ServletException, IOException {
         long startTime = System.currentTimeMillis();
+        ByteCountingResponseWrapper countedResponse = new ByteCountingResponseWrapper(response);
         try {
-            filterChain.doFilter(request, response);
+            filterChain.doFilter(request, countedResponse);
         } finally {
             try {
-                emit(request, response, System.currentTimeMillis() - startTime);
+                emit(request, countedResponse, System.currentTimeMillis() - startTime);
             } catch (Exception e) {
                 logger.warn("AuditLoggingFilter failed to log request", e);
             }
         }
     }
 
-    private void emit(HttpServletRequest request, HttpServletResponse response, long duration) {
+    private void emit(HttpServletRequest request, ByteCountingResponseWrapper response, long duration) {
         String path = request.getRequestURI();
         String method = request.getMethod();
 
@@ -127,9 +155,11 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
         String userAgent = request.getHeader("User-Agent");
         String sessionId = SessionIdResolver.resolve(request.getHeader("X-Session-Id"), srcIp, userAgent);
 
-        RequestInfo requestInfo = RequestInfo.builder().requestId(requestId).method(method).url(path).queryString(request.getQueryString())
-            .srcIp(srcIp).status(response.getStatus()).duration(duration).httpUserAgent(userAgent)
-            .httpContentType(response.getContentType()).referrer(request.getHeader("Referer")).build();
+        RequestInfo requestInfo =
+            RequestInfo.builder().requestId(requestId).method(method).url(path).queryString(request.getQueryString()).srcIp(srcIp)
+                .destIp(destIp != null ? destIp : request.getLocalAddr()).destPort(destPort != null ? destPort : request.getLocalPort())
+                .status(response.getStatus()).duration(duration).httpUserAgent(userAgent).httpContentType(response.getContentType())
+                .bytes(response.getByteCount()).referrer(request.getHeader("Referer")).build();
 
         Map<String, Object> metadata = new LinkedHashMap<>();
         if (audit != null) {
