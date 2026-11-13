@@ -1,8 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.gateway.filter;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,8 +44,7 @@ public class McpCallerFilter extends OncePerRequestFilter {
     public static final String MCP_PATH = "/mcp";
 
     private final AuditContext audit;
-    private final byte[] serviceToken;
-    private final byte[] previousServiceToken;
+    private final ServiceTokenMatcher tokens;
 
     /**
      * Creates the filter. Each configured secret is trimmed, so stray whitespace from an environment file does not make the real secret
@@ -60,9 +57,8 @@ public class McpCallerFilter extends OncePerRequestFilter {
      */
     public McpCallerFilter(AuditContext audit, String serviceToken, String previousServiceToken) {
         this.audit = audit;
-        this.serviceToken = configuredBytes(serviceToken);
-        this.previousServiceToken = configuredBytes(previousServiceToken);
-        if (this.serviceToken == null && this.previousServiceToken == null) {
+        this.tokens = new ServiceTokenMatcher(serviceToken, previousServiceToken);
+        if (tokens.isUnconfigured()) {
             log.warn("No MCP service token is configured, so every request presenting {} will be rejected", TOKEN_HEADER);
         }
     }
@@ -72,7 +68,7 @@ public class McpCallerFilter extends OncePerRequestFilter {
         throws ServletException, IOException {
         String presented = req.getHeader(TOKEN_HEADER);
         if (presented != null) {
-            if (!matchesConfiguredToken(presented)) {
+            if (!tokens.matches(presented)) {
                 audit.put("auth_result", "failure");
                 audit.put("auth_failure_reason", "invalid_service_credential");
                 GatewayErrors.write(resp, HttpStatus.UNAUTHORIZED, "invalid_service_credential", "Invalid service credential.");
@@ -84,16 +80,5 @@ public class McpCallerFilter extends OncePerRequestFilter {
             VerifiedCaller.set(req, CALLER);
         }
         chain.doFilter(req, resp);
-    }
-
-    private boolean matchesConfiguredToken(String presented) {
-        byte[] candidate = presented.getBytes(StandardCharsets.UTF_8);
-        boolean current = serviceToken != null && MessageDigest.isEqual(serviceToken, candidate);
-        boolean previous = previousServiceToken != null && MessageDigest.isEqual(previousServiceToken, candidate);
-        return current | previous;
-    }
-
-    private static byte[] configuredBytes(String token) {
-        return token == null || token.isBlank() ? null : token.trim().getBytes(StandardCharsets.UTF_8);
     }
 }

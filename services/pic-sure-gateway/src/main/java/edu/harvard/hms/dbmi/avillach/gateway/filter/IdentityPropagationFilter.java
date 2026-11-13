@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -35,9 +36,9 @@ import jakarta.servlet.http.HttpServletResponse;
  * authoritative -- a client cannot spoof these by sending its own values, even where the gateway resolved an empty/null value (e.g.
  * open-access requests, users with no privileges). {@code X-Picsure-Access-Type} records which gateway authentication flow admitted the
  * request. Downstream backend routing uses explicit path segments instead. <p> When the request's {@link VerifiedCaller} is
- * {@value McpCallerFilter#CALLER}, {@value #HEADER_CLIENT_TYPE} is also gateway-owned and carries {@value McpCallerFilter#CALLER}, so a
- * backend service sees that value only on a call the gateway verified. Otherwise the client's {@value #HEADER_CLIENT_TYPE} passes through
- * as sanitized upstream.
+ * {@value McpCallerFilter#CALLER} or {@value AiServiceCallerFilter#CALLER}, {@value #HEADER_CLIENT_TYPE} is also gateway-owned and carries
+ * that caller, so a backend service sees either value only on a call the gateway verified. Otherwise the client's
+ * {@value #HEADER_CLIENT_TYPE} passes through as sanitized upstream.
  */
 public class IdentityPropagationFilter extends OncePerRequestFilter {
 
@@ -85,8 +86,9 @@ public class IdentityPropagationFilter extends OncePerRequestFilter {
 
         IdentityHeadersRequest(HttpServletRequest req) {
             super(req);
-            boolean verifiedMcp = VerifiedCaller.get(req).filter(McpCallerFilter.CALLER::equals).isPresent();
-            ownedHeaders = verifiedMcp ? withClientType(GATEWAY_OWNED_HEADERS) : GATEWAY_OWNED_HEADERS;
+            Optional<String> verifiedClient = VerifiedCaller.get(req)
+                .filter(caller -> McpCallerFilter.CALLER.equals(caller) || AiServiceCallerFilter.CALLER.equals(caller));
+            ownedHeaders = verifiedClient.isPresent() ? withClientType(GATEWAY_OWNED_HEADERS) : GATEWAY_OWNED_HEADERS;
             put(GatewayUserResolver.HEADER_USER_ID, attr(req, GatewayUserResolver.HEADER_USER_ID));
             put(GatewayUserResolver.HEADER_USER_SUBJECT, attr(req, GatewayUserResolver.HEADER_USER_SUBJECT));
             put(GatewayUserResolver.HEADER_USER_EMAIL, attr(req, GatewayUserResolver.HEADER_USER_EMAIL));
@@ -95,9 +97,7 @@ public class IdentityPropagationFilter extends OncePerRequestFilter {
             put(GatewayUserResolver.HEADER_ACCESS_TYPE, attr(req, GatewayUserResolver.HEADER_ACCESS_TYPE));
             put(GatewayUserResolver.HEADER_OPEN_SESSION_ID, attr(req, GatewayUserResolver.HEADER_OPEN_SESSION_ID));
             put(HEADER_REQUEST_ID, resolveRequestId(req));
-            if (verifiedMcp) {
-                put(HEADER_CLIENT_TYPE, McpCallerFilter.CALLER);
-            }
+            verifiedClient.ifPresent(caller -> put(HEADER_CLIENT_TYPE, caller));
         }
 
         private static Set<String> withClientType(Set<String> owned) {

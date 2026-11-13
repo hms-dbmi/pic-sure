@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
+import edu.harvard.hms.dbmi.avillach.gateway.filter.AiServiceCallerFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.BufferingFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.McpCallerFilter;
@@ -37,7 +38,7 @@ import io.micrometer.core.instrument.MeterRegistry;
  * intentional public-route bypasses used by both authentication filters; all other routes traverse the normal auth chain.
  */
 @Configuration
-@EnableConfigurationProperties({GatewaySecurityProperties.class, McpProperties.class})
+@EnableConfigurationProperties({GatewaySecurityProperties.class, McpProperties.class, AiServiceProperties.class})
 public class SecurityConfig {
 
     // PSAMA introspection runs synchronously inside the request path, so bounded connect and read timeouts prevent a hung upstream from
@@ -47,6 +48,9 @@ public class SecurityConfig {
 
     /** Order of {@link McpCallerFilter}: after the internal-endpoint guard (15), before open access (20). */
     static final int MCP_CALLER_FILTER_ORDER = 17;
+
+    /** Order of {@link AiServiceCallerFilter}: right after {@link McpCallerFilter}, whose {@code /mcp} mark it replaces. */
+    static final int AI_SERVICE_CALLER_FILTER_ORDER = 18;
 
     static final ClientHttpRequestFactorySettings AUTH_REQUEST_FACTORY_SETTINGS =
         ClientHttpRequestFactorySettings.defaults().withConnectTimeout(AUTH_CONNECT_TIMEOUT).withReadTimeout(AUTH_READ_TIMEOUT);
@@ -110,6 +114,22 @@ public class SecurityConfig {
     FilterRegistrationBean<McpCallerFilter> mcpCallerFilter(AuditContext audit, McpProperties props) {
         var r = new FilterRegistrationBean<>(new McpCallerFilter(audit, props.serviceToken(), props.previousServiceToken()));
         r.setOrder(MCP_CALLER_FILTER_ORDER);
+        r.addUrlPatterns("/*");
+        return r;
+    }
+
+    /**
+     * Registers {@link AiServiceCallerFilter} right after {@link McpCallerFilter}, so a verified AI call replaces the {@code mcp} mark that
+     * filter puts on every {@code /mcp} request, and before {@code OpenAccessFilter} (20) and the sanitizer (25).
+     *
+     * @param audit the request-scoped audit metadata holder
+     * @param props the configured AI service secrets
+     * @return the registration at {@link #AI_SERVICE_CALLER_FILTER_ORDER}
+     */
+    @Bean
+    FilterRegistrationBean<AiServiceCallerFilter> aiServiceCallerFilter(AuditContext audit, AiServiceProperties props) {
+        var r = new FilterRegistrationBean<>(new AiServiceCallerFilter(audit, props.serviceToken(), props.previousServiceToken()));
+        r.setOrder(AI_SERVICE_CALLER_FILTER_ORDER);
         r.addUrlPatterns("/*");
         return r;
     }

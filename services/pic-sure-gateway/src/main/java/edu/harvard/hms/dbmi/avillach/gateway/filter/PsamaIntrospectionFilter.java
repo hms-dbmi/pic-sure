@@ -10,6 +10,7 @@ import org.springframework.web.util.UrlPathHelper;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
+import edu.harvard.hms.dbmi.avillach.commons.audit.VerifiedCaller;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionResponse;
@@ -87,7 +88,7 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
             return;
         }
 
-        Map<String, Object> requestMeta = Map.of("Target Service", path);
+        Map<String, Object> requestMeta = Map.of("Target Service", targetService(req, path));
 
         IntrospectionResponse intro;
         try {
@@ -132,6 +133,15 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
             req.setAttribute(ATTR_REFRESHED_TOKEN, intro.token());
         }
         chain.doFilter(req, resp);
+    }
+
+    /**
+     * The path PSAMA is asked about. A call {@link AiServiceCallerFilter} verified is asked about
+     * {@value AiServiceCallerFilter#AUTHORIZATION_TARGET}, so the user needs the assistant's privilege, not the {@code /mcp} one.
+     */
+    private static String targetService(HttpServletRequest req, String path) {
+        boolean verifiedAiCall = VerifiedCaller.get(req).filter(AiServiceCallerFilter.CALLER::equals).isPresent();
+        return verifiedAiCall ? AiServiceCallerFilter.AUTHORIZATION_TARGET : path;
     }
 
     private void introspectionFailed(HttpServletResponse resp, String reason) throws IOException {

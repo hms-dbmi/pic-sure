@@ -294,6 +294,31 @@ class InboundIdentityHeaderSanitizingFilterTest {
     }
 
     @Test
+    void stripsAClientSuppliedAiServiceClientTypeInAnyCaseOrPosition() throws Exception {
+        for (String value : List.of("ai-service", "AI-Service", "PYTHON_ADAPTER, ai-service", " ai-service ,R_ADAPTER")) {
+            MockHttpServletRequest request = new MockHttpServletRequest("POST", "/mcp");
+            request.addHeader("X-Client-Type", value);
+
+            HttpServletRequest downstream = sanitize(request);
+
+            assertThat(downstream.getHeader("X-Client-Type")).as(value).isNull();
+            assertThat(Collections.list(downstream.getHeaderNames())).as(value).doesNotContain("X-Client-Type");
+        }
+    }
+
+    @Test
+    void neverPassesTheAiServiceTokenDownstream() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/mcp");
+        request.addHeader("X-PIC-SURE-AI-TOKEN", "the-ai-secret");
+
+        HttpServletRequest downstream = sanitize(request);
+
+        assertThat(downstream.getHeader("x-pic-sure-ai-token")).isNull();
+        assertThat(downstream.getHeaders("X-PIC-SURE-AI-TOKEN").hasMoreElements()).isFalse();
+        assertThat(Collections.list(downstream.getHeaderNames())).noneMatch("X-PIC-SURE-AI-TOKEN"::equalsIgnoreCase);
+    }
+
+    @Test
     void keepsACommaJoinedClientTypeWithNoReservedEntry() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
         request.addHeader("X-Client-Type", "PYTHON_ADAPTER, mcp-client, services");

@@ -1,4 +1,4 @@
-package edu.harvard.hms.dbmi.avillach.query.config;
+package edu.harvard.hms.dbmi.avillach.commons.security;
 
 import java.io.IOException;
 import java.util.List;
@@ -16,12 +16,13 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * Rebuilds a {@code SecurityContext} from the gateway's {@code X-User-*} headers purely so {@link WebSecurityConfig}'s path rules can be
- * expressed declaratively (e.g. {@code /hpds/**} requiring an authenticated caller). The gateway is the sole PSAMA client and has already
- * authorized the request; this service performs no JWT validation of its own and trusts the headers (network ACLs prevent direct access).
+ * Maps the gateway-set {@code X-User-Privileges} header into Spring {@link SimpleGrantedAuthority}s so a service's path rules and
+ * {@code @PreAuthorize} guards can see them. The gateway is the only entity that talks to PSAMA; services trust the header (network ACLs
+ * prevent direct access) and perform no JWT validation of their own.
  *
  * <p>Delegates to {@link GatewayUserResolver#resolve(HttpServletRequest)}: when {@code X-User-Id} is absent, {@code resolve} yields
  * {@link java.util.Optional#empty()} and this filter leaves the {@code SecurityContext} untouched -- the request stays anonymous.
+ * Open-access callers carry a user id but no privileges, so they hold no authority.
  */
 public class GatewayPrivilegesFilter extends OncePerRequestFilter {
 

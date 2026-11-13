@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
+import edu.harvard.hms.dbmi.avillach.commons.audit.VerifiedCaller;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionResponse;
@@ -80,6 +81,38 @@ class PsamaIntrospectionFilterTest {
         verify(client).introspect(eq("user-token"), request.capture());
         assertThat(request.getValue()).containsExactly(Map.entry("Target Service", "/hpds/auth/query/sync"));
         assertThat(request.getValue().toString()).doesNotContain("secret");
+    }
+
+    @Test
+    void aVerifiedAiServiceCallIsIntrospectedAgainstTheAssistantTargetNotTheMcpPath() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.introspect(eq("user-token"), any()))
+            .thenReturn(new IntrospectionResponse(true, "u-1", "s-1", "a@b", "USER", List.of("ASSISTED_SEARCH"), false, null, null));
+        BufferedRequestWrapper request = wrap("Bearer user-token", new byte[0], "/mcp");
+        VerifiedCaller.set(request, "ai-service");
+
+        filter(client, new AuditContext()).doFilter(request, mock(HttpServletResponse.class), mock(FilterChain.class));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> meta = ArgumentCaptor.forClass(Map.class);
+        verify(client).introspect(eq("user-token"), meta.capture());
+        assertThat(meta.getValue()).containsExactly(Map.entry("Target Service", "/ai/mcp"));
+    }
+
+    @Test
+    void anMcpCallThatIsNotAVerifiedAiCallIsIntrospectedAgainstTheMcpPath() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.introspect(eq("user-token"), any()))
+            .thenReturn(new IntrospectionResponse(true, "u-1", "s-1", "a@b", "USER", List.of("PIC_SURE_MCP"), false, null, null));
+        BufferedRequestWrapper request = wrap("Bearer user-token", new byte[0], "/mcp");
+        VerifiedCaller.set(request, "mcp");
+
+        filter(client, new AuditContext()).doFilter(request, mock(HttpServletResponse.class), mock(FilterChain.class));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> meta = ArgumentCaptor.forClass(Map.class);
+        verify(client).introspect(eq("user-token"), meta.capture());
+        assertThat(meta.getValue()).containsExactly(Map.entry("Target Service", "/mcp"));
     }
 
     @Test

@@ -161,6 +161,9 @@ picsure:
     mcp:
       service-token: ${MCP_SERVICE_TOKEN:}
       previous-service-token: ${MCP_SERVICE_TOKEN_PREVIOUS:}
+    ai:
+      service-token: ${AI_SERVICE_TOKEN:}
+      previous-service-token: ${AI_SERVICE_TOKEN_PREVIOUS:}
     security:
       open-access-enabled: ${GATEWAY_OPEN_ACCESS_ENABLED:false}
       max-body-bytes: ${GATEWAY_AUTH_MAX_BODY_BYTES:10485760}

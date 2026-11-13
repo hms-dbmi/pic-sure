@@ -10,6 +10,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.commons.request.RoutedRequestPath;
+import edu.harvard.hms.dbmi.avillach.gateway.filter.AiServiceCallerFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.McpCallerFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.ApiKeyBearer;
 import jakarta.servlet.FilterChain;
@@ -56,7 +57,7 @@ public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter 
 
         private static final String AUTHORIZATION_HEADER = "Authorization";
         private static final String CLIENT_TYPE_HEADER = "X-Client-Type";
-        private static final Set<String> RESERVED_CLIENT_TYPES = Set.of("service", McpCallerFilter.CALLER);
+        private static final Set<String> RESERVED_CLIENT_TYPES = Set.of("service", McpCallerFilter.CALLER, AiServiceCallerFilter.CALLER);
 
         /**
          * Gateway-owned identity headers, spoofable source-address headers, and the internal and MCP service tokens: always hidden from the
@@ -66,7 +67,7 @@ public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter 
             GatewayUserResolver.HEADER_USER_ID, GatewayUserResolver.HEADER_USER_SUBJECT, GatewayUserResolver.HEADER_USER_EMAIL,
             GatewayUserResolver.HEADER_USER_ROLES, GatewayUserResolver.HEADER_USER_PRIVILEGES, "X-Real-IP", "Forwarded",
             "X-PIC-SURE-INTERNAL-TOKEN", GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.HEADER_OPEN_SESSION_ID,
-            McpCallerFilter.TOKEN_HEADER
+            McpCallerFilter.TOKEN_HEADER, AiServiceCallerFilter.TOKEN_HEADER
         );
 
         private final boolean onMcpRoute;

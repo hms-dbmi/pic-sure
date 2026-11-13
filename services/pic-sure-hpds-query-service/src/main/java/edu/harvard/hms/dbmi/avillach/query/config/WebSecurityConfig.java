@@ -8,6 +8,8 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
 
+import edu.harvard.hms.dbmi.avillach.commons.security.GatewayPrivilegesFilter;
+
 /**
  * Security posture for the single HPDS ingress. This service performs NO JWT validation of its own -- the gateway is the sole PSAMA client
  * and has already authorized the request; {@link GatewayPrivilegesFilter} rebuilds a {@code SecurityContext} from the gateway's

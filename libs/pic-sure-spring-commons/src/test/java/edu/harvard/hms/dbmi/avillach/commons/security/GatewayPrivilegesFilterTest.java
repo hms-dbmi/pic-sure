@@ -1,4 +1,4 @@
-package edu.harvard.hms.dbmi.avillach.operations.config;
+package edu.harvard.hms.dbmi.avillach.commons.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
