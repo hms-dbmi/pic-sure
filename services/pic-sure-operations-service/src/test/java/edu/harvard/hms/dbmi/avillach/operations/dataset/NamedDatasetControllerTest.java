@@ -132,6 +132,65 @@ class NamedDatasetControllerTest {
     }
 
     @Test
+    void nameOf255CharactersIsStoredAndOf256Is400OnCreateAndOnUpdate() throws Exception {
+        Query query = queryRepo.save(QueryFixtures.withRandomId().setQuery(QUERY_BODY));
+        String longest = "n".repeat(255);
+        String tooLong = "n".repeat(256);
+
+        String created =
+            mockMvc
+                .perform(
+                    post("/dataset/named").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+                        .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"queryId\":\"" + query.getUuid() + "\",\"name\":\"" + longest + "\"}")
+                ).andExpect(status().isCreated()).andExpect(jsonPath("$.name").value(longest)).andReturn().getResponse()
+                .getContentAsString();
+        String datasetId = new ObjectMapper().readTree(created).get("uuid").asText();
+
+        mockMvc.perform(
+            post("/dataset/named").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+                .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"queryId\":\"" + query.getUuid() + "\",\"name\":\"" + tooLong + "\"}")
+        ).andExpect(status().isBadRequest());
+        mockMvc.perform(
+            put("/dataset/named/{id}", datasetId).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+                .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"queryId\":\"" + query.getUuid() + "\",\"name\":\"" + tooLong + "\"}")
+        ).andExpect(status().isBadRequest());
+
+        assertThat(namedDatasetRepo.findAll()).singleElement().extracting(NamedDataset::getName).isEqualTo(longest);
+    }
+
+    @Test
+    void metadataLongerThanItsColumnReturns400() throws Exception {
+        Query query = queryRepo.save(QueryFixtures.withRandomId().setQuery(QUERY_BODY));
+
+        mockMvc.perform(
+            post("/dataset/named").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+                .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE).contentType(MediaType.APPLICATION_JSON).content(
+                    "{\"queryId\":\"" + query.getUuid() + "\",\"name\":\"cohort\",\"metadata\":{\"k\":\"" + "a".repeat(65_536) + "\"}}"
+                )
+        ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("bad_request"));
+
+        assertThat(namedDatasetRepo.count()).isZero();
+    }
+
+    /** A caller email longer than its column is a value only the database refuses. It is answered 400, with no database text. */
+    @Test
+    void aSaveTheDatabaseRefusesReturns400WithAPlainMessage() throws Exception {
+        Query query = queryRepo.save(QueryFixtures.withRandomId().setQuery(QUERY_BODY));
+        String longerThanTheColumn = "a".repeat(250) + "@example.org";
+
+        mockMvc
+            .perform(
+                post("/dataset/named").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+                    .header(GatewayUserResolver.HEADER_USER_EMAIL, longerThanTheColumn).contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"queryId\":\"" + query.getUuid() + "\",\"name\":\"cohort\"}")
+            ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("bad_request"))
+            .andExpect(jsonPath("$.message").value("The dataset could not be saved with these values"));
+    }
+
+    @Test
     void createWithMissingNameReturns400() throws Exception {
         Query query = queryRepo.save(QueryFixtures.withRandomId());
 

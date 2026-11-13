@@ -571,26 +571,136 @@ class DatasetBringOverTest {
 
     /**
      * A stack that does not know the general query column moves {@code queryId} and leaves the column, so the dataset is under the general
-     * query of the query it pointed at before. The next read by its user files it under the one of the query it points at now.
+     * query of the query it pointed at before. The next read by its user files it under the one of the query it points at now, and that
+     * same answer lists the variants of the new query and none of the old one.
      */
     @Test
     void aDatasetWhoseQueryIdWasMovedUnderneathIsFiledAgainOnTheNextRead(CapturedOutput output) {
-        UUID dataset = datasetOn(storedOwnerless(STORED_BODY));
-        service.listForUser(ALICE);
-        Query other = storedOwnerless(COUNT_BODY);
-        jdbc.update("UPDATE named_dataset SET queryId = ? WHERE uuid = ?", bytes(other.getUuid()), bytes(dataset));
-        assertThat(rowOf("named_dataset", dataset)).containsEntry("query_to_variant_uuid", hex(GENERAL_ID));
+        MovedUnderneath moved = datasetMovedUnderneathWithVariantsUnderBothQueries();
 
-        NamedDatasetDto read = service.getForUser(ALICE, dataset);
+        NamedDatasetDto read = service.getForUser(ALICE, moved.dataset());
 
-        assertThat(read.query().uuid()).isEqualTo(other.getUuid());
-        assertThat(rowOf("named_dataset", dataset)).containsEntry("queryId", hex(other.getUuid()))
+        assertThat(read.query().uuid()).isEqualTo(moved.movedTo().getUuid());
+        assertThat(read.queries()).containsExactly(new LinkedQueryDto(moved.variantOfTheNewQuery(), false, "COUNT"));
+        assertThat(rowOf("named_dataset", moved.dataset())).containsEntry("queryId", hex(moved.movedTo().getUuid()))
             .containsEntry("query_to_variant_uuid", hex(COUNT_GENERAL_ID));
         assertThat(rowOf("query_to_variant", GENERAL_ID)).containsEntry("user_uuid", hex(ALICE_ID));
         assertThat(count("query_to_variant")).isEqualTo(2);
-        assertThat(count("query")).isEqualTo(2);
-        assertThat(output.getAll()).contains("Brought dataset " + dataset + " over to general query " + COUNT_GENERAL_ID)
+        assertThat(service.listForUser(ALICE)).singleElement().isEqualTo(read);
+        assertThat(output.getAll()).contains("Brought dataset " + moved.dataset() + " over to general query " + COUNT_GENERAL_ID)
             .doesNotContain("Could not bring dataset");
+    }
+
+    @Test
+    void withTheStepTurnedOffADatasetMovedUnderneathListsNoQueriesOfTheQueryItPointedAtBefore() {
+        MovedUnderneath moved = datasetMovedUnderneathWithVariantsUnderBothQueries();
+        Map<String, List<Map<String, Object>>> before = everyRow();
+        NamedDatasetService turnedOff = serviceWith(datasets, false);
+
+        NamedDatasetDto read = turnedOff.getForUser(ALICE, moved.dataset());
+
+        assertThat(read.query().uuid()).isEqualTo(moved.movedTo().getUuid());
+        assertThat(read.queries()).isEmpty();
+        assertThat(turnedOff.listForUser(ALICE)).singleElement().isEqualTo(read);
+        assertThat(everyRow()).isEqualTo(before);
+        assertThat(rowOf("named_dataset", moved.dataset())).containsEntry("query_to_variant_uuid", hex(GENERAL_ID));
+    }
+
+    @Test
+    void withTheStepTurnedOffADatasetUnderItsDerivedGeneralQueryStillListsItsQueries() {
+        Query ownerless = storedOwnerless(STORED_BODY);
+        UUID dataset = datasetOn(ownerless);
+        service.listForUser(ALICE);
+        saveAsTheQueryServiceDoes(OWNED_ID, false, "DATAFRAME");
+
+        NamedDatasetDto read = serviceWith(datasets, false).getForUser(ALICE, dataset);
+
+        assertThat(read.queries()).containsExactly(new LinkedQueryDto(OWNED_ID, false, "DATAFRAME"));
+    }
+
+    @Test
+    void whenTheWriteFailsADatasetMovedUnderneathListsNoQueriesOfTheQueryItPointedAtBefore(CapturedOutput output) {
+        MovedUnderneath moved = datasetMovedUnderneathWithVariantsUnderBothQueries();
+        Map<String, List<Map<String, Object>>> before = everyRow();
+        NamedDatasetRepository refusingTheWrite = InterceptedRepository.of(NamedDatasetRepository.class, datasets, (methodName, call) -> {
+            if ("saveAndFlush".equals(methodName)) {
+                throw new DataIntegrityViolationException("refused");
+            }
+            return call.proceed();
+        });
+
+        NamedDatasetDto read = serviceWith(refusingTheWrite, true).getForUser(ALICE, moved.dataset());
+
+        assertThat(read.query().uuid()).isEqualTo(moved.movedTo().getUuid());
+        assertThat(read.queries()).isEmpty();
+        assertThat(everyRow()).isEqualTo(before);
+        assertThat(output.getAll()).contains("Could not bring dataset " + moved.dataset() + " over: ");
+    }
+
+    @Test
+    void aDatasetMovedUnderneathOntoAnotherUsersRowListsNoQueries() {
+        UUID dataset = datasetOn(storedOwnerless(STORED_BODY));
+        service.listForUser(ALICE);
+        saveAsTheQueryServiceDoes(OWNED_ID, false, "DATAFRAME");
+        UUID bobsGeneral = QueryFixtures.storedGeneralQuery(jdbc, BOB_ID);
+        Query bobs = queries.save(QueryFixtures.variant(BOB_ID, bobsGeneral, false, "DATAFRAME"));
+        jdbc.update("UPDATE named_dataset SET queryId = ? WHERE uuid = ?", bytes(bobs.getUuid()), bytes(dataset));
+        Map<String, List<Map<String, Object>>> before = everyRow();
+
+        NamedDatasetDto read = service.getForUser(ALICE, dataset);
+
+        assertThat(read.query().uuid()).isEqualTo(bobs.getUuid());
+        assertThat(read.queries()).isEmpty();
+        assertThat(serviceWith(datasets, false).getForUser(ALICE, dataset).queries()).isEmpty();
+        assertThat(everyRow()).isEqualTo(before);
+    }
+
+    @Test
+    void withTheStepTurnedOffADatasetOnTheCallersRowListsTheQueriesOfThatRowWhateverItIsFiledUnder() {
+        UUID general = QueryFixtures.storedGeneralQuery(jdbc, ALICE_ID);
+        UUID stale = QueryFixtures.storedGeneralQuery(jdbc, ALICE_ID);
+        Query own = queries.save(QueryFixtures.variant(ALICE_ID, general, false, "DATAFRAME"));
+        Query underTheStaleOne = queries.save(QueryFixtures.variant(ALICE_ID, stale, false, "COUNT"));
+        UUID dataset = datasetOn(own);
+        jdbc.update("UPDATE named_dataset SET query_to_variant_uuid = ? WHERE uuid = ?", bytes(stale), bytes(dataset));
+
+        NamedDatasetDto read = serviceWith(datasets, false).getForUser(ALICE, dataset);
+
+        assertThat(read.queries()).containsExactly(new LinkedQueryDto(own.getUuid(), false, "DATAFRAME"))
+            .doesNotContain(new LinkedQueryDto(underTheStaleOne.getUuid(), false, "COUNT"));
+        assertThat(rowOf("named_dataset", dataset)).containsEntry("query_to_variant_uuid", hex(stale));
+    }
+
+    /**
+     * A second user who shares the email of the first reads a dataset the first one filed. The step looks up who owns the general query
+     * with one plain read and stops there: it opens no write transaction and locks neither the dataset nor the general query.
+     */
+    @Test
+    void aReadByASecondUserWithTheSameEmailLocksNothing() {
+        datasetOn(storedOwnerless(STORED_BODY));
+        service.listForUser(ALICE);
+        List<String> datasetCalls = new ArrayList<>();
+        NamedDatasetRepository recordedDatasets = InterceptedRepository.of(NamedDatasetRepository.class, datasets, (methodName, call) -> {
+            datasetCalls.add(methodName);
+            return call.proceed();
+        });
+        NamedDatasetService turnedOn = serviceWith(recordedDatasets, true);
+        NamedDatasetService turnedOff = serviceWith(datasets, false);
+        Statistics statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+        statistics.setStatisticsEnabled(true);
+        try {
+            long withTheStepOff = statementsOf(statistics, () -> turnedOff.listForUser(BOB_WITH_ALICES_EMAIL));
+            long withTheStepOn = statementsOf(statistics, () -> turnedOn.listForUser(BOB_WITH_ALICES_EMAIL));
+            long transactionsOfTheRead = statistics.getTransactionCount();
+            long writes = writesCounted(statistics);
+
+            assertThat(withTheStepOn).isEqualTo(withTheStepOff + 1);
+            assertThat(transactionsOfTheRead).isEqualTo(1);
+            assertThat(writes).isZero();
+        } finally {
+            statistics.setStatisticsEnabled(false);
+        }
+        assertThat(datasetCalls).containsExactly("findByUser");
     }
 
     @Test
@@ -694,12 +804,44 @@ class DatasetBringOverTest {
      * Saves a row of Alice under the general query of {@link #STORED_QUERY}, as the query service does when she submits a variant of it.
      */
     private void saveAsTheQueryServiceDoes(UUID picsureId, boolean sample, String resultType) {
+        saveAsTheQueryServiceDoes(picsureId, GENERAL_ID, sample, resultType);
+    }
+
+    /** Saves a row of Alice under a general query, which the save stores as well when it is not stored yet. */
+    private void saveAsTheQueryServiceDoes(UUID picsureId, UUID generalQuery, boolean sample, String resultType) {
         queryPersistence.save(
             new SaveQueryRequest(
                 "{\"query\":{\"select\":[\"\\\\demographics\\\\AGE\\\\\"]}}", picsureId.toString(), "AVAILABLE", "3", null, picsureId,
-                ALICE_ID, Map.of(CONSENTS, List.of("phs001.c1")), "FIRST_SUBMIT", GENERAL_ID, sample, resultType
+                ALICE_ID, Map.of(CONSENTS, List.of("phs001.c1")), "FIRST_SUBMIT", generalQuery, sample, resultType
             )
         );
+    }
+
+    /**
+     * Files a dataset of Alice under the general query of {@link #STORED_QUERY}, saves a variant under it, and then moves the dataset to a
+     * count query the way a stack without the general query column does: {@code queryId} changes and the column stays. A variant of the
+     * count query is saved as well.
+     */
+    private MovedUnderneath datasetMovedUnderneathWithVariantsUnderBothQueries() {
+        UUID dataset = datasetOn(storedOwnerless(STORED_BODY));
+        service.listForUser(ALICE);
+        saveAsTheQueryServiceDoes(OWNED_ID, GENERAL_ID, false, "DATAFRAME");
+        Query other = storedOwnerless(COUNT_BODY);
+        UUID variantOfTheNewQuery = QueryIdentity.idFor(ALICE_ID, COUNT_QUERY);
+        saveAsTheQueryServiceDoes(variantOfTheNewQuery, COUNT_GENERAL_ID, false, "COUNT");
+        jdbc.update("UPDATE named_dataset SET queryId = ? WHERE uuid = ?", bytes(other.getUuid()), bytes(dataset));
+        assertThat(rowOf("named_dataset", dataset)).containsEntry("query_to_variant_uuid", hex(GENERAL_ID));
+        return new MovedUnderneath(dataset, other, variantOfTheNewQuery);
+    }
+
+    /**
+     * A dataset whose {@code queryId} was moved without its general query.
+     *
+     * @param dataset the id of the dataset
+     * @param movedTo the query row with no owner the dataset points at now
+     * @param variantOfTheNewQuery the id of Alice's row under the general query of that query
+     */
+    private record MovedUnderneath(UUID dataset, Query movedTo, UUID variantOfTheNewQuery) {
     }
 
     private Query storedOwnerless(String body) {

@@ -33,7 +33,7 @@ public class NamedDatasetMapper {
     private static final Logger log = LogManager.getLogger(NamedDatasetMapper.class);
 
     /**
-     * Builds the public shape of a named dataset.
+     * Builds the public shape of a named dataset, reading the stored body of its query for it.
      *
      * @param e the dataset, with the query its {@code queryId} names already loaded
      * @param queries the variants of the dataset's general query to list, in the order they are to be returned
@@ -41,30 +41,63 @@ public class NamedDatasetMapper {
      * @throws PicsureException 500 when the stored body of the nested query cannot be converted to v3
      */
     public NamedDatasetDto toDto(NamedDataset e, List<LinkedQueryDto> queries) {
-        return new NamedDatasetDto(
-            e.getUuid(), e.getUser(), e.getName(), toQueryDto(e.getQuery()), e.getArchived(), e.getMetadata(), List.copyOf(queries)
-        );
+        return toDto(e, storedRequestOf(e.getQuery()), queries);
     }
 
-    /** {@code startTime} is converted to epoch millis here -- see {@link NamedDatasetQueryDto} for why the wire type is a number. */
-    private NamedDatasetQueryDto toQueryDto(Query q) {
-        if (q == null) {
-            return null;
-        }
-        return new NamedDatasetQueryDto(
-            q.getUuid(), convertQuery(q), q.getStartTime() == null ? null : q.getStartTime().toEpochMilli(), q.getStatus()
+    /**
+     * Builds the public shape of a named dataset from a stored body that was read already, so a caller that needs the parsed body for
+     * something else reads it once.
+     *
+     * @param e the dataset, with the query its {@code queryId} names already loaded
+     * @param storedRequest what {@link #storedRequestOf} returned for the query of the dataset
+     * @param queries the variants of the dataset's general query to list, in the order they are to be returned
+     * @return the dataset with its nested query and the listed variants
+     * @throws PicsureException 500 when the request cannot be written as text
+     */
+    public NamedDatasetDto toDto(NamedDataset e, Optional<ObjectNode> storedRequest, List<LinkedQueryDto> queries) {
+        return new NamedDatasetDto(
+            e.getUuid(), e.getUser(), e.getName(), toQueryDto(e.getQuery(), storedRequest), e.getArchived(), e.getMetadata(),
+            List.copyOf(queries)
         );
     }
 
     /**
-     * Returns the stored body of a query row as text: the wrapper {@link #strippedV3Request} builds, or the stored body itself when it is
-     * blank. The stored query is not changed.
+     * Reads the stored body of a query row once, as {@link #strippedV3Request} does, for the answer of a dataset request.
+     *
+     * @param q the query row a dataset points at, or null for a dataset that points at none
+     * @return the v3 request wrapper with no consent value, or empty when there is no row or the row holds no body
+     * @throws PicsureException 500 when the stored body cannot be converted to v3
      */
-    private static String convertQuery(Query q) {
+    public Optional<ObjectNode> storedRequestOf(Query q) {
+        if (q == null) {
+            return Optional.empty();
+        }
         try {
-            Optional<ObjectNode> wrapper = strippedV3Request(q);
-            return wrapper.isPresent() ? QUERY_MAPPER.writeValueAsString(wrapper.get()) : q.getQuery();
+            return strippedV3Request(q);
         } catch (JsonProcessingException | UntranslatableQueryException | IllegalArgumentException e) {
+            log.warn("Unable to convert saved query {} to v3", q.getUuid());
+            throw new PicsureException(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error", "Unable to convert saved query to v3");
+        }
+    }
+
+    /** {@code startTime} is converted to epoch millis here -- see {@link NamedDatasetQueryDto} for why the wire type is a number. */
+    private NamedDatasetQueryDto toQueryDto(Query q, Optional<ObjectNode> storedRequest) {
+        if (q == null) {
+            return null;
+        }
+        return new NamedDatasetQueryDto(
+            q.getUuid(), queryText(q, storedRequest), q.getStartTime() == null ? null : q.getStartTime().toEpochMilli(), q.getStatus()
+        );
+    }
+
+    /**
+     * Returns the body of a query row as text: the given v3 request wrapper, or the stored body itself when the row holds no body to read.
+     * The stored query is not changed.
+     */
+    private static String queryText(Query q, Optional<ObjectNode> storedRequest) {
+        try {
+            return storedRequest.isPresent() ? QUERY_MAPPER.writeValueAsString(storedRequest.get()) : q.getQuery();
+        } catch (JsonProcessingException e) {
             log.warn("Unable to convert saved query {} to v3", q.getUuid());
             throw new PicsureException(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error", "Unable to convert saved query to v3");
         }

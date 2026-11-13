@@ -36,16 +36,20 @@ import edu.harvard.hms.dbmi.avillach.operations.query.QueryPersistenceService;
  * needs is not stored yet. It never inserts or changes a {@code query} row and never writes the {@code queryId} of a dataset, so the id a
  * user holds for a dataset stays what it was. A stack that does not know the column reads and writes such a dataset as before.
  *
- * <p><b>Which datasets.</b> {@link #notSettled} looks at datasets a read has loaded and names the ones there is work for. It reads nothing
- * from the database. <ul> <li>A dataset whose query row has no owner should be under the general query derived for the caller from the
- * stored query of that row. It is named when it is under none or under another one.</li> <li>A dataset whose query row belongs to the
- * caller should be under the general query of that row, and is named when it is not.</li> <li>Every other dataset is left: one that points
- * at no row, one whose row belongs to another user, and one whose stored query cannot be read.</li> </ul>
+ * <p><b>Which datasets.</b> {@link #isNotSettled} looks at a dataset a read has loaded and tells whether there is work for it. <ul> <li>A
+ * dataset whose query row has no owner should be under the general query derived for the caller from the stored query of that row. There is
+ * work for it when it is under none, or under another one that belongs to the caller.</li> <li>A dataset whose query row belongs to the
+ * caller should be under the general query of that row, and there is work for it when it is not.</li> <li>Every other dataset is left: one
+ * that points at no row, one whose row belongs to another user, one whose stored query cannot be read, and one that is under a general
+ * query of another user.</li> </ul> Only the last case reads the database, with one plain read of the general query the dataset is under.
+ * Every other case is decided from the entities, so a caller whose datasets are all settled costs no query.
  *
- * <p><b>Deriving the general query.</b> The stored body is read as a v3 request with no consent values, translated first when it was stored
- * before v3. Its query goes through the v3 query record, which drops every member the record does not have, and
+ * <p><b>Deriving the general query.</b> {@link #generalQueryFor} takes the stored body as a v3 request with no consent values, translated
+ * first when it was stored before v3. Its query goes through the v3 query record, which drops every member the record does not have, and
  * {@link QueryIdentity#generalIdFor} gives the id for the caller. It is the id the query service derives when the caller submits the same
- * query, whatever the result type and whether or not it is a sample, so every row a later submit saves is found under the dataset.
+ * query, whatever the result type and whether or not it is a sample, so every row a later submit saves is found under the dataset. The
+ * derivation reads no database and is not gated by the setting: {@link NamedDatasetService} uses it on every read to check the general
+ * query of a dataset before it lists variants under it.
  *
  * <p><b>Filing one.</b> {@link #settle} handles each dataset in a write transaction of its own. The caller calls it after its read
  * transaction has ended. The dataset row is locked first and the cases above are decided again on the locked row, so two requests that read
@@ -53,8 +57,12 @@ import edu.harvard.hms.dbmi.avillach.operations.query.QueryPersistenceService;
  * one, which {@link QueryPersistenceService#ensureGeneralQuery} stores first unless it is stored already.</li> <li>A dataset under another
  * general query is filed under the derived one only when that other general query belongs to the caller. That is a dataset whose
  * {@code queryId} was moved by a stack that does not know the column, which left the general query of the query it pointed at before.</li>
- * <li>A dataset under a general query of another user is left. Two users with one email share their datasets, and the one who read a
- * dataset first keeps it.</li> </ul>
+ * <li>A dataset under a general query of another user is left.</li> </ul>
+ *
+ * <p><b>Two users with one email.</b> A dataset is stored under an email, so two users who have the same email share their datasets, and a
+ * dataset holds one general query. The user who reads a dataset first files it under their general query and keeps it: a read by the second
+ * user changes nothing and lists no variants for that user. The general query is cleared when a {@code PUT} moves the dataset to another
+ * query row with no owner, and whichever of the two users reads the dataset next then files it under theirs.
  *
  * <p><b>Failures.</b> A dataset that cannot be filed stays as it was: its transaction is rolled back, the dataset id and the class of the
  * failure are logged, and the next dataset is handled. Nothing a read answers depends on this step succeeding. A dataset that is left or
@@ -63,8 +71,8 @@ import edu.harvard.hms.dbmi.avillach.operations.query.QueryPersistenceService;
  * <p><b>Stored bodies that cannot be read as a query.</b> Such a dataset is left as it is. {@link NamedDatasetMapper} reads the same body
  * for the answer of the read and fails the whole read with 500, so nothing is written on that request either.
  *
- * <p><b>Off by default.</b> With {@code picsure.operations.dataset-bring-over.enabled} left at false, {@link #notSettled} names no dataset
- * and no read writes anything.
+ * <p><b>Off by default.</b> With {@code picsure.operations.dataset-bring-over.enabled} left at false, {@link #isNotSettled} finds work for
+ * no dataset and no read writes anything.
  *
  * <p>The log lines carry dataset, query and general query ids only: no email, and nothing of a query.
  */
@@ -101,18 +109,53 @@ public class DatasetBringOver {
     }
 
     /**
-     * Names the datasets among the given ones that {@link #settle} has work for. Only the entities are looked at, and nothing is read from
-     * the database, so a caller whose datasets are all settled costs no query.
+     * Tells whether {@link #settle} has work for a dataset a read has loaded. Nothing is read from the database, except for a dataset on a
+     * row with no owner that is under a general query other than the derived one: the owner of that general query is then looked up with
+     * one plain read, and there is work only when it is the caller. No lock is taken and no transaction is opened.
      *
      * @param caller the UUID the gateway sent for the caller
-     * @param loaded datasets of the caller, each with the query row it points at loaded
-     * @return the ids of the datasets to pass to {@link #settle}, in the order given; empty when the step is turned off
+     * @param dataset a dataset of the caller, with the query row it points at loaded
+     * @param derivedGeneralQuery what {@link #generalQueryFor} returned for the caller and the stored query of the dataset's row; only
+     *        looked at when that row has no owner
+     * @return true when the id of the dataset is to be passed to {@link #settle}; false when the step is turned off
      */
-    public List<UUID> notSettled(UUID caller, List<NamedDataset> loaded) {
-        if (!properties.enabled()) {
-            return List.of();
+    public boolean isNotSettled(UUID caller, NamedDataset dataset, Optional<UUID> derivedGeneralQuery) {
+        Query row = dataset.getQuery();
+        if (!properties.enabled() || row == null) {
+            return false;
         }
-        return loaded.stream().filter(dataset -> isNotSettled(caller, dataset)).map(NamedDataset::getUuid).toList();
+        if (row.getUserUuid() != null) {
+            return row.getUserUuid().equals(caller) && !isUnderTheGeneralQueryOfItsRow(dataset);
+        }
+        UUID filedUnder = dataset.getQueryToVariantUuid();
+        if (derivedGeneralQuery.isEmpty() || derivedGeneralQuery.get().equals(filedUnder)) {
+            return false;
+        }
+        return filedUnder == null || belongsTo(caller, filedUnder);
+    }
+
+    /**
+     * Derives the id of the general query a caller's submit of a stored query is filed under. The query of the request is read through the
+     * v3 query record, which keeps the members the record has and drops every other one, at any depth. Nothing is read from the database
+     * and the request is not changed.
+     *
+     * @param caller the UUID of the user the general query is derived for
+     * @param storedRequest the stored body of a query row as {@link NamedDatasetMapper#strippedV3Request} returns it: a v3 request with no
+     *        consent values, or empty for a row that holds no body
+     * @return the id, or empty when there is no request or its query cannot be read as a v3 query
+     */
+    public static Optional<UUID> generalQueryFor(UUID caller, Optional<ObjectNode> storedRequest) {
+        if (storedRequest.isEmpty()) {
+            return Optional.empty();
+        }
+        try {
+            var query =
+                QUERY_MAPPER.treeToValue(storedRequest.get().get(QUERY), edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query.class)
+                    .setAuthorizationFilters(List.of());
+            return Optional.of(QueryIdentity.generalIdFor(caller, query));
+        } catch (JsonProcessingException | IllegalArgumentException unreadable) {
+            return Optional.empty();
+        }
     }
 
     /**
@@ -122,7 +165,7 @@ public class DatasetBringOver {
      *
      * @param caller the UUID the gateway sent for the caller
      * @param user the email the datasets are stored under
-     * @param datasetIds the ids {@link #notSettled} returned
+     * @param datasetIds the ids of the datasets {@link #isNotSettled} found work for
      * @return true when at least one dataset is no longer as the read saw it, because this call changed it or another request did, so that
      *         the read has to be made again
      */
@@ -179,15 +222,8 @@ public class DatasetBringOver {
         return Outcome.tookTheGeneralQueryOf(row.getUuid());
     }
 
-    private static boolean isNotSettled(UUID caller, NamedDataset dataset) {
-        Query row = dataset.getQuery();
-        if (row == null) {
-            return false;
-        }
-        if (row.getUserUuid() == null) {
-            return derivedGeneralQuery(caller, row).filter(derived -> !derived.equals(dataset.getQueryToVariantUuid())).isPresent();
-        }
-        return row.getUserUuid().equals(caller) && !isUnderTheGeneralQueryOfItsRow(dataset);
+    private boolean belongsTo(UUID caller, UUID generalQuery) {
+        return queries.ownerOfGeneralQuery(generalQuery).filter(caller::equals).isPresent();
     }
 
     private static boolean isUnderTheGeneralQueryOfItsRow(NamedDataset dataset) {
@@ -211,7 +247,7 @@ public class DatasetBringOver {
         if (derived.get().equals(filedUnder)) {
             return Outcome.CHANGED_BY_ANOTHER_REQUEST;
         }
-        if (filedUnder != null && !queries.ownerOfGeneralQuery(filedUnder).filter(caller::equals).isPresent()) {
+        if (filedUnder != null && !belongsTo(caller, filedUnder)) {
             return Outcome.LEFT;
         }
         datasets.saveAndFlush(dataset.setQueryToVariantUuid(queries.ensureGeneralQuery(derived.get(), caller)));
@@ -219,23 +255,13 @@ public class DatasetBringOver {
     }
 
     /**
-     * Derives the id of the general query a caller's submit of the stored query of a row is filed under. The stored body is read as a v3
-     * request with no consent values, and its query through the v3 query record, which keeps the members the record has and drops every
-     * other one, at any depth.
+     * Reads the stored body of a locked dataset's row again and derives the general query from it.
      *
-     * @param caller the UUID of the user the general query is derived for
-     * @param row the query row whose stored body is read
      * @return the id, or empty when the row holds no body or the body cannot be read as a query
      */
     private static Optional<UUID> derivedGeneralQuery(UUID caller, Query row) {
         try {
-            Optional<ObjectNode> request = NamedDatasetMapper.strippedV3Request(row);
-            if (request.isEmpty()) {
-                return Optional.empty();
-            }
-            var query = QUERY_MAPPER.treeToValue(request.get().get(QUERY), edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query.class)
-                .setAuthorizationFilters(List.of());
-            return Optional.of(QueryIdentity.generalIdFor(caller, query));
+            return generalQueryFor(caller, NamedDatasetMapper.strippedV3Request(row));
         } catch (JsonProcessingException | UntranslatableQueryException | IllegalArgumentException | UncheckedIOException unreadable) {
             return Optional.empty();
         }

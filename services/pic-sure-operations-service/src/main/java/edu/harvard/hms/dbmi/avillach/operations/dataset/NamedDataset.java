@@ -22,10 +22,14 @@ import edu.harvard.hms.dbmi.avillach.operations.query.Query;
  * <p>Many datasets can point at one query row: a user can save one query under several names, and nothing in the table or in this mapping
  * limits a query row to one dataset.
  *
- * <p>{@code queryToVariantUuid} names the general query of the dataset: the {@code query_to_variant} row that the query the dataset points
- * at is one variant of. It is a copy of that query row's own value, written whenever the dataset is created or updated, and it is null
- * while the query row is filed under no general query. The table has a foreign key to {@code query_to_variant}, which is not mapped here:
- * the service reads and writes the id as a plain value.
+ * <p>{@code queryToVariantUuid} names the general query of the dataset, a {@code query_to_variant} row. For a dataset on a query row that
+ * has an owner it is a copy of that row's own value, written whenever the dataset is created or updated. A query row with no owner is under
+ * no general query, and a dataset on such a row holds the general query derived from the stored query for the user who read the dataset, or
+ * null until that user reads it. A stack that does not know the column can move {@code queryId} and leave it, so the value is only used
+ * after it has been checked against the query the dataset points at. The table has a foreign key to {@code query_to_variant}, which is not
+ * mapped here: the service reads and writes the id as a plain value.
+ *
+ * <p>{@code metadata} is stored as JSON text in a {@code TEXT} column, which holds 65,535 bytes.
  */
 @Schema(description = "A NamedDataset object containing query, name, user, and archived status.")
 @Entity(name = "named_dataset")
@@ -59,7 +63,7 @@ public class NamedDataset {
     private Boolean archived = false;
 
     @Schema(description = "A json string object containing override specific values")
-    @Column(length = 8192)
+    @Column(length = 65535)
     @Convert(converter = JsonConverter.class)
     private Map<String, Object> metadata;
 

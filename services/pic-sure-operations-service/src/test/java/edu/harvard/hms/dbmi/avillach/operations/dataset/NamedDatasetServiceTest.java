@@ -10,7 +10,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -26,10 +28,13 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.QueryIdentity;
 import edu.harvard.hms.dbmi.avillach.operations.query.Query;
 import edu.harvard.hms.dbmi.avillach.operations.query.QueryPersistenceService;
 import edu.harvard.hms.dbmi.avillach.operations.query.QueryRepository;
@@ -62,6 +67,12 @@ class NamedDatasetServiceTest {
     static final GatewayUser ALICE = new GatewayUser(ALICE_ID.toString(), "auth0|alice", ALICE_EMAIL, null, Set.of());
 
     private static final String STORED_BODY = "{\"query\":{\"select\":[],\"phenotypicClause\":null,\"expectedResultType\":\"DATAFRAME\"}}";
+
+    /** The general query the query service derives when Alice submits the query of {@link #STORED_BODY}. */
+    private static final UUID DERIVED_FOR_ALICE = QueryIdentity.generalIdFor(
+        ALICE_ID,
+        new edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query(List.of(), List.of(), null, List.of(), ResultType.DATAFRAME, null, null)
+    );
 
     @Mock
     private NamedDatasetRepository repo;
@@ -206,17 +217,44 @@ class NamedDatasetServiceTest {
     }
 
     @Test
-    void readListsOnlyTheCallersRows() {
-        UUID general = UUID.randomUUID();
-        NamedDataset dataset = datasetPointingAt(storedQuery(BOB_ID, general));
+    void readOfADatasetOnAnotherUsersRowListsNoQueriesAndAsksForNone() {
+        NamedDataset dataset = datasetPointingAt(storedQuery(BOB_ID, UUID.randomUUID()));
         callerOwns(dataset);
-        when(queryRepo.findVariantsOf(Set.of(general), ALICE_ID)).thenReturn(List.of());
 
         NamedDatasetDto dto = service.getForUser(ALICE, dataset.getUuid());
 
         assertThat(dto.queries()).isEmpty();
         assertThat(dto.query().uuid()).isEqualTo(dataset.getQuery().getUuid());
-        verify(queryRepo).findVariantsOf(Set.of(general), ALICE_ID);
+        verifyNoInteractions(queryRepo);
+    }
+
+    @Test
+    void readOfADatasetOnTheCallersRowListsTheVariantsOfThatRowWhateverTheDatasetIsFiledUnder() {
+        UUID general = UUID.randomUUID();
+        Query full = storedQuery(ALICE_ID, general);
+        NamedDataset dataset = datasetPointingAt(full).setQueryToVariantUuid(UUID.randomUUID());
+        callerOwns(dataset);
+        when(queryRepo.findVariantsOf(Set.of(general), ALICE_ID))
+            .thenReturn(List.of(new QueryVariantRow(general, full.getUuid(), false, "DATAFRAME", null)));
+
+        NamedDatasetDto dto = service.getForUser(ALICE, dataset.getUuid());
+
+        assertThat(dto.queries()).containsExactly(new LinkedQueryDto(full.getUuid(), false, "DATAFRAME"));
+    }
+
+    @Test
+    void readOfADatasetOnAnOwnerlessRowListsVariantsOnlyUnderTheGeneralQueryDerivedFromItsStoredQuery() {
+        NamedDataset verified = datasetPointingAt(ownerlessQuery()).setQueryToVariantUuid(DERIVED_FOR_ALICE);
+        NamedDataset stale = datasetPointingAt(ownerlessQuery()).setQueryToVariantUuid(UUID.randomUUID());
+        UUID variant = UUID.randomUUID();
+        when(repo.findByUser(ALICE_EMAIL)).thenReturn(List.of(verified, stale));
+        when(queryRepo.findVariantsOf(Set.of(DERIVED_FOR_ALICE), ALICE_ID))
+            .thenReturn(List.of(new QueryVariantRow(DERIVED_FOR_ALICE, variant, true, "DATAFRAME", null)));
+
+        List<NamedDatasetDto> result = service.listForUser(ALICE);
+
+        assertThat(result.get(0).queries()).containsExactly(new LinkedQueryDto(variant, true, "DATAFRAME"));
+        assertThat(result.get(1).queries()).isEmpty();
     }
 
     @Test
@@ -387,16 +425,92 @@ class NamedDatasetServiceTest {
     }
 
     @Test
-    void aSaveTheDatabaseRefusesIsNotAnsweredAsAConflict() {
+    void aCreateTheDatabaseRefusesIs400WithoutTheMessageOfTheDatabase() {
         Query alices = storedQuery(ALICE_ID, UUID.randomUUID());
         queryIsStored(alices);
-        DataIntegrityViolationException refused = new DataIntegrityViolationException("refused");
-        when(repo.saveAndFlush(any())).thenThrow(refused);
+        when(repo.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("Data too long for column 'user' at row 1"));
 
-        DataIntegrityViolationException thrown =
-            assertThrows(DataIntegrityViolationException.class, () -> service.create(ALICE, requestNaming(alices)));
+        PicsureException ex = assertThrows(PicsureException.class, () -> service.create(ALICE, requestNaming(alices)));
 
-        assertThat(thrown).isSameAs(refused);
+        assertThat(ex.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(ex.getErrorType()).isEqualTo("bad_request");
+        assertThat(ex).hasMessage("The dataset could not be saved with these values");
+    }
+
+    @Test
+    void anUpdateTheDatabaseRefusesIs400WithoutTheMessageOfTheDatabase() {
+        NamedDataset dataset = datasetPointingAt(storedQuery(ALICE_ID, UUID.randomUUID()));
+        callerOwns(dataset);
+        when(repo.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("Incorrect string value for column 'name'"));
+
+        PicsureException ex =
+            assertThrows(PicsureException.class, () -> service.update(ALICE, dataset.getUuid(), requestNaming(dataset.getQuery())));
+
+        assertThat(ex.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(ex.getErrorType()).isEqualTo("bad_request");
+        assertThat(ex).hasMessage("The dataset could not be saved with these values");
+    }
+
+    @Test
+    void aCharacterTheDatabaseCannotStoreIs400AndAnyOtherFailureOfTheSaveIsThrownAsItIs() {
+        Query alices = storedQuery(ALICE_ID, UUID.randomUUID());
+        queryIsStored(alices);
+        JpaSystemException incorrectStringValue =
+            new JpaSystemException(new IllegalStateException(new SQLException("Incorrect string value", "HY000", 1366)));
+        JpaSystemException lockWaitTimeout =
+            new JpaSystemException(new IllegalStateException(new SQLException("Lock wait timeout exceeded", "HY000", 1205)));
+        when(repo.saveAndFlush(any())).thenThrow(incorrectStringValue).thenThrow(lockWaitTimeout);
+
+        PicsureException refused = assertThrows(PicsureException.class, () -> service.create(ALICE, requestNaming(alices)));
+        JpaSystemException thrownAsItIs = assertThrows(JpaSystemException.class, () -> service.create(ALICE, requestNaming(alices)));
+
+        assertThat(refused.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(refused).hasMessage("The dataset could not be saved with these values");
+        assertThat(thrownAsItIs).isSameAs(lockWaitTimeout);
+    }
+
+    @Test
+    void metadataThatTakesMoreBytesThanItsColumnHoldsIs400BeforeAnythingIsLookedUp() {
+        Map<String, Object> fits = metadataOfBytes(NamedDatasetService.METADATA_MAX_BYTES);
+        Map<String, Object> tooLong = metadataOfBytes(NamedDatasetService.METADATA_MAX_BYTES + 1);
+        Query alices = storedQuery(ALICE_ID, UUID.randomUUID());
+        queryIsStored(alices);
+        savingAssignsAnId();
+
+        assertThat(service.create(ALICE, new NamedDatasetRequestDto(alices.getUuid(), "d1", false, fits)).metadata()).isEqualTo(fits);
+        PicsureException onCreate = assertThrows(
+            PicsureException.class, () -> service.create(ALICE, new NamedDatasetRequestDto(alices.getUuid(), "d1", false, tooLong))
+        );
+        PicsureException onUpdate = assertThrows(
+            PicsureException.class,
+            () -> service.update(ALICE, UUID.randomUUID(), new NamedDatasetRequestDto(alices.getUuid(), "d1", false, tooLong))
+        );
+
+        assertThat(List.of(onCreate, onUpdate)).allSatisfy(refused -> {
+            assertThat(refused.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(refused.getErrorType()).isEqualTo("bad_request");
+            assertThat(refused).hasMessage("The metadata is too long: as JSON it may take at most 65535 bytes");
+        });
+        verify(repo, times(1)).saveAndFlush(any());
+        verify(repo, never()).findByUuidAndUser(any(), any());
+    }
+
+    @Test
+    void metadataIsMeasuredInBytesAndNotInCharacters() {
+        Map<String, Object> twoBytesEach = Map.of("k", "\u00e9".repeat(NamedDatasetService.METADATA_MAX_BYTES / 2));
+        Query alices = storedQuery(ALICE_ID, UUID.randomUUID());
+
+        PicsureException ex = assertThrows(
+            PicsureException.class, () -> service.create(ALICE, new NamedDatasetRequestDto(alices.getUuid(), "d1", false, twoBytesEach))
+        );
+
+        assertThat(ex.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+        verifyNoInteractions(repo, queryRepo);
+    }
+
+    /** Returns metadata whose JSON, {@code {"k":"aaa"}} with as many letters as needed, takes exactly the given number of bytes. */
+    private static Map<String, Object> metadataOfBytes(int bytes) {
+        return Map.of("k", "a".repeat(bytes - "{\"k\":\"\"}".length()));
     }
 
     @Test
@@ -617,7 +731,7 @@ class NamedDatasetServiceTest {
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void putWithTheSameOwnerlessQueryKeepsTheGeneralQueryTheDatasetIsUnder(boolean archived) {
-        UUID derived = UUID.randomUUID();
+        UUID derived = DERIVED_FOR_ALICE;
         Query ownerless = ownerlessQuery();
         NamedDataset dataset = datasetPointingAt(ownerless).setQueryToVariantUuid(derived);
         callerOwns(dataset);

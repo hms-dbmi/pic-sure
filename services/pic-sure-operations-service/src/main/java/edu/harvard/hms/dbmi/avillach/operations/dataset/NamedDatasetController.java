@@ -44,6 +44,10 @@ public class NamedDatasetController {
         + "stored without an owner. Another dataset of the caller may already point at that query.\n\n"
         + "When queryId names the query the dataset already points at, the dataset stays on it.";
 
+    static final String SAVE_REFUSED = "The request is not valid: a required member is missing, the name is longer than 255 characters or "
+        + "has a character the pattern does not allow, the metadata takes more than 65,535 bytes as JSON, or the dataset cannot be "
+        + "stored with these values";
+
     private final NamedDatasetService service;
 
     public NamedDatasetController(NamedDatasetService service) {
@@ -64,6 +68,7 @@ public class NamedDatasetController {
     @Operation(summary = "Name a query as a dataset for the caller")
     @ApiResponses(
         {@ApiResponse(responseCode = "201", description = "The created named dataset"),
+            @ApiResponse(responseCode = "400", description = SAVE_REFUSED),
             @ApiResponse(responseCode = "401", description = "No caller email in the request"),
             @ApiResponse(responseCode = "403", description = "The query belongs to another user"),
             @ApiResponse(responseCode = "404", description = "Query not found")}
@@ -90,6 +95,7 @@ public class NamedDatasetController {
     @Operation(summary = "Rename or re-point one of the caller's named datasets", description = UPDATE_DESCRIPTION)
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The updated named dataset"),
+            @ApiResponse(responseCode = "400", description = SAVE_REFUSED),
             @ApiResponse(responseCode = "401", description = "No caller email in the request"),
             @ApiResponse(responseCode = "403", description = "The new queryId names a query that belongs to another user"),
             @ApiResponse(

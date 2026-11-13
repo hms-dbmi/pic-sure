@@ -215,7 +215,8 @@ class NamedDatasetMySqlTest {
             "INSERT INTO named_dataset (uuid, queryId, user, name, archived, metadata) VALUES (?, ?, ?, 'cohort', 0, NULL)", bytes(dataset),
             bytes(full.getUuid()), ALICE_EMAIL
         );
-        assertThat(service.getForUser(ALICE, dataset).queries()).isEmpty();
+        assertThat(service.getForUser(ALICE, dataset).queries()).containsExactly(new LinkedQueryDto(full.getUuid(), false, "DATAFRAME"));
+        assertThat(queryIdAndGeneralQueryOf(dataset)).containsEntry("query_to_variant_uuid", null);
 
         NamedDatasetDto updated = service.update(ALICE, dataset, new NamedDatasetRequestDto(full.getUuid(), "cohort", false, null));
 
@@ -361,6 +362,49 @@ class NamedDatasetMySqlTest {
                 .containsEntry("query_to_variant_uuid", general)
         );
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM query", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void metadataOfExactlyTheBytesTheColumnHoldsIsStoredAndOneByteMoreIs400() {
+        Query full = stored(QueryFixtures.variant(ALICE_ID, generalQueryOf(ALICE_ID), false, "DATAFRAME"));
+        int emptyValue = "{\"k\":\"\"}".length();
+        Map<String, Object> fits = Map.of("k", "a".repeat(65_535 - emptyValue));
+        Map<String, Object> oneByteMore = Map.of("k", "a".repeat(65_536 - emptyValue));
+
+        UUID dataset = service.create(ALICE, new NamedDatasetRequestDto(full.getUuid(), "cohort", false, fits)).uuid();
+
+        assertThat(jdbc.queryForObject("SELECT LENGTH(metadata) FROM named_dataset WHERE uuid = ?", Integer.class, bytes(dataset)))
+            .isEqualTo(65_535);
+        assertThat(service.getForUser(ALICE, dataset).metadata()).isEqualTo(fits);
+        assertThatThrownBy(() -> service.create(ALICE, new NamedDatasetRequestDto(full.getUuid(), "too long", false, oneByteMore)))
+            .isInstanceOfSatisfying(PicsureException.class, refused -> assertThat(refused.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+        assertThatThrownBy(() -> service.update(ALICE, dataset, new NamedDatasetRequestDto(full.getUuid(), "cohort", false, oneByteMore)))
+            .isInstanceOfSatisfying(PicsureException.class, refused -> assertThat(refused.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM named_dataset", Integer.class)).isEqualTo(1);
+    }
+
+    /**
+     * The table's character set stores no character outside the Basic Multilingual Plane, and the email column holds 255 characters. Only
+     * the database judges either, and its refusal is answered 400 with a message that carries nothing of the database's own.
+     */
+    @Test
+    void valuesOnlyTheDatabaseRefusesAre400AndStoreNothing() {
+        Query full = stored(QueryFixtures.variant(ALICE_ID, generalQueryOf(ALICE_ID), false, "DATAFRAME"));
+        GatewayUser withALongEmail = new GatewayUser(ALICE_ID.toString(), "auth0|alice", "a".repeat(250) + "@example.org", null, Set.of());
+        Map<String, Object> outsideTheCharacterSet = Map.of("note", "cohort \uD83E\uDDEC");
+
+        assertThatThrownBy(() -> service.create(withALongEmail, new NamedDatasetRequestDto(full.getUuid(), "cohort", false, null)))
+            .isInstanceOfSatisfying(PicsureException.class, NamedDatasetMySqlTest::assertCouldNotBeSaved);
+        assertThatThrownBy(() -> service.create(ALICE, new NamedDatasetRequestDto(full.getUuid(), "cohort", false, outsideTheCharacterSet)))
+            .isInstanceOfSatisfying(PicsureException.class, NamedDatasetMySqlTest::assertCouldNotBeSaved);
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM named_dataset", Integer.class)).isZero();
+    }
+
+    private static void assertCouldNotBeSaved(PicsureException refused) {
+        assertThat(refused.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(refused.getErrorType()).isEqualTo("bad_request");
+        assertThat(refused).hasMessage("The dataset could not be saved with these values");
     }
 
     @Test

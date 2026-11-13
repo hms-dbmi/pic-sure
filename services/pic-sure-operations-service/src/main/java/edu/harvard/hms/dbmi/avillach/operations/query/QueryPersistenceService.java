@@ -210,14 +210,15 @@ public class QueryPersistenceService {
     }
 
     /**
-     * Returns the owner of a stored general query. The row is read with a shared lock, in the caller's transaction when the caller has one,
-     * so the answer is the latest committed row.
+     * Returns the owner of a stored general query, with a plain read that takes no lock. General queries are never changed or deleted, so
+     * an owner that is found stays the owner. Inside a caller's transaction on MySQL a plain read can miss a general query that another
+     * transaction committed after the first plain read of the caller's transaction.
      *
      * @param generalId the id of the general query
-     * @return the UUID of the user the general query belongs to, or empty when no general query has the id
+     * @return the UUID of the user the general query belongs to, or empty when no general query is found under the id
      */
     public Optional<UUID> ownerOfGeneralQuery(UUID generalId) {
-        return transactions.execute(status -> generalQueries.findSharedByUuid(generalId).map(QueryToVariant::getUserUuid));
+        return generalQueries.findById(generalId).map(QueryToVariant::getUserUuid);
     }
 
     /**

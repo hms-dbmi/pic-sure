@@ -1,9 +1,11 @@
 package edu.harvard.hms.dbmi.avillach.operations.dataset;
 
+import java.nio.charset.StandardCharsets;
+import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -11,10 +13,16 @@ import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
+
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
@@ -51,21 +59,31 @@ import edu.harvard.hms.dbmi.avillach.operations.query.QueryVariantRow;
  * that general query while the dataset stays on the row and clears it when the dataset is moved to another row with no owner, so the next
  * read derives it again.
  *
- * <p>Every answer lists the dataset's {@code queries}: the query rows filed under its general query that belong to the caller, by the
- * gateway user id. They are found by the general query alone. Nothing links a query to a dataset, and no stored query body is read to list
- * them.
+ * <p>Every answer lists the dataset's {@code queries}: the query rows that belong to the caller, by the gateway user id, under the general
+ * query of the query the dataset points at. The general query stored on a dataset is not trusted for that, because a stack that does not
+ * know the column moves {@code queryId} and leaves it. {@link #verifiedGeneralQuery} decides which general query is listed: the one of the
+ * query row when that row is the caller's, the stored one when the row has no owner and the stored one is the general query derived for the
+ * caller from the stored query, and none in every other case. Nothing links a query to a dataset. The stored body of the dataset's query is
+ * read once for each dataset in an answer, and that one reading serves the answer, the check and {@link DatasetBringOver}.
  *
  * <p>The two reads, {@link #listForUser} and {@link #getForUser}, are the only callers of {@link DatasetBringOver}. Each reads in a
- * read-only transaction and answers from it. When {@link DatasetBringOver#notSettled} names datasets among the ones that transaction
- * loaded, the read transaction ends first, {@link DatasetBringOver#settle} then handles each of them in a write transaction of its own, and
- * when that changed anything the read is made once more and answered from the new state. That step writes the general query of a dataset
- * and never its {@code queryId}. A caller whose gateway user id is not a UUID is never passed to that step, and with the step turned off,
- * which is the default, it names no dataset: a read is then one read-only transaction and writes nothing. A dataset the step cannot file is
- * answered as it was read. The two reads are called with no transaction open, as the controller calls them. Inside a caller's transaction
- * the read and the writes would all join it, and one dataset that fails would leave that whole transaction to roll back.
+ * read-only transaction and answers from it. When {@link DatasetBringOver#isNotSettled} finds work for datasets that transaction loaded,
+ * the read transaction ends first, {@link DatasetBringOver#settle} then handles each of them in a write transaction of its own, and when
+ * that changed anything the read is made once more and answered from the new state. That step writes the general query of a dataset and
+ * never its {@code queryId}. A caller whose gateway user id is not a UUID is never passed to that step, and with the step turned off, which
+ * is the default, it has work for no dataset: a read is then one read-only transaction and writes nothing. A dataset the step cannot file
+ * is answered as it was read. The two reads are called with no transaction open, as the controller calls them. Inside a caller's
+ * transaction the read and the writes would all join it, and one dataset that fails would leave that whole transaction to roll back.
  */
 @Service
 public class NamedDatasetService {
+
+    private static final Logger LOG = LoggerFactory.getLogger(NamedDatasetService.class);
+
+    /** The bytes a MySQL {@code TEXT} column holds, which is the type of {@code named_dataset.metadata}. */
+    static final int METADATA_MAX_BYTES = 65_535;
+
+    private static final int MYSQL_INCORRECT_STRING_VALUE = 1366;
 
     /** The canonical text form of a UUID: 36 characters, hexadecimal digits in either case, hyphens after digits 8, 12, 16 and 20. */
     private static final Pattern CANONICAL_UUID =
@@ -149,8 +167,38 @@ public class NamedDatasetService {
      */
     private Read read(GatewayUser user, List<NamedDataset> datasets) {
         Optional<UUID> caller = uuidOf(user);
-        List<UUID> notSettled = caller.isPresent() ? bringOver.notSettled(caller.get(), datasets) : List.of();
-        return new Read(withVariants(user, datasets), caller.orElse(null), notSettled);
+        List<Loaded> loaded = datasets.stream().map(dataset -> loaded(caller, dataset)).toList();
+        List<UUID> notSettled = caller.isEmpty() ? List.of()
+            : loaded.stream().filter(one -> bringOver.isNotSettled(caller.get(), one.dataset(), one.derivedGeneralQuery()))
+                .map(one -> one.dataset().getUuid()).toList();
+        return new Read(withVariants(caller, loaded), caller.orElse(null), notSettled);
+    }
+
+    /**
+     * Reads the stored body of the query a dataset points at, once, and derives the caller's general query from it when the query row has
+     * no owner. Nothing is read from the database.
+     *
+     * @throws PicsureException 500 when the stored body cannot be converted to v3
+     */
+    private Loaded loaded(Optional<UUID> caller, NamedDataset dataset) {
+        Query row = dataset.getQuery();
+        Optional<ObjectNode> storedRequest = mapper.storedRequestOf(row);
+        boolean ownerless = row != null && row.getUserUuid() == null;
+        Optional<UUID> derived =
+            caller.isPresent() && ownerless ? DatasetBringOver.generalQueryFor(caller.get(), storedRequest) : Optional.empty();
+        return new Loaded(dataset, storedRequest, derived);
+    }
+
+    /**
+     * A dataset with what one reading of the stored body of its query gave.
+     *
+     * @param dataset the dataset
+     * @param storedRequest the stored body as a v3 request with no consent values, or empty when the dataset points at no row or the row
+     *        holds no body
+     * @param derivedGeneralQuery the general query derived for the caller from that request, or empty when the query row has an owner, the
+     *        caller has no UUID, or the request cannot be read as a query
+     */
+    private record Loaded(NamedDataset dataset, Optional<ObjectNode> storedRequest, Optional<UUID> derivedGeneralQuery) {
     }
 
     /**
@@ -171,15 +219,17 @@ public class NamedDatasetService {
      * @param user the caller
      * @param req the query to name and the name, archived state and metadata to store
      * @return the created dataset
-     * @throws PicsureException 401 when the caller has no email, 404 when no query has the id, 403 when the query belongs to another user
+     * @throws PicsureException 401 when the caller has no email, 404 when no query has the id, 403 when the query belongs to another user,
+     *         400 when the metadata is too long or the database refuses the dataset
      */
     @Transactional
     public NamedDatasetDto create(GatewayUser user, NamedDatasetRequestDto req) {
         String email = requireEmail(user);
+        requireMetadataThatFits(req.metadata());
         Query query = resolveQuery(req.queryId());
         requireOwnedByCallerOrOwnerless(user, query);
         NamedDataset created = mapper.toEntity(email, query, req).setQueryToVariantUuid(generalQueryOfAnOwnedRow(query));
-        return withVariants(user, List.of(repo.saveAndFlush(created))).getFirst();
+        return answer(user, saved(created));
     }
 
     /**
@@ -200,11 +250,13 @@ public class NamedDatasetService {
      * @param req the query to point at and the name, archived state and metadata to store
      * @return the updated dataset
      * @throws PicsureException 401 when the caller has no email, 404 when the caller has no dataset with the id or no query has the id to
-     *         move to, 403 when the query to move to belongs to another user
+     *         move to, 403 when the query to move to belongs to another user, 400 when the metadata is too long or the database refuses the
+     *         dataset
      */
     @Transactional
     public NamedDatasetDto update(GatewayUser user, UUID id, NamedDatasetRequestDto req) {
         String email = requireEmail(user);
+        requireMetadataThatFits(req.metadata());
         NamedDataset existing = repo.findByUuidAndUser(id, email).orElseThrow(() -> notFound(id));
         boolean moved = existing.getQuery() == null || !existing.getQuery().getUuid().equals(req.queryId());
         if (moved) {
@@ -217,7 +269,7 @@ public class NamedDatasetService {
             existing.setQueryToVariantUuid(generalQueryOfAnOwnedRow(row));
         }
         existing.setName(req.name()).setArchived(req.archived()).setMetadata(req.metadata());
-        return withVariants(user, List.of(repo.saveAndFlush(existing))).getFirst();
+        return answer(user, saved(existing));
     }
 
     /**
@@ -234,26 +286,107 @@ public class NamedDatasetService {
     }
 
     /**
-     * Builds the public shape of each dataset with its {@code queries}: the caller's query rows under the dataset's general query, in the
-     * order {@link QueryRepository#findVariantsOf} returns them. One query fetches the rows of all the datasets. A dataset with no general
-     * query lists none, and so does every dataset when the caller's gateway user id is not a UUID.
+     * Saves a dataset and writes it to the database now, so that a value the database refuses is answered here. The sizes of the name and
+     * the metadata are checked before this point. What is left is a value only the database can judge, such as a character the table's
+     * character set cannot store or a caller email longer than its column.
      *
-     * @param user the caller
-     * @param datasets the datasets to show
-     * @return the datasets in the order given
+     * @throws PicsureException 400 when the database refuses a value of the row. The database's own message is logged and not sent to the
+     *         caller
+     * @throws DataAccessException when the save fails for any other reason
      */
-    private List<NamedDatasetDto> withVariants(GatewayUser user, List<NamedDataset> datasets) {
-        Map<UUID, List<LinkedQueryDto>> variants = callersVariantsByGeneralQuery(user, datasets);
-        return datasets.stream().map(dataset -> {
-            UUID generalQuery = dataset.getQueryToVariantUuid();
-            return mapper.toDto(dataset, generalQuery == null ? List.of() : variants.getOrDefault(generalQuery, List.of()));
-        }).toList();
+    private NamedDataset saved(NamedDataset dataset) {
+        try {
+            return repo.saveAndFlush(dataset);
+        } catch (DataAccessException failed) {
+            if (!isARefusedValue(failed)) {
+                throw failed;
+            }
+            LOG.warn("The database refused a named dataset: {}", failed.getMostSpecificCause().getMessage());
+            throw PicsureExceptions.badRequest("The dataset could not be saved with these values");
+        }
     }
 
-    private Map<UUID, List<LinkedQueryDto>> callersVariantsByGeneralQuery(GatewayUser user, List<NamedDataset> datasets) {
+    /**
+     * Tells whether a failed save means the database refused a value of the row: an integrity violation, which covers a value too long for
+     * its column, or MySQL error 1366, which MySQL raises for a character the column's character set cannot store and which is not reported
+     * as an integrity violation.
+     */
+    private static boolean isARefusedValue(DataAccessException failed) {
+        if (failed instanceof DataIntegrityViolationException) {
+            return true;
+        }
+        for (Throwable cause = failed; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLException sql) {
+                return sql.getErrorCode() == MYSQL_INCORRECT_STRING_VALUE;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Refuses metadata that would not fit its column. The metadata is stored as JSON text in a {@code TEXT} column, which holds 65,535
+     * bytes, so the JSON is written the way {@link JsonConverter} stores it and its UTF-8 bytes are counted.
+     *
+     * @throws PicsureException 400 when the JSON takes more bytes than the column holds
+     */
+    private static void requireMetadataThatFits(Map<String, Object> metadata) {
+        String stored = new JsonConverter().convertToDatabaseColumn(metadata);
+        if (stored != null && stored.getBytes(StandardCharsets.UTF_8).length > METADATA_MAX_BYTES) {
+            throw PicsureExceptions.badRequest("The metadata is too long: as JSON it may take at most " + METADATA_MAX_BYTES + " bytes");
+        }
+    }
+
+    /** Builds the public shape of one dataset a create or an update saved, with its {@code queries}. */
+    private NamedDatasetDto answer(GatewayUser user, NamedDataset dataset) {
         Optional<UUID> caller = uuidOf(user);
-        Set<UUID> generalQueries = datasets.stream().map(NamedDataset::getQueryToVariantUuid).filter(Objects::nonNull)
-            .collect(Collectors.toCollection(LinkedHashSet::new));
+        return withVariants(caller, List.of(loaded(caller, dataset))).getFirst();
+    }
+
+    /**
+     * Builds the public shape of each dataset with its {@code queries}: the caller's query rows under the dataset's verified general query,
+     * in the order {@link QueryRepository#findVariantsOf} returns them. One query fetches the rows of all the datasets. A dataset with no
+     * verified general query lists none, and so does every dataset when the caller's gateway user id is not a UUID.
+     *
+     * @param caller the caller's UUID, or empty when the gateway user id is not one
+     * @param datasets the datasets to show, each with the stored body of its query read
+     * @return the datasets in the order given
+     */
+    private List<NamedDatasetDto> withVariants(Optional<UUID> caller, List<Loaded> datasets) {
+        List<Optional<UUID>> generalQueries = datasets.stream().map(one -> verifiedGeneralQuery(caller, one)).toList();
+        Map<UUID, List<LinkedQueryDto>> variants = callersVariantsByGeneralQuery(caller, generalQueries);
+        List<NamedDatasetDto> answer = new ArrayList<>();
+        for (int index = 0; index < datasets.size(); index++) {
+            Loaded one = datasets.get(index);
+            List<LinkedQueryDto> queries =
+                generalQueries.get(index).map(general -> variants.getOrDefault(general, List.of())).orElse(List.of());
+            answer.add(mapper.toDto(one.dataset(), one.storedRequest(), queries));
+        }
+        return List.copyOf(answer);
+    }
+
+    /**
+     * Returns the general query whose variants a dataset lists for the caller, which is the general query of the query the dataset points
+     * at now. The value stored on the dataset is used only when it is proven to be that one.
+     *
+     * @param caller the caller's UUID, or empty when the gateway user id is not one
+     * @param one the dataset with the general query derived for the caller from its stored query
+     * @return the general query of the query row when that row belongs to the caller; the general query stored on the dataset when the row
+     *         has no owner and the stored value equals the derived one; empty when the caller has no UUID, the dataset points at no row,
+     *         the row belongs to another user, the stored query cannot be read, or the stored value is another general query
+     */
+    private static Optional<UUID> verifiedGeneralQuery(Optional<UUID> caller, Loaded one) {
+        Query row = one.dataset().getQuery();
+        if (caller.isEmpty() || row == null) {
+            return Optional.empty();
+        }
+        if (row.getUserUuid() == null) {
+            return one.derivedGeneralQuery().filter(derived -> derived.equals(one.dataset().getQueryToVariantUuid()));
+        }
+        return row.getUserUuid().equals(caller.get()) ? Optional.ofNullable(row.getQueryToVariantUuid()) : Optional.empty();
+    }
+
+    private Map<UUID, List<LinkedQueryDto>> callersVariantsByGeneralQuery(Optional<UUID> caller, List<Optional<UUID>> verified) {
+        Set<UUID> generalQueries = verified.stream().flatMap(Optional::stream).collect(Collectors.toCollection(LinkedHashSet::new));
         if (caller.isEmpty() || generalQueries.isEmpty()) {
             return Map.of();
         }
