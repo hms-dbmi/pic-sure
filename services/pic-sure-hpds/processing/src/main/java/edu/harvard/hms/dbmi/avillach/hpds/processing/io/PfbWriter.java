@@ -59,6 +59,18 @@ public class PfbWriter implements ResultWriter {
      * The avro formatted concept path values. Avro only allows alphanumeric values and underscores as field names
      */
     private List<String> formattedFields;
+    /**
+     * The concept paths whose observations carry timestamps, as declared before the header is materialized
+     */
+    private Set<String> timestampedPaths = Set.of();
+    /**
+     * The timestamp field of each entry in {@link #formattedFields}, index-aligned with it, null for a field that has none
+     */
+    private List<String> timestampFields;
+    /**
+     * The field names of the patient record in schema order: every formatted field, each followed by its timestamp field if it has one
+     */
+    private List<String> patientRecordFields;
     private DataFileWriter<GenericRecord> dataFileWriter;
     /**
      * Location of the file being written to
@@ -129,6 +141,46 @@ public class PfbWriter implements ResultWriter {
         formattedFields = originalFields.stream().map(this::formatFieldName).collect(Collectors.toList());
     }
 
+    /**
+     * Records which concept paths get a timestamp field. The field is named after the concept's formatted name plus {@code _timestamp},
+     * with a numeric suffix when that name is taken, and sits right after the concept in the patient record.
+     *
+     * @param conceptPaths the concept paths, as passed to {@link #writeHeader(String[])}, that have at least one dated observation
+     * @throws IllegalStateException if the Avro header has already been written
+     */
+    @Override
+    public void declareTimestampedFields(Set<String> conceptPaths) {
+        if (dataFileWriter != null) {
+            throw new IllegalStateException("Timestamped fields must be declared before the first rows are written");
+        }
+        timestampedPaths = Set.copyOf(conceptPaths);
+    }
+
+    /**
+     * Names the timestamp field of every declared concept and lays out the patient record fields. A name that collides with another field
+     * gets the first free numeric suffix, starting at {@code _2}.
+     */
+    private void resolveTimestampFields() {
+        Set<String> takenNames = new HashSet<>(formattedFields);
+        timestampFields = new ArrayList<>();
+        patientRecordFields = new ArrayList<>();
+        for (int i = 0; i < formattedFields.size(); i++) {
+            String field = formattedFields.get(i);
+            String timestampField = null;
+            if (timestampedPaths.contains(originalFields.get(i)) && !isSingularField(field)) {
+                timestampField = field + "_timestamp";
+                for (int suffix = 2; !takenNames.add(timestampField); suffix++) {
+                    timestampField = field + "_timestamp_" + suffix;
+                }
+            }
+            timestampFields.add(timestampField);
+            patientRecordFields.add(field);
+            if (timestampField != null) {
+                patientRecordFields.add(timestampField);
+            }
+        }
+    }
+
     private void ensureHeaderWritten() {
         if (dataFileWriter == null) {
             materializeHeader();
@@ -143,13 +195,14 @@ public class PfbWriter implements ResultWriter {
      */
     private void materializeHeader() {
         Map<String, Concept> conceptMap = fetchConcepts();
+        resolveTimestampFields();
 
         dataDictionarySchema = SchemaBuilder.record(dataDictionaryTableName).fields().requiredString("concept_path").name("drs_uri")
             .type(SchemaBuilder.array().items(SchemaBuilder.nullable().stringType())).noDefault().nullableString("display", "null")
             .nullableString("dataset", "null").nullableString("description", "null").endRecord();
 
         SchemaBuilder.FieldAssembler<Schema> patientRecords = SchemaBuilder.record(patientTableName).fields();
-        formattedFields.forEach(field -> {
+        patientRecordFields.forEach(field -> {
             if (isSingularField(field)) {
                 patientRecords.nullableString(field, "null");
             } else {
@@ -277,7 +330,7 @@ public class PfbWriter implements ResultWriter {
         nodeData.put("ontology_reference", "");
         nodeData.put("values", Map.of());
         nodeData.put("links", List.of());
-        for (String field : formattedFields) {
+        for (String field : patientRecordFields) {
             GenericRecord properties = new GenericData.Record(propertiesSchema);
             properties.put("name", field);
             properties.put("ontology_reference", "");
@@ -327,12 +380,34 @@ public class PfbWriter implements ResultWriter {
 
     @Override
     public void writeMultiValueEntity(Collection<List<List<String>>> entities) {
+        writePatients(entities, null);
+    }
+
+    /**
+     * Writes patient rows with the timestamps of their values.
+     *
+     * @param entities one entry per patient, each holding one list of values per field
+     * @param timestamps one entry per patient, in the same order, each holding one entry per field: for a declared field a list as long as
+     *        its values, for any other field null
+     * @throws IllegalArgumentException if the two arguments differ in length, a timestamp row does not match the number of fields, or a
+     *         declared field's timestamps and values differ in length
+     */
+    @Override
+    public void writeMultiValueEntity(Collection<List<List<String>>> entities, Collection<List<List<String>>> timestamps) {
+        if (timestamps.size() != entities.size()) {
+            throw new IllegalArgumentException("Expected one timestamp row per entity");
+        }
+        writePatients(entities, timestamps.iterator());
+    }
+
+    private void writePatients(Collection<List<List<String>>> entities, Iterator<List<List<String>>> timestampRows) {
         ensureHeaderWritten();
         entities.forEach(entity -> {
             if (entity.size() != formattedFields.size()) {
                 throw new IllegalArgumentException("Entity length much match the number of fields in this document");
             }
             GenericRecord patientData = new GenericData.Record(patientDataSchema);
+            putTimestamps(patientData, entity, timestampRows == null ? null : timestampRows.next());
             String patientId = "";
             for (int i = 0; i < formattedFields.size(); i++) {
                 if ("patient_id".equals(formattedFields.get(i))) {
@@ -360,6 +435,35 @@ public class PfbWriter implements ResultWriter {
                 throw new UncheckedIOException(e);
             }
         });
+    }
+
+    /**
+     * Puts the timestamp array of every declared field into a patient record.
+     *
+     * @param patientData the patient record being built
+     * @param entity the patient's values, one list per field
+     * @param timestampRow the patient's timestamps, one entry per field, or null when the caller passed none
+     * @throws IllegalArgumentException if the row does not match the number of fields, or a declared field's timestamps and values differ
+     *         in length
+     */
+    private void putTimestamps(GenericRecord patientData, List<List<String>> entity, List<List<String>> timestampRow) {
+        if (timestampRow != null && timestampRow.size() != formattedFields.size()) {
+            throw new IllegalArgumentException("Timestamp row length must match the number of fields in this document");
+        }
+        for (int i = 0; i < formattedFields.size(); i++) {
+            String timestampField = timestampFields.get(i);
+            if (timestampField == null) {
+                continue;
+            }
+            int valueCount = entity.get(i) != null ? entity.get(i).size() : 0;
+            List<String> fieldTimestamps = timestampRow != null && timestampRow.get(i) != null ? timestampRow.get(i) : List.of();
+            if (fieldTimestamps.size() != valueCount) {
+                throw new IllegalArgumentException(
+                    "Field " + formattedFields.get(i) + " has " + valueCount + " values but " + fieldTimestamps.size() + " timestamps"
+                );
+            }
+            patientData.put(timestampField, fieldTimestamps);
+        }
     }
 
     @Override

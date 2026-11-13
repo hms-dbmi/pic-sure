@@ -19,10 +19,12 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -91,6 +93,51 @@ public class PfbWriterTest {
 
     private static void assertNoAvroContent(File file) {
         assertTrue(!file.exists() || file.length() == 0, "expected no Avro content but found " + file.length() + " bytes");
+    }
+
+    /**
+     * Reads the patient rows back from an Avro file written by {@link PfbWriter}.
+     *
+     * @param file the Avro file to read
+     * @return the patient records in file order
+     */
+    private static List<GenericRecord> readPatientRows(File file) {
+        return readEntities(file).stream().filter(entity -> entity.get("name").toString().startsWith("pic_sure_patients_"))
+            .map(entity -> (GenericRecord) entity.get("object")).toList();
+    }
+
+    private static List<String> fieldNames(GenericRecord record) {
+        return record.getSchema().getFields().stream().map(org.apache.avro.Schema.Field::name).toList();
+    }
+
+    private static List<String> texts(GenericRecord record, String field) {
+        return ((List<?>) record.get(field)).stream().map(element -> Objects.toString(element, null)).toList();
+    }
+
+    /**
+     * Reads the property names the metadata record lists for the patient node.
+     *
+     * @param file the Avro file to read
+     * @return the property names in the order they were written
+     */
+    private static List<String> patientNodeProperties(File file) {
+        GenericRecord metadata = (GenericRecord) readEntities(file).get(0).get("object");
+        GenericRecord patientNode = ((List<?>) metadata.get("nodes")).stream().map(GenericRecord.class::cast)
+            .filter(node -> node.get("name").toString().startsWith("pic_sure_patients_")).findFirst().orElseThrow();
+        return ((List<?>) patientNode.get("properties")).stream().map(property -> ((GenericRecord) property).get("name").toString())
+            .toList();
+    }
+
+    private static String avroSchemaJson(File file) {
+        try (DataFileReader<GenericRecord> reader = new DataFileReader<>(file, new GenericDatumReader<>())) {
+            return reader.getSchema().toString();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private static List<List<String>> timestampRow(List<String> ageTimestamps, List<String> strokeTimestamps) {
+        return Arrays.asList(null, ageTimestamps, strokeTimestamps);
     }
 
     @Test
@@ -243,6 +290,130 @@ public class PfbWriterTest {
         assertEquals("First", text(ageRow, "display"));
         assertEquals("first dataset", text(ageRow, "dataset"));
         assertEquals("first description", text(ageRow, "description"));
+    }
+
+    @Test
+    public void datedConcept_timestampFieldFollowsConcept_alignedWithValues() {
+        PfbWriter pfbWriter = new PfbWriter(avroFile, UUID.randomUUID().toString(), dictionaryService);
+        Mockito.when(dictionaryService.getConcepts(REQUESTED_PATHS)).thenReturn(List.of());
+        pfbWriter.writeHeader(HEADER);
+        pfbWriter.declareTimestampedFields(Set.of(STROKE_PATH));
+
+        pfbWriter.writeMultiValueEntity(
+            List.of(List.of(List.of("123"), List.of("80"), List.of("N", "Y", "N")), List.of(List.of("456"), List.of("70"), List.of())),
+            List.of(timestampRow(null, Arrays.asList("2020-01-01T00:00:00Z", null, "1970-01-01T00:00:00Z")), timestampRow(null, null))
+        );
+        pfbWriter.close();
+
+        List<GenericRecord> patients = readPatientRows(avroFile);
+        assertEquals(2, patients.size());
+        assertEquals(
+            List.of("patient_id", "_demographics_age_", "_phs123_stroke_", "_phs123_stroke__timestamp"), fieldNames(patients.get(0))
+        );
+        assertEquals(List.of("N", "Y", "N"), texts(patients.get(0), "_phs123_stroke_"));
+        assertEquals(
+            Arrays.asList("2020-01-01T00:00:00Z", null, "1970-01-01T00:00:00Z"), texts(patients.get(0), "_phs123_stroke__timestamp")
+        );
+        assertEquals(List.of("80"), texts(patients.get(0), "_demographics_age_"));
+        assertEquals(List.of(), texts(patients.get(1), "_phs123_stroke_"));
+        assertEquals(List.of(), texts(patients.get(1), "_phs123_stroke__timestamp"));
+    }
+
+    @Test
+    public void datedConcept_metadataListsTimestampField_dictionaryHasNoRowForIt() {
+        PfbWriter pfbWriter = new PfbWriter(avroFile, UUID.randomUUID().toString(), dictionaryService);
+        Mockito.when(dictionaryService.getConcepts(REQUESTED_PATHS)).thenReturn(List.of());
+        pfbWriter.writeHeader(HEADER);
+        pfbWriter.declareTimestampedFields(Set.of(AGE_PATH));
+
+        pfbWriter.close();
+
+        assertEquals(
+            List.of("patient_id", "_demographics_age_", "_demographics_age__timestamp", "_phs123_stroke_"), patientNodeProperties(avroFile)
+        );
+        assertEquals(List.of("_demographics_age_", "_phs123_stroke_"), List.copyOf(readDictionaryRows(avroFile).keySet()));
+        Mockito.verify(dictionaryService, Mockito.times(1)).getConcepts(REQUESTED_PATHS);
+    }
+
+    @Test
+    public void nothingDeclared_schemaEqualsOneArgumentPath() {
+        String queryId = UUID.randomUUID().toString();
+        Mockito.when(dictionaryService.getConcepts(REQUESTED_PATHS)).thenReturn(List.of());
+        PfbWriter oneArgumentWriter = new PfbWriter(avroFile, queryId, dictionaryService);
+        oneArgumentWriter.writeHeader(HEADER);
+        oneArgumentWriter.writeMultiValueEntity(List.of(patientRow("123", "80", "Y")));
+        oneArgumentWriter.close();
+        File undatedFile = tempDir.resolve("undated.avro").toFile();
+        PfbWriter undatedWriter = new PfbWriter(undatedFile, queryId, dictionaryService);
+        undatedWriter.writeHeader(HEADER);
+        undatedWriter.declareTimestampedFields(Set.of());
+
+        undatedWriter.writeMultiValueEntity(List.of(patientRow("123", "80", "Y")), List.of(timestampRow(null, null)));
+        undatedWriter.close();
+
+        assertEquals(avroSchemaJson(avroFile), avroSchemaJson(undatedFile));
+        assertEquals(List.of("patient_id", "_demographics_age_", "_phs123_stroke_"), fieldNames(readPatientRows(undatedFile).get(0)));
+        assertEquals(List.of("patient_id", "_demographics_age_", "_phs123_stroke_"), patientNodeProperties(undatedFile));
+    }
+
+    @Test
+    public void timestampFieldNameCollides_getsNumericSuffix() {
+        String basePath = "\\a\\";
+        String firstTakenPath = "\\a\\_timestamp";
+        String secondTakenPath = "\\a\\_timestamp_2";
+        List<String> requestedPaths = List.of(basePath, firstTakenPath, secondTakenPath);
+        PfbWriter pfbWriter = new PfbWriter(avroFile, UUID.randomUUID().toString(), dictionaryService);
+        Mockito.when(dictionaryService.getConcepts(requestedPaths)).thenReturn(List.of());
+        pfbWriter.writeHeader(new String[] {"patient_id", basePath, firstTakenPath, secondTakenPath});
+        pfbWriter.declareTimestampedFields(Set.of(basePath, firstTakenPath));
+
+        pfbWriter.writeMultiValueEntity(
+            List.of(List.of(List.of("123"), List.of("x"), List.of("y"), List.of("z"))),
+            List.of(Arrays.asList(null, List.of("2020-01-01T00:00:00Z"), List.of("2021-01-01T00:00:00Z"), null))
+        );
+        pfbWriter.close();
+
+        GenericRecord patient = readPatientRows(avroFile).get(0);
+        assertEquals(
+            List.of("patient_id", "_a_", "_a__timestamp_3", "_a__timestamp", "_a__timestamp_timestamp", "_a__timestamp_2"),
+            fieldNames(patient)
+        );
+        assertEquals(List.of("2020-01-01T00:00:00Z"), texts(patient, "_a__timestamp_3"));
+        assertEquals(List.of("y"), texts(patient, "_a__timestamp"));
+        assertEquals(List.of("2021-01-01T00:00:00Z"), texts(patient, "_a__timestamp_timestamp"));
+    }
+
+    @Test
+    public void declareTimestampedFields_afterRowsWritten_throws() {
+        PfbWriter pfbWriter = new PfbWriter(avroFile, UUID.randomUUID().toString(), dictionaryService);
+        Mockito.when(dictionaryService.getConcepts(REQUESTED_PATHS)).thenReturn(List.of());
+        pfbWriter.writeHeader(HEADER);
+        pfbWriter.writeMultiValueEntity(List.of(patientRow("123", "80", "Y")));
+
+        assertThrows(IllegalStateException.class, () -> pfbWriter.declareTimestampedFields(Set.of(AGE_PATH)));
+
+        pfbWriter.close();
+        assertEquals(List.of("patient_id", "_demographics_age_", "_phs123_stroke_"), fieldNames(readPatientRows(avroFile).get(0)));
+    }
+
+    @Test
+    public void writeMultiValueEntity_timestampsShorterThanValues_throws() {
+        PfbWriter pfbWriter = new PfbWriter(avroFile, UUID.randomUUID().toString(), dictionaryService);
+        Mockito.when(dictionaryService.getConcepts(REQUESTED_PATHS)).thenReturn(List.of());
+        pfbWriter.writeHeader(HEADER);
+        pfbWriter.declareTimestampedFields(Set.of(STROKE_PATH));
+        List<List<List<String>>> rows = List.of(List.of(List.of("123"), List.of("80"), List.of("N", "Y")));
+
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> pfbWriter.writeMultiValueEntity(rows, List.of(timestampRow(null, List.of("2020-01-01T00:00:00Z"))))
+        );
+        assertThrows(IllegalArgumentException.class, () -> pfbWriter.writeMultiValueEntity(rows, List.of(timestampRow(null, null))));
+        assertThrows(IllegalArgumentException.class, () -> pfbWriter.writeMultiValueEntity(rows, List.of()));
+        assertThrows(IllegalArgumentException.class, () -> pfbWriter.writeMultiValueEntity(rows));
+
+        pfbWriter.close();
+        assertEquals(List.of(), readPatientRows(avroFile));
     }
 
     @Test
