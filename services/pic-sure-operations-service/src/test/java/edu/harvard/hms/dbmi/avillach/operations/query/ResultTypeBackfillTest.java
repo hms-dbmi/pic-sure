@@ -39,6 +39,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.operations.query.ResultTypeBackfill.Ending;
 import edu.harvard.hms.dbmi.avillach.operations.query.ResultTypeBackfill.Summary;
 
@@ -92,7 +93,7 @@ class ResultTypeBackfillTest {
 
         Summary summary = backfill(repo, 2).runPass();
 
-        assertThat(summary).isEqualTo(new Summary(4, 0, 0, 0, Ending.COMPLETE));
+        assertThat(summary).isEqualTo(new Summary(4, 0, 0, 0, 0, Ending.COMPLETE));
         assertThat(typeOf(v3)).isEqualTo("DATAFRAME_PFB");
         assertThat(typeOf(bareLegacy)).isEqualTo("DATAFRAME");
         assertThat(typeOf(wrappedLegacyWithoutAVersion)).isEqualTo("DATAFRAME");
@@ -119,7 +120,7 @@ class ResultTypeBackfillTest {
 
         Summary summary = backfill(repo, 2).runPass();
 
-        assertThat(summary).isEqualTo(new Summary(1, 0, 0, 4, Ending.COMPLETE));
+        assertThat(summary).isEqualTo(new Summary(1, 0, 0, 4, 0, Ending.COMPLETE));
         assertThat(List.of(notJson, wrongMemberType, notAQuery, untranslatable)).allSatisfy(row -> assertThat(typeOf(row)).isNull());
         assertThat(typeOf(readable)).isEqualTo("COUNT");
     }
@@ -132,7 +133,7 @@ class ResultTypeBackfillTest {
 
         Summary summary = backfill(repo, 1).runPass();
 
-        assertThat(summary).isEqualTo(new Summary(1, 0, 0, 1, Ending.COMPLETE));
+        assertThat(summary).isEqualTo(new Summary(1, 0, 0, 1, 0, Ending.COMPLETE));
         assertThat(typeOf(notGzip)).isNull();
         assertThat(typeOf(gzip)).isEqualTo("COUNT");
     }
@@ -145,7 +146,7 @@ class ResultTypeBackfillTest {
 
         Summary summary = backfill(recordingWrites(writes), 2).runPass();
 
-        assertThat(summary).isEqualTo(new Summary(0, 1, 0, 0, Ending.COMPLETE));
+        assertThat(summary).isEqualTo(new Summary(0, 1, 0, 0, 0, Ending.COMPLETE));
         assertThat(writes).isEmpty();
         assertThat(typeOf(row)).isNull();
     }
@@ -158,9 +159,32 @@ class ResultTypeBackfillTest {
 
         Summary summary = backfill(recordingWrites(writes), 2).runPass();
 
-        assertThat(summary).isEqualTo(new Summary(0, 0, 0, 1, Ending.COMPLETE));
+        assertThat(summary).isEqualTo(new Summary(0, 0, 0, 1, 0, Ending.COMPLETE));
         assertThat(writes).isEmpty();
         assertThat(typeOf(row)).isNull();
+    }
+
+    /**
+     * Pins what the pass does today with a body stored before v3 that gives its result type as a position in {@link ResultType} instead of
+     * a name. The body is bound to the model of that format before it is translated, the binding reads a number, or text holding one, as
+     * the constant at that position, and the translated query then carries that constant's name. The row is therefore typed, where a v3
+     * body with the same value is left without a type, as {@link #leavesARowWhoseNamedTypePassesTheTypeCheckButIsNotAConstantName} shows.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"1", "\"1\""})
+    void typesARowStoredBeforeV3WhoseResultTypeIsAPositionWithTheConstantAtThatPosition(String position) {
+        String body = "{\"categoryFilters\":{\"sex\":[\"Female\"]},\"fields\":[\"age\"],\"expectedResultType\":" + position + "}";
+        UUID versionTwo = stored(1, body, "2");
+        UUID withoutAVersion = stored(2, body, null);
+        List<String> writes = new ArrayList<>();
+
+        Summary summary = backfill(recordingWrites(writes), 2).runPass();
+
+        assertThat(summary).isEqualTo(new Summary(2, 0, 0, 0, 0, Ending.COMPLETE));
+        assertThat(writes).hasSize(2);
+        assertThat(ResultType.values()[1]).isEqualTo(ResultType.DATAFRAME);
+        assertThat(List.of(versionTwo, withoutAVersion)).allSatisfy(row -> assertThat(typeOf(row)).isEqualTo("DATAFRAME"));
+        assertThat(repo.findById(versionTwo).orElseThrow().getQuery()).isEqualTo(body);
     }
 
     @Test
@@ -170,7 +194,7 @@ class ResultTypeBackfillTest {
 
         Summary summary = backfill(repo, 2).runPass();
 
-        assertThat(summary).isEqualTo(new Summary(0, 2, 0, 0, Ending.COMPLETE));
+        assertThat(summary).isEqualTo(new Summary(0, 2, 0, 0, 0, Ending.COMPLETE));
         assertThat(List.of(blank, withoutAType)).allSatisfy(row -> assertThat(typeOf(row)).isNull());
     }
 
@@ -180,12 +204,12 @@ class ResultTypeBackfillTest {
         UUID untyped = stored(2, V3_WITHOUT_A_TYPE, "3");
         UUID typedOnTheFirstPage = stored(3, V3_SAMPLE_PFB, "3");
         UUID typedOnTheSecondPage = stored(4, V3_COUNT, "3");
-        assertThat(backfill(repo, 3).runPass()).isEqualTo(new Summary(2, 1, 0, 1, Ending.COMPLETE));
+        assertThat(backfill(repo, 3).runPass()).isEqualTo(new Summary(2, 1, 0, 1, 0, Ending.COMPLETE));
         List<String> writes = new ArrayList<>();
 
         Summary second = backfill(recordingWrites(writes), 2).runPass();
 
-        assertThat(second).isEqualTo(new Summary(0, 1, 0, 1, Ending.COMPLETE));
+        assertThat(second).isEqualTo(new Summary(0, 1, 0, 1, 0, Ending.COMPLETE));
         assertThat(writes).isEmpty();
         assertThat(typeOf(typedOnTheFirstPage)).isEqualTo("DATAFRAME_PFB");
         assertThat(typeOf(typedOnTheSecondPage)).isEqualTo("COUNT");
@@ -206,7 +230,7 @@ class ResultTypeBackfillTest {
 
         Summary summary = backfill(typedByAnotherWriterBeforeTheWrite, 2).runPass();
 
-        assertThat(summary).isEqualTo(new Summary(1, 0, 1, 0, Ending.COMPLETE));
+        assertThat(summary).isEqualTo(new Summary(1, 0, 1, 0, 0, Ending.COMPLETE));
         assertThat(typeOf(raced)).isEqualTo("DATAFRAME");
         assertThat(typeOf(quiet)).isEqualTo("COUNT");
     }
@@ -223,7 +247,7 @@ class ResultTypeBackfillTest {
 
         Summary summary = backfill(updatedBeforeTheWrite, 2).runPass();
 
-        assertThat(summary).isEqualTo(new Summary(1, 0, 0, 0, Ending.COMPLETE));
+        assertThat(summary).isEqualTo(new Summary(1, 0, 0, 0, 0, Ending.COMPLETE));
         Query after = repo.findById(row).orElseThrow();
         assertThat(after.getResultType()).isEqualTo("COUNT");
         assertThat(after.getStatus()).isEqualTo(PicSureStatus.AVAILABLE);
@@ -248,7 +272,7 @@ class ResultTypeBackfillTest {
 
         Summary summary = backfill(firstWriteFails, 2).runPass();
 
-        assertThat(summary).isEqualTo(new Summary(1, 0, 0, 1, Ending.COMPLETE));
+        assertThat(summary).isEqualTo(new Summary(1, 0, 0, 0, 1, Ending.COMPLETE));
         assertThat(typeOf(refused)).isNull();
         assertThat(typeOf(written)).isEqualTo("COUNT");
     }
@@ -270,7 +294,7 @@ class ResultTypeBackfillTest {
 
         Summary summary = backfill(countingReads, 2).runPass();
 
-        assertThat(summary).isEqualTo(new Summary(1, 0, 0, 5, Ending.COMPLETE));
+        assertThat(summary).isEqualTo(new Summary(1, 0, 0, 5, 0, Ending.COMPLETE));
         assertThat(reads).containsExactly(
             "findFirstWithoutResultType", "findWithoutResultTypeAfter", "findWithoutResultTypeAfter", "findWithoutResultTypeAfter"
         );
@@ -288,7 +312,7 @@ class ResultTypeBackfillTest {
 
         Summary summary = backfill(repo, 2).runPass();
 
-        assertThat(summary).isEqualTo(new Summary(7, 0, 0, 0, Ending.COMPLETE));
+        assertThat(summary).isEqualTo(new Summary(7, 0, 0, 0, 0, Ending.COMPLETE));
         assertThat(rows).allSatisfy(row -> assertThat(typeOf(row)).isEqualTo("COUNT"));
     }
 
@@ -299,7 +323,7 @@ class ResultTypeBackfillTest {
 
         Summary summary = backfill(unreachable, 2).runPass();
 
-        assertThat(summary).isEqualTo(new Summary(0, 0, 0, 0, Ending.READ_FAILED));
+        assertThat(summary).isEqualTo(new Summary(0, 0, 0, 0, 0, Ending.READ_FAILED));
         verify(unreachable, never()).setResultTypeWhereAbsent(any(), any());
     }
 
@@ -380,7 +404,7 @@ class ResultTypeBackfillTest {
 
         Summary summary = running.get().runPass();
 
-        assertThat(summary).isEqualTo(new Summary(1, 0, 0, 0, Ending.STOPPED));
+        assertThat(summary).isEqualTo(new Summary(1, 0, 0, 0, 0, Ending.STOPPED));
         assertThat(rows).extracting(this::typeOf).containsExactly("COUNT", null, null);
     }
 

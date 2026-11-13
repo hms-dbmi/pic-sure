@@ -20,8 +20,8 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 
 /**
  * Fills the {@code result_type} column of the query rows that have none, once after each startup. A row has none when it was written before
- * the column existed, when a stack that does not know the column inserted it, or when it was saved without an owner. The stored body is
- * gzip, which SQL cannot read, so the type is derived here from each row's body with {@link StoredQueryBody#resultTypeOf}.
+ * the column existed, when a stack that does not know the column inserted it, or when the save that stored it named none. The stored body
+ * is gzip, which SQL cannot read, so the type is derived here from each row's body with {@link StoredQueryBody#resultTypeOf}.
  *
  * <p>The pass writes the result type and nothing else. It never sets an owner, a general query or the sample flag, and it never changes a
  * result type that is already stored. Each row is written with one guarded statement, {@link QueryRepository#setResultTypeWhereAbsent}, in
@@ -83,24 +83,27 @@ public class ResultTypeBackfill {
     /**
      * Runs one pass on the calling thread: reads every row without a result type once, in pages, and stores the type its body names. The
      * pass ends at the first page that is not full, when a page cannot be read, or when {@link #stop} is called or the calling thread is
-     * interrupted during a pause. A failure on one row, whether its body cannot be read or its write is refused, is counted and the pass
-     * goes on to the next row. Call it outside a transaction, so that every row is written in a transaction of its own.
+     * interrupted during a pause. A failure on one row is counted and the pass goes on to the next row. A body that cannot be read and a
+     * write that fails are counted apart, because the first is a property of the stored row and the second of the database. Call it outside
+     * a transaction, so that every row is written in a transaction of its own.
      *
-     * @return how many rows the pass typed, left, found typed and failed on, and how it ended
+     * @return how many rows the pass typed, left, found typed, could not read and could not write, and how it ended
      */
     public Summary runPass() {
         Tally tally = new Tally();
         Summary summary = tally.summary(fillPages(tally));
         if (summary.ending() == Ending.READ_FAILED) {
             LOG.warn(
-                "Result type fill ended early on a failed read: {} rows typed, {} left without a type, {} already typed, {} failed",
-                summary.typed(), summary.leftUntyped(), summary.alreadyTyped(), summary.failed()
+                "Result type fill ended early on a failed read: {} rows typed, {} left without a type, {} already typed,"
+                    + " {} with an unreadable body, {} with a failed write",
+                summary.typed(), summary.leftUntyped(), summary.alreadyTyped(), summary.unreadable(), summary.writeFailed()
             );
         } else {
             LOG.info(
-                "Result type fill {}: {} rows typed, {} left without a type, {} already typed, {} failed",
+                "Result type fill {}: {} rows typed, {} left without a type, {} already typed, {} with an unreadable body,"
+                    + " {} with a failed write",
                 summary.ending() == Ending.COMPLETE ? "finished" : "was stopped", summary.typed(), summary.leftUntyped(),
-                summary.alreadyTyped(), summary.failed()
+                summary.alreadyTyped(), summary.unreadable(), summary.writeFailed()
             );
         }
         return summary;
@@ -173,18 +176,23 @@ public class ResultTypeBackfill {
 
     /**
      * Derives the result type of one row and stores it when the row still has none. Every failure is turned into an outcome, so one row
-     * never ends the pass.
+     * never ends the pass. A failure while the body is read and a failure of the write are different outcomes.
      */
     private RowOutcome fill(Query row) {
+        Optional<ResultType> resultType;
         try {
-            Optional<ResultType> resultType = StoredQueryBody.resultTypeOf(row);
-            if (resultType.isEmpty()) {
-                return RowOutcome.LEFT_UNTYPED;
-            }
+            resultType = StoredQueryBody.resultTypeOf(row);
+        } catch (RuntimeException e) {
+            return RowOutcome.UNREADABLE;
+        }
+        if (resultType.isEmpty()) {
+            return RowOutcome.LEFT_UNTYPED;
+        }
+        try {
             int written = queries.setResultTypeWhereAbsent(row.getUuid(), resultType.get().name());
             return written == 1 ? RowOutcome.TYPED : RowOutcome.ALREADY_TYPED;
         } catch (RuntimeException e) {
-            return RowOutcome.FAILED;
+            return RowOutcome.WRITE_FAILED;
         }
     }
 
@@ -218,15 +226,18 @@ public class ResultTypeBackfill {
      * @param typed the rows the pass stored a result type on
      * @param leftUntyped the rows left without a result type because their body is empty, or names no result type or an unknown one
      * @param alreadyTyped the rows that had a result type, or were gone, by the time the pass came to write them
-     * @param failed the rows left without a result type because their body could not be read or their write failed
+     * @param unreadable the rows left without a result type because their body could not be read: it is not gzip, not JSON, or not a query
+     *        this service recognizes
+     * @param writeFailed the rows whose body names a result type and whose write failed, because the database refused it, for example for a
+     *        duplicate variant key, or could not be reached
      * @param ending how the pass ended
      */
-    public record Summary(long typed, long leftUntyped, long alreadyTyped, long failed, Ending ending) {
+    public record Summary(long typed, long leftUntyped, long alreadyTyped, long unreadable, long writeFailed, Ending ending) {
     }
 
     /** What the pass did with one row. Each value is one count of {@link Summary}. */
     private enum RowOutcome {
-        TYPED, LEFT_UNTYPED, ALREADY_TYPED, FAILED
+        TYPED, LEFT_UNTYPED, ALREADY_TYPED, UNREADABLE, WRITE_FAILED
     }
 
     /** The running row counts of one pass. It is used by the one thread that runs the pass. */
@@ -241,7 +252,7 @@ public class ResultTypeBackfill {
         Summary summary(Ending ending) {
             return new Summary(
                 rows[RowOutcome.TYPED.ordinal()], rows[RowOutcome.LEFT_UNTYPED.ordinal()], rows[RowOutcome.ALREADY_TYPED.ordinal()],
-                rows[RowOutcome.FAILED.ordinal()], ending
+                rows[RowOutcome.UNREADABLE.ordinal()], rows[RowOutcome.WRITE_FAILED.ordinal()], ending
             );
         }
     }

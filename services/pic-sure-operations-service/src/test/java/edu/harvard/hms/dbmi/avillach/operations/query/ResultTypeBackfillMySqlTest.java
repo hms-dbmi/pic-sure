@@ -13,6 +13,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -146,8 +148,8 @@ class ResultTypeBackfillMySqlTest {
         Summary first = backfill(queryRepository).runPass();
         Summary second = backfill(queryRepository).runPass();
 
-        assertThat(first).isEqualTo(new Summary(5, 2, 0, 2, Ending.COMPLETE));
-        assertThat(second).isEqualTo(new Summary(0, 2, 0, 2, Ending.COMPLETE));
+        assertThat(first).isEqualTo(new Summary(5, 2, 0, 2, 0, Ending.COMPLETE));
+        assertThat(second).isEqualTo(new Summary(0, 2, 0, 2, 0, Ending.COMPLETE));
         assertThat(typeOf(lowestId)).isEqualTo("DATAFRAME_PFB");
         assertThat(typeOf(highestId)).isEqualTo("DATAFRAME");
         assertThat(typeOf(aboveTheSignBit)).isEqualTo("COUNT");
@@ -173,7 +175,7 @@ class ResultTypeBackfillMySqlTest {
 
         Summary summary = backfill(typedByAnotherWriterBeforeTheWrite).runPass();
 
-        assertThat(summary).isEqualTo(new Summary(1, 0, 1, 0, Ending.COMPLETE));
+        assertThat(summary).isEqualTo(new Summary(1, 0, 1, 0, 0, Ending.COMPLETE));
         assertThat(typeOf(raced)).isEqualTo("DATAFRAME");
         assertThat(typeOf(quiet)).isEqualTo("COUNT");
     }
@@ -190,13 +192,56 @@ class ResultTypeBackfillMySqlTest {
 
         Summary summary = backfill(updatedBeforeTheWrite).runPass();
 
-        assertThat(summary).isEqualTo(new Summary(1, 0, 0, 0, Ending.COMPLETE));
+        assertThat(summary).isEqualTo(new Summary(1, 0, 0, 0, 0, Ending.COMPLETE));
         Map<String, Object> stored =
             jdbc.queryForMap("SELECT status, readyTime, resourceResultId, result_type FROM query WHERE uuid = ?", bytes(row));
         assertThat(stored.get("result_type")).isEqualTo("COUNT");
         assertThat(((Number) stored.get("status")).intValue()).isEqualTo(PicSureStatus.AVAILABLE.ordinal());
         assertThat(stored.get("readyTime")).isNotNull();
         assertThat(stored.get("resourceResultId")).isEqualTo("result-after-the-read");
+    }
+
+    /**
+     * Has the database itself refuse one write. The variant key allows a general query one row for each pair of sample flag and result
+     * type, and compares no nulls, so a row without a result type can sit under a general query that already holds a typed row of the same
+     * sample flag. Giving that row the same type would make a second row of one variant, and MySQL refuses the update for a duplicate key.
+     */
+    @Test
+    void aWriteTheVariantKeyRefusesIsCountedLeavesTheRowAndThePassGoesOn() {
+        UUID generalQuery = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        jdbc.update(
+            "INSERT INTO query_to_variant (uuid, user_uuid, created_at) VALUES (?, ?, '2026-01-02 03:04:05.678')", bytes(generalQuery),
+            bytes(owner)
+        );
+        UUID refused = insertedUnderAGeneralQuery(new UUID(0L, 1L), generalQuery, owner, gzip(V3_COUNT), null);
+        UUID typedOnTheSamePage = insertedByAnOlderStack(new UUID(0L, 2L), gzip(V3_SAMPLE_PFB), "3");
+        UUID typedOnTheNextPage = insertedByAnOlderStack(new UUID(0L, 3L), gzip(LEGACY_DATAFRAME), null);
+        UUID holdsTheVariant = insertedUnderAGeneralQuery(new UUID(0L, 4L), generalQuery, owner, gzip(V3_COUNT), "COUNT");
+        List<Map<String, Object>> before = jdbc.queryForList(EVERY_COLUMN_BUT_THE_RESULT_TYPE);
+        List<Throwable> failedWrites = new ArrayList<>();
+        QueryRepository recordingFailedWrites = InterceptedRepository.of(QueryRepository.class, queryRepository, (method, call) -> {
+            try {
+                return call.proceed();
+            } catch (Throwable failure) {
+                if (UPDATE_METHOD.equals(method)) {
+                    failedWrites.add(failure);
+                }
+                throw failure;
+            }
+        });
+
+        Summary summary = backfill(recordingFailedWrites).runPass();
+
+        assertThat(summary).isEqualTo(new Summary(2, 0, 0, 0, 1, Ending.COMPLETE));
+        assertThat(failedWrites).singleElement().isInstanceOf(DataIntegrityViolationException.class)
+            .satisfies(failure -> assertThat(failure).hasStackTraceContaining("unique_query_variant"));
+        assertThat(typeOf(refused)).isNull();
+        assertThat(typeOf(holdsTheVariant)).isEqualTo("COUNT");
+        assertThat(typeOf(typedOnTheSamePage)).isEqualTo("DATAFRAME_PFB");
+        assertThat(typeOf(typedOnTheNextPage)).isEqualTo("DATAFRAME");
+        assertThat(jdbc.queryForList(EVERY_COLUMN_BUT_THE_RESULT_TYPE)).isEqualTo(before);
+        assertThat(backfill(queryRepository).runPass()).isEqualTo(new Summary(0, 0, 0, 0, 1, Ending.COMPLETE));
     }
 
     private static ResultTypeBackfill backfill(QueryRepository queries) {
@@ -216,6 +261,26 @@ class ResultTypeBackfillMySqlTest {
             "INSERT INTO query (uuid, query, readyTime, resourceResultId, startTime, status, resourceId, metadata, version)"
                 + " VALUES (?, ?, NULL, ?, '2026-01-02 03:04:05.678', 0, NULL, NULL, ?)",
             bytes(id), body, id.toString(), version
+        );
+        return id;
+    }
+
+    /**
+     * Inserts a full-result v3 row that has an owner and is filed under a general query, which must be stored already.
+     *
+     * @param id the id of the row
+     * @param generalQuery the id of the general query the row is a variant of
+     * @param owner the UUID of the user the row and the general query belong to
+     * @param body the stored bytes of the request body
+     * @param resultType the result type to store, or null for none
+     * @return the id of the row
+     */
+    private UUID insertedUnderAGeneralQuery(UUID id, UUID generalQuery, UUID owner, byte[] body, String resultType) {
+        jdbc.update(
+            "INSERT INTO query (uuid, query, readyTime, resourceResultId, startTime, status, resourceId, metadata, version, user_uuid,"
+                + " query_to_variant_uuid, sample, result_type)"
+                + " VALUES (?, ?, NULL, ?, '2026-01-02 03:04:05.678', 0, NULL, NULL, '3', ?, ?, 0, ?)",
+            bytes(id), body, id.toString(), bytes(owner), bytes(generalQuery), resultType
         );
         return id;
     }
