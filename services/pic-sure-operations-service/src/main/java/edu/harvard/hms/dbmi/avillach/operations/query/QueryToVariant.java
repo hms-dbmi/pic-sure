@@ -1,7 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.operations.query;
 
 import java.time.Instant;
-import java.util.Objects;
 import java.util.UUID;
 
 import jakarta.persistence.Column;
@@ -57,26 +56,5 @@ public class QueryToVariant {
      */
     public Instant getCreatedAt() {
         return createdAt;
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(uuid);
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-        if (obj == this) {
-            return true;
-        }
-        if (!(obj instanceof QueryToVariant other)) {
-            return false;
-        }
-        return this.uuid != null && this.uuid.equals(other.uuid);
-    }
-
-    @Override
-    public String toString() {
-        return this.uuid != null ? this.uuid.toString() : super.toString();
     }
 }
