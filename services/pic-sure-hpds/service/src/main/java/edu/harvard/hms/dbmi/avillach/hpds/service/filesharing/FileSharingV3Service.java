@@ -1,16 +1,11 @@
 package edu.harvard.hms.dbmi.avillach.hpds.service.filesharing;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
-import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.AsyncResult;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.VariantListV3Processor;
 import edu.harvard.hms.dbmi.avillach.hpds.service.QueryV3Service;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-
-import java.util.Map;
 
 /**
  * Used for sharing data. Given a query, this service will write phenotypic and genomic data into a directory
@@ -20,8 +15,6 @@ import java.util.Map;
  */
 @Service
 public class FileSharingV3Service {
-
-    private static final Logger LOG = LoggerFactory.getLogger(FileSharingV3Service.class);
 
     private final FileSystemV3Service fileWriter;
     private final VariantListV3Processor variantListProcessor;
@@ -44,7 +37,7 @@ public class FileSharingV3Service {
     public boolean createPhenotypicData(Query query, AsyncResult result) {
         boolean success = createAndWriteData(query, result, "phenotypic_data.csv");
         if (success) {
-            sendFileWrittenEvent(QueryV3Service.resultKeyFor(query).toString(), "phenotypic");
+            FileWrittenAudit.send(loggingClient, QueryV3Service.resultKeyFor(query).toString(), "phenotypic");
         }
         return success;
     }
@@ -60,7 +53,7 @@ public class FileSharingV3Service {
     public boolean createPatientList(Query query, AsyncResult result) {
         boolean success = createAndWriteData(query, result, "patients.txt");
         if (success) {
-            sendFileWrittenEvent(QueryV3Service.resultKeyFor(query).toString(), "patients");
+            FileWrittenAudit.send(loggingClient, QueryV3Service.resultKeyFor(query).toString(), "patients");
         }
         return success;
     }
@@ -69,22 +62,9 @@ public class FileSharingV3Service {
         String vcf = variantListProcessor.runVcfExcerptQuery(query, true);
         boolean success = fileWriter.writeResultToFile("genomic_data.tsv", vcf, query.picsureId().toString());
         if (success) {
-            sendFileWrittenEvent(QueryV3Service.resultKeyFor(query).toString(), "genomic");
+            FileWrittenAudit.send(loggingClient, QueryV3Service.resultKeyFor(query).toString(), "genomic");
         }
         return success;
-    }
-
-    private void sendFileWrittenEvent(String queryId, String dataType) {
-        if (loggingClient != null && loggingClient.isEnabled()) {
-            try {
-                loggingClient.send(
-                    LoggingEvent.builder("DATA_ACCESS").action("data.file.written")
-                        .metadata(Map.of("query_id", queryId, "data_type", dataType)).build()
-                );
-            } catch (Exception e) {
-                LOG.warn("Failed to send audit log event", e);
-            }
-        }
     }
 
     private boolean createAndWriteData(Query query, AsyncResult result, String fileName) {
