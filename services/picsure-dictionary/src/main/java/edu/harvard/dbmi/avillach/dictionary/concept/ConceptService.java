@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class ConceptService {
@@ -43,7 +44,8 @@ public class ConceptService {
         this.conceptRepository = conceptRepository;
         this.datasetService = datasetService;
         this.conceptDecoratorService = conceptDecoratorService;
-        this.internalExportKeys = Set.copyOf(internalExportKeys);
+        this.internalExportKeys =
+            internalExportKeys.stream().map(String::strip).filter(key -> !key.isEmpty()).collect(Collectors.toUnmodifiableSet());
     }
 
     @Cacheable("concepts")
