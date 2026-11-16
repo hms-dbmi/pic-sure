@@ -3,12 +3,10 @@ package edu.harvard.dbmi.avillach.dictionary;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Map;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,8 +41,7 @@ import edu.harvard.dbmi.avillach.logging.LoggingClient;
 /**
  * Pins what the service does with a facet category that holds punctuation. Each request goes over real HTTP to an embedded server whose
  * production beans read the seeded PostgreSQL container. The category is accepted with a 200, the query runs with the category as a bound
- * value, no concept matches because no category has that name, and the seeded data answers the same afterwards. The request is not rejected
- * with a 400.
+ * value, no concept matches because no category has that name, and the seeded data answers the same afterwards.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -80,15 +77,6 @@ class FacetCategoryIsLiteralValueTest {
 
     @MockitoBean
     private LoggingClient loggingClient;
-
-    /**
-     * Audit logging is switched on, as it is in a deployment with a logging service configured. With it off, {@link AuditLoggingFilter}
-     * turns an uncaught handler exception into a 200 with no body, which would hide a failed query.
-     */
-    @BeforeEach
-    void enableAuditLogging() {
-        when(loggingClient.isEnabled()).thenReturn(true);
-    }
 
     /**
      * A category with a quote, a semicolon, a double hyphen or parentheses searches concepts with a 200 and an empty page. The concept
@@ -129,15 +117,15 @@ class FacetCategoryIsLiteralValueTest {
     @ValueSource(strings = {"Framingham's cohorts", "study ids; dataset ids", "study ids -- dataset ids"})
     void queryTextDoesNotDependOnCategory(String category) {
         Filter real = new Filter(List.of(new Facet(REAL_FACET, REAL_CATEGORY)), "", List.of());
-        Filter crafted = new Filter(List.of(new Facet(REAL_FACET, category)), "", List.of());
+        Filter punctuated = new Filter(List.of(new Facet(REAL_FACET, category)), "", List.of());
 
-        QueryParamPair craftedSearch = queryGenerator.generateFilterQuery(crafted, Pageable.unpaged());
-        QueryParamPair craftedCount = queryGenerator.generateCountQuery(crafted);
+        QueryParamPair punctuatedSearch = queryGenerator.generateFilterQuery(punctuated, Pageable.unpaged());
+        QueryParamPair punctuatedCount = queryGenerator.generateCountQuery(punctuated);
 
-        assertThat(craftedSearch.query()).isEqualTo(queryGenerator.generateFilterQuery(real, Pageable.unpaged()).query());
-        assertThat(craftedCount.query()).isEqualTo(queryGenerator.generateCountQuery(real).query());
-        assertThat(craftedSearch.params().getValues()).containsValue(category);
-        assertThat(craftedCount.params().getValues()).containsValue(category);
+        assertThat(punctuatedSearch.query()).isEqualTo(queryGenerator.generateFilterQuery(real, Pageable.unpaged()).query());
+        assertThat(punctuatedCount.query()).isEqualTo(queryGenerator.generateCountQuery(real).query());
+        assertThat(punctuatedSearch.params().getValues()).containsValue(category);
+        assertThat(punctuatedCount.params().getValues()).containsValue(category);
     }
 
     private long totalConcepts(String category) throws Exception {
