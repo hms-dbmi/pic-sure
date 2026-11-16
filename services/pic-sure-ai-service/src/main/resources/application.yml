@@ -5,9 +5,8 @@ spring:
     bedrock:
       aws:
         region: ${BEDROCK_REGION:us-east-1}
-        # access-key/secret-key left unset on purpose: the default AWS SDK credential chain
-        # (the IAM role bedrock-infra/ provisions) is the credential path. Never set a long-term
-        # key here outside local dev.
+        # access-key/secret-key left unset on purpose: the default AWS SDK credential chain is the credential path.
+        # Never set a long-term key here outside local dev.
         # A stalled Bedrock call otherwise waits the SDK's 90s default before its own retry; normal calls take a few seconds.
         socket-timeout: ${BEDROCK_SOCKET_TIMEOUT:30s}
       converse:
