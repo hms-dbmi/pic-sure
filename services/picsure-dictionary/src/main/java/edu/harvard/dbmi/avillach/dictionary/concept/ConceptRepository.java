@@ -1,6 +1,7 @@
 package edu.harvard.dbmi.avillach.dictionary.concept;
 
 import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
+import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptExportMetadata;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import edu.harvard.dbmi.avillach.dictionary.filter.QueryParamPair;
 import edu.harvard.dbmi.avillach.dictionary.util.MapExtractor;
@@ -30,6 +31,7 @@ public class ConceptRepository {
     private final ConceptMetaExtractor conceptMetaExtractor;
     private final ConceptResultSetExtractor conceptResultSetExtractor;
     private final ConceptRowWithMetaMapper conceptRowWithMetaMapper;
+    private final ConceptExportMetadataRowMapper conceptExportMetadataRowMapper;
     private final List<String> disallowedMetaFields;
     private final Set<String> noShowList;
 
@@ -38,7 +40,8 @@ public class ConceptRepository {
     public ConceptRepository(
         NamedParameterJdbcTemplate template, ConceptRowMapper mapper, ConceptFilterQueryGenerator filterGen,
         ConceptMetaExtractor conceptMetaExtractor, ConceptResultSetExtractor conceptResultSetExtractor,
-        ConceptRowWithMetaMapper conceptRowWithMetaMapper, @Value("${filtering.unfilterable_concepts}") List<String> disallowedMetaFields,
+        ConceptRowWithMetaMapper conceptRowWithMetaMapper, ConceptExportMetadataRowMapper conceptExportMetadataRowMapper,
+        @Value("${filtering.unfilterable_concepts}") List<String> disallowedMetaFields,
         @Value("#{'${metadata.no_show_list}'}") Set<String> noShowList
     ) {
         this.template = template;
@@ -47,6 +50,7 @@ public class ConceptRepository {
         this.conceptMetaExtractor = conceptMetaExtractor;
         this.conceptResultSetExtractor = conceptResultSetExtractor;
         this.conceptRowWithMetaMapper = conceptRowWithMetaMapper;
+        this.conceptExportMetadataRowMapper = conceptExportMetadataRowMapper;
         this.disallowedMetaFields = disallowedMetaFields;
         this.noShowList = noShowList;
     }
@@ -340,5 +344,38 @@ public class ConceptRepository {
         MapSqlParameterSource params = new MapSqlParameterSource().addValue("conceptPaths", conceptPaths)
             .addValue("disallowed_meta_keys", disallowedMetaFields).addValue("noShowList", noShowList);
         return template.query(sql, params, conceptRowWithMetaMapper);
+    }
+
+    /**
+     * Looks up the display, dataset, description and requested metadata of each given concept path. Both lists are bound as one
+     * {@code text[]} parameter each, so the number of paths is not limited by the driver's parameter count. The no-show list is not
+     * applied, and {@code description} is read whether or not it was requested.
+     *
+     * @param conceptPaths the concept paths to look up, where a repeated path yields one row
+     * @param metaKeys the raw {@code concept_node_meta} keys to return for each concept
+     * @return one row per concept found, ordered by concept path; a path that matches no concept is left out
+     */
+    public List<ConceptExportMetadata> getExportMetadata(List<String> conceptPaths, List<String> metaKeys) {
+        String sql = """
+            SELECT
+                cn.concept_path, cn.display, ds.ref AS dataset, descr.value AS description,
+                coalesce(
+                    json_agg(json_build_object('key', m.key, 'value', m.value) ORDER BY m.key) FILTER (WHERE m.key IS NOT NULL),
+                    '[]'::json
+                ) AS metadata
+            FROM
+                (SELECT DISTINCT path FROM unnest(CAST(:paths AS text[])) AS all_requested(path)) AS requested
+                JOIN concept_node cn ON md5(cn.concept_path) = md5(requested.path) AND cn.concept_path = requested.path
+                LEFT JOIN dataset ds ON ds.dataset_id = cn.dataset_id
+                LEFT JOIN concept_node_meta descr ON descr.concept_node_id = cn.concept_node_id AND descr.key = 'description'
+                LEFT JOIN concept_node_meta m ON m.concept_node_id = cn.concept_node_id AND m.key = ANY(CAST(:metaKeys AS text[]))
+            GROUP BY
+                cn.concept_node_id, cn.concept_path, cn.display, ds.ref, descr.value
+            ORDER BY
+                cn.concept_path, cn.concept_node_id
+            """;
+        MapSqlParameterSource params = new MapSqlParameterSource().addValue("paths", conceptPaths.toArray(String[]::new))
+            .addValue("metaKeys", metaKeys.toArray(String[]::new));
+        return template.query(sql, params, conceptExportMetadataRowMapper);
     }
 }
