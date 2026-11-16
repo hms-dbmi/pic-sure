@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary.Concept;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary.DictionaryService;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary.DictionaryUnavailableException;
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaBuilder;
 import org.apache.avro.file.CodecFactory;
@@ -37,6 +38,7 @@ public class PfbWriter implements ResultWriter {
     public static final String DATA_DICTIONARY_TABLE_PREFIX = "pic-sure-data-dictionary-";
     public static final List<String> DATA_DICTIONARY_FIELDS = List.of("concept_path", "display", "dataset", "description", "drs_uri");
     private static final Logger log = LoggerFactory.getLogger(PfbWriter.class);
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final DictionaryService dictionaryService;
 
@@ -91,8 +93,6 @@ public class PfbWriter implements ResultWriter {
         this.dictionaryService = dictionaryService;
         this.patientTableName = formatFieldName(PATIENT_TABLE_PREFIX + queryId);
         this.dataDictionaryTableName = formatFieldName(DATA_DICTIONARY_TABLE_PREFIX + queryId);
-        entityFieldAssembler = SchemaBuilder.record("entity").namespace("edu.harvard.dbmi").fields();
-
 
         Schema linksSchema = SchemaBuilder.record("Link").fields().requiredString("dst").name("multiplicity")
             .type(SchemaBuilder.enumeration("Multiplicity").symbols("ONE_TO_ONE", "ONE_TO_MANY", "MANY_TO_ONE", "MANY_TO_MANY")).noDefault()
@@ -118,10 +118,31 @@ public class PfbWriter implements ResultWriter {
         relationSchema = relationRecord.endRecord();
     }
 
+    /**
+     * Records the fields of this export. Nothing is fetched or written until the first rows arrive or the writer is closed.
+     *
+     * @param data the concept paths to export, in column order
+     */
     @Override
     public void writeHeader(String[] data) {
         originalFields = List.of(data);
         formattedFields = originalFields.stream().map(this::formatFieldName).collect(Collectors.toList());
+    }
+
+    private void ensureHeaderWritten() {
+        if (dataFileWriter == null) {
+            materializeHeader();
+        }
+    }
+
+    /**
+     * Fetches the concept details, then creates the Avro file and writes the metadata and data dictionary records. The dictionary is asked
+     * first, so a failed call leaves no Avro content behind.
+     *
+     * @throws DictionaryUnavailableException if the concept details cannot be fetched
+     */
+    private void materializeHeader() {
+        Map<String, Concept> conceptMap = fetchConcepts();
 
         dataDictionarySchema = SchemaBuilder.record(dataDictionaryTableName).fields().requiredString("concept_path").name("drs_uri")
             .type(SchemaBuilder.array().items(SchemaBuilder.nullable().stringType())).noDefault().nullableString("display", "null")
@@ -140,6 +161,7 @@ public class PfbWriter implements ResultWriter {
 
         Schema objectSchema = Schema.createUnion(metadataSchema, patientDataSchema, dataDictionarySchema);
 
+        entityFieldAssembler = SchemaBuilder.record("entity").namespace("edu.harvard.dbmi").fields();
         entityFieldAssembler = entityFieldAssembler.name("object").type(objectSchema).noDefault();
         entityFieldAssembler.nullableString("id", "null");
         entityFieldAssembler.requiredString("name");
@@ -147,28 +169,44 @@ public class PfbWriter implements ResultWriter {
         entitySchema = entityFieldAssembler.endRecord();
 
         DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<GenericRecord>(entitySchema);
-        dataFileWriter = new DataFileWriter<GenericRecord>(datumWriter);
+        DataFileWriter<GenericRecord> openedWriter = new DataFileWriter<GenericRecord>(datumWriter);
         try {
             log.info("Creating temp avro file at " + file.getAbsoluteFile());
-            dataFileWriter.setCodec(CodecFactory.deflateCodec(CodecFactory.DEFAULT_DEFLATE_LEVEL));
-            dataFileWriter.create(entitySchema, file);
+            openedWriter.setCodec(CodecFactory.deflateCodec(CodecFactory.DEFAULT_DEFLATE_LEVEL));
+            openedWriter.create(entitySchema, file);
+            writeMetadata(openedWriter);
+            writeDataDictionary(conceptMap, openedWriter);
         } catch (IOException e) {
+            closeAfterFailure(openedWriter, e);
             throw new UncheckedIOException(e);
+        } catch (RuntimeException e) {
+            closeAfterFailure(openedWriter, e);
+            throw e;
         }
-
-        writeMetadata();
-        writeDataDictionary();
+        dataFileWriter = openedWriter;
     }
 
-    private void writeDataDictionary() {
-        GenericRecord entityRecord = new GenericData.Record(entitySchema);;
-        Map<String, Concept> conceptMap = Map.of();
+    private void closeAfterFailure(DataFileWriter<GenericRecord> openedWriter, Exception failure) {
         try {
-            conceptMap =
-                dictionaryService.getConcepts(originalFields).stream().collect(Collectors.toMap(Concept::conceptPath, Function.identity()));
-        } catch (RuntimeException e) {
-            log.error("Error fetching concepts from dictionary service", e);
+            openedWriter.close();
+        } catch (IOException | RuntimeException closeFailure) {
+            failure.addSuppressed(closeFailure);
         }
+    }
+
+    private Map<String, Concept> fetchConcepts() {
+        List<String> conceptPaths = new ArrayList<>();
+        for (int i = 0; i < formattedFields.size(); i++) {
+            if (!"patient_id".equals(formattedFields.get(i))) {
+                conceptPaths.add(originalFields.get(i));
+            }
+        }
+        return dictionaryService.getConcepts(conceptPaths).stream()
+            .collect(Collectors.toMap(Concept::conceptPath, Function.identity(), (first, duplicate) -> first));
+    }
+
+    private void writeDataDictionary(Map<String, Concept> conceptMap, DataFileWriter<GenericRecord> openedWriter) {
+        GenericRecord entityRecord = new GenericData.Record(entitySchema);;
 
         for (int i = 0; i < formattedFields.size(); i++) {
             String formattedField = formattedFields.get(i);
@@ -186,7 +224,7 @@ public class PfbWriter implements ResultWriter {
                     String drsUriJson = meta.get("drs_uri");
                     if (drsUriJson != null) {
                         try {
-                            String[] drsUriArray = new ObjectMapper().readValue(drsUriJson, String[].class);
+                            String[] drsUriArray = OBJECT_MAPPER.readValue(drsUriJson, String[].class);
                             drsUris = List.of(drsUriArray);
                         } catch (JsonProcessingException e) {
                             log.error("Error parsing drs_uri as json: " + drsUriJson);
@@ -199,14 +237,14 @@ public class PfbWriter implements ResultWriter {
             }
             dataDictionaryData.put("drs_uri", drsUris);
 
-            log.info("Writing " + formattedField + " to data dictonary table with drs_uris: " + drsUris);
+            log.debug("Writing {} to data dictionary table with drs_uris: {}", formattedField, drsUris);
             entityRecord.put("object", dataDictionaryData);
             entityRecord.put("name", dataDictionaryTableName);
             entityRecord.put("id", formattedField);
             entityRecord.put("relations", List.of());
 
             try {
-                dataFileWriter.append(entityRecord);
+                openedWriter.append(entityRecord);
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
@@ -229,7 +267,7 @@ public class PfbWriter implements ResultWriter {
         return formattedFieldName;
     }
 
-    private void writeMetadata() {
+    private void writeMetadata(DataFileWriter<GenericRecord> openedWriter) {
         GenericRecord entityRecord = new GenericData.Record(entitySchema);
 
         List<GenericRecord> nodeList = new ArrayList<>();
@@ -276,7 +314,7 @@ public class PfbWriter implements ResultWriter {
         entityRecord.put("relations", List.of());
 
         try {
-            dataFileWriter.append(entityRecord);
+            openedWriter.append(entityRecord);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -289,6 +327,7 @@ public class PfbWriter implements ResultWriter {
 
     @Override
     public void writeMultiValueEntity(Collection<List<List<String>>> entities) {
+        ensureHeaderWritten();
         entities.forEach(entity -> {
             if (entity.size() != formattedFields.size()) {
                 throw new IllegalArgumentException("Entity length much match the number of fields in this document");
@@ -325,6 +364,7 @@ public class PfbWriter implements ResultWriter {
 
     @Override
     public void close() {
+        ensureHeaderWritten();
         try {
             dataFileWriter.close();
         } catch (IOException e) {
