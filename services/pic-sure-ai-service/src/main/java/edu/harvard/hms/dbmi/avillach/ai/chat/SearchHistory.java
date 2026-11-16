@@ -27,7 +27,8 @@ final class SearchHistory {
         learnLastMatchedSearch(arguments, result);
     }
 
-    private void learnUnmatchedTerms(JsonNode arguments, JsonNode result) {
+    /** Also how a later turn carries over an earlier turn's misses, without its matched searches. */
+    void learnUnmatchedTerms(JsonNode arguments, JsonNode result) {
         JsonNode totals = result.path("termTotals");
         if (totals.isObject()) {
             totals.properties().forEach(e -> record(e.getKey(), e.getValue().asInt(0) > 0));

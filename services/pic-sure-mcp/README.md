@@ -6,7 +6,7 @@
 
 | Tool | Does |
 |---|---|
-| `search_concepts` | Searches the dictionary by free text. The dictionary ANDs every word with prefix matching, so `search` must describe one concept; `terms` searches for any of up to 5 alternatives, such as synonyms and abbreviations, in one dictionary request (joined with `\|`, with `term_breakdown=true`) and reports which terms match each concept and how many concepts each matches alone. |
+| `search_concepts` | Searches the dictionary by free text. The dictionary ANDs every word with prefix matching, so `search` must describe one concept; `terms` searches for any of up to 10 alternatives, such as synonyms and abbreviations, in one dictionary request (joined with `\|`, with `term_breakdown=true`) and reports which terms match each concept and how many concepts each matches alone. |
 | `list_facets` | Lists facet categories, such as study, with concept counts for an optional search. |
 | `get_concept` | Gets one concept by dataset and concept path. |
 | `get_concepts` | Gets up to 25 concepts by concept path in one call, listing the paths the dictionary does not know in `notFound`. |

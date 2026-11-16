@@ -7,6 +7,12 @@
       "defaultValue": 8
     },
     {
+      "name": "picsure.ai.max-filters",
+      "type": "java.lang.Integer",
+      "description": "Most filters (subqueries count too) a query may hold and still be read or proposed by the model. Over it, the researcher's query is withheld from the model and the model's own proposals are refused. The researcher has no such limit in the UI; this only bounds what is resent to the model on every call. Must be at least 1. Maps from the AI_MAX_FILTERS environment variable.",
+      "defaultValue": 100
+    },
+    {
       "name": "picsure.ai.model.http.base-url",
       "type": "java.lang.String",
       "description": "Base URL of the HTTP Converse endpoint ConverseHttpModelClient posts to ({base}/model/{modelId}/converse). Required when picsure.ai.model.provider=http; startup fails when blank.",
@@ -47,6 +53,42 @@
       "type": "java.time.Duration",
       "description": "How long GatewayMcpToolGateway waits for a response from the gateway's /mcp route.",
       "defaultValue": "20s"
+    },
+    {
+      "name": "picsure.ai.conversation.store",
+      "type": "java.lang.String",
+      "description": "Where conversations and turn results are kept. memory, the only implementation, keeps them in this instance's memory: lost on restart and not shared between instances. Maps from the AI_CONVERSATION_STORE environment variable.",
+      "defaultValue": "memory"
+    },
+    {
+      "name": "picsure.ai.conversation.idle-timeout",
+      "type": "java.time.Duration",
+      "description": "How long a conversation is kept after its last use.",
+      "defaultValue": "60m"
+    },
+    {
+      "name": "picsure.ai.conversation.max-turns",
+      "type": "java.lang.Integer",
+      "description": "Turns kept per conversation; the oldest are dropped first.",
+      "defaultValue": 50
+    },
+    {
+      "name": "picsure.ai.conversation.max-total-chars",
+      "type": "java.lang.Long",
+      "description": "Bound on what all conversations hold together, in characters; the least recently used are dropped first.",
+      "defaultValue": 50000000
+    },
+    {
+      "name": "picsure.ai.conversation.result-ttl",
+      "type": "java.time.Duration",
+      "description": "How long a turn's response stays retrievable by requestId, for retries and GET /chat/{requestId}. Keep it at least idle-timeout.",
+      "defaultValue": "60m"
+    },
+    {
+      "name": "picsure.ai.conversation.max-results",
+      "type": "java.lang.Long",
+      "description": "Most turn results kept at once.",
+      "defaultValue": 10000
     }
   ]
 }

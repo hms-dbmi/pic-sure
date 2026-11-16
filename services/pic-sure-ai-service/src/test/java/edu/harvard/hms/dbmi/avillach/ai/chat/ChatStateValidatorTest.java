@@ -10,6 +10,7 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -151,7 +152,7 @@ class ChatStateValidatorTest {
     }
 
     @Test
-    void aQueryFifteenLevelsDeepWithAFilterAtEachLevelIsValidButTooLargeForTheModel() throws Exception {
+    void aQueryFifteenLevelsDeepWithAFilterAtEachLevelIsValidAndWithinTheModelsSizeLimit() throws Exception {
         String filter = "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demo\\\\age\\\\\",\"values\":[\"x\"]}";
         String clause = filter;
         for (int level = 0; level < 15; level++) {
@@ -163,7 +164,26 @@ class ChatStateValidatorTest {
 
         // 15 nested subqueries, each holding a filter, around one innermost filter.
         assertEquals(31, query.filterCount());
-        assertTrue(query.exceedsSizeLimit());
+        assertFalse(query.exceedsSizeLimit(ProposeQueryInput.DEFAULT_MAX_FILTERS));
+    }
+
+    @Test
+    void aQueryWithMoreFiltersThanTheLimitIsValidButTooLargeForTheModel() throws Exception {
+        String filter = "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demo\\\\age\\\\\",\"values\":[\"x\"]}";
+        java.util.function.IntFunction<ProposeQueryInput> withFilters = count -> {
+            try {
+                return ChatStateValidator.query(json("{\"phenotypicClause\":{\"operator\":\"AND\",\"phenotypicClauses\":["
+                    + String.join(",", java.util.Collections.nCopies(count, filter)) + "]}}"));
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        };
+
+        // The subquery holding the filters counts too.
+        ProposeQueryInput atTheLimit = withFilters.apply(ProposeQueryInput.DEFAULT_MAX_FILTERS - 1);
+        assertEquals(ProposeQueryInput.DEFAULT_MAX_FILTERS, atTheLimit.filterCount());
+        assertFalse(atTheLimit.exceedsSizeLimit(ProposeQueryInput.DEFAULT_MAX_FILTERS));
+        assertTrue(withFilters.apply(ProposeQueryInput.DEFAULT_MAX_FILTERS).exceedsSizeLimit(ProposeQueryInput.DEFAULT_MAX_FILTERS));
     }
 
     @Test

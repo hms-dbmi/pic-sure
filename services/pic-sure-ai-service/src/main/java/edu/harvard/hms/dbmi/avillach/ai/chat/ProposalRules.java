@@ -7,6 +7,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -19,11 +20,28 @@ final class ProposalRules {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    /** Refusal for a filterless query when there are no filters to keep and no search to show instead. */
+    /** Refusal for a filterless query the researcher did not ask for, when there is no search to show instead. */
     static final String NO_FILTERS_TO_KEEP =
-        "This proposal has no filters, and the researcher's query has no filters to keep. If the researcher only asked to see, find, "
-            + "select, or list variables, call propose_query again with only search, set to the search text that found them, and no "
-            + "query. To change their cohort, include at least one filter.";
+        "This proposal has no filters, so it would export the selected variables for every participant the researcher can access, and "
+            + "nothing in their message asks to select or export variables. To show variables, call propose_query again with only search, "
+            + "set to the search text that found them, and no query. To select variables, the researcher must ask for that. To change "
+            + "their cohort, include at least one filter.";
+
+    /**
+     * The researcher asking for variables in their export. A select-only query is a real export (with no filters, of every participant
+     * they can access), but gpt-oss also wrote nearly every lookup as one, so it is taken as an export only when the researcher's own
+     * words ask for one. "select", "export", "choose" and "pick" ask on their own; "add" and "include" also start filters ("add a filter",
+     * "include only women"), so they count only when followed by what a selection holds.
+     */
+    private static final Pattern ASKS_TO_SELECT = Pattern.compile(
+        "(?i)\\b(?:select(?:ed|ing)?|export(?:ed|ing)?|choose|pick)\\b"
+            + "|\\b(?:add(?:ed|ing)?|includ(?:e|ing))\\b[^.!?\\n]{0,60}?\\b(?:variables?|columns?|fields?|data|selection|export)\\b"
+    );
+
+    /** @return whether the researcher's message asks to change their selected variables */
+    static boolean asksToSelect(String message) {
+        return message != null && ASKS_TO_SELECT.matcher(message).find();
+    }
 
     private ProposalRules() {
     }
@@ -39,6 +57,17 @@ final class ProposalRules {
     static ToolResult apply(Proposal proposal, TurnState state) {
         // An earlier proposal this turn is what the researcher will see, so a later one changes that.
         ProposeQueryInput before = state.query != null ? state.query : state.currentQuery;
+        String searchBefore = state.search != null ? state.search : state.currentSearch;
+        List<String> broughtBack = proposal.query() == null || state.removedRepairAsked ? List.of() : removedPathsIn(proposal.query(), state);
+        if (!broughtBack.isEmpty()) {
+            // Once per turn: the model then decides, knowing the researcher did this on purpose, and a repeat is accepted as asked for.
+            state.removedRepairAsked = true;
+            return ToolResult.failure(
+                "The researcher removed " + names(broughtBack) + " from their query by hand, and this proposal puts that back. Leave it out "
+                    + "unless the researcher's latest message asks for it again. If it does, send the same proposal again; if not, send "
+                    + "it without."
+            );
+        }
         if (proposal.query() != null && !hasFilters(proposal.query())) {
             proposal = keepingFilters(proposal, state, before);
             if (proposal == null) {
@@ -51,30 +80,48 @@ final class ProposalRules {
             List<String> selected = selectedAfter(before, query.select(), proposal.removeSelect());
             proposal = proposal.withQuery(new ProposeQueryInput(selected, query.phenotypicClause(), query.genomicFilters()));
             // The researcher's own selection plus the additions can be over the limit though the proposal alone was not.
-            if (proposal.query().exceedsSizeLimit()) {
-                return ToolResult.failure(ProposeQueryTool.QUERY_TOO_LARGE);
+            if (proposal.query().exceedsSizeLimit(state.maxFilters)) {
+                return ToolResult.failure(ProposeQueryTool.queryTooLarge(state.maxFilters));
             }
             selectNote = selectNote(proposal.query(), before, proposal.removeSelect());
         }
-        return acceptDroppingUnmatchedTerms(withSearchFacets(proposal, state.searches), state, selectNote);
+        return acceptDroppingUnmatchedTerms(withSearchFacets(proposal, state.searches), state, selectNote, searchBefore);
+    }
+
+    /** @return the filters and added variables of a proposed query that the researcher had removed by hand, as proposed */
+    private static List<String> removedPathsIn(ProposeQueryInput query, TurnState state) {
+        if (state.removedByHand.isEmpty()) {
+            return List.of();
+        }
+        Set<String> proposed = new LinkedHashSet<>();
+        if (query.phenotypicClause() != null) {
+            query.phenotypicClause().addPathsTo(proposed);
+        }
+        if (query.select() != null) {
+            proposed.addAll(query.select());
+        }
+        return proposed.stream().filter(path -> state.removedByHand.contains(ConceptPaths.normalize(path))).toList();
     }
 
     /**
      * Dropping the current filters would silently change the cohort; clearing them is the UI reset button's job.
      *
-     * @return the proposal with the current filters; as it is when there are none but it changes the researcher's selected variables; as
-     *         a search when it only names variables and the researcher has none selected; null when there is no search to fall back on
+     * @return the proposal with the current filters; as it is when there are none but it changes the researcher's selected variables, or
+     *         the researcher asked to select variables; as a search when it only names variables nobody asked to select; null when there is
+     *         no search to fall back on
      */
     private static Proposal keepingFilters(Proposal proposal, TurnState state, ProposeQueryInput before) {
         ProposeQueryInput keep = hasFilters(state.query) ? state.query : state.currentQuery;
         if (hasFilters(keep)) {
             return proposal.withQuery(new ProposeQueryInput(proposal.query().select(), keep.phenotypicClause(), keep.genomicFilters()));
         }
-        if (hasSelected(before) || !proposal.removeSelect().isEmpty()) {
+        if (hasSelected(before) || !proposal.removeSelect().isEmpty() || state.asksToSelect) {
             return proposal;
         }
-        // No filters and nothing selected: a lookup the model wrote as a query.
+        // No filters, nothing selected, and no request to select: a lookup the model wrote as a query. Without a search this turn, the variables are most likely
+        // from the search already on screen, which an earlier turn of the conversation proposed.
         String lookup = proposal.search() != null ? proposal.search() : state.searches.lastMatchedSearchWithoutMisses();
+        lookup = lookup != null ? lookup : state.currentSearch;
         return lookup == null || lookup.isBlank() ? null : proposal.withQuery(null).withSearch(lookup);
     }
 
@@ -116,8 +163,7 @@ final class ProposalRules {
         List<String> filteredRemovals = removed.stream()
             .filter(path -> filtered.stream().anyMatch(f -> ConceptPaths.normalize(f).equals(ConceptPaths.normalize(path)))).toList();
         if (!filteredRemovals.isEmpty()) {
-            notes.add(names(filteredRemovals) + " stayed selected, because the query filters on it; the table always shows filtered "
-                + "variables.");
+            notes.add(names(filteredRemovals) + " stayed selected, because the query filters on it; a filtered variable always stays selected.");
         }
         List<String> notSelected = removed.stream().filter(path -> !wasSelected.contains(ConceptPaths.normalize(path))).toList();
         if (!notSelected.isEmpty()) {
@@ -140,11 +186,11 @@ final class ProposalRules {
         return narrowing == null ? proposal : proposal.withFacets(narrowing);
     }
 
-    private static ToolResult acceptDroppingUnmatchedTerms(Proposal proposal, TurnState state, String selectNote) {
+    private static ToolResult acceptDroppingUnmatchedTerms(Proposal proposal, TurnState state, String selectNote, String searchBefore) {
         SearchHistory.TermSplit split = state.searches.splitUnmatched(proposal.search());
         if (split.dropped().isEmpty()) {
             state.accept(proposal);
-            return accepted(proposal, null, selectNote);
+            return accepted(proposal, null, selectNote, searchBefore);
         }
         if (split.kept().isEmpty()) {
             return ToolResult.failure(
@@ -155,13 +201,16 @@ final class ProposalRules {
         String keptSearch = String.join(" | ", split.kept());
         Proposal trimmed = proposal.withSearch(keptSearch);
         state.accept(trimmed);
-        String note = "Dropped " + String.join(", ", split.dropped()) + " from the search because nothing matched. The researcher's "
-            + "table shows only: " + keptSearch + ".";
-        return accepted(trimmed, note, selectNote);
+        String note = "Dropped " + String.join(", ", split.dropped()) + " from the search because nothing matched. Their search is now only: " + keptSearch + ".";
+        return accepted(trimmed, note, selectNote, searchBefore);
     }
 
-    /** Says what actually changed: given a bare {@code received}, the model claimed changes that weren't made. */
-    private static ToolResult accepted(Proposal proposal, String note, String selectNote) {
+    /**
+     * Says what actually changed: given a bare {@code received}, the model claimed changes that weren't made.
+     *
+     * @param searchBefore the search on the researcher's screen before this proposal, or null
+     */
+    private static ToolResult accepted(Proposal proposal, String note, String selectNote, String searchBefore) {
         ObjectNode result = JSON.createObjectNode().put("received", true);
         if (note != null) {
             result.put("note", note);
@@ -170,12 +219,15 @@ final class ProposalRules {
         if (proposal.query() != null) {
             applied.add("Their query is updated. " + selectNote);
         }
-        if (proposal.search() != null) {
+        if (proposal.search() != null && proposal.search().equals(searchBefore)) {
+            // Told "now lists", the model described an unchanged search as a new filter.
+            applied.add("Their search was already \"" + proposal.search() + "\": that did not change.");
+        } else if (proposal.search() != null) {
             applied.add(proposal.search().isBlank() ? "Their search is cleared."
-                : "Their table now lists the variables matching the search \"" + proposal.search() + "\".");
+                : "Their search is now \"" + proposal.search() + "\".");
         }
         if (proposal.facets() != null) {
-            applied.add(proposal.facets().isEmpty() ? "Their facet filters are cleared." : "Their table is narrowed to the facets "
+            applied.add(proposal.facets().isEmpty() ? "Their facet filters are cleared." : "Their search is narrowed to the facets "
                 + proposal.facets().stream().map(f -> f.category() + ": " + f.name()).toList() + ".");
         }
         if (proposal.query() == null) {

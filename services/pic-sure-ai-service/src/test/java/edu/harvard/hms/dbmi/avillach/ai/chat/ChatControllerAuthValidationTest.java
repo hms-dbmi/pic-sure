@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import edu.harvard.hms.dbmi.avillach.ai.config.WebSecurityConfig;
@@ -22,7 +23,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * verified here by a {@link ChatOrchestrator} test double that fails the test if it is ever called.
  */
 @WebMvcTest(ChatController.class)
-@Import({ValidationExceptionAdvice.class, WebSecurityConfig.class, ChatControllerAuthValidationTest.OrchestratorConfig.class})
+@TestPropertySource(properties = "picsure.ai.enabled=true")
+@Import({ValidationExceptionAdvice.class, WebSecurityConfig.class, InMemoryTurnResultStore.class, ChatControllerAuthValidationTest.OrchestratorConfig.class})
 class ChatControllerAuthValidationTest {
 
     @Autowired
