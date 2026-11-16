@@ -175,6 +175,7 @@ public class ConceptController {
 
     @Operation(summary = "Search concepts with a filter, paginated", description = LIST_CONCEPTS_DESCRIPTION)
     @ApiResponse(responseCode = "200", description = "A page of matching concepts.")
+    @ApiResponse(responseCode = "400", description = "A filter facet is null, or its name or category is missing or contains U+0000.")
     @ApiResponse(responseCode = "500", description = "Invalid paging parameters, or the concept count or list query failed.")
     @AuditEvent(type = "SEARCH", action = "concept.search")
     @PostMapping(path = "/concepts")
