@@ -81,7 +81,7 @@ class DictionaryServiceTest {
     }
 
     @Test
-    void getConcepts_everyBatch_asksForNoMetaKeysAndSendsTheTokenAndClientTypeHeaders() {
+    void getConcepts_everyBatch_asksOnlyForDrsUriAndSendsTheTokenAndClientTypeHeaders() {
         DictionaryService dictionaryService = new DictionaryService(BASE_URL, TOKEN, 2, restTemplate);
         List<String> conceptPaths = paths(3);
         stubEchoingDictionary(EXPORT_URL);
@@ -92,8 +92,8 @@ class DictionaryServiceTest {
             .exchange(eq(EXPORT_URL), eq(HttpMethod.POST), requestCaptor.capture(), eq(DictionaryService.CONCEPT_LIST_TYPE_REFERENCE));
         assertEquals(
             List.of(
-                new ConceptExportRequest(conceptPaths.subList(0, 2), List.of()),
-                new ConceptExportRequest(conceptPaths.subList(2, 3), List.of())
+                new ConceptExportRequest(conceptPaths.subList(0, 2), List.of("drs_uri")),
+                new ConceptExportRequest(conceptPaths.subList(2, 3), List.of("drs_uri"))
             ), requestCaptor.getAllValues().stream().map(HttpEntity::getBody).toList()
         );
         for (HttpEntity<ConceptExportRequest> request : requestCaptor.getAllValues()) {

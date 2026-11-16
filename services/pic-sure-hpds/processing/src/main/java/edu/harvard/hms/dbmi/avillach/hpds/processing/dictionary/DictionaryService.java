@@ -33,7 +33,7 @@ public class DictionaryService {
     private static final String TOKEN_PROPERTY = "picsure.internal.token";
     private static final String TOKEN_ENVIRONMENT_VARIABLE = "PICSURE_INTERNAL_TOKEN";
     private static final String EXPORT_METADATA_PATH = "/internal/concepts/export-metadata";
-    private static final List<String> EXPORT_META_KEYS = List.of();
+    private static final List<String> EXPORT_META_KEYS = List.of("drs_uri");
 
     /**
      * Largest number of concept paths the dictionary accepts in one export metadata request. Must match
@@ -113,7 +113,8 @@ public class DictionaryService {
 
     /**
      * Fetches the details of the given concept paths, one request per batch, in the order the dictionary returns them. A path the
-     * dictionary does not know is left out of the result. No metadata keys are requested, so each concept's {@code meta} is empty.
+     * dictionary does not know is left out of the result. Each concept's {@code meta} holds only {@code drs_uri}, under that raw key, when
+     * the dictionary has one for it.
      *
      * @param conceptPaths the concept paths to look up
      * @return the concepts the dictionary returned across all batches
