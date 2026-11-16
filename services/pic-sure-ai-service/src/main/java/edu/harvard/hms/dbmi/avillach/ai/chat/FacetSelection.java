@@ -17,10 +17,12 @@ import io.swagger.v3.oas.annotations.media.Schema;
  */
 @Schema(description = "One active facet in the researcher's selection.")
 public record FacetSelection(
-    @Schema(description = "The facet category name.", example = "study")
-    @JsonDeserialize(using = StrictStringDeserializer.class) String category,
-    @Schema(description = "The facet's name within its category.", example = "phs000001")
-    @JsonDeserialize(using = StrictStringDeserializer.class) String name
+    @Schema(description = "The facet category name.", example = "study") @JsonDeserialize(
+        using = StrictStringDeserializer.class
+    ) String category,
+    @Schema(description = "The facet's name within its category.", example = "phs000001") @JsonDeserialize(
+        using = StrictStringDeserializer.class
+    ) String name
 ) {
 
     /** @return the {category, name} pairs in a tool call's {@code facets}, skipping malformed entries */

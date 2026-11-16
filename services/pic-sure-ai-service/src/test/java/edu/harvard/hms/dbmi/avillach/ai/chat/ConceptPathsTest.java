@@ -44,7 +44,12 @@ class ConceptPathsTest {
         // Gpt-oss wrote the Synthea path without "(G00-G99)", "(G40-G47)" and the G00-G99 folder.
         ConceptPaths paths = learning(SLEEP_APNEA);
 
-        assertEquals(SLEEP_APNEA, paths.snapped("\\Synthea\\ACT Diagnosis ICD-10\\G40-G47 Episodic and paroxysmal disorders\\G47 Sleep disorders\\G47.3 Sleep apnea\\"));
+        assertEquals(
+            SLEEP_APNEA,
+            paths.snapped(
+                "\\Synthea\\ACT Diagnosis ICD-10\\G40-G47 Episodic and paroxysmal disorders\\G47 Sleep disorders\\G47.3 Sleep apnea\\"
+            )
+        );
         assertEquals(SLEEP_APNEA, paths.snapped("\\Synthea\\ACT Diagnosis ICD-10\\G47.3 Sleep apnea"));
     }
 
@@ -89,12 +94,16 @@ class ConceptPathsTest {
     @Test
     void snappedRefusesNearIdenticalLeavesUnderDifferentParents() {
         // Real ICD-10 shape: the same code can sit under two parents; a path that drops the parent cannot say which was meant.
-        String underNervous = "\\Synthea\\ACT Diagnosis ICD-10\\G00-G99 Diseases of the nervous system (G00-G99)\\G47 Sleep disorders\\G47.3 Sleep apnea\\";
-        String underSymptoms = "\\Synthea\\ACT Diagnosis ICD-10\\R00-R99 Symptoms and signs (R00-R99)\\G47 Sleep disorders\\G47.3 Sleep apnea\\";
+        String underNervous =
+            "\\Synthea\\ACT Diagnosis ICD-10\\G00-G99 Diseases of the nervous system (G00-G99)\\G47 Sleep disorders\\G47.3 Sleep apnea\\";
+        String underSymptoms =
+            "\\Synthea\\ACT Diagnosis ICD-10\\R00-R99 Symptoms and signs (R00-R99)\\G47 Sleep disorders\\G47.3 Sleep apnea\\";
         ConceptPaths paths = learning(underNervous, underSymptoms);
 
         assertUnchanged(paths, "\\Synthea\\ACT Diagnosis ICD-10\\G47 Sleep disorders\\G47.3 Sleep apnea\\");
-        assertEquals(underNervous, paths.snapped("\\Synthea\\ACT Diagnosis ICD-10\\G00-G99 Diseases of the nervous system\\G47.3 Sleep apnea\\"));
+        assertEquals(
+            underNervous, paths.snapped("\\Synthea\\ACT Diagnosis ICD-10\\G00-G99 Diseases of the nervous system\\G47.3 Sleep apnea\\")
+        );
         assertEquals(underSymptoms, paths.snapped("\\Synthea\\R00-R99 Symptoms and signs\\G47.3 Sleep apnea\\"));
     }
 
@@ -144,9 +153,8 @@ class ConceptPathsTest {
 
     @Test
     void snappedLeavesAnAmbiguousUnrelatedOrFolderPathAlone() {
-        ConceptPaths paths = learning(
-            SLEEP_APNEA, "\\Synthea\\ACT Diagnosis ICD-10\\G00-G99 Diseases of the nervous system (G00-G99)\\G47.3 Sleep apnea\\"
-        );
+        ConceptPaths paths =
+            learning(SLEEP_APNEA, "\\Synthea\\ACT Diagnosis ICD-10\\G00-G99 Diseases of the nervous system (G00-G99)\\G47.3 Sleep apnea\\");
 
         String ambiguous = "\\Synthea\\ACT Diagnosis ICD-10\\G47.3 Sleep apnea\\";
         assertEquals(ambiguous, paths.snapped(ambiguous));
@@ -176,7 +184,10 @@ class ConceptPathsTest {
     @Test
     void learnsFromSelectEntriesAndFromTheRequestsOwnQuery() throws Exception {
         ConceptPaths paths = new ConceptPaths();
-        paths.learnFrom(new ObjectMapper().readTree("{\"select\":[\"\\\\demo\\\\age\\\\\"],\"phenotypicClause\":{\"conceptPath\":\"\\\\demo\\\\sex\\\\\"}}"));
+        paths.learnFrom(
+            new ObjectMapper()
+                .readTree("{\"select\":[\"\\\\demo\\\\age\\\\\"],\"phenotypicClause\":{\"conceptPath\":\"\\\\demo\\\\sex\\\\\"}}")
+        );
 
         assertTrue(paths.isKnown("\\demo\\age\\"));
         assertTrue(paths.isKnown("\\demo\\sex\\"));
@@ -196,8 +207,9 @@ class ConceptPathsTest {
     void firstUnseenInAcceptsSeenPathsInAnyVariantAndAtAnyDepth() {
         ConceptPaths paths = new ConceptPaths();
         paths.learnFrom(TOOL_RESULT);
-        String nested = "{\"query\":{\"phenotypicClause\":{\"operator\":\"AND\",\"phenotypicClauses\":[{\"phenotypicFilterType\":\"REQUIRED\","
-            + "\"conceptPath\":\"\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\\"}]}}}";
+        String nested =
+            "{\"query\":{\"phenotypicClause\":{\"operator\":\"AND\",\"phenotypicClauses\":[{\"phenotypicFilterType\":\"REQUIRED\","
+                + "\"conceptPath\":\"\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\\"}]}}}";
         String inSelect = "{\"query\":{\"select\":[\"\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\\"]}}";
 
         assertNull(paths.firstUnseenIn(nested));
@@ -233,11 +245,12 @@ class ConceptPathsTest {
     void canonicalizeRewritesACategoricalValueToTheCaseItWasListedIn() {
         // gpt-oss sent "Female" for NHANES SEX, which lists "female", and the count came back as fewer than 10.
         ConceptPaths paths = new ConceptPaths();
-        paths.learnFrom("{\"concepts\":[{\"conceptPath\":\"\\\\Nhanes\\\\demographics\\\\SEX\\\\\",\"values\":[\"female\",\"male\"]},"
-            + "{\"conceptPath\":\"\\\\demo\\\\smoker\\\\\",\"values\":[\"yes\",\"Yes\"]}]}");
+        paths.learnFrom(
+            "{\"concepts\":[{\"conceptPath\":\"\\\\Nhanes\\\\demographics\\\\SEX\\\\\",\"values\":[\"female\",\"male\"]},"
+                + "{\"conceptPath\":\"\\\\demo\\\\smoker\\\\\",\"values\":[\"yes\",\"Yes\"]}]}"
+        );
         String filters = "{\"phenotypicClauses\":[{\"conceptPath\":\"\\\\Nhanes\\\\demographics\\\\SEX\\\\\","
-            + "\"values\":[\"Female\",\"male\",\"other\"]},"
-            + "{\"conceptPath\":\"\\\\demo\\\\smoker\\\\\",\"values\":[\"YES\"]}]}";
+            + "\"values\":[\"Female\",\"male\",\"other\"]}," + "{\"conceptPath\":\"\\\\demo\\\\smoker\\\\\",\"values\":[\"YES\"]}]}";
 
         String canonical = paths.canonicalize(filters);
 
@@ -264,7 +277,9 @@ class ConceptPathsTest {
         // The placeholder-style path a small model copied from a tool example, with forward slashes.
         assertEquals(
             "phs999999/sex/",
-            paths.firstUnseenIn("{\"query\":{\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"phs999999/sex/\"}}}")
+            paths.firstUnseenIn(
+                "{\"query\":{\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"phs999999/sex/\"}}}"
+            )
         );
         assertEquals("\\demo\\age\\", paths.firstUnseenIn("{\"query\":{\"select\":[\"\\\\demo\\\\age\\\\\"]}}"));
     }

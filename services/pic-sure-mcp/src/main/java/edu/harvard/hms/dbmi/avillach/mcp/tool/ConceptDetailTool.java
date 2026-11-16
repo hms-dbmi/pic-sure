@@ -38,26 +38,32 @@ public class ConceptDetailTool {
      */
     @AuditEvent(type = "SEARCH", action = "concept.detail")
     @McpTool(
-        name = "get_concept", description = """
+        name = "get_concept",
+        description = """
             Get one variable (concept) from the PIC-SURE data dictionary by dataset and conceptPath, both exactly as \
             search_concepts returned them; when a search result has no dataset, use the conceptPath's first segment. Returns open-access dictionary metadata only, never participant data: display name, \
             description, type, up to 20 categorical values with valuesOmitted for the rest, min and max for continuous \
             concepts, and up to 10 metadata entries with each value cut at 300 characters. Call search_concepts first to find \
-            valid paths.""", generateOutputSchema = true,
+            valid paths.""",
+        generateOutputSchema = true,
         annotations = @McpTool.McpAnnotations(
             title = "Get concept", readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false
         )
     )
     public ConceptSummary getConcept(
-        McpTransportContext context, @McpToolParam(description = "Dataset the concept belongs to: the search result's dataset, or the conceptPath's first segment when it has none", required = true) String dataset,
-        @McpToolParam(description = "Concept path as returned by search_concepts", required = true) String conceptPath
+        McpTransportContext context,
+        @McpToolParam(
+            description = "Dataset the concept belongs to: the search result's dataset, or the conceptPath's first segment when it has none",
+            required = true
+        ) String dataset, @McpToolParam(description = "Concept path as returned by search_concepts", required = true) String conceptPath
     ) {
         String datasetName = ToolArguments.requireText("dataset", dataset, MAX_DATASET_LENGTH);
         if (datasetName.chars().allMatch(c -> c == '.')) {
             throw new ToolFailure("Argument 'dataset' is not a valid dataset name.");
         }
         String path = ToolArguments.requireText("conceptPath", conceptPath, QueryInput.MAX_CONCEPT_PATH_LENGTH);
-        return DictionaryCalls.lookup(DictionaryClient.DETAIL_PATH, () -> dictionary.conceptDetail(datasetName, path, CallerHeaders.from(context)))
+        return DictionaryCalls
+            .lookup(DictionaryClient.DETAIL_PATH, () -> dictionary.conceptDetail(datasetName, path, CallerHeaders.from(context)))
             .map(ConceptSummary::detail).orElseThrow(ToolFailure::conceptNotFound);
     }
 }

@@ -14,8 +14,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
- * Cleans the model's prose reply. The response's {@code query} is rebuilt from the validated proposal, so query JSON the model writes
- * into its reply (small models do, despite the prompt) is only noise.
+ * Cleans the model's prose reply. The response's {@code query} is rebuilt from the validated proposal, so query JSON the model writes into
+ * its reply (small models do, despite the prompt) is only noise.
  */
 final class ReplyText {
 
@@ -32,7 +32,8 @@ final class ReplyText {
         "(?m)^[ \\t]*(?:[-*][ \\t]+)?(query|facets|search)[ \\t]*:[ \\t]*(?:\"[^\"\\n]*\"|\\[[^\\]\\n]*]|\\{\\s*}|undefined|null)?[ \\t]*$"
     );
     /** A heading or rule left at the end once the text under it was scrubbed away. */
-    private static final Pattern DANGLING_HEADING = Pattern.compile("(?:^|\\n)[ \\t]*(?:-{3,}|\\*\\*[^*\\n]+\\*\\*:?|#{1,6}[ \\t]+[^\\n]*)[ \\t]*$");
+    private static final Pattern DANGLING_HEADING =
+        Pattern.compile("(?:^|\\n)[ \\t]*(?:-{3,}|\\*\\*[^*\\n]+\\*\\*:?|#{1,6}[ \\t]+[^\\n]*)[ \\t]*$");
 
     /** An empty {@code facets: []} / {@code search: ""} echoed inline. */
     private static final Pattern EMPTY_INLINE_FIELD = Pattern.compile("\\b(facets|search)[ \\t]*:[ \\t]*(\\[\\s*]|\"\")");
@@ -59,9 +60,9 @@ final class ReplyText {
     );
 
     /**
-     * "I included BMI in the query", "your query now has...". A change verb is required: a count answer says "participants in your
-     * cohort" or "your cohort includes 1,200 participants" without claiming any change, and taking that for a claim would propose the
-     * counted what-if query as the researcher's own.
+     * "I included BMI in the query", "your query now has...". A change verb is required: a count answer says "participants in your cohort"
+     * or "your cohort includes 1,200 participants" without claiming any change, and taking that for a claim would propose the counted
+     * what-if query as the researcher's own.
      */
     private static final Pattern QUERY_CLAIM = Pattern.compile(
         "(?i)\\b(?:added|included|applied|updated|changed|built|created|narrowed|modified|replaced|removed)\\b.*\\b(?:query|cohort)\\b"
@@ -75,7 +76,9 @@ final class ReplyText {
     );
     /** "No filters or selected variables were changed" says the opposite of a claim, and so does "nothing was added to your selection". */
     private static final Pattern NEGATION = Pattern.compile("(?i)\\b(?:no|none|not|nothing|never|unchanged)\\b|n't\\b");
-    /** The heading of a recap of the current state, "**Current state**", "Current screen state:" or "Current view:", with any text after it. */
+    /**
+     * The heading of a recap of the current state, "**Current state**", "Current screen state:" or "Current view:", with any text after it.
+     */
     private static final Pattern SCREEN_RECAP_HEADING =
         Pattern.compile("(?i)^\\W*current (?:(?:screen|view)(?: state)?\\b(?:\\s*:.*|\\W*)|state(?:\\s*\\([^)\\n]*\\))?\\W*)");
     /** One recap line: a part of the screen and its value, e.g. "- **facets:** none". */
@@ -229,7 +232,8 @@ final class ReplyText {
         if (text == null) {
             return null;
         }
-        String cleaned = FENCED_BLOCK.matcher(text).replaceAll(m -> QUERY_KEYS.matcher(m.group()).find() ? "" : Matcher.quoteReplacement(m.group()));
+        String cleaned =
+            FENCED_BLOCK.matcher(text).replaceAll(m -> QUERY_KEYS.matcher(m.group()).find() ? "" : Matcher.quoteReplacement(m.group()));
         cleaned = removeQueryObjects(cleaned);
         cleaned = EMPTY_INLINE_FIELD.matcher(cleaned).replaceAll("");
         cleaned = FIELD_LABEL.matcher(cleaned).replaceAll("");

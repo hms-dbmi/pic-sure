@@ -90,19 +90,25 @@ class ChatControllerTurnResultTest {
     @Test
     void anOpenAccessSessionCanFetchItsReplyAfterItsTokenIsRefreshed() throws Exception {
         String session = "8694e3d4-5cb4-410f-8431-993445e6d3f6";
-        String sent = mockMvc
-            .perform(
-                post("/chat").contentType(MediaType.APPLICATION_JSON).content(BODY).header("Authorization", sessionToken(session, 1))
-                    .header("X-User-Id", "OPEN_ACCESS:localhost").header("X-Picsure-Access-Type", "open")
-            ).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String sent = mockMvc.perform(
+            post("/chat").contentType(MediaType.APPLICATION_JSON).content(BODY).header("Authorization", sessionToken(session, 1))
+                .header("X-User-Id", "OPEN_ACCESS:localhost").header("X-Picsure-Access-Type", "open")
+                .header("X-Picsure-Open-Session-Id", session)
+        ).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
 
         mockMvc.perform(
             get("/chat/r1").header("Authorization", sessionToken(session, 500)).header("X-User-Id", "OPEN_ACCESS:localhost")
-                .header("X-Picsure-Access-Type", "open")
+                .header("X-Picsure-Access-Type", "open").header("X-Picsure-Open-Session-Id", session)
         ).andExpect(status().isOk()).andExpect(content().json(sent));
+        String other = "1b4e28ba-2fa1-11d2-883f-0016d3cca427";
         mockMvc.perform(
-            get("/chat/r1").header("Authorization", sessionToken("1b4e28ba-2fa1-11d2-883f-0016d3cca427", 1))
-                .header("X-User-Id", "OPEN_ACCESS:localhost").header("X-Picsure-Access-Type", "open")
+            get("/chat/r1").header("Authorization", sessionToken(other, 1)).header("X-User-Id", "OPEN_ACCESS:localhost")
+                .header("X-Picsure-Access-Type", "open").header("X-Picsure-Open-Session-Id", other)
+        ).andExpect(status().isNotFound());
+        // a token whose payload names the victim's session, but which PSAMA did not verify: the gateway sends no session id
+        mockMvc.perform(
+            get("/chat/r1").header("Authorization", sessionToken(session, 1)).header("X-User-Id", "OPEN_ACCESS:localhost")
+                .header("X-Picsure-Access-Type", "open")
         ).andExpect(status().isNotFound());
     }
 

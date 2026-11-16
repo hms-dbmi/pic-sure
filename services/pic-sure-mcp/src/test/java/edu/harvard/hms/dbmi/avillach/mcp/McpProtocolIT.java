@@ -192,10 +192,13 @@ class McpProtocolIT {
             post(urlPathEqualTo("/dictionary/concepts")).withRequestBody(matchingJsonPath("$.search", equalTo("cholesterol")))
                 .withRequestBody(matchingJsonPath("$.facets.length()", equalTo("1")))
                 .withRequestBody(matchingJsonPath("$.facets[0].category", equalTo("dataset_id")))
-                .withRequestBody(matchingJsonPath("$.facets[0].name", equalTo("Nhanes")))
-                .willReturn(okJson("""
-                    {"content":[{"type":"Continuous","conceptPath":"\\\\Nhanes\\\\laboratory\\\\biochemistry\\\\Cholesterol (mg per dL)\\\\"}],
-                     "totalElements":6}"""))
+                .withRequestBody(matchingJsonPath("$.facets[0].name", equalTo("Nhanes"))).willReturn(
+                    okJson(
+                        """
+                            {"content":[{"type":"Continuous","conceptPath":"\\\\Nhanes\\\\laboratory\\\\biochemistry\\\\Cholesterol (mg per dL)\\\\"}],
+                             "totalElements":6}"""
+                    )
+                )
         );
 
         JsonNode structured = successfulCall("search_concepts", """

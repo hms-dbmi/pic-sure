@@ -47,8 +47,8 @@ public class ConceptSearchTool {
 
     /**
      * Searches concepts by free text and returns a trimmed page the model can read. At most one of {@code search} and {@code terms} may be
-     * given, and neither only with {@code facets}, which browses. With {@code terms}, the dictionary searches for any of them in one request
-     * and says which terms match each concept.
+     * given, and neither only with {@code facets}, which browses. With {@code terms}, the dictionary searches for any of them in one
+     * request and says which terms match each concept.
      *
      * @param context the MCP transport context carrying the caller's headers
      * @param search the free-text search, all of whose words must match
@@ -76,15 +76,19 @@ public class ConceptSearchTool {
             conceptPath's last and first segments. Categorical concepts list up to 20 values and report valuesOmitted when there \
             are more, and continuous concepts give min and max. Results are paged, 10 per page by default and at most 50; pass pageSize 25 unless you have a reason not to, \
             and request the next page when total exceeds what you have. To narrow a search to a study, dataset or data type, \
-            pass facets, a list of {category, name} pairs copied exactly from list_facets; a facet narrows every term in the search. With facets, search and terms may be left out to browse everything in the facet; never invent a term or send "*" just to fill it.""", generateOutputSchema = true,
+            pass facets, a list of {category, name} pairs copied exactly from list_facets; a facet narrows every term in the search. With facets, search and terms may be left out to browse everything in the facet; never invent a term or send "*" just to fill it.""",
+        generateOutputSchema = true,
         annotations = @McpTool.McpAnnotations(
             title = "Search concepts", readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false
         )
     )
     public ConceptSearchResult searchConcepts(
-        McpTransportContext context, @McpToolParam(
-            description = "Free-text search; every word must match. Give search or terms, not both. May be left out only when facets are given", required = false
-        ) String search, @McpToolParam(
+        McpTransportContext context,
+        @McpToolParam(
+            description = "Free-text search; every word must match. Give search or terms, not both. May be left out only when facets are given",
+            required = false
+        ) String search,
+        @McpToolParam(
             description = "Up to 10 separate searches, such as synonyms and abbreviations, run in one call. Give search or terms, not both",
             required = false
         ) List<String> terms, @McpToolParam(description = "Zero-based page number, default 0", required = false) Integer page,
@@ -107,9 +111,8 @@ public class ConceptSearchTool {
         CallerHeaders caller = CallerHeaders.from(context);
         if (hasTerms) {
             List<String> searchTerms = validTerms(terms);
-            DictionaryPage result = DictionaryCalls.run(
-                DictionaryClient.CONCEPTS_PATH, () -> dictionary.searchConceptTerms(searchTerms, narrowing, pageNumber, size, caller)
-            );
+            DictionaryPage result = DictionaryCalls
+                .run(DictionaryClient.CONCEPTS_PATH, () -> dictionary.searchConceptTerms(searchTerms, narrowing, pageNumber, size, caller));
             return termsResult(searchTerms, result, pageNumber, size);
         }
         // A facet alone is a browse: the dictionary takes an empty search, as the UI sends when only a facet is picked.
@@ -180,15 +183,20 @@ public class ConceptSearchTool {
             Map<List<String>, List<String>> matched = new HashMap<>();
             result.matches().stream().filter(m -> m != null && m.terms() != null)
                 .forEach(m -> matched.put(List.of(String.valueOf(m.dataset()), String.valueOf(m.conceptPath())), m.terms()));
-            concepts = result.concepts().stream().map(
-                concept -> ConceptSummary.summary(concept).withMatchedTerms(
-                    matched.getOrDefault(List.of(String.valueOf(concept.dataset()), String.valueOf(concept.conceptPath())), List.of())
-                )
-            ).toList();
+            concepts =
+                result.concepts().stream()
+                    .map(
+                        concept -> ConceptSummary.summary(concept).withMatchedTerms(
+                            matched
+                                .getOrDefault(List.of(String.valueOf(concept.dataset()), String.valueOf(concept.conceptPath())), List.of())
+                        )
+                    ).toList();
         }
         Map<String, Long> totals = result.termTotals();
         // The dictionary reports the terms it searched, which are the given terms with punctuation stripped.
         List<String> terms = totals == null || totals.isEmpty() ? searched : List.copyOf(totals.keySet());
-        return new ConceptSearchResult(null, terms, pageNumber, size, result.total(), concepts, totals == null || totals.isEmpty() ? null : totals);
+        return new ConceptSearchResult(
+            null, terms, pageNumber, size, result.total(), concepts, totals == null || totals.isEmpty() ? null : totals
+        );
     }
 }

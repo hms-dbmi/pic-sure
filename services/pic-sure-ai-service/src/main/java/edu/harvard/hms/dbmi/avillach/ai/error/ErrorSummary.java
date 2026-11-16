@@ -34,7 +34,8 @@ public final class ErrorSummary {
             summary.append(t.getClass().getSimpleName());
             String message = oneLine(t.getMessage());
             if (!message.isEmpty() && !outerMessage.contains(message)) {
-                summary.append(": ").append(message.length() > MAX_MESSAGE_CHARS ? message.substring(0, MAX_MESSAGE_CHARS) + "..." : message);
+                summary.append(": ")
+                    .append(message.length() > MAX_MESSAGE_CHARS ? message.substring(0, MAX_MESSAGE_CHARS) + "..." : message);
             }
             outerMessage = message;
         }

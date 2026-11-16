@@ -32,7 +32,8 @@ public record ChatResponse(
     ) JsonNode query,
     @Schema(description = "The updated facet selection. Absent when the turn did not change it.") List<FacetSelection> facets,
     @Schema(
-        description = "The updated dictionary search text; empty clears it. Absent when the turn did not change it.", example = "blood pressure"
+        description = "The updated dictionary search text; empty clears it. Absent when the turn did not change it.",
+        example = "blood pressure"
     ) String search
 ) {
 

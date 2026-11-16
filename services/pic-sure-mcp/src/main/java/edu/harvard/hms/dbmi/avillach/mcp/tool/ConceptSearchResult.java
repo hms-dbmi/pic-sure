@@ -9,8 +9,9 @@ import java.util.Map;
 import static io.swagger.v3.oas.annotations.media.Schema.RequiredMode.NOT_REQUIRED;
 
 /**
- * One page of concept search results. A search by {@code search} sets {@code search} and leaves {@code terms} and {@code termTotals} out. A search by {@code terms} sets those two and leaves {@code search} out. Fields that do not apply are omitted from
- * the JSON, since Spring AI rejects a null in {@code structuredContent}.
+ * One page of concept search results. A search by {@code search} sets {@code search} and leaves {@code terms} and {@code termTotals} out. A
+ * search by {@code terms} sets those two and leaves {@code search} out. Fields that do not apply are omitted from the JSON, since Spring AI
+ * rejects a null in {@code structuredContent}.
  *
  * @param search the search text of a single search
  * @param terms the terms of a several-term search, in the order given

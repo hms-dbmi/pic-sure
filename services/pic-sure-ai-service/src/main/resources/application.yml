@@ -71,7 +71,8 @@ picsure:
       max-total-chars: ${AI_CONVERSATION_MAX_TOTAL_CHARS:50000000}
       # How long a turn's response stays retrievable by requestId. Keep it at least idle-timeout, or a late retry runs the turn twice.
       result-ttl: ${AI_CONVERSATION_RESULT_TTL:60m}
-      max-results: ${AI_CONVERSATION_MAX_RESULTS:10000}
+      # Most replies kept for one caller. Bounded per caller so one caller cannot push out another's replies.
+      max-results-per-owner: ${AI_CONVERSATION_MAX_RESULTS_PER_OWNER:200}
   # The shared X-Application-Token gate for THIS service's own /actuator/** endpoints (see
   # ActuatorSecurityConfig / the shared ActuatorSecurityHelper in pic-sure-spring-commons).
   actuator:

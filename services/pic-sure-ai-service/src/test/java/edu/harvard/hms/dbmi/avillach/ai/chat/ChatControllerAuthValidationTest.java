@@ -24,7 +24,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @WebMvcTest(ChatController.class)
 @TestPropertySource(properties = "picsure.ai.enabled=true")
-@Import({ValidationExceptionAdvice.class, WebSecurityConfig.class, InMemoryTurnResultStore.class, ChatControllerAuthValidationTest.OrchestratorConfig.class})
+@Import(
+    {ValidationExceptionAdvice.class, WebSecurityConfig.class, InMemoryTurnResultStore.class,
+        ChatControllerAuthValidationTest.OrchestratorConfig.class}
+)
 class ChatControllerAuthValidationTest {
 
     @Autowired

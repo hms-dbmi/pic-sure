@@ -18,15 +18,20 @@ class StrictArgumentBinderTest {
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.DEDUCTION)
     @JsonSubTypes({@JsonSubTypes.Type(Leaf.class), @JsonSubTypes.Type(Branch.class)})
-    interface Clause {}
+    interface Clause {
+    }
 
-    record Leaf(String path) implements Clause {}
+    record Leaf(String path) implements Clause {
+    }
 
-    record Branch(List<Clause> children) implements Clause {}
+    record Branch(List<Clause> children) implements Clause {
+    }
 
-    record Input(String name, Integer count, Color color, Clause clause) {}
+    record Input(String name, Integer count, Color color, Clause clause) {
+    }
 
-    record Primitive(int count) {}
+    record Primitive(int count) {
+    }
 
     static final class Failure extends RuntimeException {
         Failure(String message) {
@@ -120,7 +125,9 @@ class StrictArgumentBinderTest {
     void aClauseHintIsAppendedToTheClauseShapeMessageOnly() {
         StrictArgumentBinder hinted = new StrictArgumentBinder(Clause.class, true, Failure::new, " Leave it out if unused.");
 
-        assertThatThrownBy(() -> hinted.bind(Map.of("clause", Map.of("neither", 1)), Input.class)).hasMessageEndingWith(" Leave it out if unused.");
-        assertThatThrownBy(() -> strict.bind(Map.of("clause", Map.of("neither", 1)), Input.class)).hasMessageEndingWith("phenotypicClauses).");
+        assertThatThrownBy(() -> hinted.bind(Map.of("clause", Map.of("neither", 1)), Input.class))
+            .hasMessageEndingWith(" Leave it out if unused.");
+        assertThatThrownBy(() -> strict.bind(Map.of("clause", Map.of("neither", 1)), Input.class))
+            .hasMessageEndingWith("phenotypicClauses).");
     }
 }

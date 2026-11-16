@@ -18,7 +18,8 @@ import jakarta.validation.constraints.Size;
  * is a consequence of this shape, not something a filter has to strip.
  *
  * <p>{@code query} is kept as an opaque {@link JsonNode} and validated by {@link ChatStateValidator}; {@code search} is the dictionary
- * search text, which must be a JSON string (kept as a node so a number or boolean is rejected rather than coerced to text) (the UI sends it to {@code /dictionary} together with {@code facets}).
+ * search text, which must be a JSON string (kept as a node so a number or boolean is rejected rather than coerced to text) (the UI sends it
+ * to {@code /dictionary} together with {@code facets}).
  *
  * @param message the user's chat message
  * @param conversationId the UI-generated conversation id this turn belongs to
@@ -44,8 +45,7 @@ public record ChatRequest(
     @Schema(
         description = "The researcher's current query object, if any: a full v3 query. Fields the assistant does not model "
             + "(expectedResultType, authorizationFilters, ...) are accepted and ignored; the rest is validated."
-    ) JsonNode query,
-    @Schema(description = "The researcher's current facet selection, if any.") List<FacetSelection> facets,
+    ) JsonNode query, @Schema(description = "The researcher's current facet selection, if any.") List<FacetSelection> facets,
     @Schema(description = "The researcher's current dictionary search text, if any.", example = "blood pressure") JsonNode search
 ) {
 

@@ -60,20 +60,24 @@ class ChatStateValidatorTest {
     @Test
     void aFilterMustMatchOnValuesOrARangeExactlyWhenItsTypeIsFilter() {
         String path = "\"conceptPath\":\"\\\\demo\\\\age\\\\\"";
-        for (String filter : List.of(
-            "{\"phenotypicFilterType\":\"FILTER\"," + path + "}",
-            "{\"phenotypicFilterType\":\"FILTER\"," + path + ",\"values\":[]}",
-            "{\"phenotypicFilterType\":\"REQUIRED\"," + path + ",\"values\":[\"a\"]}",
-            "{\"phenotypicFilterType\":\"ANY_RECORD_OF\"," + path + ",\"min\":1}"
-        )) {
-            assertThrows(IllegalArgumentException.class, () -> ChatStateValidator.query(json("{\"phenotypicClause\":" + filter + "}")), filter);
+        for (
+            String filter : List.of(
+                "{\"phenotypicFilterType\":\"FILTER\"," + path + "}", "{\"phenotypicFilterType\":\"FILTER\"," + path + ",\"values\":[]}",
+                "{\"phenotypicFilterType\":\"REQUIRED\"," + path + ",\"values\":[\"a\"]}",
+                "{\"phenotypicFilterType\":\"ANY_RECORD_OF\"," + path + ",\"min\":1}"
+            )
+        ) {
+            assertThrows(
+                IllegalArgumentException.class, () -> ChatStateValidator.query(json("{\"phenotypicClause\":" + filter + "}")), filter
+            );
         }
-        for (String filter : List.of(
-            "{\"phenotypicFilterType\":\"FILTER\"," + path + ",\"values\":[\"a\"]}",
-            "{\"phenotypicFilterType\":\"FILTER\"," + path + ",\"max\":40}",
-            "{\"phenotypicFilterType\":\"REQUIRED\"," + path + "}",
-            "{\"phenotypicFilterType\":\"ANY_RECORD_OF\"," + path + ",\"values\":[]}"
-        )) {
+        for (
+            String filter : List.of(
+                "{\"phenotypicFilterType\":\"FILTER\"," + path + ",\"values\":[\"a\"]}",
+                "{\"phenotypicFilterType\":\"FILTER\"," + path + ",\"max\":40}", "{\"phenotypicFilterType\":\"REQUIRED\"," + path + "}",
+                "{\"phenotypicFilterType\":\"ANY_RECORD_OF\"," + path + ",\"values\":[]}"
+            )
+        ) {
             assertDoesNotThrow(() -> ChatStateValidator.query(json("{\"phenotypicClause\":" + filter + "}")), filter);
         }
     }
@@ -172,8 +176,12 @@ class ChatStateValidatorTest {
         String filter = "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demo\\\\age\\\\\",\"values\":[\"x\"]}";
         java.util.function.IntFunction<ProposeQueryInput> withFilters = count -> {
             try {
-                return ChatStateValidator.query(json("{\"phenotypicClause\":{\"operator\":\"AND\",\"phenotypicClauses\":["
-                    + String.join(",", java.util.Collections.nCopies(count, filter)) + "]}}"));
+                return ChatStateValidator.query(
+                    json(
+                        "{\"phenotypicClause\":{\"operator\":\"AND\",\"phenotypicClauses\":["
+                            + String.join(",", java.util.Collections.nCopies(count, filter)) + "]}}"
+                    )
+                );
             } catch (Exception e) {
                 throw new IllegalStateException(e);
             }
@@ -189,19 +197,22 @@ class ChatStateValidatorTest {
     @Test
     void aNumberOrBooleanWhereTheQueryWantsTextIsRefusedNotCoercedToText() {
         String filter = "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":%s,\"values\":%s}";
-        for (String query : List.of(
-            "{\"select\":[42]}", "{\"select\":[true]}", "{\"select\":[\"\\\\demo\\\\age\\\\\",1.5]}",
-            "{\"phenotypicClause\":" + filter.formatted("12", "[\"x\"]") + "}",
-            "{\"phenotypicClause\":" + filter.formatted("\"\\\\demo\\\\age\\\\\"", "[1]") + "}",
-            "{\"phenotypicClause\":" + filter.formatted("\"\\\\demo\\\\age\\\\\"", "[false]") + "}"
-        )) {
+        for (
+            String query : List.of(
+                "{\"select\":[42]}", "{\"select\":[true]}", "{\"select\":[\"\\\\demo\\\\age\\\\\",1.5]}",
+                "{\"phenotypicClause\":" + filter.formatted("12", "[\"x\"]") + "}",
+                "{\"phenotypicClause\":" + filter.formatted("\"\\\\demo\\\\age\\\\\"", "[1]") + "}",
+                "{\"phenotypicClause\":" + filter.formatted("\"\\\\demo\\\\age\\\\\"", "[false]") + "}"
+            )
+        ) {
             assertThrows(IllegalArgumentException.class, () -> ChatStateValidator.query(json(query)), query);
         }
     }
 
     @Test
     void aNullInsideValuesIsRefused() {
-        String query = "{\"phenotypicClause\":{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demo\\\\sex\\\\\",\"values\":[\"f\",null]}}";
+        String query =
+            "{\"phenotypicClause\":{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demo\\\\sex\\\\\",\"values\":[\"f\",null]}}";
 
         IllegalArgumentException refused = assertThrows(IllegalArgumentException.class, () -> ChatStateValidator.query(json(query)));
         assertTrue(refused.getMessage().contains("values"), refused.getMessage());

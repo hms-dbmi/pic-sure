@@ -6,11 +6,58 @@ prefix in front of the gateway applies) and acts as an MCP client against the ga
 replaying the caller's bearer JWT untouched on every call. It never mints, caches, or exchanges a
 credential of its own.
 
+Related docs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) has the diagrams (system context, one chat turn, the guard loop,
+ownership and idempotency).
+
+## API
+
+Both routes exist only when `AI_ENABLED=true`; otherwise they answer 404. Every request needs `Authorization: Bearer <jwt>`.
+
+| Route | Purpose |
+| --- | --- |
+| `POST /ai/chat` | One chat turn. Body: `message` (required, max 4000 chars), `conversationId` (required), `requestId` (required, one per message), and the researcher's current `query`, `facets`, `search` (each optional). Returns `response` plus `query`, `facets` and `search` **only when the turn changed them**; a part that is present replaces that part of the screen whole. `query` carries only `select`, `phenotypicClause` and `genomicFilters`. |
+| `GET /ai/chat/{requestId}` | The stored reply to an earlier message: 200 with the reply, 202 while it is still being answered, 404 when nothing is stored (never arrived, failed, or expired). This is the retry path after a dropped connection. |
+
+There is deliberately no `consents` field: access control is solely a function of the caller's JWT.
+
+A `requestId` runs at most once per caller. Sending it again returns the stored reply without calling the model; reusing it for a
+different message or screen state is a 422, and the same message under a new `requestId` while the first is still running is a 409.
+Error statuses and `errorType`s are listed in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#6-error-contract).
+
+## Conversation history
+
+Conversations are kept in this instance's memory (Caffeine), keyed by the caller's identity and `conversationId`. The model reads each
+earlier message and final reply, not the earlier tool exchanges; the stored tool results only rebuild what the guards have seen
+(concept paths, facets, unmatched terms), so an earlier lookup does not force a re-search. The screen state sent on the latest
+message always wins over anything an earlier turn described, and what the researcher removed by hand since the last proposal is
+passed to the model so it does not add it back.
+
+- **State is lost on restart and is not shared between instances.** Run one instance, or sticky sessions, until a shared store
+  exists (a new implementation of `ConversationStore` / `TurnResultStore`, selected by `AI_CONVERSATION_STORE`).
+- A failed turn, or one that ends in the fallback text, is not stored, so a retry starts from the same place.
+- The owner key is the gateway user id for logged-in callers, the session id inside the `picsure_s_` token for open access (the
+  token is reissued every few minutes, the session id is not), and a hash of the token for anything else.
+
 > [!WARNING]
 > Deploy this service only behind the gateway; never expose it directly to clients. Conversation history and stored turn results are
 > keyed by the caller's identity, which the service reads from the `X-User-Id` and `X-Picsure-Access-Type` headers the gateway sets
 > after token introspection. The service does not authenticate the gateway itself, so anyone who can reach it directly could supply
 > another user's identity headers and read that user's stored replies.
+
+## Tools the model is offered
+
+The gateway's MCP tools (from `pic-sure-mcp`) plus one local tool, minus exclusions:
+
+- `search_concepts`, `list_facets`, `get_concept`, `get_concepts`: always.
+- `count_participants`, `cross_count`: obfuscated open-access counts that ignore consents. **Withheld from logged-in
+  (`authorized`) callers**, whose results panel already shows exact counts; their system prompt says the assistant cannot count.
+  Open-access callers get them, with a prompt that says counts are obfuscated.
+- `get_adapter_code`: withheld by default (`AI_MCP_EXCLUDED_TOOLS`).
+- `propose_query` (local, never sent to the gateway): proposes a query, facet selection and/or search for the researcher to review.
+  The selected variables are a change (`addSelect` / `removeSelect`), not a list.
+
+When changing what `pic-sure-mcp` exposes, check both sides' current code (argument names especially) rather than trusting older
+test-run logs: the two services are developed in the same tree and have drifted before.
 
 ## Model provider: only the Bedrock Converse shape, by design
 
@@ -73,7 +120,7 @@ touching the dispatch loop, the controller, or anything else in the service).
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `AI_ENABLED` | no, default `false` | `true` registers the chat endpoint. Left `false`, no chat endpoint exists, so `/ai/chat` and `/ai/chat/{requestId}` answer 404 while the service stays up: set it to `true` wherever the assistant should be offered. The UI is switched separately (`ENABLE_ASSISTED_SEARCH` for Explorer, `ENABLE_ASSISTED_SEARCH_DISCOVER` for Discover). |
+| `AI_ENABLED` | no, default `false` | `true` registers the chat endpoint. Left `false`, no chat endpoint exists, so `/ai/chat` and `/ai/chat/{requestId}` answer 404 while the service stays up. The service still starts as it would enabled, so `PICSURE_GATEWAY_URL` is required even then (see below). Set it to `true` wherever the assistant should be offered. The UI is switched separately (`ENABLE_ASSISTED_SEARCH` for Explorer, `ENABLE_ASSISTED_SEARCH_DISCOVER` for Discover). |
 | `AI_MODEL_PROVIDER` | no, default `aws-sdk` | `aws-sdk` or `http` — which `ConverseModelClient` is active. |
 | `BEDROCK_REGION` | no, default `us-east-1` | AWS region, `aws-sdk` provider only. |
 | `BEDROCK_MODEL_ID` | no, default `openai.gpt-oss-120b-1:0` | Bedrock model id, `aws-sdk` provider only. The model must support Converse tool use and be in the deployment's IAM allowlist — see [Choosing a model](#choosing-a-model). |
@@ -90,8 +137,16 @@ touching the dispatch loop, the controller, or anything else in the service).
 | `AI_MCP_CONNECT_TIMEOUT` | no, default `5s` | Connect timeout for gateway MCP calls. |
 | `AI_MCP_READ_TIMEOUT` | no, default `20s` | Read timeout for gateway MCP calls. Without one the HTTP client waits forever, so a stuck dictionary call would hang the whole chat turn. |
 | `AI_MCP_EXCLUDED_TOOLS` | no, default `get_adapter_code` | Comma-separated gateway tool names withheld from the model, and refused if it requests one anyway. The default drops the adapter-code tool, which the chat UI has no use for and whose long definition is resent on every model call (tool definitions were most of the ~4,900 input tokens per call). Set it blank to offer every tool. |
-| `PICSURE_ACTUATOR_EXPOSURE` | no, default `none` | Same actuator-gating convention as every other PIC-SURE service. |
+| `AI_CONVERSATION_STORE` | no, default `memory` | Where conversations and turn results live. `memory` is the only implementation: lost on restart, not shared between instances. |
+| `AI_CONVERSATION_IDLE_TIMEOUT` | no, default `60m` | A conversation idle this long is dropped. Also bounds how stale a replayed lookup can be if the caller's access changes. |
+| `AI_CONVERSATION_MAX_TURNS` | no, default `50` | Turns kept per conversation; the oldest go first (and their provenance with them: a path from a dropped turn is refused, never wrongly allowed). |
+| `AI_CONVERSATION_MAX_TOTAL_CHARS` | no, default `50000000` | Bound on everything all conversations hold, in characters; least recently used go first. |
+| `AI_CONVERSATION_RESULT_TTL` | no, default `60m` | How long a turn's reply stays retrievable by `requestId`. Must be at least the idle timeout; startup fails otherwise, since a late retry would run the turn twice. |
+| `AI_CONVERSATION_MAX_RESULTS_PER_OWNER` | no, default `200` | Most turn replies kept for one caller; the oldest go first. A caller past this can run an old `requestId` again, but cannot push out anyone else's replies. |
+| `PICSURE_ACTUATOR_EXPOSURE` | no, default `none` (the Docker image sets `health`) | Same actuator-gating convention as every other PIC-SURE service. |
+| `PICSURE_ACTUATOR_REQUIRE_TOKEN` | no, default `true` | Whether `/actuator/**` needs the `X-Application-Token` header. |
 | `PICSURE_APPLICATION_TOKEN` | no | `X-Application-Token` value for `/actuator/**`. |
+| `SERVER_PORT` | no, default `8080` | The context path is always `/ai`. |
 
 Misconfiguring the `http` provider (any of its three variables blank while selected), or leaving
 `PICSURE_GATEWAY_URL` blank while `AI_MCP_MODE=gateway`, fails fast at startup with a clear message,
@@ -144,8 +199,9 @@ INFO is meant for dashboards and auditing: fixed `key=value` fields, no research
     since each call resends the history)
   - `toolCalls`, `toolErrors`, and `tools` in order as `name(N chars)`, e.g. `search_concepts(4210 chars), count_participants(95 chars)`,
     which makes an oversized result easy to spot (characters of result text, not tokens)
-  - `corrections`: each time the loop stepped in for model misbehavior (`emptyReplyRetry`, `pathRepair`, `proposalFromReplyText`,
-    `countedQueryProposal`), a model-quality signal
+  - `earlierTurns`: how many stored turns of the conversation this turn started from
+  - `corrections`: each time the loop stepped in for model misbehavior (`emptyReplyRetry`, `pathRepair`, `selectionRepair`,
+    `proposalFromReplyText`, `countedQueryProposal`), a model-quality signal
 
   A failed turn logs at ERROR (WARN for a 4xx) with `status`, `errorType` (`model_unavailable`, `tools_unavailable`, `internal_error`)
   and `error`, a one-line summary in place of a stack trace: the cause chain and the innermost frame of this service's code, e.g.
@@ -179,9 +235,8 @@ INFO is meant for dashboards and auditing: fixed `key=value` fields, no research
   turn ends with an empty response.
 - The tool options are built as `BedrockChatOptions` rather than the generic `ToolCallingChatOptions`, so Spring AI does not
   route them through `ModelOptionsUtils.copyToTarget`. This was done on suspicion and not proven necessary.
-- Each `POST /ai/chat` starts a fresh history from the single incoming message. Within a turn, every model call
-  replays the full loop history (model tool calls and tool results), but nothing is kept between requests for the same
-  `conversationId`.
+- Within a turn, every model call replays the full loop history (model tool calls and tool results). Between turns of one
+  `conversationId` the model sees only earlier messages and final replies (see [Conversation history](#conversation-history)).
 - `search_concepts` is a dictionary text search: "BMI" returned no results on the NHANES dictionary while "body mass index"
   matched. The model recovered by retrying; that matching behavior is on the dictionary side.
 
@@ -218,6 +273,8 @@ a check is ever returned.
 | Writes query JSON, or `query:`/`facets:`/`search:` labels, into its reply | Scrubs them out. If nothing is left, the reply becomes "I've prepared an updated search for you to review." (proposal attached) or the fallback text (nothing attached) | repair | `ReplyText.withoutQueryJson` |
 | Drops a known path's trailing (or leading) backslash in a backticked path in its reply | Puts the path back exactly as the tool returned it | repair | `ReplyText.withKnownPaths` |
 | Names a path in its reply that no tool returned: a categorical value written as a path of its own (`...\G47 Sleep disorders\G47.9 Sleep disorder, unspecified\`), a parent of returned paths, or an invented one | Asks the model once, within the iteration cap, to rewrite its reply, saying what each path is in terms of the results (e.g. "is one of the values of `...\G47 Sleep disorders\`"). A reply still wrong after that goes out as written | repair (one round-trip) | `ReplyText.unknownPaths`, `ConceptPaths.ownerOfValueIn`, `ToolUseLoopService.pathRepairMessage` |
+| Says the selected variables changed ("your selected variables now include ...") when no proposal this message changed them | Asks the model once to rewrite its reply saying only what actually changed. Sentences that say the selection did *not* change do not count, and a counted query the reply says it applied is proposed instead (next rows) | repair (one round-trip) | `ReplyText.claimsSelectionChanged`, `ToolUseLoopService.claimsUnmadeSelectionChange` |
+| Appends a recap of the researcher's screen ("Current view: query ..., facets ...") to its reply | Removes the trailing recap, which also keeps it out of stored history | repair | `ReplyText` |
 | Says the variables are "now selected" after a lookup the service applied as a search | The `propose_query` result says what was applied ("Their table now lists the variables matching ... nothing was added to them") instead of a bare `received` | prevent | `ProposalRules.accepted` |
 | Counts the cohort with `count_participants`, says the query changed ("I included BMI in the query"), but never calls `propose_query` | Runs the counted query through every check a real `propose_query` call gets. Only a sentence saying the query changed counts, not an offer ("let me know if you'd like ...") | repair | `ReplyText.claimsQueryChanged`, `ToolUseLoopService.proposeCountedQuery` |
 | Answers from one search, naming paths from it, but proposes nothing (often listing only some of the matches) | Proposes that search, so the table shows every match. With more than one matching search it does not guess, except that a reply claiming the screen changed, or a turn whose last matching search was narrowed by facets, always gets the last matching search (with those facets) | repair | `ToolUseLoopService.respond`, `ToolUseLoopService.replyShowsSearchResults` |
@@ -226,10 +283,15 @@ a check is ever returned.
 | Is still calling tools when the iteration cap is reached (typically trying search term after search term that matches nothing) | Answers its pending calls with a "limit reached, answer now from what you have" result instead of running them, and makes one last model call. Tools stay offered, because Converse rejects a history with tool calls and no `toolConfig`; if the model calls one anyway, the reply is the fallback text | repair | `ToolUseLoopService` (`CAP_REACHED_RESULT`) |
 | Ends its turn with no content right after tool results | Asks again, up to 2 times, then replies with "I wasn't able to finish gathering the information..." | repair | `ToolUseLoopService` (`MAX_EMPTY_RETRIES`) |
 
-Two consequences worth knowing:
+Consequences worth knowing:
 
 - **Clearing every filter is not possible from the chat.** A proposal with no filters keeps the current ones, so a researcher who
   wants to start over uses the UI's reset button. Removing *some* filters works, because the model sends the ones that stay.
+- **A select-only query is valid** when the researcher's message asks to select, add, include or export variables
+  (`ProposalRules.asksToSelect`): selected variables are what they export, and with no filters the export covers everyone they can
+  access. Otherwise a select-only proposal is read as a lookup.
+- **Queries that mix datasets are not rejected.** Some PIC-SURE environments have harmonized datasets with overlapping patients, so
+  the service does no dataset-consistency check on a proposal.
 - **A filtered variable cannot be unselected.** The UI shows every variable the query filters on, so removing one from the
   selected variables means removing its filter too.
 - **The researcher's query, facets and search are appended to their message** as labeled data (`CurrentState`), so the model can
@@ -256,6 +318,28 @@ only blocks their harmful form:
   leading guess. A run with a longer timeout, reading `StopReason` and `OutputTokens` from the raw `ConverseResponse` log line,
   would tell.
 
+## Build and test
+
+JDK 25 is enforced. Build from the repository root, not from inside the module: the installed `pic-sure-spring-commons` jar can lag
+the source, so `-am` is needed to build the siblings too.
+
+```
+mvn -pl services/pic-sure-ai-service -am test -Dsurefire.failIfNoSpecifiedTests=false -Dtest='edu.harvard.hms.dbmi.avillach.ai.**.*Test'
+```
+
+The `-Dtest` pattern keeps upstream modules' tests from running. `ArchitectureTest` fails the build if anything outside
+`ai.model` touches Bedrock or Spring AI types. Both this module and `pic-sure-mcp` are Spotless-clean and CI runs `spotless:check` on them, so run
+`mvn -pl services/pic-sure-ai-service spotless:apply` before you push.
+
+Model-behavior regressions are checked with a separate chat-test runner (a suite of single- and multi-turn questions run against a
+locally built service); it is not part of this repo. Unit tests cannot show them.
+
+## Status
+
+Not deployed to any environment yet; the assistant is switched on per environment with `AI_ENABLED` here and
+`ENABLE_ASSISTED_SEARCH` / `ENABLE_ASSISTED_SEARCH_DISCOVER` in the UI. `openai.gpt-oss-120b-1:0` is the MVP model. Open work
+(guardrails and audit, prompt-injection hardening, a shared conversation store) is tracked under `docs/assisted-search/tracker/`.
+
 ## AWS credentials for the `aws-sdk` provider
 
 The service sets no access key or secret. It uses the AWS SDK's default credential chain, so the same image
@@ -273,11 +357,19 @@ the SDK refreshes credentials itself.
 Nothing to configure in the container; the SDK reads the instance role from the metadata service (IMDS).
 
 - **Hop limit.** The instance's IMDSv2 `HttpPutResponseHopLimit` must be `2`. The default is `1`, and a container on
-  Docker's bridge network adds a hop, so the SDK cannot reach IMDS and fails with `Unable to contact EC2 metadata
-  service`. Keep `HttpTokens = required`. For an existing instance:
+  Docker's bridge network (the all-in-one starts this service on the `picsure` network) adds a hop, so the SDK cannot
+  reach IMDS and fails with `Unable to contact EC2 metadata service`. Keep `HttpTokens = required`. For an existing
+  instance:
   `aws ec2 modify-instance-metadata-options --instance-id <id> --http-put-response-hop-limit 2 --http-endpoint enabled`
-  (also settable in the console under Actions > Instance settings > Modify instance metadata options, or in the
-  launch template).
+  (also settable in the console under Actions > Instance settings > Modify instance metadata options). Set it in the
+  launch template or infrastructure code too (Terraform: `http_put_response_hop_limit = 2` in `metadata_options`), or a
+  rebuilt instance goes back to `1`.
+  - This applies only to a host that is an EC2 instance and gets credentials from its instance role. It does not apply
+    when the container uses a local profile (see below) on a laptop, VM or other non-EC2 host, where there is no metadata
+    service.
+  - It also applies if the instance role is only used to assume another role (a profile with `role_arn` and
+    `credential_source = Ec2InstanceMetadata`), because that still reads the instance's credentials from IMDS. That
+    variant has not been verified on EC2 with this service.
 - **Role permissions.** The instance's role needs `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream`
   on the model or inference profile. `bedrock-infra/` provides this via `attach_invocation_policy_to_role_names`;
   confirm that the role named there is the one this instance actually uses.

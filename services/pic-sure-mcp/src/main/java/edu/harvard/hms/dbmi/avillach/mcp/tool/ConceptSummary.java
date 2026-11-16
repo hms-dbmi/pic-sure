@@ -33,11 +33,12 @@ import static io.swagger.v3.oas.annotations.media.Schema.RequiredMode.NOT_REQUIR
  */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 public record ConceptSummary(
-    String conceptPath, @Schema(requiredMode = NOT_REQUIRED) String display, @Schema(requiredMode = NOT_REQUIRED) String dataset, String type, @Schema(requiredMode = NOT_REQUIRED) String studyAcronym,
-    @Schema(requiredMode = NOT_REQUIRED) String name, @Schema(requiredMode = NOT_REQUIRED) String description,
-    @Schema(requiredMode = NOT_REQUIRED) List<String> values, @Schema(requiredMode = NOT_REQUIRED) Integer valuesOmitted,
-    @Schema(requiredMode = NOT_REQUIRED) Double min, @Schema(requiredMode = NOT_REQUIRED) Double max,
-    @Schema(requiredMode = NOT_REQUIRED) Map<String, String> meta, @Schema(requiredMode = NOT_REQUIRED) List<String> matchedTerms
+    String conceptPath, @Schema(requiredMode = NOT_REQUIRED) String display, @Schema(requiredMode = NOT_REQUIRED) String dataset,
+    String type, @Schema(requiredMode = NOT_REQUIRED) String studyAcronym, @Schema(requiredMode = NOT_REQUIRED) String name,
+    @Schema(requiredMode = NOT_REQUIRED) String description, @Schema(requiredMode = NOT_REQUIRED) List<String> values,
+    @Schema(requiredMode = NOT_REQUIRED) Integer valuesOmitted, @Schema(requiredMode = NOT_REQUIRED) Double min,
+    @Schema(requiredMode = NOT_REQUIRED) Double max, @Schema(requiredMode = NOT_REQUIRED) Map<String, String> meta,
+    @Schema(requiredMode = NOT_REQUIRED) List<String> matchedTerms
 ) {
 
     /** The most categorical values a result carries. */
@@ -98,8 +99,8 @@ public record ConceptSummary(
             }
         }
         return new ConceptSummary(
-            concept.conceptPath(), display, dataset, type, concept.studyAcronym(), detail ? concept.name() : null,
-            concept.description(), kept, omitted, concept.min(), concept.max(), detail ? cappedMeta(concept.meta()) : null, null
+            concept.conceptPath(), display, dataset, type, concept.studyAcronym(), detail ? concept.name() : null, concept.description(),
+            kept, omitted, concept.min(), concept.max(), detail ? cappedMeta(concept.meta()) : null, null
         );
     }
 

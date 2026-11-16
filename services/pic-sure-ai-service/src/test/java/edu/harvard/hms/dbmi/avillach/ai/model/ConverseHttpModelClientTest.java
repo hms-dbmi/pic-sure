@@ -141,8 +141,7 @@ class ConverseHttpModelClientTest {
             new UserEntry("go"),
             new AssistantToolCallEntry(
                 "thinking", List.of(new RequestedToolCall("c1", "a", "not json"), new RequestedToolCall("c2", "b", "{}"))
-            ),
-            new ToolResultEntry("c1", "a", "r1"), new ToolResultEntry("c2", "b", "r2")
+            ), new ToolResultEntry("c1", "a", "r1"), new ToolResultEntry("c2", "b", "r2")
         );
         ToolDefinition badSchema = new ToolDefinition("a", "d", "not json");
 

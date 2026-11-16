@@ -22,8 +22,8 @@ import com.fasterxml.jackson.databind.node.TextNode;
  * <p>Small models invent paths, often by copying the placeholder paths in a tool's example arguments. A path counts as seen if a tool
  * result or the researcher's current query contained it; backslash variants of the same path (doubled, or missing the leading or trailing
  * one) are treated as the same path when checking, then rewritten to the form first seen before the call goes out (see
- * {@link #canonicalize(String)}), since HPDS matches concept paths by exact key. Categorical filter values are rewritten the same way
- * when they differ only in case from a value listed for that path. One instance per chat turn; not thread-safe.
+ * {@link #canonicalize(String)}), since HPDS matches concept paths by exact key. Categorical filter values are rewritten the same way when
+ * they differ only in case from a value listed for that path. One instance per chat turn; not thread-safe.
  */
 final class ConceptPaths {
 
@@ -289,8 +289,10 @@ final class ConceptPaths {
      * model does write must match: a different unit or range is a different variable.
      */
     private static boolean abbreviates(List<String> wanted, List<String> full) {
-        if (full.isEmpty() || wanted.size() > full.size() || !sameFolder(wanted.getFirst(), full.getFirst())
-            || !sameFolder(wanted.getLast(), full.getLast())) {
+        if (
+            full.isEmpty() || wanted.size() > full.size() || !sameFolder(wanted.getFirst(), full.getFirst())
+                || !sameFolder(wanted.getLast(), full.getLast())
+        ) {
             return false;
         }
         int next = 0;

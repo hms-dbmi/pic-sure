@@ -11,8 +11,7 @@ public final class ApiKeyBearer {
 
     private static final String SCHEME = "Bearer ";
 
-    private ApiKeyBearer() {
-    }
+    private ApiKeyBearer() {}
 
     /** Returns the key carried by an {@code Authorization} header value, or {@code null} if the value is not a bearer PSAMA key. */
     public static String extract(String authorization) {

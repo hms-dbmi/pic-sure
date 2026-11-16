@@ -346,8 +346,8 @@ class DictionaryToolsTest {
         // The other category holds a facet that matches too, so only the category filter can leave it out.
         server.expect(requestTo(GATEWAY + "/dictionary/facets")).andRespond(
             withSuccess(
-                "[{\"name\":\"other\",\"facets\":[{\"name\":\"f37\",\"display\":\"Facet 37\"}]},{\"name\":\"c\",\"facets\":["
-                    + facetJson + "]}]",
+                "[{\"name\":\"other\",\"facets\":[{\"name\":\"f37\",\"display\":\"Facet 37\"}]},{\"name\":\"c\",\"facets\":[" + facetJson
+                    + "]}]",
                 MediaType.APPLICATION_JSON
             )
         );
@@ -363,8 +363,7 @@ class DictionaryToolsTest {
 
     @Test
     void categoryAloneListsOnlyThatCategoryWithTheCapStillApplied() {
-        String facetJson =
-            IntStream.range(0, 30).mapToObj(i -> "{\"name\":\"f" + i + "\",\"count\":1}").collect(Collectors.joining(","));
+        String facetJson = IntStream.range(0, 30).mapToObj(i -> "{\"name\":\"f" + i + "\",\"count\":1}").collect(Collectors.joining(","));
         server.expect(requestTo(GATEWAY + "/dictionary/facets")).andRespond(
             withSuccess(
                 "[{\"name\":\"a\",\"facets\":[{\"name\":\"x\"}]},{\"name\":\"c\",\"facets\":[" + facetJson + "]}]",

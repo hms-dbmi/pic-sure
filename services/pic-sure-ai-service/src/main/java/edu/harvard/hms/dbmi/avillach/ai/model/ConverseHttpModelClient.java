@@ -54,8 +54,9 @@ class ConverseHttpModelClient implements ConverseModelClient {
         requireNonBlank(baseUrl, "picsure.ai.model.http.base-url");
         requireNonBlank(apiToken, "picsure.ai.model.http.api-token");
         requireNonBlank(modelId, "picsure.ai.model.http.model-id");
-        JdkClientHttpRequestFactory requestFactory =
-            new JdkClientHttpRequestFactory(HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).connectTimeout(CONNECT_TIMEOUT).build());
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(
+            HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).connectTimeout(CONNECT_TIMEOUT).build()
+        );
         requestFactory.setReadTimeout(READ_TIMEOUT);
         this.restClient = RestClient.builder().baseUrl(baseUrl).requestFactory(requestFactory).build();
         this.apiToken = apiToken;

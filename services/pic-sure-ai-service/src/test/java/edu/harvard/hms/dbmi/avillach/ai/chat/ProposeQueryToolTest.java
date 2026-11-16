@@ -301,9 +301,11 @@ class ProposeQueryToolTest {
 
     @Test
     void aNonFiniteBoundIsRefused() {
-        ProposeQueryTool.Outcome outcome = tool.propose("""
-            {"query":{"phenotypicClause":{"phenotypicFilterType":"FILTER","conceptPath":"\\\\demo\\\\age\\\\","min":"NaN","max":"Infinity"}}}""",
-            knownFacets);
+        ProposeQueryTool.Outcome outcome = tool.propose(
+            """
+                {"query":{"phenotypicClause":{"phenotypicFilterType":"FILTER","conceptPath":"\\\\demo\\\\age\\\\","min":"NaN","max":"Infinity"}}}""",
+            knownFacets
+        );
 
         assertTrue(outcome.result().error());
         assertTrue(outcome.result().content().contains("finite"), outcome.result().content());
@@ -317,7 +319,9 @@ class ProposeQueryToolTest {
 
         assertTrue(outcome.result().error());
         assertTrue(outcome.result().content().contains("too large"), outcome.result().content());
-        assertTrue(outcome.result().content().contains("not the researcher's"), "the limit is the model's own: " + outcome.result().content());
+        assertTrue(
+            outcome.result().content().contains("not the researcher's"), "the limit is the model's own: " + outcome.result().content()
+        );
         assertNull(outcome.proposal());
         assertFalse(tool.propose(manyFilters(tool.maxFilters() - 1), knownFacets).result().error());
     }
@@ -335,11 +339,13 @@ class ProposeQueryToolTest {
 
     @Test
     void aNumberOrBooleanWhereTheProposalWantsTextIsRefusedNotCoercedToText() {
-        for (String arguments : List.of(
-            "{\"query\":{\"select\":[42]}}", "{\"query\":{\"select\":[true]}}", "{\"query\":{\"addSelect\":[42]}}",
-            "{\"query\":{\"removeSelect\":[true]}}",
-            "{\"facets\":[{\"category\":12,\"name\":\"demo\"}]}", "{\"facets\":[{\"category\":\"study\",\"name\":false}]}"
-        )) {
+        for (
+            String arguments : List.of(
+                "{\"query\":{\"select\":[42]}}", "{\"query\":{\"select\":[true]}}", "{\"query\":{\"addSelect\":[42]}}",
+                "{\"query\":{\"removeSelect\":[true]}}", "{\"facets\":[{\"category\":12,\"name\":\"demo\"}]}",
+                "{\"facets\":[{\"category\":\"study\",\"name\":false}]}"
+            )
+        ) {
             ProposeQueryTool.Outcome outcome = tool.propose(arguments, knownFacets);
 
             assertTrue(outcome.result().error(), arguments);
@@ -348,8 +354,11 @@ class ProposeQueryToolTest {
     }
 
     private static String manyFilters(int count) {
-        String filters = String.join(",", java.util.Collections.nCopies(count,
-            "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demo\\\\age\\\\\",\"values\":[\"x\"]}"));
+        String filters = String.join(
+            ",",
+            java.util.Collections
+                .nCopies(count, "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demo\\\\age\\\\\",\"values\":[\"x\"]}")
+        );
         return "{\"query\":{\"phenotypicClause\":{\"operator\":\"AND\",\"phenotypicClauses\":[" + filters + "]}}}";
     }
 }

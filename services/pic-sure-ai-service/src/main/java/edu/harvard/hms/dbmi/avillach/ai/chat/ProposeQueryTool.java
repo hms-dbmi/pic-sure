@@ -30,25 +30,26 @@ public class ProposeQueryTool {
     /** The tool name. */
     public static final String NAME = "propose_query";
 
-    private static final String DESCRIPTION = """
-        Propose an updated query, facet selection, or search for the researcher to review -- call this when the conversation should \
-        change their query, facets, or search, not just answer in prose. This is the only way to hand over a query; never write query JSON in a \
-        reply. All three fields are optional: leave out any that does not change. query changes the researcher's query: its \
-        phenotypicClause and genomicFilters replace theirs, so send the complete new filters (to narrow theirs, keep its clauses \
-        and add to them), while their selected variables change only as you say: addSelect lists concept paths to add, removeSelect \
-        the ones they asked to remove, and every other selected variable stays, so never repeat the ones they have. facets is the \
-        complete new selection. A phenotypicClause is either a filter or a subquery. A filter has phenotypicFilterType, \
-        conceptPath, and, for FILTER, either values (categorical) or min and max (numeric); REQUIRED and ANY_RECORD_OF take \
-        neither. A subquery has operator (AND or OR) and phenotypicClauses, each a filter or another subquery. A filter with not \
-        set to true excludes the participants it matches; keep not exactly as it is on every filter you carry over from the \
-        researcher's query. Build every conceptPath from search_concepts results, exactly as returned. facets is a list of \
-        {category, name} pairs taken from list_facets; it narrows the variables searched to those facets. search is \
-        the dictionary search text, a plain string: send the text that found the variables in search_concepts (several terms joined by |), or an empty string to \
-        clear it. For a lookup (show, find, or list variables), send only search, never a query. Example arguments (the phs999999 \
-        paths are placeholders only; never use them, use real conceptPath values from search_concepts): \
-        {"query":{"addSelect":["\\\\phs999999\\\\bmi\\\\"],"phenotypicClause":{"operator":"AND","phenotypicClauses":[\
-        {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs999999\\\\sex\\\\","values":["Female"]},\
-        {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs999999\\\\age\\\\","min":40,"max":65}]}}}""";
+    private static final String DESCRIPTION =
+        """
+            Propose an updated query, facet selection, or search for the researcher to review -- call this when the conversation should \
+            change their query, facets, or search, not just answer in prose. This is the only way to hand over a query; never write query JSON in a \
+            reply. All three fields are optional: leave out any that does not change. query changes the researcher's query: its \
+            phenotypicClause and genomicFilters replace theirs, so send the complete new filters (to narrow theirs, keep its clauses \
+            and add to them), while their selected variables change only as you say: addSelect lists concept paths to add, removeSelect \
+            the ones they asked to remove, and every other selected variable stays, so never repeat the ones they have. facets is the \
+            complete new selection. A phenotypicClause is either a filter or a subquery. A filter has phenotypicFilterType, \
+            conceptPath, and, for FILTER, either values (categorical) or min and max (numeric); REQUIRED and ANY_RECORD_OF take \
+            neither. A subquery has operator (AND or OR) and phenotypicClauses, each a filter or another subquery. A filter with not \
+            set to true excludes the participants it matches; keep not exactly as it is on every filter you carry over from the \
+            researcher's query. Build every conceptPath from search_concepts results, exactly as returned. facets is a list of \
+            {category, name} pairs taken from list_facets; it narrows the variables searched to those facets. search is \
+            the dictionary search text, a plain string: send the text that found the variables in search_concepts (several terms joined by |), or an empty string to \
+            clear it. For a lookup (show, find, or list variables), send only search, never a query. Example arguments (the phs999999 \
+            paths are placeholders only; never use them, use real conceptPath values from search_concepts): \
+            {"query":{"addSelect":["\\\\phs999999\\\\bmi\\\\"],"phenotypicClause":{"operator":"AND","phenotypicClauses":[\
+            {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs999999\\\\sex\\\\","values":["Female"]},\
+            {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs999999\\\\age\\\\","min":40,"max":65}]}}}""";
 
     private static final String SCHEMA = """
         {"type":"object","properties":{"query":{"type":"object","properties":{\
@@ -94,7 +95,7 @@ public class ProposeQueryTool {
      * A proposal that passed every check, each part null when the model didn't send it.
      *
      * @param query the proposed query; until {@link ProposalRules} applies it to the researcher's, its {@code select} holds only the
-     *              variables to add
+     *        variables to add
      * @param facets the proposed facet selection
      * @param search the proposed search text
      * @param removeSelect the variables to remove from the researcher's selection, never null
@@ -146,9 +147,9 @@ public class ProposeQueryTool {
 
     /** Refusal for a query over the filter limit or {@link ProposeQueryInput#MAX_SELECT}, as proposed or once applied. */
     static String queryTooLarge(int maxFilters) {
-        return "The query is too large: you can propose at most " + maxFilters + " filters and "
-        + ProposeQueryInput.MAX_SELECT + " selected variables. That limit is yours, not the researcher's: they can add as many as they like "
-        + "themselves, so never tell them they are limited. Propose a smaller query and say they can add the rest themselves.";
+        return "The query is too large: you can propose at most " + maxFilters + " filters and " + ProposeQueryInput.MAX_SELECT
+            + " selected variables. That limit is yours, not the researcher's: they can add as many as they like "
+            + "themselves, so never tell them they are limited. Propose a smaller query and say they can add the rest themselves.";
     }
 
     /**

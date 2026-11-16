@@ -144,6 +144,10 @@ public class OpenAccessFilter extends OncePerRequestFilter {
         req.setAttribute(ATTR_OPEN_ACCESS_VALIDATION, validation);
         // Record that the open-access flow admitted this request. Backend routing remains path-based.
         req.setAttribute(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_OPEN);
+        // only a session PSAMA verified: an unverified key that was evaluated as anonymous has no keyType and so no session id
+        if ("SESSION".equals(validation.keyType()) && validation.keyId() != null && !validation.keyId().isBlank()) {
+            req.setAttribute(GatewayUserResolver.HEADER_OPEN_SESSION_ID, validation.keyId());
+        }
         audit.put("auth_result", "success");
         audit.put("auth_action", "open_access.granted");
         // before the chain: a proxied response is already committed when the chain returns, so a header set afterwards is dropped

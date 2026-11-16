@@ -73,8 +73,8 @@ public final class StrictArgumentBinder {
      * @param type the input record
      * @param <T> the input type
      * @return the bound input
-     * @throws RuntimeException built by the failure function, naming the offending field when an argument is unknown, of the wrong type,
-     *         or not a valid clause
+     * @throws RuntimeException built by the failure function, naming the offending field when an argument is unknown, of the wrong type, or
+     *         not a valid clause
      */
     public <T> T bind(Map<String, Object> arguments, Class<T> type) {
         return convert(mapper, arguments == null ? Map.of() : arguments, type);

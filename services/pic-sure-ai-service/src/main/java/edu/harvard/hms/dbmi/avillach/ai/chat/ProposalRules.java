@@ -28,10 +28,10 @@ final class ProposalRules {
             + "their cohort, include at least one filter.";
 
     /**
-     * The researcher asking for variables in their export. A select-only query is a real export (with no filters, of every participant
-     * they can access), but gpt-oss also wrote nearly every lookup as one, so it is taken as an export only when the researcher's own
-     * words ask for one. "select", "export", "choose" and "pick" ask on their own; "add" and "include" also start filters ("add a filter",
-     * "include only women"), so they count only when followed by what a selection holds.
+     * The researcher asking for variables in their export. A select-only query is a real export (with no filters, of every participant they
+     * can access), but gpt-oss also wrote nearly every lookup as one, so it is taken as an export only when the researcher's own words ask
+     * for one. "select", "export", "choose" and "pick" ask on their own; "add" and "include" also start filters ("add a filter", "include
+     * only women"), so they count only when followed by what a selection holds.
      */
     private static final Pattern ASKS_TO_SELECT = Pattern.compile(
         "(?i)\\b(?:select(?:ed|ing)?|export(?:ed|ing)?|choose|pick)\\b"
@@ -43,8 +43,7 @@ final class ProposalRules {
         return message != null && ASKS_TO_SELECT.matcher(message).find();
     }
 
-    private ProposalRules() {
-    }
+    private ProposalRules() {}
 
     /**
      * Keeps the researcher's filters, applies the proposed changes to their selected variables, adds the facets a proposed search was run
@@ -58,12 +57,14 @@ final class ProposalRules {
         // An earlier proposal this turn is what the researcher will see, so a later one changes that.
         ProposeQueryInput before = state.query != null ? state.query : state.currentQuery;
         String searchBefore = state.search != null ? state.search : state.currentSearch;
-        List<String> broughtBack = proposal.query() == null || state.removedRepairAsked ? List.of() : removedPathsIn(proposal.query(), state);
+        List<String> broughtBack =
+            proposal.query() == null || state.removedRepairAsked ? List.of() : removedPathsIn(proposal.query(), state);
         if (!broughtBack.isEmpty()) {
             // Once per turn: the model then decides, knowing the researcher did this on purpose, and a repeat is accepted as asked for.
             state.removedRepairAsked = true;
             return ToolResult.failure(
-                "The researcher removed " + names(broughtBack) + " from their query by hand, and this proposal puts that back. Leave it out "
+                "The researcher removed " + names(broughtBack)
+                    + " from their query by hand, and this proposal puts that back. Leave it out "
                     + "unless the researcher's latest message asks for it again. If it does, send the same proposal again; if not, send "
                     + "it without."
             );
@@ -118,7 +119,8 @@ final class ProposalRules {
         if (hasSelected(before) || !proposal.removeSelect().isEmpty() || state.asksToSelect) {
             return proposal;
         }
-        // No filters, nothing selected, and no request to select: a lookup the model wrote as a query. Without a search this turn, the variables are most likely
+        // No filters, nothing selected, and no request to select: a lookup the model wrote as a query. Without a search this turn, the
+        // variables are most likely
         // from the search already on screen, which an earlier turn of the conversation proposed.
         String lookup = proposal.search() != null ? proposal.search() : state.searches.lastMatchedSearchWithoutMisses();
         lookup = lookup != null ? lookup : state.currentSearch;
@@ -126,8 +128,8 @@ final class ProposalRules {
     }
 
     /**
-     * The researcher's selected variables, then the added ones, without the removed ones. Empty, not null, when a removal leaves none:
-     * the response leaves a null select out, and the UI would keep the old one.
+     * The researcher's selected variables, then the added ones, without the removed ones. Empty, not null, when a removal leaves none: the
+     * response leaves a null select out, and the UI would keep the old one.
      */
     private static List<String> selectedAfter(ProposeQueryInput before, List<String> added, List<String> removed) {
         Map<String, String> selected = new LinkedHashMap<>();
@@ -159,11 +161,14 @@ final class ProposalRules {
             paths.forEach(path -> shown.putIfAbsent(ConceptPaths.normalize(path), path));
         }
         List<String> notes = new ArrayList<>();
-        notes.add(shown.isEmpty() ? "They have no selected variables." : "Their selected variables are now: " + names(shown.values()) + ".");
+        notes
+            .add(shown.isEmpty() ? "They have no selected variables." : "Their selected variables are now: " + names(shown.values()) + ".");
         List<String> filteredRemovals = removed.stream()
             .filter(path -> filtered.stream().anyMatch(f -> ConceptPaths.normalize(f).equals(ConceptPaths.normalize(path)))).toList();
         if (!filteredRemovals.isEmpty()) {
-            notes.add(names(filteredRemovals) + " stayed selected, because the query filters on it; a filtered variable always stays selected.");
+            notes.add(
+                names(filteredRemovals) + " stayed selected, because the query filters on it; a filtered variable always stays selected."
+            );
         }
         List<String> notSelected = removed.stream().filter(path -> !wasSelected.contains(ConceptPaths.normalize(path))).toList();
         if (!notSelected.isEmpty()) {
@@ -201,7 +206,8 @@ final class ProposalRules {
         String keptSearch = String.join(" | ", split.kept());
         Proposal trimmed = proposal.withSearch(keptSearch);
         state.accept(trimmed);
-        String note = "Dropped " + String.join(", ", split.dropped()) + " from the search because nothing matched. Their search is now only: " + keptSearch + ".";
+        String note = "Dropped " + String.join(", ", split.dropped())
+            + " from the search because nothing matched. Their search is now only: " + keptSearch + ".";
         return accepted(trimmed, note, selectNote, searchBefore);
     }
 
@@ -223,12 +229,14 @@ final class ProposalRules {
             // Told "now lists", the model described an unchanged search as a new filter.
             applied.add("Their search was already \"" + proposal.search() + "\": that did not change.");
         } else if (proposal.search() != null) {
-            applied.add(proposal.search().isBlank() ? "Their search is cleared."
-                : "Their search is now \"" + proposal.search() + "\".");
+            applied.add(proposal.search().isBlank() ? "Their search is cleared." : "Their search is now \"" + proposal.search() + "\".");
         }
         if (proposal.facets() != null) {
-            applied.add(proposal.facets().isEmpty() ? "Their facet filters are cleared." : "Their search is narrowed to the facets "
-                + proposal.facets().stream().map(f -> f.category() + ": " + f.name()).toList() + ".");
+            applied.add(
+                proposal.facets().isEmpty() ? "Their facet filters are cleared."
+                    : "Their search is narrowed to the facets "
+                        + proposal.facets().stream().map(f -> f.category() + ": " + f.name()).toList() + "."
+            );
         }
         if (proposal.query() == null) {
             applied.add("Their selected variables and query are unchanged: nothing was added to them.");

@@ -31,8 +31,8 @@ import java.util.stream.Collectors;
 
 /**
  * Covers {@code search_concepts} with several {@code terms} against a mock gateway: the terms go to the dictionary as one {@code |}-joined
- * search with the term breakdown on, the caller's headers are replayed, the breakdown comes back as {@code matchedTerms} on each concept and
- * {@code termTotals} on the result, and the argument rules that hold before any request is sent.
+ * search with the term breakdown on, the caller's headers are replayed, the breakdown comes back as {@code matchedTerms} on each concept
+ * and {@code termTotals} on the result, and the argument rules that hold before any request is sent.
  */
 class ConceptSearchTermsTest {
 
@@ -57,14 +57,13 @@ class ConceptSearchTermsTest {
     @Test
     void theTermsGoInOneRequestWithTheBreakdownOnAndTheCallerHeadersReplayed() {
         server.expect(once(), requestTo(GATEWAY + "/dictionary/concepts?page_number=1&page_size=5&term_breakdown=true"))
-            .andExpect(method(HttpMethod.POST)).andExpect(header("Authorization", BEARER)).andExpect(header("X-PICSURE-API-Key", "caller-api-key"))
-            .andExpect(header("X-Request-Id", "req-9")).andExpect(header("X-Forwarded-For", "203.0.113.7"))
-            .andExpect(header("X-PIC-SURE-MCP-TOKEN", "mcp-token"))
+            .andExpect(method(HttpMethod.POST)).andExpect(header("Authorization", BEARER))
+            .andExpect(header("X-PICSURE-API-Key", "caller-api-key")).andExpect(header("X-Request-Id", "req-9"))
+            .andExpect(header("X-Forwarded-For", "203.0.113.7")).andExpect(header("X-PIC-SURE-MCP-TOKEN", "mcp-token"))
             .andExpect(content().json("{\"facets\":[],\"search\":\"blood pressure|bp|hypertension\",\"consents\":[]}", true))
             .andRespond(breakdown(0, Map.of(), List.of()));
 
-        ConceptSearchResult result =
-            search.searchConcepts(context, null, List.of("blood pressure", "bp", "hypertension"), 1, 5, null);
+        ConceptSearchResult result = search.searchConcepts(context, null, List.of("blood pressure", "bp", "hypertension"), 1, 5, null);
 
         server.verify();
         assertThat(result.page()).isEqualTo(1);
@@ -84,13 +83,13 @@ class ConceptSearchTermsTest {
             )
         );
 
-        ConceptSearchResult result = search.searchConcepts(context, null, List.of("blood pressure", "bp", "hypertension"), null, null, null);
+        ConceptSearchResult result =
+            search.searchConcepts(context, null, List.of("blood pressure", "bp", "hypertension"), null, null, null);
 
         server.verify();
         assertThat(result.terms()).containsExactly("blood pressure", "bp", "hypertension");
-        assertThat(result.termTotals()).containsExactly(
-            Map.entry("blood pressure", 40L), Map.entry("bp", 7L), Map.entry("hypertension", 3L)
-        );
+        assertThat(result.termTotals())
+            .containsExactly(Map.entry("blood pressure", 40L), Map.entry("bp", 7L), Map.entry("hypertension", 3L));
         assertThat(result.total()).isEqualTo(50);
         assertThat(result.pageSize()).isEqualTo(ConceptSearchTool.DEFAULT_PAGE_SIZE);
         assertThat(result.concepts()).extracting(ConceptSummary::conceptPath).containsExactly("A", "D", "B", "E");
@@ -135,7 +134,8 @@ class ConceptSearchTermsTest {
 
     @Test
     void aRepeatedTermIsSentOnce() {
-        server.expect(once(), content().json("{\"search\":\"sex\"}")).andRespond(breakdown(1, linked("sex", 1), List.of(match("S", "sex"))));
+        server.expect(once(), content().json("{\"search\":\"sex\"}"))
+            .andRespond(breakdown(1, linked("sex", 1), List.of(match("S", "sex"))));
 
         ConceptSearchResult result = search.searchConcepts(context, null, List.of("sex", "sex"), null, null, null);
 
@@ -148,8 +148,8 @@ class ConceptSearchTermsTest {
         server.expect(once(), requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=10&term_breakdown=true"))
             .andRespond(withStatus(HttpStatus.FORBIDDEN).body(LEAK));
 
-        assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("alpha", "beta"), null, null, null)).isInstanceOf(ToolFailure.class)
-            .hasMessage("The caller is not authorized for the dictionary.").hasNoCause();
+        assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("alpha", "beta"), null, null, null))
+            .isInstanceOf(ToolFailure.class).hasMessage("The caller is not authorized for the dictionary.").hasNoCause();
         server.verify();
     }
 
@@ -176,8 +176,9 @@ class ConceptSearchTermsTest {
 
     @Test
     void badTermsAreRejectedWithoutCallingTheGateway() {
-        assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"), null, null, null))
-            .isInstanceOf(ToolFailure.class).hasMessage("Argument 'terms' takes at most 10 terms.");
+        assertThatThrownBy(
+            () -> search.searchConcepts(context, null, List.of("a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"), null, null, null)
+        ).isInstanceOf(ToolFailure.class).hasMessage("Argument 'terms' takes at most 10 terms.");
         assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("bp", " "), null, null, null)).isInstanceOf(ToolFailure.class)
             .hasMessage("Argument 'terms[1]' is required.");
         assertThatThrownBy(() -> search.searchConcepts(context, null, Arrays.asList("bp", null), null, null, null))
@@ -186,8 +187,8 @@ class ConceptSearchTermsTest {
             .isInstanceOf(ToolFailure.class).hasMessage("Argument 'terms[0]' must be at most 200 characters.");
         assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("a\nb"), null, null, null)).isInstanceOf(ToolFailure.class)
             .hasMessage("Argument 'terms[0]' must not contain control characters.");
-        assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("a", "b|c"), null, null, null)).isInstanceOf(ToolFailure.class)
-            .hasMessage("Argument 'terms[1]' must not contain '|'; give each alternative as its own term.");
+        assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("a", "b|c"), null, null, null))
+            .isInstanceOf(ToolFailure.class).hasMessage("Argument 'terms[1]' must not contain '|'; give each alternative as its own term.");
         assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("x".repeat(150), "y".repeat(150)), null, null, null))
             .isInstanceOf(ToolFailure.class).hasMessage("Argument 'terms' must total at most 200 characters.");
         server.verify();
@@ -228,10 +229,11 @@ class ConceptSearchTermsTest {
 
     private static ResponseCreator breakdown(long total, Map<String, Long> termTotals, List<Hit> matches) {
         String content = matches.stream().map(m -> concept(m.path())).collect(Collectors.joining(","));
-        String matchJson = matches.stream().map(
-            m -> "{\"dataset\":\"phs1\",\"conceptPath\":\"" + m.path() + "\",\"terms\":["
-                + m.terms().stream().map(t -> "\"" + t + "\"").collect(Collectors.joining(",")) + "]}"
-        ).collect(Collectors.joining(","));
+        String matchJson = matches.stream()
+            .map(
+                m -> "{\"dataset\":\"phs1\",\"conceptPath\":\"" + m.path() + "\",\"terms\":["
+                    + m.terms().stream().map(t -> "\"" + t + "\"").collect(Collectors.joining(",")) + "]}"
+            ).collect(Collectors.joining(","));
         String totalsJson =
             termTotals.entrySet().stream().map(e -> "\"" + e.getKey() + "\":" + e.getValue()).collect(Collectors.joining(","));
         return withSuccess(

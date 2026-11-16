@@ -113,10 +113,12 @@ class InstructionsTest {
     void theAdapterCodeDescriptionCarriesTheHandoffRulesAndTheRefusals() throws Exception {
         String description = descriptions().get("get_adapter_code");
 
-        assertThat(description).contains("reads the user's own token from the PICSURE_TOKEN environment variable and never contains a token")
+        assertThat(description)
+            .contains("reads the user's own token from the PICSURE_TOKEN environment variable and never contains a token")
             .contains("Show the code to the user and do not run it unless the user asks.")
-            .contains("bash needs curl 7.55 or later and jq", "language is python, r, or bash", "for exact counts filtered by the user's consents")
-            .contains("A genomic filter with min or max", "A REQUIRED or ANY_RECORD_OF filter with values, min, or max")
+            .contains(
+                "bash needs curl 7.55 or later and jq", "language is python, r, or bash", "for exact counts filtered by the user's consents"
+            ).contains("A genomic filter with min or max", "A REQUIRED or ANY_RECORD_OF filter with values, min, or max")
             .contains("A FILTER with both values and min or max, or with neither", "A blank entry in values", "phs999999");
     }
 
