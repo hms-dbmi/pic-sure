@@ -67,7 +67,7 @@
     {
       "name": "metadata.internal_export_keys",
       "type": "java.util.Set<java.lang.String>",
-      "description": "Comma-separated list of concept_node_meta keys that POST /internal/concepts/export-metadata may return. A request that asks for any other key answers 400. metadata.no_show_list does not apply to that endpoint.",
+      "description": "Comma-separated list of concept_node_meta keys that POST /internal/concepts/export-metadata may return. A request that asks for any other key answers 400. Blank entries are ignored and whitespace around an entry is stripped. metadata.no_show_list does not apply to that endpoint.",
       "defaultValue": ""
     },
     {
