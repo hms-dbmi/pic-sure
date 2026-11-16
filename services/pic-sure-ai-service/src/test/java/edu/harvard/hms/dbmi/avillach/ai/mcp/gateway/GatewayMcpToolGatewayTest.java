@@ -210,6 +210,32 @@ class GatewayMcpToolGatewayTest {
         server.verify(postRequestedFor(urlEqualTo("/mcp")).withHeader("Authorization", equalTo("Bearer caller-b")));
     }
 
+    /**
+     * The "no token-issuing call in the request path" guard, at the wire: a full list-then-call sequence makes only {@code POST /mcp}
+     * requests, every one of them carrying the caller's {@code Authorization} header byte for byte. A login, token-exchange or refresh call
+     * would show up here as a request to another path or with a different header, and fail.
+     */
+    @Test
+    void everyOutboundRequestIsAPostToMcpWithTheCallersUnmodifiedAuthorization() {
+        server.stubFor(post(urlEqualTo("/mcp")).withRequestBody(matchingJsonPath("$.method", equalTo("tools/list"))).willReturn(okRpc("""
+            {"jsonrpc":"2.0","id":1,"result":{"tools":[]}}""")));
+        server.stubFor(post(urlEqualTo("/mcp")).withRequestBody(matchingJsonPath("$.method", equalTo("tools/call"))).willReturn(okRpc("""
+            {"jsonrpc":"2.0","id":2,"result":{"isError":false,"structuredContent":{}}}""")));
+        String authorization = "Bearer picsure_s_caller.jwt.value";
+
+        gateway.listTools(callerWith(authorization, "req-1"));
+        gateway.callTool("search_concepts", "{}", callerWith(authorization, "req-2"));
+
+        assertTrue(server.findAllUnmatchedRequests().isEmpty(), "a request reached a path or shape the test did not expect");
+        var requests = server.getAllServeEvents().stream().map(event -> event.getRequest()).toList();
+        assertFalse(requests.isEmpty());
+        for (var request : requests) {
+            assertEquals("POST", request.getMethod().getName());
+            assertEquals("/mcp", request.getUrl());
+            assertEquals(authorization, request.getHeader("Authorization"));
+        }
+    }
+
     private static CallerContext callerWith(String authorization, String requestId) {
         return new CallerContext(authorization, requestId, null);
     }
