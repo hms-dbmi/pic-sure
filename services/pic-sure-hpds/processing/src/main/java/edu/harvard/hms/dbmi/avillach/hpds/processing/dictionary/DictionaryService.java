@@ -21,7 +21,7 @@ import java.util.List;
 
 /**
  * Fetches concept details from the dictionary service's internal export metadata endpoint for exports that write a data dictionary table.
- * Every call carries the shared internal token and names its caller as a service. The bean always exists. A deployment that sets no
+ * Every call carries the shared internal token and names HPDS as its caller. The bean always exists. A deployment that sets no
  * {@code dictionary.url} or no {@code picsure.internal.token} gets a {@link DictionaryUnavailableException} when an export asks for
  * concepts.
  */
@@ -53,10 +53,10 @@ public class DictionaryService {
     static final String CLIENT_TYPE_HEADER = "X-Client-Type";
 
     /**
-     * Client type that marks a call made by a service and not by an end-user client. The query service sends the same value on its own
-     * service calls.
+     * Client type that names HPDS as the caller, so the dictionary's audit events tell these calls apart from an end-user client's. It
+     * matches the client type HPDS uses for its own audit events.
      */
-    static final String CLIENT_TYPE_SERVICE = "service";
+    static final String CLIENT_TYPE_HPDS = "hpds";
 
     private final String dictionaryUrl;
     private final String internalToken;
@@ -124,7 +124,7 @@ public class DictionaryService {
         String exportMetadataUrl = requireAbsoluteHttpUrl() + EXPORT_METADATA_PATH;
         HttpHeaders headers = new HttpHeaders();
         headers.set(INTERNAL_TOKEN_HEADER, requireInternalToken());
-        headers.set(CLIENT_TYPE_HEADER, CLIENT_TYPE_SERVICE);
+        headers.set(CLIENT_TYPE_HEADER, CLIENT_TYPE_HPDS);
         List<Concept> concepts = new ArrayList<>();
         for (List<String> batch : Lists.partition(conceptPaths, batchSize)) {
             concepts.addAll(fetchBatch(exportMetadataUrl, new HttpEntity<>(new ConceptExportRequest(batch, EXPORT_META_KEYS), headers)));
