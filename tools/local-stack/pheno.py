@@ -15,7 +15,10 @@ from __future__ import annotations
 
 import csv
 import re
+import sys
 from collections import OrderedDict, defaultdict
+
+csv.field_size_limit(sys.maxsize)  # a columnMeta.csv categoryValues field can exceed the 128 KiB default
 
 CONSENTS_PATH = "\\_consents\\"
 DEPTH = 1

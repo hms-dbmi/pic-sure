@@ -33,6 +33,8 @@ import tempfile
 import time
 import zipfile
 
+csv.field_size_limit(sys.maxsize)
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))  # the pic-sure checkout
 WORK = os.environ.get("WORK_DIR") or os.path.join(HERE, "work")
