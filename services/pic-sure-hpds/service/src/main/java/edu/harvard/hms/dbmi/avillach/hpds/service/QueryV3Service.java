@@ -53,10 +53,9 @@ public class QueryV3Service {
     @Autowired
     public QueryV3Service(
         TimeseriesV3Processor timeseriesProcessor, CountV3Processor countProcessor, MultiValueQueryV3Processor multiValueQueryProcessor,
-        @Autowired(required = false) DictionaryService dictionaryService, QueryValidator queryValidator,
-        @Value("${SMALL_JOB_LIMIT}") Integer smallJobLimit, @Value("${SMALL_TASK_THREADS}") Integer smallTaskThreads,
-        @Value("${LARGE_TASK_THREADS}") Integer largeTaskThreads, PatientV3Processor patientProcessor,
-        @Autowired(required = false) LoggingClient loggingClient
+        DictionaryService dictionaryService, QueryValidator queryValidator, @Value("${SMALL_JOB_LIMIT}") Integer smallJobLimit,
+        @Value("${SMALL_TASK_THREADS}") Integer smallTaskThreads, @Value("${LARGE_TASK_THREADS}") Integer largeTaskThreads,
+        PatientV3Processor patientProcessor, @Autowired(required = false) LoggingClient loggingClient
     ) {
         this.timeseriesProcessor = timeseriesProcessor;
         this.countProcessor = countProcessor;
