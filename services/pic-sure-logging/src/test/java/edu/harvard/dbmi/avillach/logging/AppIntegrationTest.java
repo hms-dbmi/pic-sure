@@ -30,8 +30,12 @@ class AppIntegrationTest {
     }
 
     private AppConfig createTestConfig() {
+        return createTestConfig(null, null);
+    }
+
+    private AppConfig createTestConfig(String nihIco, String cadrName) {
         return new AppConfig(
-            API_KEY, "testapp", "testplatform", "test", "testhost", 0, "*",
+            API_KEY, "testapp", "testplatform", "test", "testhost", nihIco, cadrName, 0, "*",
             Map.of("sub", "subject", "email", "user_email", "roles", "roles", "logged_in", "logged_in")
         );
     }
@@ -184,6 +188,23 @@ class AppIntegrationTest {
 
             assertEquals(200, response.code());
             assertTrue(response.body().string().contains("healthy"));
+        });
+    }
+
+    @Test
+    void configuredCadrFieldsAppearInLogWithoutToken() {
+        Javalin app = App.createApp(createTestConfig("NHLBI", "BDC - BioData Catalyst"), new AtomicBoolean(true));
+        JavalinTest.test(app, (server, client) -> {
+            var body = jsonBody("{\"event_type\":\"QUERY\"}");
+            Response response = client
+                .request("/audit", builder -> builder.post(body).header("X-API-Key", API_KEY).header("Content-Type", "application/json"));
+
+            assertEquals(202, response.code());
+            assertEquals(1, listAppender.list.size());
+            String message = listAppender.list.get(0).getFormattedMessage();
+            assertTrue(message.contains("logged_in=false"));
+            assertTrue(message.contains("nih_ico=NHLBI"));
+            assertTrue(message.contains("cadr_name=BDC - BioData Catalyst"));
         });
     }
 }
