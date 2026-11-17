@@ -2,7 +2,6 @@ package edu.harvard.hms.dbmi.avillach.commons.audit;
 
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.util.concurrent.atomic.AtomicLong;
 
 import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.WriteListener;
@@ -17,14 +16,16 @@ import jakarta.servlet.http.HttpServletResponseWrapper;
  * nothing about the response, in two cases: after either {@code sendError} overload, where the container renders the body itself outside
  * this wrapper, and once {@link #getWriter()} has been called, because characters go to the wrapped response's own writer and are not
  * counted. After {@link #sendRedirect(String)} the container discards whatever was buffered, so the count is 0. A {@link #reset()} or
- * {@link #resetBuffer()} returns the count to 0 with the discarded body.
+ * {@link #resetBuffer()} returns the count to 0 with the discarded body. <p> The wrapper is not thread-safe. It is written to and read on
+ * the thread that handles the request. Once asynchronous processing has started another thread may still be writing the body, so a caller
+ * must treat the count as unknown from then on.
  */
 public final class ByteCountingResponseWrapper extends HttpServletResponseWrapper {
 
-    private final AtomicLong byteCount = new AtomicLong();
+    private long byteCount;
     private CountingOutputStream outputStream;
-    private volatile boolean byteCountUnknown;
-    private volatile boolean bodyDiscardedByRedirect;
+    private boolean byteCountUnknown;
+    private boolean bodyDiscardedByRedirect;
 
     /**
      * Wraps a response so the bytes written to its body can be read back with {@link #getByteCount()}.
@@ -42,7 +43,7 @@ public final class ByteCountingResponseWrapper extends HttpServletResponseWrappe
      * @return the byte count, 0 when nothing has been written or the response was redirected
      */
     public long getByteCount() {
-        return bodyDiscardedByRedirect ? 0 : byteCount.get();
+        return bodyDiscardedByRedirect ? 0 : byteCount;
     }
 
     /**
@@ -107,7 +108,7 @@ public final class ByteCountingResponseWrapper extends HttpServletResponseWrappe
     public ServletOutputStream getOutputStream() throws IOException {
         ServletOutputStream delegate = super.getOutputStream();
         if (outputStream == null || outputStream.delegate != delegate) {
-            outputStream = new CountingOutputStream(delegate, byteCount);
+            outputStream = new CountingOutputStream(delegate);
         }
         return outputStream;
     }
@@ -150,37 +151,35 @@ public final class ByteCountingResponseWrapper extends HttpServletResponseWrappe
     }
 
     private void discardCountedBody() {
-        byteCount.set(0);
+        byteCount = 0;
         outputStream = null;
     }
 
-    /** Stream that forwards to the wrapped stream and adds each accepted write to the shared count. */
-    private static final class CountingOutputStream extends ServletOutputStream {
+    /** Stream that forwards to the wrapped stream and adds each accepted write to the wrapper's count. */
+    private final class CountingOutputStream extends ServletOutputStream {
 
         private final ServletOutputStream delegate;
-        private final AtomicLong byteCount;
 
-        private CountingOutputStream(ServletOutputStream delegate, AtomicLong byteCount) {
+        private CountingOutputStream(ServletOutputStream delegate) {
             this.delegate = delegate;
-            this.byteCount = byteCount;
         }
 
         @Override
         public void write(int b) throws IOException {
             delegate.write(b);
-            byteCount.incrementAndGet();
+            byteCount++;
         }
 
         @Override
         public void write(byte[] b) throws IOException {
             delegate.write(b);
-            byteCount.addAndGet(b.length);
+            byteCount += b.length;
         }
 
         @Override
         public void write(byte[] b, int off, int len) throws IOException {
             delegate.write(b, off, len);
-            byteCount.addAndGet(len);
+            byteCount += len;
         }
 
         @Override
