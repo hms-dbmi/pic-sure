@@ -98,7 +98,7 @@ class DictionaryServiceTest {
         );
         for (HttpEntity<ConceptExportRequest> request : requestCaptor.getAllValues()) {
             assertEquals(List.of(TOKEN), request.getHeaders().get("X-PIC-SURE-INTERNAL-TOKEN"));
-            assertEquals(List.of("service"), request.getHeaders().get("X-Client-Type"));
+            assertEquals(List.of("hpds"), request.getHeaders().get("X-Client-Type"));
         }
     }
 
