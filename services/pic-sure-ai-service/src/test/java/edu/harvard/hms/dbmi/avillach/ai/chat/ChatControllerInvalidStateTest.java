@@ -39,8 +39,11 @@ class ChatControllerInvalidStateTest {
     private MockMvc mockMvc;
 
     private void assertInvalidRequest(String body, String field) throws Exception {
-        mockMvc.perform(post("/chat").contentType(MediaType.APPLICATION_JSON).content(body).header("Authorization", "Bearer test-jwt"))
-            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("invalid_request"))
+        mockMvc
+            .perform(
+                post("/chat").contentType(MediaType.APPLICATION_JSON).content(body).header("Authorization", "Bearer test-jwt")
+                    .header("X-User-Id", "user-a").header("X-User-Privileges", "ASSISTED_SEARCH")
+            ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("invalid_request"))
             .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString(field)));
     }
 

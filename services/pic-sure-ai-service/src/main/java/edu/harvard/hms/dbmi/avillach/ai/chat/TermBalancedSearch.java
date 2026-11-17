@@ -12,6 +12,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -89,7 +90,9 @@ final class TermBalancedSearch {
     /**
      * Runs a several-term call as one OR search at the largest page size, then the rest of its pages in parallel, and gives each term an
      * equal share of the page the model sees. The pages come from the dictionary's own ranking of the terms together, where a term with
-     * many matches can fill the first pages, so each page's concepts are grouped by the terms they matched and interleaved.
+     * many matches can fill the first pages, so each page's concepts are grouped by the terms they matched and interleaved. A term the
+     * dictionary counted but that none of those pages hold is then searched on its own, so one call makes at most
+     * {@code 1 + MAX_EXTRA_PAGES + MAX_TERMS} dictionary calls.
      *
      * @param argumentsJson a {@code search_concepts} call's arguments
      * @param searchTerms runs one {@code search_concepts} call with the given arguments
@@ -129,16 +132,7 @@ final class TermBalancedSearch {
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             for (int page = 1; page < pages; page++) {
                 int number = page;
-                rest.add(CompletableFuture.supplyAsync(() -> {
-                    if (logContext != null) {
-                        MDC.setContextMap(logContext);
-                    }
-                    try {
-                        return fetchPage(arguments, terms, number, searchTerms);
-                    } finally {
-                        MDC.clear();
-                    }
-                }, executor));
+                rest.add(async(executor, logContext, () -> fetchPage(arguments, terms, number, searchTerms)));
             }
         }
         for (CompletableFuture<JsonNode> page : rest) {
@@ -176,6 +170,33 @@ final class TermBalancedSearch {
             return null;
         }
 
+        // A term the dictionary counted but whose matches all rank below the pages fetched has an empty group, so it is searched on its
+        // own.
+        List<String> starved = byTerm.entrySet().stream()
+            .filter(group -> group.getValue().isEmpty() && first.path("termTotals").path(group.getKey()).asLong() > 0)
+            .map(Map.Entry::getKey).toList();
+        int dictionaryCalls = fetched.size() + starved.size();
+        if (!starved.isEmpty()) {
+            Map<String, CompletableFuture<JsonNode>> own = new LinkedHashMap<>();
+            try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+                for (String term : starved) {
+                    own.put(term, async(executor, logContext, () -> fetchPage(arguments, Set.of(term), 0, searchTerms)));
+                }
+            }
+            for (Map.Entry<String, CompletableFuture<JsonNode>> search : own.entrySet()) {
+                JsonNode parsed;
+                try {
+                    parsed = search.getValue().join();
+                } catch (Exception e) {
+                    return null;
+                }
+                if (parsed == null) {
+                    return null;
+                }
+                parsed.path("concepts").forEach(byTerm.get(search.getKey())::add);
+            }
+        }
+
         ArrayNode merged = JSON.createArrayNode();
         Set<String> seen = new HashSet<>();
         List<List<JsonNode>> lists = new ArrayList<>(byTerm.values());
@@ -195,7 +216,7 @@ final class TermBalancedSearch {
             }
         }
 
-        log.info("Term search: terms={} total={} dictionaryCalls={} merged={}", terms.size(), total, fetched.size(), merged.size());
+        log.info("Term search: terms={} total={} dictionaryCalls={} merged={}", terms.size(), total, dictionaryCalls, merged.size());
         ObjectNode out = JSON.createObjectNode();
         out.put("page", 0);
         out.put("total", total);
@@ -206,6 +227,19 @@ final class TermBalancedSearch {
             out.put("note", TRUNCATED_NOTE.formatted(examined, total));
         }
         return ToolResult.success(out.toString());
+    }
+
+    private static CompletableFuture<JsonNode> async(ExecutorService executor, Map<String, String> logContext, Supplier<JsonNode> fetch) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (logContext != null) {
+                MDC.setContextMap(logContext);
+            }
+            try {
+                return fetch.get();
+            } finally {
+                MDC.clear();
+            }
+        }, executor);
     }
 
     /** @return the parsed page of an OR search of the terms, or null when the call failed or its answer was not a page */

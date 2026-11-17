@@ -226,30 +226,6 @@ class IdentityPropagationFilterTest {
         assertThat(Collections.list(wrapped.getHeaderNames())).doesNotContain(GatewayUserResolver.HEADER_ACCESS_TYPE);
     }
 
-    @Test
-    void clientSpoofedOpenSessionIdIsReplacedByTheGatewayResolvedValueOrDropped() throws Exception {
-        HttpServletRequest resolved = mock(HttpServletRequest.class);
-        when(resolved.getAttribute(GatewayUserResolver.HEADER_OPEN_SESSION_ID)).thenReturn("verified-session");
-        when(resolved.getHeader(GatewayUserResolver.HEADER_OPEN_SESSION_ID)).thenReturn("victim-session");
-        when(resolved.getHeaders(GatewayUserResolver.HEADER_OPEN_SESSION_ID))
-            .thenReturn(Collections.enumeration(List.of("victim-session")));
-        when(resolved.getHeaderNames()).thenReturn(Collections.enumeration(List.of(GatewayUserResolver.HEADER_OPEN_SESSION_ID)));
-        HttpServletRequest unresolved = mock(HttpServletRequest.class);
-        when(unresolved.getHeader(GatewayUserResolver.HEADER_OPEN_SESSION_ID)).thenReturn("victim-session");
-        when(unresolved.getHeaders(GatewayUserResolver.HEADER_OPEN_SESSION_ID))
-            .thenReturn(Collections.enumeration(List.of("victim-session")));
-        when(unresolved.getHeaderNames()).thenReturn(Collections.enumeration(List.of(GatewayUserResolver.HEADER_OPEN_SESSION_ID)));
-
-        HttpServletRequest withSession = wrap(resolved);
-        HttpServletRequest withoutSession = wrap(unresolved);
-
-        assertThat(withSession.getHeader(GatewayUserResolver.HEADER_OPEN_SESSION_ID)).isEqualTo("verified-session");
-        assertThat(Collections.list(withSession.getHeaders(GatewayUserResolver.HEADER_OPEN_SESSION_ID)))
-            .containsExactly("verified-session");
-        assertThat(withoutSession.getHeader(GatewayUserResolver.HEADER_OPEN_SESSION_ID)).isNull();
-        assertThat(Collections.list(withoutSession.getHeaderNames())).doesNotContain(GatewayUserResolver.HEADER_OPEN_SESSION_ID);
-    }
-
     private static HttpServletRequest wrap(HttpServletRequest req) throws Exception {
         FilterChain chain = mock(FilterChain.class);
         HttpServletResponse resp = mock(HttpServletResponse.class);
@@ -280,7 +256,7 @@ class IdentityPropagationFilterTest {
     @Test
     void verifiedMcpCallerCarriesMcpClientTypeDownstream() throws Exception {
         HttpServletRequest req = mock(HttpServletRequest.class);
-        when(req.getAttribute(VerifiedCaller.ATTRIBUTE)).thenReturn(McpCallerFilter.CALLER);
+        when(req.getAttribute(VerifiedCaller.ATTRIBUTE)).thenReturn(VerifiedCaller.MCP);
         when(req.getHeader("x-client-type")).thenReturn("PYTHON_ADAPTER");
         when(req.getHeaders("x-client-type")).thenReturn(Collections.enumeration(List.of("PYTHON_ADAPTER")));
         when(req.getHeaderNames()).thenReturn(Collections.enumeration(List.of("x-client-type")));
@@ -346,7 +322,7 @@ class IdentityPropagationFilterTest {
     }
 
     @Test
-    void mcpRouteKeepsApiKeyAndCarriesGatewaySetClientType() throws Exception {
+    void mcpRouteDropsApiKeyAndCarriesGatewaySetClientType() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", McpCallerFilter.MCP_PATH);
         request.addHeader("X-Client-Type", "mcp");
         request.addHeader("Authorization", "Bearer picsure_u_site-api-key");
@@ -355,7 +331,7 @@ class IdentityPropagationFilterTest {
 
         assertThat(downstream.getHeader("X-Client-Type")).isEqualTo("mcp");
         assertThat(Collections.list(downstream.getHeaders("X-Client-Type"))).containsExactly("mcp");
-        assertThat(downstream.getHeader("Authorization")).isEqualTo("Bearer picsure_u_site-api-key");
+        assertThat(downstream.getHeader("Authorization")).isNull();
     }
 
     @Test

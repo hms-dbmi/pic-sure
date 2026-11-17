@@ -126,9 +126,7 @@ public class BannerController {
     @AuditEvent(type = "ADMIN", action = "banner.restored")
     @PostMapping("/{uuid}/restore")
     @ResponseStatus(HttpStatus.CREATED)
-    public ManagementBannerDto restore(
-        GatewayUser user, @PathVariable UUID uuid, @Valid @RequestBody PublishBannerRequest request
-    ) {
+    public ManagementBannerDto restore(GatewayUser user, @PathVariable UUID uuid, @Valid @RequestBody PublishBannerRequest request) {
         return service.restore(uuid, request, user);
     }
 }

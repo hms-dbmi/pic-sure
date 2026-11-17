@@ -18,6 +18,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
  * @param query the updated {@code select}/{@code phenotypicClause}/{@code genomicFilters}, or null if this turn didn't change it
  * @param facets the updated facet selection, or null if this turn didn't change it
  * @param search the updated dictionary search text, or null if this turn didn't change it
+ * @param notice something about the service the researcher should be told, such as that their earlier conversation was closed for room; or
+ *        null
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @Schema(description = "The model's reply to a chat turn, plus any query, facet or search state the turn changed.")
@@ -34,8 +36,22 @@ public record ChatResponse(
     @Schema(
         description = "The updated dictionary search text; empty clears it. Absent when the turn did not change it.",
         example = "blood pressure"
-    ) String search
+    ) String search,
+    @Schema(
+        description = "Plain text for the researcher about the service itself, not the dictionary: for example that this conversation's "
+            + "earlier messages were dropped to make room. Absent when there is nothing to tell.",
+        example = "Your earlier messages in this conversation were cleared, so this message starts a new conversation."
+    ) String notice
 ) {
+
+    public ChatResponse(String response, JsonNode query, List<FacetSelection> facets, String search) {
+        this(response, query, facets, search, null);
+    }
+
+    /** @return this response carrying the notice */
+    public ChatResponse withNotice(String notice) {
+        return new ChatResponse(response, query, facets, search, notice);
+    }
 
     /**
      * A reply with no query/facets/search change -- the common case (prose-only dictionary Q&A).

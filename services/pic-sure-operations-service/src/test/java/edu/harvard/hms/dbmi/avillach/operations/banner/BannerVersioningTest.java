@@ -69,9 +69,7 @@ class BannerVersioningTest {
         versionRepository.deleteAll();
         bannerRepository.deleteAll();
         clock.set(PUBLISHED_AT);
-        allocatorRepository.saveAndFlush(
-            new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1)
-        );
+        allocatorRepository.saveAndFlush(new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1));
     }
 
     @Test

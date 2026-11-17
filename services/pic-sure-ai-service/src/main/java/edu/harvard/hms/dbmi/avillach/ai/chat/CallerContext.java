@@ -22,19 +22,13 @@ import org.springframework.http.HttpHeaders;
  *        constructed -- see {@code CallerContextArgumentResolver}
  * @param requestId the inbound {@code X-Request-Id}, or null
  * @param userId the {@code X-User-Id} the gateway set after PSAMA introspection, or null. Never replayed on an outbound call
- * @param accessType the {@code X-Picsure-Access-Type} the gateway set: {@code authorized} for a validated login token, {@code open} for an
- *        open-access grant, or null when the request reached neither gateway filter
- * @param openSessionId the {@code X-Picsure-Open-Session-Id} the gateway set from the session id PSAMA verified, or null. Gateway-owned, so
- *        it is the only trustworthy source of an open-access session id: the token's own payload is not signature-checked here
+ * @param accessType the {@code X-Picsure-Access-Type} the gateway set: {@code authorized} for a validated login token, or null when the
+ *        request reached no gateway filter. Open-access callers are refused by the chat handlers' {@code @PreAuthorize}
  */
-public record CallerContext(String authorization, String requestId, String userId, String accessType, String openSessionId) {
-
-    public CallerContext(String authorization, String requestId, String userId, String accessType) {
-        this(authorization, requestId, userId, accessType, null);
-    }
+public record CallerContext(String authorization, String requestId, String userId, String accessType) {
 
     public CallerContext(String authorization, String requestId, String userId) {
-        this(authorization, requestId, userId, null, null);
+        this(authorization, requestId, userId, null);
     }
 
     /**
@@ -48,10 +42,7 @@ public record CallerContext(String authorization, String requestId, String userI
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
         String requestId = request.getHeader(RequestIdFilter.HEADER);
         String userId = GatewayUserResolver.resolve(request).map(user -> user.getUserId()).orElse(null);
-        return new CallerContext(
-            authorization, requestId, userId, request.getHeader(GatewayUserResolver.HEADER_ACCESS_TYPE),
-            request.getHeader(GatewayUserResolver.HEADER_OPEN_SESSION_ID)
-        );
+        return new CallerContext(authorization, requestId, userId, request.getHeader(GatewayUserResolver.HEADER_ACCESS_TYPE));
     }
 
     /**
@@ -67,22 +58,18 @@ public record CallerContext(String authorization, String requestId, String userI
     }
 
     /**
-     * Who a stored conversation or reply belongs to, stable for as long as the caller is the same person or session even though their token
-     * is replaced: a logged-in user by their gateway user id, an open-access session by the session id the gateway had PSAMA verify
-     * ({@link #openSessionId()}). Neither can be the {@code X-User-Id} alone, which every open-access caller shares. The token's payload is
-     * never decoded: this service does not check its signature, and PSAMA grants an unverifiable key as anonymous. Any other caller (a
-     * stored API key, an anonymous open-access grant, or a request that did not come through the gateway) is identified by a hash of its
-     * token, never the token itself.
+     * Who a stored conversation or reply belongs to, stable for as long as the caller is the same person even though their token is
+     * replaced: a logged-in user by their gateway user id. The token's payload is never decoded: this service does not check its signature.
+     * Any other caller (a stored API key, or a request that did not come through the gateway) is identified by a hash of its token, never
+     * the token itself.
      *
-     * @return {@code user:<id>}, {@code session:<id>} or {@code token:<SHA-256 hex>}
+     * @return {@code user:<id>} or {@code token:<SHA-256 hex>}
      */
     public String owner() {
         if (GatewayUserResolver.ACCESS_TYPE_AUTHORIZED.equals(accessType) && userId != null && !userId.isBlank()) {
             return "user:" + userId;
         }
-        boolean verifiedSession =
-            GatewayUserResolver.ACCESS_TYPE_OPEN.equals(accessType) && openSessionId != null && !openSessionId.isBlank();
-        return verifiedSession ? "session:" + openSessionId : "token:" + sha256(withCanonicalScheme(authorization));
+        return "token:" + sha256(withCanonicalScheme(authorization));
     }
 
     /** The scheme name is case-insensitive, so {@code bearer x} and {@code Bearer x} are one caller; the token itself is untouched. */

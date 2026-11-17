@@ -27,17 +27,15 @@ import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
 import jakarta.persistence.EntityManager;
 
-@SpringBootTest(
-    properties = {"spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQLDialect"}
-)
+@SpringBootTest(properties = {"spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQLDialect"})
 @Testcontainers(disabledWithoutDocker = true)
 class BannerMySqlTest {
 
     private static final GatewayUser ADMIN = new GatewayUser("admin-id", "subject", "admin@example.org", "ADMIN", Set.of("ADMIN"));
 
     @Container
-    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4").withDatabaseName("picsure")
-        .withCommand("--log-bin-trust-function-creators=1");
+    static final MySQLContainer<?> MYSQL =
+        new MySQLContainer<>("mysql:8.4").withDatabaseName("picsure").withCommand("--log-bin-trust-function-creators=1");
 
     @Autowired
     private BannerPriorityAllocatorRepository allocatorRepository;
@@ -73,9 +71,7 @@ class BannerMySqlTest {
         versionRepository.deleteAll();
         jdbcTemplate.update("DELETE FROM banner_occurrence WHERE restored_from_uuid IS NOT NULL");
         bannerRepository.deleteAll();
-        allocatorRepository.saveAndFlush(
-            new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1)
-        );
+        allocatorRepository.saveAndFlush(new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1));
     }
 
     @Test
@@ -253,8 +249,7 @@ class BannerMySqlTest {
             removeDelayedRestoreInsertTrigger();
         }
 
-        assertThat(reordered).extracting(ManagementBannerDto::uuid)
-            .containsExactly(second.uuid(), first.uuid(), destination.uuid());
+        assertThat(reordered).extracting(ManagementBannerDto::uuid).containsExactly(second.uuid(), first.uuid(), destination.uuid());
         assertThat(bannerRepository.findById(source.uuid()).orElseThrow().getStatus()).isEqualTo(BannerStatus.ARCHIVED);
         assertThat(service.managedBanners()).filteredOn(banner -> banner.lifecycle() == BannerLifecycle.ACTIVE)
             .extracting(ManagementBannerDto::uuid).containsExactly(second.uuid(), first.uuid(), destination.uuid());
@@ -311,21 +306,15 @@ class BannerMySqlTest {
         assertThat(service.reorder(List.of(second.uuid(), first.uuid()), ADMIN)).extracting(ManagementBannerDto::uuid)
             .containsExactly(second.uuid(), first.uuid());
         assertThat(
-            jdbcTemplate.queryForList(
-                "SELECT BIN_TO_UUID(uuid) FROM banner_occurrence WHERE status = 'PUBLISHED' ORDER BY priority", String.class
-            )
-        ).containsExactly(
-            second.uuid().toString(), first.uuid().toString(), malformed.uuid().toString(), unknown.uuid().toString()
-        );
+            jdbcTemplate
+                .queryForList("SELECT BIN_TO_UUID(uuid) FROM banner_occurrence WHERE status = 'PUBLISHED' ORDER BY priority", String.class)
+        ).containsExactly(second.uuid().toString(), first.uuid().toString(), malformed.uuid().toString(), unknown.uuid().toString());
     }
 
     @Test
     void currentTargetedJsonRoundTripsThroughOccurrenceVersionAndFeed() {
         ManagementBannerDto published = service.publish(
-            request(
-                "<p>Current targeted</p>", "Current targeted",
-                List.of(new BannerPageTarget(BannerPageTargetKind.EXACT, "/help /"))
-            ),
+            request("<p>Current targeted</p>", "Current targeted", List.of(new BannerPageTarget(BannerPageTargetKind.EXACT, "/help /"))),
             ADMIN
         );
         entityManager.clear();

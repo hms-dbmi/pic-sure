@@ -245,4 +245,11 @@ class ReplyTextTest {
         assertNull(ReplyText.proposalArguments("{\"answer\":\"none\"}"));
         assertNull(ReplyText.proposalArguments("[\"a\"]"));
     }
+
+    @Test
+    void aReplyThatIsOnlyARecapIsNotReducedToNothing() {
+        String recap = "**Current view**\n- query: none\n- facets: none\n- search: none";
+
+        assertEquals(recap, ReplyText.withoutScreenRecap(recap));
+    }
 }

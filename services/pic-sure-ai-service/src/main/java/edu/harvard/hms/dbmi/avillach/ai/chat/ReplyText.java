@@ -132,7 +132,8 @@ final class ReplyText {
                         return text;
                     }
                 }
-                return TRAILING_RULES.matcher(String.join("\n", Arrays.copyOfRange(lines, 0, i))).replaceAll("").stripTrailing();
+                String kept = TRAILING_RULES.matcher(String.join("\n", Arrays.copyOfRange(lines, 0, i))).replaceAll("").stripTrailing();
+                return kept.isBlank() ? text : kept;
             }
         }
         return text;

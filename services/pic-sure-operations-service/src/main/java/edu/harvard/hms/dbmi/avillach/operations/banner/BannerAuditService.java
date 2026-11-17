@@ -50,9 +50,7 @@ public class BannerAuditService {
         registerAfterCommit(event, "queue", BannerAuditAction.REORDERED);
     }
 
-    public void registerRestoreAudit(
-        UUID sourceBannerUuid, UUID newBannerUuid, Instant timestamp, String presentationHash, String actor
-    ) {
+    public void registerRestoreAudit(UUID sourceBannerUuid, UUID newBannerUuid, Instant timestamp, String presentationHash, String actor) {
         LoggingEvent event = LoggingEvent.builder("BANNER").action(BannerAuditAction.RESTORED.value()).caller(actor)
             .metadata(
                 Map.of(

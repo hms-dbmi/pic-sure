@@ -97,7 +97,8 @@ class McpEndpointTest {
      */
     private JsonNode call(String body) throws Exception {
         ResponseEntity<String> response = RestClient.create("http://localhost:" + port).post().uri("/mcp")
-            .contentType(MediaType.APPLICATION_JSON).header("Accept", ACCEPT_JSON_OR_SSE).body(body).retrieve().toEntity(String.class);
+            .contentType(MediaType.APPLICATION_JSON).header("Accept", ACCEPT_JSON_OR_SSE).header("X-User-Id", "user-1")
+            .header("X-User-Privileges", "PIC_SURE_MCP").body(body).retrieve().toEntity(String.class);
 
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(response.getHeaders().getContentType()).isNotNull();
