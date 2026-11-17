@@ -34,6 +34,7 @@ public class DictionaryService {
     private static final String TOKEN_ENVIRONMENT_VARIABLE = "PICSURE_INTERNAL_TOKEN";
     private static final String EXPORT_METADATA_PATH = "/internal/concepts/export-metadata";
     private static final List<String> EXPORT_META_KEYS = List.of("drs_uri");
+    private static final String DICTIONARY_EXPORT_KEYS_PROPERTY = "metadata.internal_export_keys";
 
     /**
      * Largest number of concept paths the dictionary accepts in one export metadata request. Must match
@@ -167,6 +168,13 @@ public class DictionaryService {
             throw new DictionaryUnavailableException(
                 "Dictionary request to " + exportMetadataUrl + " was rejected with " + e.getStatusCode().value() + ", check that "
                     + TOKEN_PROPERTY + " (" + TOKEN_ENVIRONMENT_VARIABLE + ") matches the token the dictionary is configured with",
+                e
+            );
+        } catch (HttpClientErrorException.BadRequest e) {
+            throw new DictionaryUnavailableException(
+                "The dictionary rejected the request to " + exportMetadataUrl + " with status 400. HPDS asked for the meta keys "
+                    + EXPORT_META_KEYS + ", and the likely cause is that the dictionary property " + DICTIONARY_EXPORT_KEYS_PROPERTY
+                    + " does not list all of them",
                 e
             );
         } catch (HttpClientErrorException e) {
