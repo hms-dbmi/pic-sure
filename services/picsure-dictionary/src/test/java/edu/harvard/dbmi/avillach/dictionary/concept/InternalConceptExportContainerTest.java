@@ -36,7 +36,8 @@ class InternalConceptExportContainerTest {
     static final String TOKEN = "inbound-secret";
 
     private static final String CANONICAL_PATH = "/internal/concepts/export-metadata";
-    private static final String BODY = "{\"conceptPaths\":[\"\\\\phs000007\\\\pht000021\\\\phv00003844\\\\FL200\\\\\"],\"metaKeys\":[]}";
+    private static final String BODY =
+        "{\"conceptPaths\":[\"\\\\phs000007\\\\pht000021\\\\phv00003844\\\\FL200\\\\\"],\"metaKeys\":[\"drs_uri\"]}";
 
     @Container
     static final PostgreSQLContainer<?> databaseContainer = new PostgreSQLContainer<>("postgres:16").withReuse(true)

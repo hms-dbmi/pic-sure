@@ -33,7 +33,8 @@ public class DictionaryService {
     private static final String TOKEN_PROPERTY = "picsure.internal.token";
     private static final String TOKEN_ENVIRONMENT_VARIABLE = "PICSURE_INTERNAL_TOKEN";
     private static final String EXPORT_METADATA_PATH = "/internal/concepts/export-metadata";
-    private static final List<String> EXPORT_META_KEYS = List.of();
+    private static final List<String> EXPORT_META_KEYS = List.of("drs_uri");
+    private static final String DICTIONARY_EXPORT_KEYS_PROPERTY = "metadata.internal_export_keys";
 
     /**
      * Largest number of concept paths the dictionary accepts in one export metadata request. Must match
@@ -113,7 +114,8 @@ public class DictionaryService {
 
     /**
      * Fetches the details of the given concept paths, one request per batch, in the order the dictionary returns them. A path the
-     * dictionary does not know is left out of the result. No metadata keys are requested, so each concept's {@code meta} is empty.
+     * dictionary does not know is left out of the result. Each concept's {@code meta} holds only {@code drs_uri}, under that raw key, when
+     * the dictionary has one for it.
      *
      * @param conceptPaths the concept paths to look up
      * @return the concepts the dictionary returned across all batches
@@ -166,6 +168,13 @@ public class DictionaryService {
             throw new DictionaryUnavailableException(
                 "Dictionary request to " + exportMetadataUrl + " was rejected with " + e.getStatusCode().value() + ", check that "
                     + TOKEN_PROPERTY + " (" + TOKEN_ENVIRONMENT_VARIABLE + ") matches the token the dictionary is configured with",
+                e
+            );
+        } catch (HttpClientErrorException.BadRequest e) {
+            throw new DictionaryUnavailableException(
+                "The dictionary rejected the request to " + exportMetadataUrl + " with status 400. HPDS asked for the meta keys "
+                    + EXPORT_META_KEYS + ", and the likely cause is that the dictionary property " + DICTIONARY_EXPORT_KEYS_PROPERTY
+                    + " does not list all of them",
                 e
             );
         } catch (HttpClientErrorException e) {

@@ -16,6 +16,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
@@ -81,7 +82,7 @@ class DictionaryServiceTest {
     }
 
     @Test
-    void getConcepts_everyBatch_asksForNoMetaKeysAndSendsTheTokenAndClientTypeHeaders() {
+    void getConcepts_everyBatch_asksOnlyForDrsUriAndSendsTheTokenAndClientTypeHeaders() {
         DictionaryService dictionaryService = new DictionaryService(BASE_URL, TOKEN, 2, restTemplate);
         List<String> conceptPaths = paths(3);
         stubEchoingDictionary(EXPORT_URL);
@@ -92,8 +93,8 @@ class DictionaryServiceTest {
             .exchange(eq(EXPORT_URL), eq(HttpMethod.POST), requestCaptor.capture(), eq(DictionaryService.CONCEPT_LIST_TYPE_REFERENCE));
         assertEquals(
             List.of(
-                new ConceptExportRequest(conceptPaths.subList(0, 2), List.of()),
-                new ConceptExportRequest(conceptPaths.subList(2, 3), List.of())
+                new ConceptExportRequest(conceptPaths.subList(0, 2), List.of("drs_uri")),
+                new ConceptExportRequest(conceptPaths.subList(2, 3), List.of("drs_uri"))
             ), requestCaptor.getAllValues().stream().map(HttpEntity::getBody).toList()
         );
         for (HttpEntity<ConceptExportRequest> request : requestCaptor.getAllValues()) {
@@ -137,14 +138,42 @@ class DictionaryServiceTest {
     }
 
     @Test
-    void getConcepts_otherClientError_throwsUnavailableNamingUrlNotTheToken() {
+    void getConcepts_badRequest_throwsUnavailableNamingTheRequestedKeysAndTheAllowlistProperty() {
+        DictionaryService dictionaryService = new DictionaryService(BASE_URL, TOKEN, 1000, restTemplate);
+        List<String> conceptPaths = paths(2);
+        HttpClientErrorException cause = HttpClientErrorException.create(
+            HttpStatus.BAD_REQUEST, "Bad Request", HttpHeaders.EMPTY, "response-body-text".getBytes(StandardCharsets.UTF_8),
+            StandardCharsets.UTF_8
+        );
+        when(
+            restTemplate
+                .exchange(eq(EXPORT_URL), eq(HttpMethod.POST), any(HttpEntity.class), eq(DictionaryService.CONCEPT_LIST_TYPE_REFERENCE))
+        ).thenThrow(cause);
+
+        DictionaryUnavailableException thrown =
+            assertThrows(DictionaryUnavailableException.class, () -> dictionaryService.getConcepts(conceptPaths));
+
+        assertTrue(thrown.getMessage().contains(EXPORT_URL), thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("rejected the request"), thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("400"), thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("drs_uri"), thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("metadata.internal_export_keys"), thrown.getMessage());
+        assertFalse(thrown.getMessage().contains("response-body-text"), thrown.getMessage());
+        assertFalse(thrown.getMessage().contains(TOKEN), thrown.getMessage());
+        assertFalse(thrown.getMessage().contains("picsure.internal.token"), thrown.getMessage());
+        assertFalse(thrown.getMessage().contains(conceptPaths.get(0)), thrown.getMessage());
+        assertSame(cause, thrown.getCause());
+    }
+
+    @Test
+    void getConcepts_otherClientError_throwsUnavailableNamingUrlNotTheTokenOrTheAllowlistProperty() {
         DictionaryService dictionaryService = new DictionaryService(BASE_URL, TOKEN, 1000, restTemplate);
         when(
             restTemplate
                 .exchange(eq(EXPORT_URL), eq(HttpMethod.POST), any(HttpEntity.class), eq(DictionaryService.CONCEPT_LIST_TYPE_REFERENCE))
         ).thenThrow(
             HttpClientErrorException.create(
-                HttpStatus.BAD_REQUEST, "Bad Request", HttpHeaders.EMPTY, "response-body-text".getBytes(StandardCharsets.UTF_8),
+                HttpStatus.NOT_FOUND, "Not Found", HttpHeaders.EMPTY, "response-body-text".getBytes(StandardCharsets.UTF_8),
                 StandardCharsets.UTF_8
             )
         );
@@ -154,9 +183,28 @@ class DictionaryServiceTest {
 
         assertTrue(thrown.getMessage().contains(EXPORT_URL), thrown.getMessage());
         assertTrue(thrown.getMessage().contains("rejected the request"), thrown.getMessage());
-        assertTrue(thrown.getMessage().contains("400"), thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("404"), thrown.getMessage());
         assertFalse(thrown.getMessage().contains("response-body-text"), thrown.getMessage());
         assertFalse(thrown.getMessage().contains("picsure.internal.token"), thrown.getMessage());
+        assertFalse(thrown.getMessage().contains("metadata.internal_export_keys"), thrown.getMessage());
+    }
+
+    @Test
+    void getConcepts_serverError_throwsUnavailableWithoutNamingTheAllowlistProperty() {
+        DictionaryService dictionaryService = new DictionaryService(BASE_URL, TOKEN, 1000, restTemplate);
+        HttpServerErrorException cause =
+            HttpServerErrorException.create(HttpStatus.INTERNAL_SERVER_ERROR, "Internal Server Error", HttpHeaders.EMPTY, null, null);
+        when(
+            restTemplate
+                .exchange(eq(EXPORT_URL), eq(HttpMethod.POST), any(HttpEntity.class), eq(DictionaryService.CONCEPT_LIST_TYPE_REFERENCE))
+        ).thenThrow(cause);
+
+        DictionaryUnavailableException thrown =
+            assertThrows(DictionaryUnavailableException.class, () -> dictionaryService.getConcepts(paths(2)));
+
+        assertTrue(thrown.getMessage().contains(EXPORT_URL), thrown.getMessage());
+        assertFalse(thrown.getMessage().contains("metadata.internal_export_keys"), thrown.getMessage());
+        assertSame(cause, thrown.getCause());
     }
 
     @Test

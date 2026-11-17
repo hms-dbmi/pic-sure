@@ -85,6 +85,10 @@ public class PfbWriterTest {
         return Objects.toString(record.get(field), null);
     }
 
+    private static List<String> texts(GenericRecord record, String field) {
+        return ((List<?>) record.get(field)).stream().map(element -> Objects.toString(element, null)).toList();
+    }
+
     private static List<List<String>> patientRow(String patientId, String age, String stroke) {
         return List.of(List.of(patientId), List.of(age), List.of(stroke));
     }
@@ -164,6 +168,27 @@ public class PfbWriterTest {
         assertEquals("Stroke", text(strokeRow, "display"));
         assertEquals("phs123", text(strokeRow, "dataset"));
         assertEquals("history of stroke", text(strokeRow, "description"));
+    }
+
+    @Test
+    public void writeAndClose_drsUriMetaIsAJsonArray_dictionaryRowCarriesThoseStrings() {
+        PfbWriter pfbWriter = new PfbWriter(avroFile, UUID.randomUUID().toString(), dictionaryService);
+        Mockito.when(dictionaryService.getConcepts(REQUESTED_PATHS)).thenReturn(
+            List.of(
+                new Concept(
+                    AGE_PATH, null, "Age", "demographics", "patient age",
+                    Map.of("drs_uri", "[\"drs://dg.4503:dg.4503/aaa\", \"drs://dg.4503:dg.4503/bbb\"]")
+                ), new Concept(STROKE_PATH, null, "Stroke", "phs123", "history of stroke", Map.of())
+            )
+        );
+
+        pfbWriter.writeHeader(HEADER);
+        pfbWriter.writeMultiValueEntity(List.of(patientRow("123", "80", "Y")));
+        pfbWriter.close();
+
+        Map<String, GenericRecord> rows = readDictionaryRows(avroFile);
+        assertEquals(List.of("drs://dg.4503:dg.4503/aaa", "drs://dg.4503:dg.4503/bbb"), texts(rows.get("_demographics_age_"), "drs_uri"));
+        assertEquals(List.of(), texts(rows.get("_phs123_stroke_"), "drs_uri"));
     }
 
     @Test
