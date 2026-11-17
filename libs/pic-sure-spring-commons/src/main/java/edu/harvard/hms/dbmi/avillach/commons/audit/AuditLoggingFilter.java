@@ -31,7 +31,8 @@ import jakarta.servlet.http.HttpServletResponse;
  * {@link ByteCountingResponseWrapper}. It is left unset when that count is not what the client received: after {@code sendError}, where the
  * container renders the body later, when the response's writer was used, since characters written to it are not counted, when the chain
  * exits by throwing, and when asynchronous processing has started and the body may still be being written. It is 0 for a {@code HEAD}
- * request and after a redirect, where the container sends no body whatever was written, and 0 for a response with no body.
+ * request, for a status that cannot carry a body (1xx, 204 and 304) and after a redirect, where the client receives no body whatever was
+ * written, and 0 for a response with no body.
  */
 public class AuditLoggingFilter extends OncePerRequestFilter {
 
@@ -214,16 +215,26 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
      * @param response the wrapper that counted the body
      * @param chainReturned false when the rest of the chain exited by throwing
      * @return null after {@code sendError}, use of the response's writer, a thrown chain or the start of asynchronous processing; 0 for a
-     *         {@code HEAD} request; otherwise the counted bytes
+     *         {@code HEAD} request or a status that cannot carry a body; otherwise the counted bytes
      */
     private static Long bytesTheClientReceived(HttpServletRequest request, ByteCountingResponseWrapper response, boolean chainReturned) {
         if (!chainReturned || response.isByteCountUnknown() || request.isAsyncStarted()) {
             return null;
         }
-        if ("HEAD".equalsIgnoreCase(request.getMethod())) {
+        if ("HEAD".equalsIgnoreCase(request.getMethod()) || cannotCarryBody(response.getStatus())) {
             return 0L;
         }
         return response.getByteCount();
+    }
+
+    /**
+     * Tells whether a response with this status is sent without a body, so anything the application wrote never reaches the client.
+     *
+     * @param status the response status code
+     * @return true for an informational status (1xx), 204 and 304
+     */
+    private static boolean cannotCarryBody(int status) {
+        return (status >= 100 && status < 200) || status == 204 || status == 304;
     }
 
     /**

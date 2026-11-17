@@ -148,6 +148,43 @@ class AuditLoggingFilterDestinationAndBytesTest {
         assertThat(info.getStatus()).isEqualTo(204);
     }
 
+    @ParameterizedTest
+    @ValueSource(ints = {100, 101, 103, 199, 204, 304})
+    void bytesIsZeroForAStatusThatCannotCarryABodyWhateverTheHandlerWrote(int status) throws Exception {
+        RequestInfo info = emittedFor((req, res) -> {
+            ((HttpServletResponse) res).setStatus(status);
+            res.getOutputStream().write(new byte[57]);
+        });
+
+        assertThat(info.getBytes()).isZero();
+        assertThat(info.getStatus()).isEqualTo(status);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {200, 203, 303, 305})
+    void bytesIsTheCountForAStatusNextToOneThatCannotCarryABody(int status) throws Exception {
+        RequestInfo info = emittedFor((req, res) -> {
+            ((HttpServletResponse) res).setStatus(status);
+            res.getOutputStream().write(new byte[57]);
+        });
+
+        assertThat(info.getBytes()).isEqualTo(57);
+    }
+
+    @Test
+    void bytesStaysUnsetForAStatusThatCannotCarryABodyWhenAsynchronousProcessingHasStarted() throws Exception {
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, null, new AuditContext(), List.of());
+        MockHttpServletRequest request = requestArrivingOn("10.0.0.7", 8080);
+        request.setAsyncSupported(true);
+
+        RequestInfo info = emitted(filter, request, new MockHttpServletResponse(), (req, res) -> {
+            ((HttpServletResponse) res).setStatus(204);
+            req.startAsync();
+        });
+
+        assertThat(info.getBytes()).isNull();
+    }
+
     @Test
     void bytesIsUnsetAndTheExceptionIsUnchangedWhenTheChainThrowsAfterWriting() throws Exception {
         AuditLoggingFilter filter = new AuditLoggingFilter(client, null, new AuditContext(), List.of());
