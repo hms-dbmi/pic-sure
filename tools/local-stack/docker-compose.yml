@@ -1,0 +1,266 @@
+# Layered local PIC-SURE stack. Each layer is a compose profile; `make up LAYERS=hpds` starts the layers it names.
+#   hpds   one HPDS per loader lane, each mounting that lane's store (work/<dataset>/<flow>/store) at /opt/local/hpds
+#   api    mysql (database picsure) + flyway migrate + operations-service + query-service, the query-service pointed at the HPDS of
+#          lane ${STORE} (hpds-lane1|2|3) by container name, so the hpds layer must be up first
+#   dict   postgres 16 (database picsure, schema dict, on a tmpfs) + dict-load (fills it from a synthetic SQL fixture or a dictionary dump,
+#          then exits) + the picsure-dictionary service. Independent of the other layers.
+#   auth, ui   planned: they plug in as further profiles in this file
+# Besides the lanes, the hpds layer has two services the Makefile starts on request: hpds-dir (DATASET=dir: an existing partition set,
+# mounted as on the BDC host) and hpds-open (the open-mode HPDS: authorization filter off, optional per-partition columnMeta overrides).
+# Ports, host names and the images come from .env.defaults / local.env; DATASET, STORE, STORE_ROOT, SERVE_ROOT, SERVE_KEY, OPEN_ROOT,
+# API_FLYWAY_SQL, API_OPEN_HOST and the DICT_* paths are set by the Makefile.
+name: picsure-local-stack
+
+x-hpds: &hpds
+  image: ${HPDS_IMAGE:-picsure-local-hpds:local}
+  pull_policy: never
+  profiles: ["hpds"]
+  restart: "no"
+  environment:
+    # set explicitly: the stack's queries always carry userConsents, and a default that changed must not silently open the data
+    JAVA_OPTS: ${HPDS_JAVA_OPTS:--Xmx1g} -Dhpds.requireAuthorizationFilter=true
+    PICSURE_ACTUATOR_EXPOSURE: health
+    # without it the asynchronous DATAFRAME result type fails (Lists.partition with size 0)
+    ID_BATCH_SIZE: ${HPDS_ID_BATCH_SIZE:-1000}
+  healthcheck:
+    test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q UP"]
+    interval: 5s
+    timeout: 5s
+    retries: 30
+    start_period: 5s
+
+services:
+  # lane1: PICSURELoader reading the combined file (picsureloader-combined)
+  hpds-lane1:
+    <<: *hpds
+    container_name: picsure-local-hpds-lane1
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${HPDS_LANE1_PORT:-8081}:8080"
+    volumes:
+      - ${STORE_ROOT:-./work}/${DATASET:-combined}/picsureloader-combined/store:/opt/local/hpds:ro
+
+  # lane2: splitter, sort, CSVLoader (csvloader-split)
+  hpds-lane2:
+    <<: *hpds
+    container_name: picsure-local-hpds-lane2
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${HPDS_LANE2_PORT:-8082}:8080"
+    volumes:
+      - ${STORE_ROOT:-./work}/${DATASET:-combined}/csvloader-split/store:/opt/local/hpds:ro
+
+  # lane3: splitter, PICSURELoader (picsureloader-split)
+  hpds-lane3:
+    <<: *hpds
+    container_name: picsure-local-hpds-lane3
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${HPDS_LANE3_PORT:-8083}:8080"
+    volumes:
+      - ${STORE_ROOT:-./work}/${DATASET:-combined}/picsureloader-split/store:/opt/local/hpds:ro
+
+  # DATASET=dir: the partition root and the key file of an existing dataset, mounted the way the BDC host mounts them: the key at
+  # /opt/local/hpds/encryption_key (the path Crypto reads) and HPDS_DATA_DIRECTORY at the directory that holds one subdirectory per partition
+  hpds-dir:
+    <<: *hpds
+    container_name: picsure-local-hpds-dir
+    environment:
+      JAVA_OPTS: ${HPDS_JAVA_OPTS:--Xmx1g} -Dhpds.requireAuthorizationFilter=true
+      PICSURE_ACTUATOR_EXPOSURE: health
+      ID_BATCH_SIZE: ${HPDS_ID_BATCH_SIZE:-1000}
+      HPDS_DATA_DIRECTORY: /opt/local/hpds/phenotypic/
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${HPDS_DIR_PORT:-8084}:8080"
+    volumes:
+      - ${SERVE_ROOT:-./work/none}:/opt/local/hpds/phenotypic:ro
+      - ${SERVE_KEY:-./work/none/encryption_key}:/opt/local/hpds/encryption_key:ro
+
+  # open mode: the same layout, the authorization filter off. A query without consents sees every partition, a query with consents only
+  # those. OPEN_ROOT is the served partition root, or a copy of it whose columnMeta.javabin files are the open ones (OPEN_COLUMNMETA_DIR).
+  hpds-open:
+    <<: *hpds
+    container_name: picsure-local-hpds-open
+    labels:
+      local-stack.store: "${STORE:-lane3}"
+    environment:
+      JAVA_OPTS: ${HPDS_JAVA_OPTS:--Xmx1g} -Dhpds.requireAuthorizationFilter=false
+      PICSURE_ACTUATOR_EXPOSURE: health
+      ID_BATCH_SIZE: ${HPDS_ID_BATCH_SIZE:-1000}
+      HPDS_DATA_DIRECTORY: /opt/local/hpds/phenotypic/
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${HPDS_OPEN_PORT:-8085}:8080"
+    volumes:
+      - ${OPEN_ROOT:-./work/none}:/opt/local/hpds/phenotypic:ro
+      - ${SERVE_KEY:-./work/none/encryption_key}:/opt/local/hpds/encryption_key:ro
+
+  # ---------------------------------------------------------------------------------------------------------------- api
+  # The database lives on a tmpfs: nothing is kept after `make down` and there is no anonymous volume left behind.
+  api-mysql:
+    image: ${API_MYSQL_IMAGE:-mysql:8.4}
+    profiles: ["api"]
+    container_name: picsure-local-mysql
+    restart: "no"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${API_DB_ROOT_PASSWORD:-root-local}
+      MYSQL_DATABASE: picsure
+      MYSQL_USER: picsure
+      MYSQL_PASSWORD: ${API_DB_PASSWORD:-picsure-local}
+    tmpfs:
+      - /var/lib/mysql
+    ports:
+      - "127.0.0.1:${API_MYSQL_PORT:-33306}:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 5s
+
+  # creates the schema from the operations-service's own migrations (V1..V8) plus api/sql/V9000 (the `version` column they lack) and exits
+  api-flyway:
+    image: ${API_FLYWAY_IMAGE:-flyway/flyway:11.14.1}
+    profiles: ["api"]
+    container_name: picsure-local-flyway
+    restart: "no"
+    volumes:
+      # the migrations of the operations-service commit that is served: make sets API_FLYWAY_SQL when it starts this layer. There is no default
+      # that points into a checkout; /dev/null only lets compose read this file for the other layers, and flyway fails on it.
+      - ${API_FLYWAY_SQL:-/dev/null}:/flyway/sql:ro
+      - ./api/sql:/flyway/local:ro
+    environment:
+      FLYWAY_URL: jdbc:mysql://api-mysql:3306/picsure?useSSL=false&allowPublicKeyRetrieval=true
+      FLYWAY_USER: root
+      FLYWAY_PASSWORD: ${API_DB_ROOT_PASSWORD:-root-local}
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql,filesystem:/flyway/local
+    command: ["migrate"]
+    depends_on:
+      api-mysql:
+        condition: service_healthy
+
+  api-operations:
+    image: ${API_OPERATIONS_IMAGE:-picsure-local-operations-service:local}
+    pull_policy: never
+    profiles: ["api"]
+    container_name: picsure-local-operations
+    restart: "no"
+    environment:
+      JAVA_OPTS: ${API_JAVA_OPTS:--Xmx512m}
+      SPRING_DATASOURCE_URL: jdbc:mysql://api-mysql:3306/picsure?useUnicode=true&characterEncoding=UTF-8&serverTimezone=UTC&useSSL=false&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_USERNAME: picsure
+      SPRING_DATASOURCE_PASSWORD: ${API_DB_PASSWORD:-picsure-local}
+      QUERY_SERVICE_INTERNAL_TOKEN: ${API_INTERNAL_TOKEN:-local-internal-token}
+      PICSURE_ACTUATOR_EXPOSURE: health
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${API_OPERATIONS_PORT:-8092}:8080"
+    depends_on:
+      api-flyway:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/operations/actuator/health | grep -q UP"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  # The HPDS query ingress: /hpds/auth/v3/query/sync. It trusts X-User-Id (no token check) and, with consent-based authorization
+  # off, sends the query's own userConsents on to HPDS. Every query it answers is also saved through the operations-service.
+  api-query:
+    image: ${API_QUERY_IMAGE:-picsure-local-query-service:local}
+    pull_policy: never
+    profiles: ["api"]
+    container_name: picsure-local-query
+    labels:
+      local-stack.store: "${STORE:-lane3}"
+    restart: "no"
+    environment:
+      JAVA_OPTS: ${API_JAVA_OPTS:--Xmx512m}
+      # the service appends /v3 itself; both backends are the same HPDS (the served store)
+      HPDS_AUTH_URL: http://hpds-${STORE:-lane3}:8080/PIC-SURE
+      # the open backend is the open-mode HPDS when the stack runs one (API_OPEN_HOST), else the same HPDS
+      HPDS_OPEN_URL: http://${API_OPEN_HOST:-hpds-lane3}:8080/PIC-SURE
+      CONSENT_BASED_AUTHORIZATION_ENABLED: "false"
+      OPERATIONS_SERVICE_URL: http://api-operations:8080
+      QUERY_SERVICE_INTERNAL_TOKEN: ${API_INTERNAL_TOKEN:-local-internal-token}
+      PICSURE_ACTUATOR_EXPOSURE: health
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${API_QUERY_PORT:-8091}:8080"
+    depends_on:
+      api-operations:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q UP"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------------------------------------------- dict
+  # The database lives on a tmpfs: nothing is kept after `make down`.
+  dict-db:
+    image: ${DICT_POSTGRES_IMAGE:-postgres:16-alpine}
+    profiles: ["dict"]
+    container_name: picsure-local-dict-db
+    restart: "no"
+    environment:
+      POSTGRES_DB: picsure
+      POSTGRES_USER: picsure
+      POSTGRES_PASSWORD: ${DICT_DB_PASSWORD:-picsure-local}
+    tmpfs:
+      - /var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${DICT_DB_PORT:-55433}:5432"
+    healthcheck:
+      # over TCP: the entrypoint's temporary server during initdb listens on the socket only
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U picsure -d picsure"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 3s
+
+  # creates schema dict and fills it (DICT_LOAD_MODE=sql: the synthetic fixture of dictgen.py; dump: pg_restore of DICT_DUMP), then exits
+  dict-load:
+    image: ${DICT_POSTGRES_IMAGE:-postgres:16-alpine}
+    profiles: ["dict"]
+    container_name: picsure-local-dict-load
+    restart: "no"
+    entrypoint: ["/bin/sh", "/load.sh"]
+    # the extracted dump (a restore of real data) lives in memory only, never in the container's writable layer
+    tmpfs:
+      - /tmp
+    environment:
+      PGHOST: dict-db
+      PGUSER: picsure
+      PGDATABASE: picsure
+      PGPASSWORD: ${DICT_DB_PASSWORD:-picsure-local}
+      DICT_LOAD_MODE: ${DICT_LOAD_MODE:-sql}
+    volumes:
+      - ./dict/load.sh:/load.sh:ro
+      - ${DICT_WORK:-./work/none}:/dict:ro
+      - ${DICT_DUMP_FILE:-./dict/load.sh}:/dump/dictionary_db.tar:ro
+    depends_on:
+      dict-db:
+        condition: service_healthy
+
+  # the dictionary service (services/picsure-dictionary), listening on 80 in the container
+  dict-api:
+    image: ${DICT_IMAGE:-picsure-local-dictionary:local}
+    pull_policy: never
+    profiles: ["dict"]
+    container_name: picsure-local-dict-api
+    restart: "no"
+    environment:
+      JAVA_OPTS: ${DICT_JAVA_OPTS:--Xmx768m}
+      POSTGRES_HOST: dict-db
+      POSTGRES_DB: picsure
+      POSTGRES_USER: picsure
+      POSTGRES_PASSWORD: ${DICT_DB_PASSWORD:-picsure-local}
+      PICSURE_ACTUATOR_EXPOSURE: health
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${DICT_API_PORT:-8095}:80"
+    depends_on:
+      dict-load:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/actuator/health | grep -q UP"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 15s

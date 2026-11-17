@@ -1,0 +1,2 @@
+# the malformed fixture holds an invalid UTF-8 byte on purpose: never convert
+split/* -text
