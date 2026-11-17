@@ -192,6 +192,28 @@ class AuditDestinationAndBytesTest {
     }
 
     /**
+     * PSAMA's denial reason is passed on in the gateway's 403 body. The body is UTF-8 on the wire, the {@code Content-Type} says so, and
+     * the event carries the encoded size, which is larger than the character count.
+     */
+    @Test
+    void anErrorBodyWithTextOutsideAsciiIsUtf8AndCountedInBytes() {
+        psamaStub.stubFor(
+            post(urlEqualTo("/auth/token/inspect")).willReturn(okJson("{\"active\":false,\"sub\":\"s-1\",\"message\":\"Zoë ☃ denied\"}"))
+        );
+
+        ResponseEntity<byte[]> response = call(HttpMethod.GET, "/hpds/auth/query/denied/status", true);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(403);
+        assertThat(response.getHeaders().getFirst(HttpHeaders.CONTENT_TYPE)).isEqualTo("application/json;charset=UTF-8");
+        String body = new String(response.getBody(), StandardCharsets.UTF_8);
+        assertThat(body).contains("\"message\":\"Zoë ☃ denied\"");
+        assertThat(response.getBody().length).isEqualTo(body.length() + 3);
+        RequestInfo info = emittedRequest("/hpds/auth/query/denied/status");
+        assertThat(info.getStatus()).isEqualTo(403);
+        assertThat(info.getBytes()).isEqualTo(response.getBody().length);
+    }
+
+    /**
      * Spring Security's firewall refuses a path with a semicolon by calling {@code sendError}, and the container writes the error body on
      * its own dispatch after the event is emitted. The client still gets that body and the event carries no size for it.
      */
