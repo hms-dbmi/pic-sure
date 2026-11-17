@@ -26,11 +26,12 @@ import jakarta.servlet.http.HttpServletResponse;
  * matches, so an encoded spelling of a path is skipped or gets the same event type and action exactly as its plain spelling does; the
  * event's {@code url} stays the raw request URI. {@code shouldNotFilter} is deliberately {@code protected} and non-final so gateway
  * subclasses can widen the skip set for pass-through paths. <p> Each event reports {@code dest_ip} and {@code dest_port}, the configured
- * values when present and otherwise the request's local address and port. <p> {@code bytes} is the number of response body bytes handed to
- * the container while the rest of the chain ran, before compression or chunk framing, counted by a {@link ByteCountingResponseWrapper}. It
- * is left unset when that count is not what the client received: after {@code sendError}, where the container renders the body later, when
- * the chain exits by throwing, and when asynchronous processing has started and the body may still be being written. It is 0 for a
- * {@code HEAD} request and after a redirect, where the container sends no body whatever was written, and 0 for a response with no body.
+ * values when present and otherwise the request's local address and port. <p> {@code bytes} is the number of response body bytes written to
+ * the response's output stream while the rest of the chain ran, before compression or chunk framing, counted by a
+ * {@link ByteCountingResponseWrapper}. It is left unset when that count is not what the client received: after {@code sendError}, where the
+ * container renders the body later, when the response's writer was used, since characters written to it are not counted, when the chain
+ * exits by throwing, and when asynchronous processing has started and the body may still be being written. It is 0 for a {@code HEAD}
+ * request and after a redirect, where the container sends no body whatever was written, and 0 for a response with no body.
  */
 public class AuditLoggingFilter extends OncePerRequestFilter {
 
@@ -212,11 +213,11 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
      * @param request the audited request
      * @param response the wrapper that counted the body
      * @param chainReturned false when the rest of the chain exited by throwing
-     * @return null after {@code sendError}, a thrown chain or the start of asynchronous processing; 0 for a {@code HEAD} request; otherwise
-     *         the counted bytes
+     * @return null after {@code sendError}, use of the response's writer, a thrown chain or the start of asynchronous processing; 0 for a
+     *         {@code HEAD} request; otherwise the counted bytes
      */
     private static Long bytesTheClientReceived(HttpServletRequest request, ByteCountingResponseWrapper response, boolean chainReturned) {
-        if (!chainReturned || response.isBodyWrittenByContainer() || request.isAsyncStarted()) {
+        if (!chainReturned || response.isByteCountUnknown() || request.isAsyncStarted()) {
             return null;
         }
         if ("HEAD".equalsIgnoreCase(request.getMethod())) {

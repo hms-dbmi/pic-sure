@@ -41,9 +41,6 @@ class ByteCountingResponseWrapperTest {
     private ServletOutputStream replacementStream;
 
     @Mock
-    private PrintWriter replacementWriter;
-
-    @Mock
     private WriteListener writeListener;
 
     @Test
@@ -134,79 +131,41 @@ class ByteCountingResponseWrapperTest {
     }
 
     @Test
-    void writerOutputIsCountedInTheResponseEncodingAndPassedOn() throws Exception {
-        MockHttpServletResponse response = new MockHttpServletResponse();
-        response.setCharacterEncoding("UTF-8");
-        ByteCountingResponseWrapper wrapper = new ByteCountingResponseWrapper(response);
-        String body = "naïve ☃ 😀";
+    void theWriterIsTheWrappedResponsesOwnAndMarksTheCountUnknown() throws Exception {
+        when(containerResponse.getWriter()).thenReturn(containerWriter);
+        ByteCountingResponseWrapper wrapper = new ByteCountingResponseWrapper(containerResponse);
 
+        boolean before = wrapper.isByteCountUnknown();
         PrintWriter writer = wrapper.getWriter();
-        writer.write(body);
-        writer.print(12);
-        writer.write('!');
-        writer.write(new char[] {'a', 'b', 'c'}, 1, 2);
-        writer.flush();
 
-        byte[] expected = (body + "12!bc").getBytes(StandardCharsets.UTF_8);
-        assertThat(response.getContentAsByteArray()).isEqualTo(expected);
-        assertThat(wrapper.getByteCount()).isEqualTo(expected.length);
+        assertThat(before).isFalse();
+        assertThat(writer).isSameAs(containerWriter);
+        assertThat(wrapper.isByteCountUnknown()).isTrue();
     }
 
     @Test
-    void writerOutputIsCountedInASingleByteEncoding() throws Exception {
+    void writerOutputReachesTheResponseAndIsNotCounted() throws Exception {
         MockHttpServletResponse response = new MockHttpServletResponse();
-        response.setCharacterEncoding("ISO-8859-1");
+        response.setCharacterEncoding("UTF-8");
         ByteCountingResponseWrapper wrapper = new ByteCountingResponseWrapper(response);
 
-        wrapper.getWriter().write("naïve");
+        wrapper.getWriter().write("na\u00efve \u2603");
         wrapper.getWriter().flush();
 
-        assertThat(response.getContentAsByteArray()).hasSize(5);
-        assertThat(wrapper.getByteCount()).isEqualTo(5);
+        assertThat(response.getContentAsByteArray()).isEqualTo("na\u00efve \u2603".getBytes(StandardCharsets.UTF_8));
+        assertThat(wrapper.getByteCount()).isZero();
+        assertThat(wrapper.isByteCountUnknown()).isTrue();
     }
 
     @Test
-    void aSurrogatePairSplitAcrossTwoWritesIsCountedOnce() throws Exception {
+    void theCountStaysUnknownAfterTheWriterEvenWhenTheResponseIsReset() throws Exception {
         MockHttpServletResponse response = new MockHttpServletResponse();
-        response.setCharacterEncoding("UTF-8");
         ByteCountingResponseWrapper wrapper = new ByteCountingResponseWrapper(response);
+        wrapper.getWriter().write("abc");
 
-        wrapper.getWriter().write("a\ud83d");
-        wrapper.getWriter().write("\ude00b");
+        wrapper.reset();
 
-        assertThat(wrapper.getByteCount()).isEqualTo("a😀b".getBytes(StandardCharsets.UTF_8).length);
-    }
-
-    @Test
-    void aBodyLargerThanTheCountingScratchSpaceIsCountedInFull() throws Exception {
-        MockHttpServletResponse response = new MockHttpServletResponse();
-        response.setCharacterEncoding("UTF-8");
-        ByteCountingResponseWrapper wrapper = new ByteCountingResponseWrapper(response);
-        String body = "☃".repeat(10_000);
-
-        wrapper.getWriter().write(body);
-
-        assertThat(wrapper.getByteCount()).isEqualTo(30_000);
-    }
-
-    @Test
-    void writerFlushCloseAndErrorStateAreTheContainerWriters() throws Exception {
-        when(containerResponse.getWriter()).thenReturn(containerWriter);
-        when(containerWriter.checkError()).thenReturn(true);
-        PrintWriter writer = new ByteCountingResponseWrapper(containerResponse).getWriter();
-
-        writer.write("abc");
-        verify(containerWriter, never()).flush();
-        writer.flush();
-        boolean failed = writer.checkError();
-        writer.close();
-
-        assertThat(failed).isTrue();
-        InOrder order = inOrder(containerWriter);
-        order.verify(containerWriter).write("abc", 0, 3);
-        order.verify(containerWriter).flush();
-        order.verify(containerWriter).checkError();
-        order.verify(containerWriter).close();
+        assertThat(wrapper.isByteCountUnknown()).isTrue();
     }
 
     @Test
@@ -256,25 +215,25 @@ class ByteCountingResponseWrapperTest {
     }
 
     @Test
-    void sendErrorWithAStatusReachesTheContainerAndMarksTheBodyAsTheContainers() throws Exception {
+    void sendErrorWithAStatusReachesTheContainerAndMarksTheCountUnknown() throws Exception {
         ByteCountingResponseWrapper wrapper = new ByteCountingResponseWrapper(containerResponse);
 
-        boolean before = wrapper.isBodyWrittenByContainer();
+        boolean before = wrapper.isByteCountUnknown();
         wrapper.sendError(400);
 
         assertThat(before).isFalse();
         verify(containerResponse).sendError(400);
-        assertThat(wrapper.isBodyWrittenByContainer()).isTrue();
+        assertThat(wrapper.isByteCountUnknown()).isTrue();
     }
 
     @Test
-    void sendErrorWithAMessageReachesTheContainerAndMarksTheBodyAsTheContainers() throws Exception {
+    void sendErrorWithAMessageReachesTheContainerAndMarksTheCountUnknown() throws Exception {
         ByteCountingResponseWrapper wrapper = new ByteCountingResponseWrapper(containerResponse);
 
         wrapper.sendError(403, "rejected");
 
         verify(containerResponse).sendError(403, "rejected");
-        assertThat(wrapper.isBodyWrittenByContainer()).isTrue();
+        assertThat(wrapper.isByteCountUnknown()).isTrue();
     }
 
     @Test
@@ -283,7 +242,7 @@ class ByteCountingResponseWrapperTest {
         ByteCountingResponseWrapper wrapper = new ByteCountingResponseWrapper(containerResponse);
 
         assertThatThrownBy(() -> wrapper.sendError(500)).isInstanceOf(IllegalStateException.class).hasMessage("committed");
-        assertThat(wrapper.isBodyWrittenByContainer()).isFalse();
+        assertThat(wrapper.isByteCountUnknown()).isFalse();
     }
 
     @Test
@@ -296,7 +255,7 @@ class ByteCountingResponseWrapperTest {
 
         verify(containerResponse).sendRedirect("/elsewhere");
         assertThat(wrapper.getByteCount()).isZero();
-        assertThat(wrapper.isBodyWrittenByContainer()).isFalse();
+        assertThat(wrapper.isByteCountUnknown()).isFalse();
     }
 
     @Test
@@ -309,6 +268,7 @@ class ByteCountingResponseWrapperTest {
         wrapper.getOutputStream();
 
         assertThatThrownBy(wrapper::getWriter).isSameAs(refusal);
+        assertThat(wrapper.isByteCountUnknown()).isFalse();
     }
 
     @Test
@@ -335,17 +295,6 @@ class ByteCountingResponseWrapperTest {
     }
 
     @Test
-    void aWriterTheContainerNowRefusesIsNotServedFromTheCache() throws Exception {
-        IllegalStateException refusal = new IllegalStateException("getOutputStream() has already been called");
-        when(containerResponse.getWriter()).thenReturn(containerWriter).thenThrow(refusal);
-        ByteCountingResponseWrapper wrapper = new ByteCountingResponseWrapper(containerResponse);
-
-        wrapper.getWriter();
-
-        assertThatThrownBy(wrapper::getWriter).isSameAs(refusal);
-    }
-
-    @Test
     void theCountingStreamIsReplacedWhenTheContainerReturnsADifferentStream() throws Exception {
         when(containerResponse.getOutputStream()).thenReturn(containerStream, replacementStream);
         ByteCountingResponseWrapper wrapper = new ByteCountingResponseWrapper(containerResponse);
@@ -359,26 +308,5 @@ class ByteCountingResponseWrapperTest {
         verify(replacementStream).write(body, 0, 3);
         verifyNoInteractions(containerStream);
         assertThat(wrapper.getByteCount()).isEqualTo(3);
-    }
-
-    @Test
-    void theCountingWriterIsReplacedWhenTheContainerReturnsADifferentWriter() throws Exception {
-        when(containerResponse.getWriter()).thenReturn(containerWriter, replacementWriter);
-        ByteCountingResponseWrapper wrapper = new ByteCountingResponseWrapper(containerResponse);
-
-        PrintWriter first = wrapper.getWriter();
-        PrintWriter second = wrapper.getWriter();
-        second.write("abc");
-
-        assertThat(second).isNotSameAs(first);
-        verify(replacementWriter).write("abc", 0, 3);
-        verifyNoInteractions(containerWriter);
-    }
-
-    @Test
-    void theSameWriterIsReturnedWhileTheContainerReturnsTheSameWriter() throws Exception {
-        ByteCountingResponseWrapper wrapper = new ByteCountingResponseWrapper(new MockHttpServletResponse());
-
-        assertThat(wrapper.getWriter()).isSameAs(wrapper.getWriter());
     }
 }

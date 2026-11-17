@@ -129,15 +129,15 @@ class AuditLoggingFilterDestinationAndBytesTest {
     }
 
     @Test
-    void bytesIsTheEncodedSizeOfCharactersWrittenToTheWriter() throws Exception {
-        String body = "{\"name\":\"Zoë ☃\"}";
+    void bytesIsUnsetWhenTheBodyIsWrittenThroughTheWriter() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, null, new AuditContext(), List.of());
 
-        RequestInfo info = emittedFor((req, res) -> {
-            res.setCharacterEncoding("UTF-8");
-            res.getWriter().write(body);
-        });
+        RequestInfo info =
+            emitted(filter, requestArrivingOn("10.0.0.7", 8080), response, (req, res) -> res.getWriter().write("{\"count\":42}"));
 
-        assertThat(info.getBytes()).isEqualTo(body.getBytes(StandardCharsets.UTF_8).length).isGreaterThan(body.length());
+        assertThat(info.getBytes()).isNull();
+        assertThat(response.getContentAsString()).isEqualTo("{\"count\":42}");
     }
 
     @Test
