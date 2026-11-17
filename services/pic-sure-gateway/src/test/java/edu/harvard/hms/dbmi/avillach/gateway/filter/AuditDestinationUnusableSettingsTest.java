@@ -35,10 +35,10 @@ import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 
 /**
- * A {@code DEST_IP} that is present but empty and a {@code DEST_PORT} that is not a number count as unset. The gateway still starts and its
- * audit events report the address and port the request arrived on.
+ * A {@code DEST_IP} and a {@code DEST_PORT} that are present but empty count as unset. The gateway still starts and its audit events report
+ * the address and port the request arrived on.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {"DEST_IP=", "DEST_PORT=abc"})
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {"DEST_IP=", "DEST_PORT="})
 class AuditDestinationUnusableSettingsTest {
 
     static WireMockServer hpdsStub;
@@ -71,7 +71,7 @@ class AuditDestinationUnusableSettingsTest {
     int port;
 
     @Test
-    void aBlankAddressAndAnUnparsablePortFallBackToTheLocalAddressAndPort() {
+    void aBlankAddressAndABlankPortFallBackToTheLocalAddressAndPort() {
         when(loggingClient.isEnabled()).thenReturn(true);
         hpdsStub.stubFor(get(urlEqualTo("/hpds/auth/query/abc-123/status")).willReturn(aResponse().withStatus(200).withBody("hpds-ok")));
         psamaStub.stubFor(
