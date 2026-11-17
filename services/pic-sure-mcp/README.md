@@ -55,12 +55,15 @@ SERVER_PORT=8090 \
 java -jar services/pic-sure-mcp/target/pic-sure-mcp-*.jar
 ```
 
-Check that it answers:
+Check that it answers. The gateway normally sets `X-User-Id` and `X-User-Privileges`; this direct probe stands in for it, and
+without them the service answers 403:
 
 ```bash
 curl -s http://localhost:8090/mcp \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
+  -H 'X-User-Id: local-test' \
+  -H 'X-User-Privileges: PIC_SURE_MCP' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```
 
