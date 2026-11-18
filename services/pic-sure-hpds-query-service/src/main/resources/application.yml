@@ -40,6 +40,8 @@ picsure:
       # QUERY_SERVICE_INTERNAL_TOKEN: shared secret sent as X-PIC-SURE-INTERNAL-TOKEN on every operations-service
       # call, checked by that service's InternalTokenFilter. Fail-closed on the operations-service side if unset.
       internal-token: ${QUERY_SERVICE_INTERNAL_TOKEN:}
+    row-lock:
+      wait-sec: 60
   internal:
     # PICSURE_INTERNAL_TOKEN: shared secret callers of /internal/** must send as X-PIC-SURE-INTERNAL-TOKEN. Blank rejects
     # every /internal/** call (fail-closed). Distinct from the outbound picsure.query.operations.internal-token above.
