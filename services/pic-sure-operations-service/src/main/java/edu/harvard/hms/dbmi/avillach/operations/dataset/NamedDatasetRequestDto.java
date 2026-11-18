@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 
 /**
  * Create and update request body for {@code /dataset/named/**}. The {@code queryId} is resolved to a persisted {@code Query} by the
@@ -22,12 +23,12 @@ public record NamedDatasetRequestDto(
         example = "8694e3d4-5cb4-410f-8431-993445e6d3f6", requiredMode = Schema.RequiredMode.REQUIRED
     ) @NotNull UUID queryId,
     @Schema(
-        description = "The name for the dataset. Letters, digits, spaces and the punctuation the pattern allows.",
+        description = "The name for the dataset, at most 255 characters. Letters, digits, spaces and the punctuation the pattern allows.",
         example = "Hypertension cohort 2026", requiredMode = Schema.RequiredMode.REQUIRED
-    ) @NotNull @Pattern(regexp = "^[\\w\\d \\-\\\\/?+=\\[\\].():\"']+$") String name,
+    ) @NotNull @Size(max = 255) @Pattern(regexp = "^[\\w\\d \\-\\\\/?+=\\[\\].():\"']+$") String name,
     @Schema(description = "Whether the dataset is archived. False when absent.") Boolean archived,
     @Schema(
-        description = "Free-form settings to store with the dataset. An empty object when absent. The service defines no keys of its own: it stores whatever keys the client sends."
+        description = "Free-form settings to store with the dataset. An empty object when absent. The service defines no keys of its own: it stores whatever keys the client sends. Written as JSON it may take at most 65,535 bytes."
     ) Map<String, Object> metadata
 ) {
     public NamedDatasetRequestDto {
