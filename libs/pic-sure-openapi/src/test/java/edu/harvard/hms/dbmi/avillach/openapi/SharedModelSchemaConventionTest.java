@@ -105,8 +105,19 @@ class SharedModelSchemaConventionTest {
         assertRequired("PaginatedSearchResultString", "results", "page", "total");
         assertRequired("SignedUrlResponse", "signedUrl");
         assertRequired("ResourceInfo", "id", "name");
-        assertRequired("Query", "expectedResultType");
+        assertRequired("Query");
         assertRequired("ContinuousBinningResponse", "bins");
+    }
+
+    @Test
+    void queryDocumentsWhenTheResultTypeMayBeOmitted() {
+        String description = document.path("components").path("schemas").path("Query").path("properties").path("expectedResultType")
+            .path("description").asText();
+
+        assertThat(description).contains(
+            "Send it on every request, with one exception", "POST /hpds/auth/query may omit it for a query the caller has run before",
+            "the first result type the caller ran it with", "answers 400"
+        );
     }
 
     @Test

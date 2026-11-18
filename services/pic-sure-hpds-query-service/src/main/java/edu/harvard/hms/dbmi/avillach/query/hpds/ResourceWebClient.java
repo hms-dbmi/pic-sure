@@ -37,6 +37,10 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
  * requires a body on those calls and does not read it. An HPDS 4xx surfaces as a {@link PicsureException} carrying HPDS's status and body,
  * so the caller learns why HPDS refused the request. HPDS 5xx and I/O errors surface as {@link HpdsCommunicationException}, which maps to
  * 502 upstream.
+ *
+ * <p>Two of those 4xx answers carry meaning for a stored query. HPDS answers 404 on status, result and signed-url for a result id it holds
+ * no job under, and 409 on result and signed-url for a job that is still queued or running. Both reach the caller of this class with those
+ * statuses, and {@code QueryService} decides what each means for the row it is reading.
  */
 @Component
 public class ResourceWebClient {

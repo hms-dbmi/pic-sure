@@ -18,8 +18,9 @@ public record Query(
     @Schema(description = "A list of genomic filters.") List<GenomicFilter> genomicFilters,
     @Schema(
         description = "The result to compute. Which result types a path accepts depends on the path and the backend; the Queries "
-            + "section lists them for each.",
-        requiredMode = Schema.RequiredMode.REQUIRED
+            + "section lists them for each. Send it on every request, with one exception: a submit to POST /hpds/auth/query may omit "
+            + "it for a query the caller has run before, and the query then runs with the first result type the caller ran it with. "
+            + "A submit there without it for a query the caller has not run before answers 400."
     ) ResultType expectedResultType,
     @Schema(
         description = "The id the result of this query is stored under. PIC-SURE assigns it. A value a client sends is discarded "
