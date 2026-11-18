@@ -74,7 +74,7 @@ class QueryStatusOrdinalTest {
     /** The on-disk encoding must not change because existing rows store enum ordinals. */
     @Test
     void writingAStatusStillStoresItsOrdinal() {
-        Query entity = new Query();
+        Query entity = QueryFixtures.withRandomId();
         entity.setStatus(PicSureStatus.AVAILABLE);
 
         Query saved = repo.save(entity);
