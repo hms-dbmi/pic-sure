@@ -14,9 +14,10 @@ import java.util.EnumSet;
 import java.util.Set;
 
 /**
- * Runs obfuscated open-access queries through the gateway. This is the only query client in the service, and it has one path: the open
- * channel's synchronous query. There is no backend setting, no async submission, and no status, result, or metadata call, so nothing here
- * can reach authorized data. Failures surface as {@link org.springframework.web.client.RestClientException}s for the calling tool to map.
+ * Runs obfuscated open-access queries through the gateway. It has one path: the open channel's synchronous query. There is no backend
+ * setting, no async submission, and no status, result, or metadata call, so nothing here can reach authorized data. The authorized count
+ * has its own client, {@link AuthorizedQueryClient}. Failures surface as {@link org.springframework.web.client.RestClientException}s for
+ * the calling tool to map.
  */
 @Component
 public class OpenQueryClient {
@@ -53,21 +54,8 @@ public class OpenQueryClient {
      *         anything is sent
      */
     public String querySync(Query query, CallerHeaders caller) {
-        if (query == null || !ALLOWED_RESULT_TYPES.contains(query.expectedResultType())) {
-            throw new IllegalArgumentException("Only obfuscated open result types are sent");
-        }
-        if (!query.authorizationFilters().isEmpty() || query.picsureId() != null || query.id() != null) {
-            throw new IllegalArgumentException("Open queries carry no authorization filters and no ids");
-        }
+        SyncQueries.QueryRequest request = SyncQueries.checked(query, ALLOWED_RESULT_TYPES);
         return restClient.post().uri(QUERY_SYNC_PATH).headers(caller::applyTo).contentType(MediaType.APPLICATION_JSON)
-            .accept(MediaType.APPLICATION_JSON).body(new QueryRequest(query)).retrieve().body(String.class);
-    }
-
-    /**
-     * The request envelope the open channel takes. It carries no {@code resourceUUID}; the query service picks the open backend itself.
-     *
-     * @param query the query
-     */
-    public record QueryRequest(Query query) {
+            .accept(MediaType.APPLICATION_JSON).body(request).retrieve().body(String.class);
     }
 }

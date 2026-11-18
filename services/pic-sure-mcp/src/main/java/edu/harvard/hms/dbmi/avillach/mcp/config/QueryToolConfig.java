@@ -4,6 +4,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import edu.harvard.hms.dbmi.avillach.mcp.tool.AuthorizedCountResult;
+import edu.harvard.hms.dbmi.avillach.mcp.tool.AuthorizedCountTool;
+import edu.harvard.hms.dbmi.avillach.mcp.tool.AuthorizedCrossCountResult;
+import edu.harvard.hms.dbmi.avillach.mcp.tool.AuthorizedCrossCountTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.CountResult;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.CountTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.CrossCountResult;
@@ -50,10 +54,15 @@ public class QueryToolConfig {
      *
      * @param countTool the {@code count_participants} tool
      * @param crossCountTool the {@code cross_count} tool
-     * @return the two query tool specifications
+     * @param authorizedCountTool the {@code authorized_count_participants} tool
+     * @param authorizedCrossCountTool the {@code authorized_cross_count} tool
+     * @return the query tool specifications
      */
     @Bean
-    public List<SyncToolSpecification> queryToolSpecifications(CountTool countTool, CrossCountTool crossCountTool) {
+    public List<SyncToolSpecification> queryToolSpecifications(
+        CountTool countTool, CrossCountTool crossCountTool, AuthorizedCountTool authorizedCountTool,
+        AuthorizedCrossCountTool authorizedCrossCountTool
+    ) {
         SyncToolSpecification count = SyncToolSpecification.builder()
             .tool(tool(CountTool.NAME, CountTool.TITLE, CountTool.DESCRIPTION, CountTool.Input.class, CountResult.class))
             .callHandler((context, request) -> respond(CountTool.NAME, () -> countTool.handle(context, request.arguments()))).build();
@@ -61,7 +70,27 @@ public class QueryToolConfig {
             tool(CrossCountTool.NAME, CrossCountTool.TITLE, CrossCountTool.DESCRIPTION, CrossCountTool.Input.class, CrossCountResult.class)
         ).callHandler((context, request) -> respond(CrossCountTool.NAME, () -> crossCountTool.handle(context, request.arguments())))
             .build();
-        return List.of(count, crossCount);
+        SyncToolSpecification authorizedCount = SyncToolSpecification.builder()
+            .tool(
+                tool(
+                    AuthorizedCountTool.NAME, AuthorizedCountTool.TITLE, AuthorizedCountTool.DESCRIPTION, CountTool.Input.class,
+                    AuthorizedCountResult.class
+                )
+            ).callHandler(
+                (context, request) -> respond(AuthorizedCountTool.NAME, () -> authorizedCountTool.handle(context, request.arguments()))
+            ).build();
+        SyncToolSpecification authorizedCrossCount = SyncToolSpecification.builder()
+            .tool(
+                tool(
+                    AuthorizedCrossCountTool.NAME, AuthorizedCrossCountTool.TITLE, AuthorizedCrossCountTool.DESCRIPTION,
+                    AuthorizedCrossCountTool.Input.class, AuthorizedCrossCountResult.class
+                )
+            ).callHandler(
+                (
+                    context, request
+                ) -> respond(AuthorizedCrossCountTool.NAME, () -> authorizedCrossCountTool.handle(context, request.arguments()))
+            ).build();
+        return List.of(count, crossCount, authorizedCount, authorizedCrossCount);
     }
 
     /**

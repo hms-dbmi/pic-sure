@@ -46,14 +46,15 @@ class McpEndpointTest {
     }
 
     @Test
-    void toolsListNamesTheSevenToolsWithReadOnlyAnnotationsAndOutputSchemas() throws Exception {
+    void toolsListNamesTheNineToolsWithReadOnlyAnnotationsAndOutputSchemas() throws Exception {
         JsonNode result = call("""
             {"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}""");
 
         JsonNode tools = result.path("tools");
         assertThat(tools.isArray()).isTrue();
         assertThat(tools).extracting(t -> t.path("name").asText()).containsExactlyInAnyOrder(
-            "search_concepts", "list_facets", "get_concept", "get_concepts", "count_participants", "cross_count", "get_adapter_code"
+            "search_concepts", "list_facets", "get_concept", "get_concepts", "count_participants", "cross_count",
+            "authorized_count_participants", "authorized_cross_count", "get_adapter_code"
         );
         for (JsonNode tool : tools) {
             JsonNode annotations = tool.path("annotations");

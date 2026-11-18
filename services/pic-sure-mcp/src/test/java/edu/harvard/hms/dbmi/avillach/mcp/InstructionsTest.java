@@ -29,14 +29,15 @@ class InstructionsTest {
     private static final int MAX_INSTRUCTION_WORDS = 450;
 
     private static final List<String> RULE_SENTENCES = List.of(
-        "The server itself never reaches participant-level or authorized data.",
+        "The server never reads participant-level data. Its only authorized reads are exact counts, in authorized_count_participants and authorized_cross_count.",
+        "For a signed-in user's exact count, use authorized_count_participants or authorized_cross_count.",
         "To find variables or browse studies and facets, use search_concepts, list_facets, and get_concept.",
         "For a rough cohort size or a feasibility check, use count_participants or cross_count.",
-        "For exact counts under the user's own consents, use get_adapter_code with resultType count.",
+        "For exact counts as code to run, use get_adapter_code with resultType count.",
         "For participant rows, timestamps, or an export, use get_adapter_code with resultType participant or timestamp.",
         "To change adapter code the user already has, edit that code directly and use this server only to look up concept paths.",
         "An open count from count_participants or cross_count is obfuscated and ignores the user's consents.",
-        "The same query run through the adapter returns an exact count filtered by the user's consents.",
+        "The same query run through an authorized tool or the adapter returns an exact count filtered by the user's consents.",
         "Always say which kind of number you are reporting.", "Never present an open count as the authorized answer.",
         "Show the generated code to the user. Do not run it unless the user asks.", "Before you run the code, run its check command.",
         "If the connector is missing or older than requires.minVersion, show the install command to the user and ask before running it.",
@@ -49,13 +50,14 @@ class InstructionsTest {
             + "instead of calling the adapter yourself.",
         "get_adapter_code takes language python, r, or bash. Pick it from what you can see: the user's request, project files such as .R, "
             + ".ipynb, or shell scripts, the notebook kernel, and code the user already has. Ask the user when that does not settle it.",
-        "Take concept paths from search_concepts. Build one query, count it with count_participants, then pass the same query to "
-            + "get_adapter_code.",
+        "Take concept paths from search_concepts. Build one query, count it with count_participants or authorized_count_participants, "
+            + "then pass the same query to get_adapter_code if the user wants code.",
         "The query has no not field and no authorization fields, and the tools reject both."
     );
 
     private static final List<String> SELECT_SENTENCES = List.of(
-        "select has no effect on the open count tools, count_participants and cross_count.",
+        "select has no effect on the open count tools, count_participants and cross_count, or on authorized_count_participants.",
+        "For authorized_cross_count, select is required with CROSS_COUNT and OBSERVATION_CROSS_COUNT and names the concept paths counted.",
         "For get_adapter_code, select adds output columns for participant and timestamp results, and names the concept paths cross_count "
             + "counts on the authorized channel."
     );
@@ -106,7 +108,12 @@ class InstructionsTest {
         assertThat(descriptions.get("cross_count"))
             .contains("obfuscated open-access count that ignores the caller's consents", "At most 100 cells", "cellsOmitted")
             .contains("the open channel uses it for none of the three", "These cells are never the authorized answer")
-            .contains("get_adapter_code with resultType cross_count", "phs999999");
+            .contains("get_adapter_code with", "resultType cross_count", "authorized_cross_count", "phs999999");
+        assertThat(descriptions.get("count_participants")).contains("authorized_count_participants");
+        assertThat(descriptions.get("authorized_cross_count")).contains("one cell per concept path in select").contains(
+            "Both need select", "noData true means there are no values for that concept in the cohort",
+            "failed true could not be counted and is not a zero", "not binned", "dropped from the end of the list"
+        );
     }
 
     @Test
@@ -169,7 +176,7 @@ class InstructionsTest {
         for (JsonNode tool : result.path("tools")) {
             tools.put(tool.path("name").asText(), tool);
         }
-        assertThat(tools).hasSize(7);
+        assertThat(tools).hasSize(9);
         return tools;
     }
 

@@ -21,6 +21,9 @@ import edu.harvard.hms.dbmi.avillach.mcp.gateway.OpenQueryClient;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.AdapterCodeTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.ConceptDetailTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.ConceptSearchTool;
+import edu.harvard.hms.dbmi.avillach.mcp.gateway.AuthorizedQueryClient;
+import edu.harvard.hms.dbmi.avillach.mcp.tool.AuthorizedCountTool;
+import edu.harvard.hms.dbmi.avillach.mcp.tool.AuthorizedCrossCountTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.CountTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.CrossCountTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.FacetTool;
@@ -60,6 +63,9 @@ class ToolAuditAspectTest {
     private FacetTool facets;
     private CountTool count;
     private CrossCountTool crossCount;
+    private AuthorizedQueryClient authorizedQuery;
+    private AuthorizedCountTool authorizedCount;
+    private AuthorizedCrossCountTool authorizedCrossCount;
 
     @BeforeEach
     void setUp() {
@@ -74,6 +80,9 @@ class ToolAuditAspectTest {
         facets = proxy(new FacetTool(dictionary), aspect);
         count = proxy(new CountTool(openQuery), aspect);
         crossCount = proxy(new CrossCountTool(openQuery), aspect);
+        authorizedQuery = mock(AuthorizedQueryClient.class);
+        authorizedCount = proxy(new AuthorizedCountTool(authorizedQuery), aspect);
+        authorizedCrossCount = proxy(new AuthorizedCrossCountTool(authorizedQuery), aspect);
     }
 
     @AfterEach
@@ -186,6 +195,45 @@ class ToolAuditAspectTest {
         LoggingEvent event = onlyEvent();
         assertThat(event.getAction()).isEqualTo("query.sync");
         assertThat(event.getMetadata()).containsEntry("result_type", "CATEGORICAL_CROSS_COUNT").doesNotContainKey("query");
+    }
+
+    @Test
+    void authorizedCountSendsResultTypeCountAndTheAuthorizedChannel() throws Exception {
+        when(authorizedQuery.countSync(any(), any())).thenReturn("12");
+
+        authorizedCount.handle(context, Map.of("query", Map.of("phenotypicClause", filter(BODY_PATH))));
+
+        LoggingEvent event = onlyEvent();
+        assertThat(event.getAction()).isEqualTo("query.sync");
+        assertThat(event.getMetadata()).containsExactly(
+            Map.entry("outcome", "success"), Map.entry("user_id", "user-7"), Map.entry("channel", "authorized"),
+            Map.entry("result_type", "COUNT")
+        );
+        assertThat(serialized(event)).doesNotContain(BODY_PATH);
+    }
+
+    @Test
+    void authorizedCrossCountSendsTheChosenResultTypeAndTheAuthorizedChannel() {
+        when(authorizedQuery.countSync(any(), any())).thenReturn("{\"\\\\phs1\\\\sex\\\\\":{\"Female\":38}}");
+
+        authorizedCrossCount.handle(
+            context, Map.of(
+                "resultType", "CATEGORICAL_CROSS_COUNT", "query",
+                Map.of("phenotypicClause", Map.of("phenotypicFilterType", "REQUIRED", "conceptPath", "\\phs1\\sex\\"))
+            )
+        );
+
+        assertThat(onlyEvent().getMetadata()).containsEntry("outcome", "success").containsEntry("channel", "authorized")
+            .containsEntry("result_type", "CATEGORICAL_CROSS_COUNT");
+    }
+
+    @Test
+    void anOpenCountCarriesNoChannel() {
+        when(openQuery.querySync(any(), any())).thenReturn("{}");
+
+        crossCount.handle(context, Map.of("resultType", "CROSS_COUNT", "query", Map.of()));
+
+        assertThat(onlyEvent().getMetadata()).doesNotContainKey("channel");
     }
 
     @Test

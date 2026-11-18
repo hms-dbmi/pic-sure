@@ -256,10 +256,11 @@ class GatewayClientConfigTest {
         });
     }
 
-    @Test
-    void refusesARequestToAnyHostOtherThanTheGateway() {
+    @ParameterizedTest
+    @ValueSource(strings = {GatewayClientConfig.GATEWAY_REST_CLIENT, GatewayClientConfig.CROSS_COUNT_REST_CLIENT})
+    void refusesARequestToAnyHostOtherThanTheGateway(String bean) {
         runner.run(context -> {
-            RestClient.Builder builder = context.getBean(GatewayClientConfig.GATEWAY_REST_CLIENT, RestClient.class).mutate();
+            RestClient.Builder builder = context.getBean(bean, RestClient.class).mutate();
             MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
             RestClient client = builder.build();
 
@@ -274,8 +275,9 @@ class GatewayClientConfigTest {
         });
     }
 
-    @Test
-    void doesNotFollowRedirects() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {GatewayClientConfig.GATEWAY_REST_CLIENT, GatewayClientConfig.CROSS_COUNT_REST_CLIENT})
+    void doesNotFollowRedirects(String bean) throws Exception {
         AtomicInteger landed = new AtomicInteger();
         HttpServer gateway = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
         int port = gateway.getAddress().getPort();
@@ -292,7 +294,7 @@ class GatewayClientConfigTest {
         gateway.start();
         try {
             runner.withPropertyValues("picsure.mcp.gateway-url=http://127.0.0.1:" + port).run(context -> {
-                RestClient client = context.getBean(GatewayClientConfig.GATEWAY_REST_CLIENT, RestClient.class);
+                RestClient client = context.getBean(bean, RestClient.class);
 
                 ResponseEntity<Void> response = client.get().uri("/start").retrieve().toBodilessEntity();
 

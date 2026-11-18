@@ -46,8 +46,8 @@ public class CrossCountTool {
             \\_studies_consents\\, so the cells are keyed by those paths, and the \\_studies_consents\\ cell itself, the participants \
             matching the query across all studies, is kept rather than dropped. select is passed on unchanged, but the open channel uses it \
             for none of the three. At most 100 cells are returned, and cellsOmitted says how many were dropped. These cells are never the \
-            authorized answer. For exact counts filtered by the user's consents, use get_adapter_code with resultType cross_count, where \
-            select does choose the concept paths counted. The query takes the same \
+            authorized answer. For exact counts filtered by the user's consents, use authorized_cross_count when the user is signed in, or get_adapter_code with \
+            resultType cross_count for code the user runs themselves; in either, select chooses the concept paths a CROSS_COUNT counts. The query takes the same \
             shape as in count_participants, with no result type and no not field. The phs999999 paths in the example are placeholders only. Never use them, and use real conceptPath values from search_concepts. Example arguments: \
             {"resultType":"CATEGORICAL_CROSS_COUNT","query":{"phenotypicClause":{"operator":"AND","phenotypicClauses":[\
             {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs999999\\\\sex\\\\","values":["Female","Male"]},\

@@ -8,17 +8,18 @@ spring:
         type: SYNC
         protocol: STATELESS
         instructions: |-
-          This server searches the open-access PIC-SURE data dictionary and returns obfuscated open-access participant counts. The server itself never reaches participant-level or authorized data.
+          This server searches the open-access PIC-SURE data dictionary and returns obfuscated open-access participant counts. The server never reads participant-level data. Its only authorized reads are exact counts, in authorized_count_participants and authorized_cross_count.
 
           Which tool to use:
           To find variables or browse studies and facets, use search_concepts, list_facets, and get_concept.
           To narrow a search to one study, dataset or data type, call list_facets and pass the facets it returns, as {category, name} pairs, to search_concepts.
           For a rough cohort size or a feasibility check, use count_participants or cross_count.
-          For exact counts under the user's own consents, use get_adapter_code with resultType count.
+          For a signed-in user's exact count, use authorized_count_participants or authorized_cross_count.
+          For exact counts as code to run, use get_adapter_code with resultType count.
           For participant rows, timestamps, or an export, use get_adapter_code with resultType participant or timestamp.
           To change adapter code the user already has, edit that code directly and use this server only to look up concept paths.
 
-          Open counts and authorized counts are different numbers. An open count from count_participants or cross_count is obfuscated and ignores the user's consents. The same query run through the adapter returns an exact count filtered by the user's consents. Always say which kind of number you are reporting. Never present an open count as the authorized answer.
+          Open counts and authorized counts are different numbers. An open count from count_participants or cross_count is obfuscated and ignores the user's consents. The same query run through an authorized tool or the adapter returns an exact count filtered by the user's consents. Always say which kind of number you are reporting. Never present an open count as the authorized answer.
 
           Handing off code from get_adapter_code:
           Show the generated code to the user. Do not run it unless the user asks.
@@ -33,7 +34,7 @@ spring:
           get_adapter_code takes language python, r, or bash. Pick it from what you can see: the user's request, project files such as .R, .ipynb, or shell scripts, the notebook kernel, and code the user already has. Ask the user when that does not settle it.
 
           Building a query:
-          Take concept paths from search_concepts. Build one query, count it with count_participants, then pass the same query to get_adapter_code. The query has no not field and no authorization fields, and the tools reject both.
+          Take concept paths from search_concepts. Build one query, count it with count_participants or authorized_count_participants, then pass the same query to get_adapter_code if the user wants code. The query has no not field and no authorization fields, and the tools reject both.
         streamable-http:
           mcp-endpoint: /mcp
         capabilities:

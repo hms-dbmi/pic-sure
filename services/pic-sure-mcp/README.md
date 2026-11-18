@@ -1,6 +1,6 @@
 # pic-sure-mcp
 
-`pic-sure-mcp` is the PIC-SURE Model Context Protocol (MCP) server. It lets an MCP client such as Claude Code search the data dictionary and run obfuscated participant counts. It speaks MCP over stateless Streamable HTTP on `/mcp` and answers every request with a single JSON body, never an SSE stream. It sits behind the gateway, which authenticates the caller and routes `/mcp` here. Each tool call becomes ordinary REST calls back through the gateway (`PICSURE_GATEWAY_URL`), so PSAMA access rules and the gateway audit apply to every operation. The service has no database and no Spring Security.
+`pic-sure-mcp` is the PIC-SURE Model Context Protocol (MCP) server. It lets an MCP client such as Claude Code search the data dictionary, run obfuscated open-access participant counts, and run the caller's own exact, consent-filtered counts with their token. It speaks MCP over stateless Streamable HTTP on `/mcp` and answers every request with a single JSON body, never an SSE stream. It sits behind the gateway, which authenticates the caller and routes `/mcp` here. Each tool call becomes ordinary REST calls back through the gateway (`PICSURE_GATEWAY_URL`), so PSAMA access rules and the gateway audit apply to every operation. The service has no database and no Spring Security.
 
 ## Tools
 
@@ -12,18 +12,20 @@
 | `get_concepts` | Gets up to 25 concepts by concept path in one call, listing the paths the dictionary does not know in `notFound`. |
 | `count_participants` | Returns the obfuscated open-access participant count for a query. |
 | `cross_count` | Returns obfuscated open-access cross counts for a query. |
+| `authorized_count_participants` | Returns the caller's exact, consent-filtered participant count for a query, using their own token. The authorized twin of `count_participants`; fails without a token. |
+| `authorized_cross_count` | Returns exact, consent-filtered cross-count cells (CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT, or OBSERVATION_CROSS_COUNT, which only this tool serves). The authorized twin of `cross_count`. |
 | `get_adapter_code` | Returns Python, R, or bash code the user runs with their own token for exact, consent-filtered results. |
 
-## The open-only rule
+## The channel rule
 
-The service only ever reads the open, obfuscated view of the data. Query calls go to `/hpds/open/query/sync` and nowhere else: no client method exists for `/hpds/auth` or for the async query endpoints, and no setting or tool argument can select another channel. Only the four result types the open channel obfuscates are allowed (COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT). The dictionary search and facet calls send an empty consent list, the same view the open UI gets, and the concept detail lookups carry no consents field.
+Query calls go to two fixed paths and nowhere else. `OpenQueryClient` posts to `/hpds/open/query/sync` and sends only the four result types the open channel obfuscates (COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT). `AuthorizedQueryClient`, used only by `authorized_count_participants` and `authorized_cross_count`, posts one of five count result types to the authorized sync path with the caller's own `Authorization` header, so the gateway introspects the caller's token and the query service applies their consents. It sends no other result type, no authorization filters, and no ids, so the service reads exact counts and never rows. No client method exists for the async query endpoints, and no setting or tool argument can select another channel. `ArchitectureTest` pins both paths as constants of their own client class. The dictionary search and facet calls send an empty consent list, the same view the open UI gets, and the concept detail lookups carry no consents field.
 
 `search_concepts` takes an optional `facets` list of `{category, name}` pairs, copied from `list_facets`, and sends them to the dictionary with the search; the dictionary needs only those two fields per facet (the UI sends more). With facets and neither `search` nor `terms` it browses everything in those facets (the dictionary takes an empty search); without facets one of them is required. Each facet narrows every term of a `terms` search. At most 10 facets, each part at most 200 characters.
 
 
 ## Adapter code
 
-`get_adapter_code` returns Python, R, or bash code that the user runs in their own environment with their own token, read from `PICSURE_TOKEN`. That code returns exact counts, participant rows, or timestamps filtered by the user's consents. The Python and R code use the `picsure` adapters. The bash script calls the authorized REST path with curl and jq, and that path appears in the script only as text: this service never calls it. `MCP_ADAPTER_BASE_URL` must be the bare site URL over `https` (plain `http` only on `localhost` or `127.0.0.1`), with no path, query, fragment, or user info, and startup fails otherwise.
+`get_adapter_code` returns Python, R, or bash code that the user runs in their own environment with their own token, read from `PICSURE_TOKEN`. That code returns exact counts, participant rows, or timestamps filtered by the user's consents. The Python and R code use the `picsure` adapters. The bash script calls the authorized async query path with curl and jq, and that path appears in the script only as text: this service never calls it. The only authorized path this service calls itself is the synchronous count path, from `AuthorizedQueryClient`. `MCP_ADAPTER_BASE_URL` must be the bare site URL over `https` (plain `http` only on `localhost` or `127.0.0.1`), with no path, query, fragment, or user info, and startup fails otherwise.
 
 ## Environment
 
