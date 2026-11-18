@@ -270,17 +270,52 @@ class HpdsQueryControllerTest {
     }
 
     @Test
-    void metadataOnTheUnversionedPathForwardsCallerAuthorizationForSavedConsentVerification() throws Exception {
+    void metadataIsAnsweredToAnIdentifiedCallerWithoutAnyConsentCheck() throws Exception {
         UUID id = UUID.randomUUID();
-        StoredQuery stored = new StoredQuery(id, "{}", "rr-1", "AVAILABLE", "3", null);
-        when(operationsClient.get(id)).thenReturn(stored);
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, COUNT_BODY, "rr-1", "AVAILABLE", "3", null));
 
-        mockMvc.perform(
-            get("/hpds/auth/query/{id}/metadata", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
-                .header("Authorization", "Bearer caller-token")
-        ).andExpect(status().isOk());
+        mockMvc.perform(get("/hpds/auth/query/{id}/metadata", id).header(GatewayUserResolver.HEADER_USER_ID, USER))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.picsureResultId").value(id.toString()))
+            .andExpect(jsonPath("$.resultMetadata.queryJson.query.expectedResultType").value("COUNT"));
 
-        verify(consentAuthorization).verifyReadAccess("auth", stored, "Bearer caller-token");
+        verifyNoInteractions(consentAuthorization);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"auth", "open"})
+    void metadataOfAnOwnedRowIsAnsweredToTheOpenAccessIdentityWithoutItsOwnerOrConsents(String backend) throws Exception {
+        String owner = "5f0c1f0e-6f0a-4a57-9d6e-0d1c6a3b9f11";
+        String consent = "phs000001.c1";
+        UUID id = UUID.randomUUID();
+        when(operationsClient.get(id)).thenReturn(
+            new StoredQuery(
+                id, "{\"query\":{\"select\":[\"\\\\demographics\\\\AGE\\\\\"],\"expectedResultType\":\"DATAFRAME\"}}", id.toString(),
+                "AVAILABLE", "3", null, 1L, null, UUID.fromString(owner), Map.of("\\_consents\\", List.of(consent)), UUID.randomUUID()
+            )
+        );
+
+        String response = mockMvc
+            .perform(
+                get("/hpds/{backend}/query/{id}/metadata", backend, id)
+                    .header(GatewayUserResolver.HEADER_USER_ID, "OPEN_ACCESS:picsure.example.org")
+            ).andExpect(status().isOk()).andExpect(jsonPath("$.picsureResultId").value(id.toString()))
+            .andExpect(jsonPath("$.resultMetadata.queryJson.query.select[0]").value("\\demographics\\AGE\\"))
+            .andExpect(jsonPath("$.resultMetadata.queryJson.query.expectedResultType").value("DATAFRAME")).andReturn().getResponse()
+            .getContentAsString();
+
+        assertThat(response).doesNotContain(consent).doesNotContain("_consents").doesNotContain(owner).doesNotContain("userUuid");
+        verifyNoInteractions(consentAuthorization);
+        hpds.verify(0, anyRequestedFor(anyUrl()));
+    }
+
+    @Test
+    void metadataWithoutAGatewayIdentityIsRefusedBeforeTheQueryIsLoaded() throws Exception {
+        UUID id = UUID.randomUUID();
+
+        mockMvc.perform(get("/hpds/auth/query/{id}/metadata", id).header("Authorization", "Bearer caller-token"))
+            .andExpect(status().isForbidden());
+
+        verifyNoInteractions(operationsClient, consentAuthorization);
     }
 
     @Test

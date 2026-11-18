@@ -318,6 +318,20 @@ class OpenApiDocumentTest {
     }
 
     @Test
+    void metadataDocumentsAReadForEveryCallerTheGatewayAdmitsThatReturnsNoConsentValues() throws Exception {
+        JsonNode operation = operation(document(), "get", METADATA);
+
+        assertThat(operation.path("description").asText()).contains(
+            "same gateway access as the other query routes", "no owner or consent check", "any caller the gateway admits who has the id",
+            "not only the user who submitted it", "never carries consent values", "`authorizationFilters`"
+        ).doesNotContainIgnoringCase("signed-in", "no authorization", "without a token", "unauthenticated", "anonymous");
+        JsonNode responses = operation.path("responses");
+        assertThat(responses.has("200")).isTrue();
+        assertThat(responses.has("403")).as("GET %s 403", METADATA).isFalse();
+        assertThat(responses.path("502").path("description").asText()).as("GET %s 502", METADATA).isEqualTo("Query lookup failed.");
+    }
+
+    @Test
     void syncAndResultBodiesAreDocumentedByMediaTypeAndResultType() throws Exception {
         JsonNode document = document();
 

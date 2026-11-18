@@ -42,6 +42,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
  * answer 409 {@code result_not_ready}, as they do while a query is queued or running. On those three reads, a query stored without an owner
  * keeps the checks it had before queries had owners.
  *
+ * <p>Metadata has no such check. Its caller needs the same gateway access as the other query routes, and the service checks neither the
+ * owner nor any consent on this read, so every caller the gateway admits gets the stored query for an id, for a query with or without an
+ * owner. The query it returns carries no consent value.
+ *
  * <p>Submit and sync bind their body to {@link HpdsQueryRequest}, a v3 {@code Query} under the query key, and pass {@link QueryService} the
  * outbound envelope built by {@link HpdsQueryRequest#toOutbound()}, which is what HPDS receives and what the operations service stores.
  * Status, result, signed-url and metadata are GET requests with no body: they read the stored query by id, and a POST to them answers 405.
@@ -137,7 +141,21 @@ public class HpdsQueryController {
         storage rejects a request that sends both.
         """;
 
-    private static final String AUTH_ONLY_READ = "Reads a query submitted with `POST /hpds/auth/query`.";
+    private static final String METADATA_DESCRIPTION = """
+        Returns a stored query by its id: the query as it was submitted, its stored status and its result id. `{id}` is the \
+        `picsureResultId` that `POST /hpds/auth/query` returned.
+
+        The caller needs the same gateway access as the other query routes. The service makes no owner or consent check for \
+        this read, so any caller the gateway admits who has the id can read the query, not only the user who submitted it, and a \
+        query can be shared by passing on its id. The response holds the query and no participant data. To run a query read \
+        here, submit it with `POST /hpds/auth/query`: the submitted query belongs to the caller and is limited to the caller's \
+        own consents.
+
+        The response never carries consent values. `authorizationFilters` comes back empty, and every filter on a consent \
+        concept path (`\\_consents\\`, `\\_topmed_consents\\` or `\\_harmonized_consent\\`) is removed from the query. A \
+        query that filtered on nothing else comes back with a null `phenotypicClause`. A consent concept path listed in \
+        `select` stays. A query stored before the current query format comes back converted to it when it can be converted.
+        """;
 
     private static final String UNREADABLE_BODY = " or a body that cannot be read as a query request.";
 
@@ -466,23 +484,33 @@ public class HpdsQueryController {
         return service.queryResultSignedUrl(backend, id, authorizationHeader, user);
     }
 
+    /**
+     * Returns a stored query, its stored status and its result id. The caller needs the same gateway access as the other query routes: the
+     * request must carry the gateway identity header, as on every {@code /hpds} route. The service makes no owner or consent check for this
+     * read, so every caller the gateway admits gets the same answer for an id, whoever submitted the query and whatever consents the caller
+     * holds. On a deployment with open access enabled that includes the open-access identity the gateway admits on the {@code open}
+     * segment, which is not a signed-in user. The answer carries no consent value and names neither the owner of the query nor its runs.
+     *
+     * @param backend the ingress {@code {backend}} segment, which this read does not use
+     * @param id the id of the stored query
+     * @return the stored query and result metadata under {@code resultMetadata}
+     * @throws PicsureException 404 for an unknown id, and whatever the lookup in the operations service raises
+     */
     @AuditEvent(type = "QUERY", action = "query.metadata")
     @GetMapping("/query/{id}/metadata")
-    @Operation(summary = "Metadata of a submitted query", description = AUTH_ONLY_READ)
+    @Operation(summary = "Metadata of a submitted query", description = METADATA_DESCRIPTION)
     @ApiResponses(
-        {@ApiResponse(responseCode = "200", description = "The metadata of the submitted query."),
+        {@ApiResponse(responseCode = "200", description = "The stored query, without consent values, and its stored status."),
             @ApiResponse(responseCode = "400", description = "Missing query id."),
-            @ApiResponse(responseCode = "403", description = "Consent no longer covers this result."),
             @ApiResponse(responseCode = "404", description = "Unknown query id."),
             @ApiResponse(responseCode = "405", description = METHOD_NOT_ALLOWED),
-            @ApiResponse(responseCode = "502", description = "Consent or query lookup failed."),
+            @ApiResponse(responseCode = "502", description = "Query lookup failed."),
             @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
     )
     public QueryStatus metadata(
-        @Parameter(ref = BackendParameterConfig.BACKEND_REFERENCE) @PathVariable("backend") String backend, @PathVariable("id") UUID id,
-        @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
+        @Parameter(ref = BackendParameterConfig.BACKEND_REFERENCE) @PathVariable("backend") String backend, @PathVariable("id") UUID id
     ) {
-        return service.queryMetadata(backend, id, authorizationHeader);
+        return service.queryMetadata(id);
     }
 
     /**
