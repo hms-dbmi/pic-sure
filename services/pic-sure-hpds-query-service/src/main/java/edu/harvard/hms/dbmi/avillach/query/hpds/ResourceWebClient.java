@@ -5,6 +5,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.ParameterizedTypeReference;
@@ -36,6 +37,10 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
  * requires a body on those calls and does not read it. An HPDS 4xx surfaces as a {@link PicsureException} carrying HPDS's status and body,
  * so the caller learns why HPDS refused the request. HPDS 5xx and I/O errors surface as {@link HpdsCommunicationException}, which maps to
  * 502 upstream.
+ *
+ * <p>Two of those 4xx answers carry meaning for a stored query. HPDS answers 404 on status, result and signed-url for a result id it holds
+ * no job under, and 409 on result and signed-url for a job that is still queued or running. Both reach the caller of this class with those
+ * statuses, and {@code QueryService} decides what each means for the row it is reading.
  */
 @Component
 public class ResourceWebClient {
@@ -43,6 +48,11 @@ public class ResourceWebClient {
     /** HPDS response header containing query metadata. */
     public static final String QUERY_METADATA_FIELD = "queryMetadata";
     private static final ParameterizedTypeReference<PaginatedSearchResult<String>> VALUES_PAGE = new ParameterizedTypeReference<>() {};
+    /**
+     * The result id sent to HPDS by a route that assigns none. A route that derives the id of its result passes that id to
+     * {@link #query(HpdsTarget, QueryRequest, UUID)} in place of this constant.
+     */
+    private static final UUID NO_SERVER_RESULT_ID = null;
 
     private final RestClient http;
 
@@ -67,8 +77,31 @@ public class ResourceWebClient {
 
     // --- query lifecycle: inject the per-backend service token ---
 
+    /**
+     * Submits a query to HPDS for asynchronous execution. HPDS receives the query without the {@code picsureId} the request carried and
+     * stores the result under a key it derives itself.
+     *
+     * @param target the backend's API base URL and service token
+     * @param req the envelope holding the query
+     * @return the status HPDS answered with, or null when HPDS answered with no body
+     * @throws HpdsCommunicationException when HPDS answers 5xx or cannot be reached
+     */
     public QueryStatus query(HpdsTarget target, QueryRequest req) {
-        return postJson(target, target.baseUrl() + "/query", req, QueryStatus.class);
+        return query(target, req, NO_SERVER_RESULT_ID);
+    }
+
+    /**
+     * Submits a query to HPDS for asynchronous execution under a result id this service assigned. HPDS receives the query with that id in
+     * place of any {@code picsureId} the request carried and stores the result under it.
+     *
+     * @param target the backend's API base URL and service token
+     * @param req the envelope holding the query
+     * @param serverResultId the id this service derived for the result, or null to have HPDS derive its own key
+     * @return the status HPDS answered with, or null when HPDS answered with no body
+     * @throws HpdsCommunicationException when HPDS answers 5xx or cannot be reached
+     */
+    public QueryStatus query(HpdsTarget target, QueryRequest req, UUID serverResultId) {
+        return postJson(target, target.baseUrl() + "/query", outbound(req, serverResultId), QueryStatus.class);
     }
 
     /**
@@ -117,7 +150,10 @@ public class ResourceWebClient {
         }
     }
 
-    /** Body bytes + optional queryMetadata response header + optional request-source request header. */
+    /**
+     * Body bytes + optional queryMetadata response header + optional request-source request header. HPDS receives the query without the
+     * {@code picsureId} the request carried.
+     */
     public QuerySyncResult querySync(HpdsTarget target, QueryRequest req, String requestSource) {
         try {
             ResponseEntity<byte[]> down =
@@ -126,7 +162,7 @@ public class ResourceWebClient {
                     if (requestSource != null) {
                         h.add("request-source", requestSource);
                     }
-                }).body(req).retrieve().toEntity(byte[].class);
+                }).body(outbound(req, NO_SERVER_RESULT_ID)).retrieve().toEntity(byte[].class);
             return new QuerySyncResult(down.getBody(), down.getHeaders().getFirst(QUERY_METADATA_FIELD));
         } catch (RestClientException e) {
             throw new HpdsCommunicationException("HPDS sync call failed: " + target.baseUrl(), e);
@@ -163,6 +199,18 @@ public class ResourceWebClient {
         } catch (RestClientException e) {
             throw new HpdsCommunicationException("HPDS search/values call failed: " + base, e);
         }
+    }
+
+    /**
+     * Copies an envelope for HPDS with the result id of its query set by this service. The envelope passed in is not changed, so the caller
+     * still holds the query as it was submitted.
+     *
+     * @param req the envelope a route is about to send
+     * @param serverResultId the id this service assigned to the result, or null when it assigned none
+     * @return the envelope HPDS receives
+     */
+    private static QueryRequest outbound(QueryRequest req, UUID serverResultId) {
+        return req.copy().setQuery(HpdsQueryBody.of(req.getQuery(), serverResultId));
     }
 
     /** Adds Authorization: Bearer <service token> when the backend has one configured. */

@@ -170,4 +170,87 @@ class ConsentAuthorizationServiceTest {
             + value + "\"]}]}}";
         return new StoredQuery(null, query, "rr", null, "3", null);
     }
+
+    @Test
+    void emptyConsentsFromPsamaIs403ConsentDenied() {
+        PsamaConsentClient client = mock(PsamaConsentClient.class);
+        when(client.fetch("Bearer caller-token")).thenReturn(Map.of());
+        ConsentAuthorizationService service = new ConsentAuthorizationService(client, new ConsentFilterBuilder(), true);
+        GeneralQueryRequest request =
+            new GeneralQueryRequest().setQuery(new Query(List.of(), List.of(), null, List.of(), ResultType.COUNT, null, null));
+
+        assertThatThrownBy(() -> service.currentConsents("auth", "Bearer caller-token"))
+            .isInstanceOfSatisfying(PicsureException.class, error -> {
+                assertThat(error.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+                assertThat(error.getErrorType()).isEqualTo("consent_denied");
+            });
+        assertThatThrownBy(() -> service.scopeQuery("auth", request, "Bearer caller-token"))
+            .isInstanceOfSatisfying(PicsureException.class, error -> {
+                assertThat(error.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+                assertThat(error.getErrorType()).isEqualTo("consent_denied");
+            });
+    }
+
+    @Test
+    void currentConsentsAreSortedByConceptAndByValue() {
+        PsamaConsentClient client = mock(PsamaConsentClient.class);
+        when(client.fetch("Bearer caller-token")).thenReturn(
+            Map.of("\\_topmed_consents\\", Set.of("phs002.c1"), "\\_consents\\", Set.of("phs002.c1", "phs001.c2", "phs001.c1"))
+        );
+        ConsentAuthorizationService service = new ConsentAuthorizationService(client, new ConsentFilterBuilder(), true);
+
+        Map<String, List<String>> consents = service.currentConsents("auth", "Bearer caller-token");
+
+        assertThat(consents.keySet()).containsExactly("\\_consents\\", "\\_topmed_consents\\");
+        assertThat(consents.get("\\_consents\\")).containsExactly("phs001.c1", "phs001.c2", "phs002.c1");
+    }
+
+    @Test
+    void currentConsentsAreEmptyWithoutALookupWhenConsentAuthorizationIsOffOrTheBackendIsNotAuth() {
+        PsamaConsentClient client = mock(PsamaConsentClient.class);
+
+        assertThat(
+            new ConsentAuthorizationService(client, new ConsentFilterBuilder(), false).currentConsents("auth", "Bearer caller-token")
+        ).isEmpty();
+        assertThat(new ConsentAuthorizationService(client, new ConsentFilterBuilder(), true).currentConsents("open", "Bearer caller-token"))
+            .isEmpty();
+        verifyNoInteractions(client);
+    }
+
+    @Test
+    void currentConsentsWithoutCallerTokenFailClosed() {
+        ConsentAuthorizationService service =
+            new ConsentAuthorizationService(mock(PsamaConsentClient.class), new ConsentFilterBuilder(), true);
+
+        assertThatThrownBy(() -> service.currentConsents("auth", " ")).isInstanceOfSatisfying(PicsureException.class, error -> {
+            assertThat(error.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY);
+            assertThat(error.getErrorType()).isEqualTo("consent_lookup_failed");
+        });
+    }
+
+    @Test
+    void scopingWithConsentsAlreadyFetchedBuildsTheSameFiltersWithoutASecondLookup() {
+        PsamaConsentClient client = mock(PsamaConsentClient.class);
+        ConsentAuthorizationService service = new ConsentAuthorizationService(client, new ConsentFilterBuilder(), true);
+        GeneralQueryRequest request =
+            new GeneralQueryRequest().setQuery(Map.of("select", List.of("\\Demographics\\Age\\"), "expectedResultType", "COUNT"));
+
+        service.scopeWithConsents("auth", request, Map.of("\\_consents\\", List.of("phs001.c1", "phs001.c2")));
+
+        assertThat(((Query) request.getQuery()).authorizationFilters())
+            .containsExactly(new AuthorizationFilter("\\_consents\\", Set.of("phs001.c1", "phs001.c2")));
+        verifyNoInteractions(client);
+    }
+
+    @Test
+    void scopingWithConsentsLeavesTheQueryUntouchedWhenConsentAuthorizationIsOffOrTheBackendIsNotAuth() {
+        PsamaConsentClient client = mock(PsamaConsentClient.class);
+        Query query = new Query(List.of(), List.of(), null, List.of(), ResultType.COUNT, null, null);
+        GeneralQueryRequest request = new GeneralQueryRequest().setQuery(query);
+
+        new ConsentAuthorizationService(client, new ConsentFilterBuilder(), false).scopeWithConsents("auth", request, Map.of());
+        new ConsentAuthorizationService(client, new ConsentFilterBuilder(), true).scopeWithConsents("open", request, Map.of());
+
+        assertThat(request.getQuery()).isSameAs(query);
+    }
 }

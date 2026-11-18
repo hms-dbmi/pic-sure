@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.dbmi.avillach.domain.StoredQueryVariant;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
@@ -874,6 +875,49 @@ class QueryPersistenceServiceTest {
         Query reloaded = repo.findById(picsureId).orElseThrow();
         assertThat(reloaded.getStatus()).isEqualTo(PicSureStatus.ERROR);
         assertThat(reloaded.getCreatedAt()).isEqualTo(inserted);
+    }
+
+    @Test
+    void variantsOfListsTheOwnersVariantsOldestFirstWithUndatedRowsLastAndTheRowIdBreakingTies() {
+        UUID owner = UUID.randomUUID();
+        UUID general = UUID.randomUUID();
+        Instant early = Instant.parse("2026-01-01T00:00:00Z");
+        Instant late = Instant.parse("2026-02-01T00:00:00Z");
+        UUID newest = storedVariant(owner, general, false, "COUNT", late);
+        UUID oldest = storedVariant(owner, general, true, "DATAFRAME_PFB", early);
+        UUID undated = storedVariant(owner, general, false, "DATAFRAME", null);
+        UUID undatedAndUntyped = storedVariant(owner, general, true, null, null);
+        UUID alsoOldest = storedVariant(owner, general, false, "DATAFRAME_TIMESERIES", early);
+        entityManager.flush();
+        entityManager.clear();
+
+        List<StoredQueryVariant> variants = service.variantsOf(general, owner);
+
+        List<UUID> oldestPair = Stream.of(oldest, alsoOldest).sorted(QueryPersistenceServiceTest::asTheDatabaseOrdersIds).toList();
+        List<UUID> undatedPair = Stream.of(undated, undatedAndUntyped).sorted(QueryPersistenceServiceTest::asTheDatabaseOrdersIds).toList();
+        assertThat(variants).extracting(StoredQueryVariant::picsureId)
+            .containsExactly(oldestPair.get(0), oldestPair.get(1), newest, undatedPair.get(0), undatedPair.get(1));
+        assertThat(variants).filteredOn(variant -> variant.picsureId().equals(oldest))
+            .containsExactly(new StoredQueryVariant(oldest, true, "DATAFRAME_PFB", early.toEpochMilli()));
+        assertThat(variants).filteredOn(variant -> variant.picsureId().equals(undatedAndUntyped))
+            .containsExactly(new StoredQueryVariant(undatedAndUntyped, true, null, null));
+    }
+
+    @Test
+    void variantsOfIsEmptyForAGeneralQueryOfAnotherOwnerAndForAnUnknownOne() {
+        UUID owner = UUID.randomUUID();
+        UUID stranger = UUID.randomUUID();
+        UUID general = UUID.randomUUID();
+        UUID strangersGeneral = UUID.randomUUID();
+        UUID ownersRow = storedVariant(owner, general, false, "DATAFRAME", Instant.parse("2026-01-01T00:00:00Z"));
+        storedVariant(stranger, strangersGeneral, false, "DATAFRAME", Instant.parse("2026-01-01T00:00:00Z"));
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(service.variantsOf(strangersGeneral, owner)).isEmpty();
+        assertThat(service.variantsOf(general, stranger)).isEmpty();
+        assertThat(service.variantsOf(UUID.randomUUID(), owner)).isEmpty();
+        assertThat(service.variantsOf(general, owner)).extracting(StoredQueryVariant::picsureId).containsExactly(ownersRow);
     }
 
     private QueryPersistenceService serviceAt(Instant instant) {

@@ -49,6 +49,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.dbmi.avillach.domain.StoredQueryVariant;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
@@ -590,6 +591,27 @@ class QueryPersistenceMySqlTest {
         UUID ownerless = serviceAt(inserted).save(new SaveQueryRequest("{\"q\":1}", "rr-1", "QUEUED", "3", null));
 
         assertThat(createdAtOf(ownerless)).isEqualTo(inserted);
+    }
+
+    @Test
+    void variantsOfAGeneralQueryComeOldestFirstWithUndatedRowsLast() {
+        UUID owner = UUID.randomUUID();
+        UUID general = UUID.randomUUID();
+        UUID newest = UUID.randomUUID();
+        UUID oldest = UUID.randomUUID();
+        UUID undated = UUID.randomUUID();
+        serviceAt(Instant.parse("2026-02-01T00:00:00Z")).save(variant(newest, owner, general, false, "COUNT"));
+        serviceAt(Instant.parse("2026-01-01T00:00:00.123Z")).save(variant(oldest, owner, general, true, "DATAFRAME_PFB"));
+        serviceAt(Instant.parse("2025-01-01T00:00:00Z")).save(variant(undated, owner, general, false, "DATAFRAME"));
+        jdbc.update("UPDATE query SET created_at = NULL WHERE uuid = ?", bytes(undated));
+
+        assertThat(service.variantsOf(general, owner)).containsExactly(
+            new StoredQueryVariant(oldest, true, "DATAFRAME_PFB", Instant.parse("2026-01-01T00:00:00.123Z").toEpochMilli()),
+            new StoredQueryVariant(newest, false, "COUNT", Instant.parse("2026-02-01T00:00:00Z").toEpochMilli()),
+            new StoredQueryVariant(undated, false, "DATAFRAME", null)
+        );
+        assertThat(service.variantsOf(general, UUID.randomUUID())).isEmpty();
+        assertThat(service.variantsOf(UUID.randomUUID(), owner)).isEmpty();
     }
 
     private QueryPersistenceService serviceAt(Instant instant) {

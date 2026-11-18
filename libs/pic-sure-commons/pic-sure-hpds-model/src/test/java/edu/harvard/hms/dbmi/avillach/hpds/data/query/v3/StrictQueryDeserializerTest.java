@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.data.query.v3;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -76,5 +77,14 @@ public class StrictQueryDeserializerTest {
 
         assertNull(bound.phenotypicClause());
         assertEquals(List.of(), bound.select());
+    }
+
+    @Test
+    public void acceptsSampleMember() throws JsonProcessingException {
+        Envelope sample = LENIENT.readValue("{\"query\":{\"expectedResultType\":\"DATAFRAME\",\"sample\":true}}", Envelope.class);
+        Envelope omitted = LENIENT.readValue("{\"query\":{\"expectedResultType\":\"DATAFRAME\"}}", Envelope.class);
+
+        assertTrue(sample.query().sample());
+        assertFalse(omitted.query().sample());
     }
 }

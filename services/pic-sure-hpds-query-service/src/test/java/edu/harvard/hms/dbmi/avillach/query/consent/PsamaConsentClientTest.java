@@ -75,11 +75,27 @@ class PsamaConsentClientTest {
     }
 
     @Test
-    void emptyConsentSetFailsClosedAsBadGateway() {
+    void emptyConsentSetIsReturnedEmptyInsteadOfFailingTheLookup() {
         psama.stubFor(get(urlEqualTo("/auth/user/me/consents")).willReturn(okJson("{\"consents\":{}}")));
 
-        assertThatThrownBy(() -> client().fetch("Bearer caller-token"))
-            .isInstanceOfSatisfying(PicsureException.class, error -> assertThat(error.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
+        assertThat(client().fetch("Bearer caller-token")).isEmpty();
+    }
+
+    @Test
+    void answerWithoutAConsentsMemberIsReturnedEmptyInsteadOfFailingTheLookup() {
+        psama.stubFor(get(urlEqualTo("/auth/user/me/consents")).willReturn(okJson("{}")));
+
+        assertThat(client().fetch("Bearer caller-token")).isEmpty();
+    }
+
+    @Test
+    void answerWithoutABodyFailsClosedAsBadGateway() {
+        psama.stubFor(get(urlEqualTo("/auth/user/me/consents")).willReturn(aResponse().withStatus(200)));
+
+        assertThatThrownBy(() -> client().fetch("Bearer caller-token")).isInstanceOfSatisfying(PicsureException.class, error -> {
+            assertThat(error.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY);
+            assertThat(error.getErrorType()).isEqualTo("consent_lookup_failed");
+        });
     }
 
     @Test

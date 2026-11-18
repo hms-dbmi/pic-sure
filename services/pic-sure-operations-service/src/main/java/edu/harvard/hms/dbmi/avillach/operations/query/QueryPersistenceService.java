@@ -34,6 +34,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.dbmi.avillach.domain.StoredQueryVariant;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
@@ -450,6 +451,21 @@ public class QueryPersistenceService {
     @Transactional(readOnly = true)
     public StoredQuery get(UUID picsureId) {
         return toDto(load(picsureId));
+    }
+
+    /**
+     * Lists the variants one user stored under one general query, oldest first, as {@link QueryRepository#findVariantsOldestFirst} orders
+     * them. No query body is read.
+     *
+     * @param generalQuery the id of the general query
+     * @param owner the UUID of the user whose rows are listed
+     * @return the variants, or an empty list when the user has none under the id, which is also the answer for a general query of another
+     *         user and for one that does not exist
+     */
+    @Transactional(readOnly = true)
+    public List<StoredQueryVariant> variantsOf(UUID generalQuery, UUID owner) {
+        return repo.findVariantsOldestFirst(generalQuery, owner).stream()
+            .map(row -> new StoredQueryVariant(row.uuid(), row.sample(), row.resultType(), toEpochMillis(row.createdAt()))).toList();
     }
 
     /**

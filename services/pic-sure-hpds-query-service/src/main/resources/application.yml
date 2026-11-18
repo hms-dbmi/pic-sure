@@ -40,6 +40,8 @@ picsure:
       # QUERY_SERVICE_INTERNAL_TOKEN: shared secret sent as X-PIC-SURE-INTERNAL-TOKEN on every operations-service
       # call, checked by that service's InternalTokenFilter. Fail-closed on the operations-service side if unset.
       internal-token: ${QUERY_SERVICE_INTERNAL_TOKEN:}
+    row-lock:
+      wait-sec: 60
   internal:
     # PICSURE_INTERNAL_TOKEN: shared secret callers of /internal/** must send as X-PIC-SURE-INTERNAL-TOKEN. Blank rejects
     # every /internal/** call (fail-closed). Distinct from the outbound picsure.query.operations.internal-token above.
@@ -73,6 +75,9 @@ aggregate:
     chart-minimum-cohort: ${AGGREGATE_OBFUSCATION_CHART_MINIMUM_COHORT:50}
     # True: a studies-consents CROSS_COUNT returns only the total; per-study and per-consent counts are computed but not sent.
     cross-count-total-only: ${AGGREGATE_OBFUSCATION_CROSS_COUNT_TOTAL_ONLY:true}
+
+sample:
+  enabled: ${SAMPLE_ENABLED:false}
 
 management:
   endpoints:

@@ -372,6 +372,17 @@ public class PfbWriter implements ResultWriter {
         }
     }
 
+    /**
+     * Closes the Avro file when its header was already written. A writer that never wrote its header holds no open file, so nothing is
+     * fetched from the dictionary and nothing is written.
+     */
+    @Override
+    public void abandon() {
+        if (dataFileWriter != null) {
+            close();
+        }
+    }
+
     @Override
     public File getFile() {
         return file;

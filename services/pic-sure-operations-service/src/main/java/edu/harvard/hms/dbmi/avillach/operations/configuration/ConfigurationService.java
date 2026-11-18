@@ -24,7 +24,7 @@ import edu.harvard.hms.dbmi.avillach.operations.error.PicsureExceptions;
  * <p>{@code Configuration} carries a DB-level unique constraint on {@code (name, kind)}. The {@code findByNameAndKind} pre-check above
  * handles the common case, but a check-then-save is inherently racy under concurrent writers. {@link #create} and {@link #update} therefore
  * also use {@code saveAndFlush} inside a try/catch so a constraint violation that slips past the pre-check is translated to
- * {@code 409 CONFLICT} via {@link PicsureException}, mirroring {@code NamedDatasetService.saveOrConflict}.
+ * {@code 409 CONFLICT} via {@link PicsureException}.
  */
 @Service
 public class ConfigurationService {

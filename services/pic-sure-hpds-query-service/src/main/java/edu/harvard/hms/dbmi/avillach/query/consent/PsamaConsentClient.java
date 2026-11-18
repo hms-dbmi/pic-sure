@@ -24,14 +24,25 @@ public class PsamaConsentClient {
         this.http = http;
     }
 
+    /**
+     * Asks PSAMA for the consents of the caller who holds the given token.
+     *
+     * <p>An answer whose consents are absent or empty is returned as an empty map: the lookup worked and the caller holds nothing. Whoever
+     * reads the map decides what a caller without consents may do.
+     *
+     * @param authorizationHeader the caller's {@code Authorization} header, forwarded to PSAMA as it is
+     * @return the caller's consents as consent concept path to consent values, empty when the caller holds none
+     * @throws PicsureException 502 {@code consent_lookup_failed} when PSAMA cannot be reached, answers with an error status, or answers
+     *         with no body or one that cannot be read
+     */
     public Map<String, Set<String>> fetch(String authorizationHeader) {
         try {
             UserConsentsResponse response = http.get().uri("/auth/user/me/consents").header(HttpHeaders.AUTHORIZATION, authorizationHeader)
                 .header(CLIENT_TYPE_HEADER, CLIENT_TYPE_SERVICE).retrieve().body(UserConsentsResponse.class);
-            if (response == null || response.consents() == null || response.consents().isEmpty()) {
+            if (response == null) {
                 throw lookupFailed();
             }
-            return response.consents();
+            return response.consents() == null ? Map.of() : response.consents();
         } catch (RestClientException error) {
             PicsureException failure = lookupFailed();
             failure.initCause(error);

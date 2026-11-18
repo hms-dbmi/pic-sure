@@ -18,4 +18,12 @@ public interface ResultWriter {
     MediaType getResponseType();
 
     void close();
+
+    /**
+     * Releases a writer whose result will never be read. Unlike {@link #close()}, the file it leaves behind does not have to be complete.
+     * The default closes the writer.
+     */
+    default void abandon() {
+        close();
+    }
 }

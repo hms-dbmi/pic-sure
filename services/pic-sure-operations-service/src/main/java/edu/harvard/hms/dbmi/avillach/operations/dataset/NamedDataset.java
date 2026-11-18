@@ -12,16 +12,27 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.OneToOne;
-import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.ManyToOne;
 
 import edu.harvard.hms.dbmi.avillach.operations.query.Query;
 
-/** Persistence model for named datasets and their associated queries. */
+/**
+ * Persistence model for named datasets and their associated queries.
+ *
+ * <p>Many datasets can point at one query row: a user can save one query under several names, and nothing in the table or in this mapping
+ * limits a query row to one dataset.
+ *
+ * <p>{@code queryToVariantUuid} names the general query of the dataset, a {@code query_to_variant} row. For a dataset on a query row that
+ * has an owner it is a copy of that row's own value, written whenever the dataset is created or updated. A query row with no owner is under
+ * no general query, and a dataset on such a row holds the general query derived from the stored query for the user who read the dataset, or
+ * null until that user reads it. A stack that does not know the column can move {@code queryId} and leave it, so the value is only used
+ * after it has been checked against the query the dataset points at. The table has a foreign key to {@code query_to_variant}, which is not
+ * mapped here: the service reads and writes the id as a plain value.
+ *
+ * <p>{@code metadata} is stored as JSON text in a {@code TEXT} column, which holds 65,535 bytes.
+ */
 @Schema(description = "A NamedDataset object containing query, name, user, and archived status.")
 @Entity(name = "named_dataset")
-@Table(uniqueConstraints = {@UniqueConstraint(name = "unique_queryId_user", columnNames = {"queryId", "\"user\""})})
 public class NamedDataset {
 
     // Hibernate generates a random UUID for a UUID-typed id with a bare @GeneratedValue.
@@ -31,9 +42,13 @@ public class NamedDataset {
     private UUID uuid;
 
     @Schema(description = "The associated Query")
-    @OneToOne
+    @ManyToOne
     @JoinColumn(name = "queryId")
     private Query query;
+
+    @Schema(description = "The id of the general query the associated Query is a variant of")
+    @Column(name = "query_to_variant_uuid", columnDefinition = "BINARY(16)")
+    private UUID queryToVariantUuid;
 
     // Quoted because H2 reserves `user`; Hibernate renders the appropriate identifier quoting for each dialect.
     @Schema(description = "The user identifier")
@@ -48,7 +63,7 @@ public class NamedDataset {
     private Boolean archived = false;
 
     @Schema(description = "A json string object containing override specific values")
-    @Column(length = 8192)
+    @Column(length = 65535)
     @Convert(converter = JsonConverter.class)
     private Map<String, Object> metadata;
 
@@ -85,6 +100,26 @@ public class NamedDataset {
 
     public Query getQuery() {
         return query;
+    }
+
+    /**
+     * Sets the general query of the dataset.
+     *
+     * @param queryToVariantUuid the id of the {@code query_to_variant} row, or null to file the dataset under none
+     * @return this dataset
+     */
+    public NamedDataset setQueryToVariantUuid(UUID queryToVariantUuid) {
+        this.queryToVariantUuid = queryToVariantUuid;
+        return this;
+    }
+
+    /**
+     * Returns the id of the general query of the dataset.
+     *
+     * @return the id of the {@code query_to_variant} row, or null for a dataset that is filed under none
+     */
+    public UUID getQueryToVariantUuid() {
+        return queryToVariantUuid;
     }
 
     public NamedDataset setUser(String user) {
