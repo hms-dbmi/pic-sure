@@ -1,0 +1,6 @@
+# everything the stack builds and loads
+work/
+# per-machine overrides of .env.defaults
+local.env
+reports/
+__pycache__/

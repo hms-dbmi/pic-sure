@@ -1,0 +1,12 @@
+{
+  "input": { "uri": "s3://fixture-bucket/fixture/allConcepts.csv", "versionId": null, "eTag": "fixture-etag-0001", "size": 1000, "lastModifiedMillis": 1700000000000 },
+  "depth": 1, "consentsPath": "\\_consents\\", "globals": "by-patient", "headerRowDropped": false,
+  "timestamps": { "zero": 1, "likelySeconds": 1 },
+  "partitions": [
+    { "name": "phs000000.c1", "kind": "study", "rows": 65, "patients": 4, "file": "phs000000.c1-allConcepts.csv" },
+    { "name": "phs000000.c2", "kind": "study", "rows": 5, "patients": 4, "file": "phs000000.c2-allConcepts.csv" },
+    { "name": "phs999999.c2", "kind": "study", "rows": 6, "patients": 2, "file": "phs999999.c2-allConcepts.csv" },
+    { "name": "phs123456.c1", "kind": "study", "rows": 4, "patients": 2, "file": "phs123456.c1-allConcepts.csv" },
+    { "name": "tutorial-biolincc_test", "kind": "study", "rows": 4, "patients": 2, "file": "tutorial-biolincc_test-allConcepts.csv" }
+  ]
+}
