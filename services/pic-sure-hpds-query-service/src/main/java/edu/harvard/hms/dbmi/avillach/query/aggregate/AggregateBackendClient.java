@@ -16,6 +16,7 @@ import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.hms.dbmi.avillach.query.config.AggregateProperties;
 import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
+import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsQueryBody;
 import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
 
 /**
@@ -81,11 +82,14 @@ public class AggregateBackendClient {
 
     // ---- internals ----
 
-    /** Carries the inbound query into a fresh downstream body. */
+    /**
+     * Carries the inbound query into a fresh downstream body. The open backend receives the query without the {@code picsureId} the request
+     * carried, because no open route assigns a result id.
+     */
     private QueryRequest chain(QueryRequest in) {
         QueryRequest out = new GeneralQueryRequest();
         if (in != null) {
-            out.setQuery(in.getQuery());
+            out.setQuery(HpdsQueryBody.of(in.getQuery(), null));
         }
         return out;
     }

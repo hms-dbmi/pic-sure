@@ -10,6 +10,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
@@ -25,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,6 +35,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.mock.http.client.MockClientHttpRequest;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
@@ -199,6 +202,23 @@ class QueryServiceClientTest {
         assertEquals(1, event.getMetadata().get("response_series_count"));
         assertEquals(2, event.getMetadata().get("response_point_count"));
         assertEquals(List.of("\\Nhanes\\demographics\\AGE\\"), event.getMetadata().get("response_series_keys"));
+    }
+
+    @Test
+    void subQueryKeepsSampleAndClearsPicsureId() throws Exception {
+        UUID id = UUID.randomUUID();
+        mockServer.expect(requestTo(BASE_URL + "/hpds/auth/query/sync")).andExpect(request -> {
+            JsonNode sent = objectMapper.readTree(((MockClientHttpRequest) request).getBodyAsString()).path("query");
+            assertTrue(sent.path("sample").asBoolean());
+            assertFalse(sent.hasNonNull("picsureId"));
+            assertEquals(id.toString(), sent.path("id").asText());
+            assertEquals("CATEGORICAL_CROSS_COUNT", sent.path("expectedResultType").asText());
+        }).andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+
+        Query query = new Query(List.of(), List.of(), null, List.of(), null, UUID.randomUUID(), id, true);
+        client.getAuthCrossCounts(query, ResultType.CATEGORICAL_CROSS_COUNT, IDENTITY, "request-8", DistributionType.CATEGORICAL);
+
+        mockServer.verify();
     }
 
     @Test

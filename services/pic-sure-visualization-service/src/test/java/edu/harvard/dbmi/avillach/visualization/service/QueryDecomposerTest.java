@@ -7,6 +7,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.*;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -101,5 +102,20 @@ class QueryDecomposerTest {
         assertEquals(1, result.size());
         // Should use the filter path, not the select path
         assertEquals(List.of("\\demographics\\race\\"), result.get(0).query().select());
+    }
+
+    @Test
+    void subQueriesKeepSampleAndClearPicsureId() {
+        PhenotypicFilter required = new PhenotypicFilter(PhenotypicFilterType.REQUIRED, "\\demographics\\AGE\\", null, null, null, null);
+        Query query = new Query(List.of(), List.of(), required, List.of(), null, UUID.randomUUID(), UUID.randomUUID(), true);
+
+        List<QueryDecomposer.SubQueryDescriptor> result = decomposer.decompose(query);
+
+        assertEquals(2, result.size());
+        for (QueryDecomposer.SubQueryDescriptor subQuery : result) {
+            assertTrue(subQuery.query().sample());
+            assertNull(subQuery.query().picsureId());
+            assertNull(subQuery.query().id());
+        }
     }
 }
