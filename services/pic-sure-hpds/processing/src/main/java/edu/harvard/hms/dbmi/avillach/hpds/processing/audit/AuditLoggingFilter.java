@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing.audit;
 
+import static edu.harvard.hms.dbmi.avillach.commons.audit.AuditLoggingFilter.bytesTheClientReceived;
+
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
@@ -12,6 +14,7 @@ import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.dbmi.avillach.logging.RequestInfo;
 import edu.harvard.dbmi.avillach.logging.SessionIdResolver;
+import edu.harvard.hms.dbmi.avillach.commons.audit.ByteCountingResponseWrapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -22,7 +25,9 @@ import jakarta.servlet.http.HttpServletResponse;
  * set by {@link AuditInterceptor} (reading {@link AuditEvent} annotations) as request attributes. This filter reads those attributes and
  * falls back to OTHER / HTTP method if none are set. <p> Domain-specific metadata (query_id, result_type, etc.) is set by controllers via
  * {@link AuditAttributes#putMetadata}. <p> Not annotated {@code @Component} — each application registers it via its own
- * {@code LoggingConfig} to allow sharing across separately-scanned Spring Boot apps.
+ * {@code LoggingConfig} to allow sharing across separately-scanned Spring Boot apps. <p> The response is wrapped in a
+ * {@link ByteCountingResponseWrapper}, and {@code bytes} is what
+ * {@link edu.harvard.hms.dbmi.avillach.commons.audit.AuditLoggingFilter#bytesTheClientReceived} returns for it.
  */
 public class AuditLoggingFilter extends OncePerRequestFilter {
 
@@ -49,8 +54,12 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
 
         long startTime = System.currentTimeMillis();
 
+        ByteCountingResponseWrapper countingResponse = new ByteCountingResponseWrapper(response);
+        boolean chainCompleted = false;
+
         try {
-            filterChain.doFilter(request, response);
+            filterChain.doFilter(request, countingResponse);
+            chainCompleted = true;
         } finally {
             try {
                 if (loggingClient == null || !loggingClient.isEnabled()) {
@@ -81,7 +90,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
                 // Response info
                 int responseStatus = response.getStatus();
                 String contentType = response.getContentType();
-                Long bytes = parseContentLength(response.getHeader("Content-Length"));
+                Long bytes = bytesTheClientReceived(request, countingResponse, chainCompleted);
 
                 String queryString = request.getQueryString();
                 RequestInfo requestInfo = RequestInfo.builder().method(method).url(fullPath).queryString(queryString).srcIp(srcIp)
@@ -142,16 +151,5 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
             return xForwardedFor.split(",")[0].trim();
         }
         return request.getRemoteAddr();
-    }
-
-    static Long parseContentLength(String header) {
-        if (header == null) {
-            return null;
-        }
-        try {
-            return Long.parseLong(header);
-        } catch (NumberFormatException e) {
-            return null;
-        }
     }
 }

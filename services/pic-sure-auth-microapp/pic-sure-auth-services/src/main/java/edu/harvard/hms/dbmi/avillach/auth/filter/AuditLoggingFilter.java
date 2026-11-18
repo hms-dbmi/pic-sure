@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.filter;
 
+import static edu.harvard.hms.dbmi.avillach.commons.audit.AuditLoggingFilter.bytesTheClientReceived;
+
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
@@ -11,6 +13,7 @@ import edu.harvard.dbmi.avillach.logging.SessionIdResolver;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomApplicationDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
+import edu.harvard.hms.dbmi.avillach.commons.audit.ByteCountingResponseWrapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -53,14 +56,29 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     ) throws ServletException, IOException {
         request.setAttribute(AUDIT_START_TIME, System.currentTimeMillis());
 
+        ByteCountingResponseWrapper countingResponse = new ByteCountingResponseWrapper(response);
+        boolean chainCompleted = false;
+
         try {
-            filterChain.doFilter(request, response);
+            filterChain.doFilter(request, countingResponse);
+            chainCompleted = true;
         } finally {
-            logRequest(request, response);
+            logRequest(request, response, countingResponse, chainCompleted);
         }
     }
 
-    private void logRequest(HttpServletRequest request, HttpServletResponse response) {
+    /**
+     * Builds and sends the audit event for a finished request. Nothing thrown while doing so reaches the caller. {@code bytes} is what
+     * {@link edu.harvard.hms.dbmi.avillach.commons.audit.AuditLoggingFilter#bytesTheClientReceived} returns for the counting wrapper.
+     *
+     * @param request the request being audited
+     * @param response the response the status and content type are read from
+     * @param countingResponse the counting wrapper the rest of the chain wrote to
+     * @param chainCompleted whether the rest of the chain returned without throwing
+     */
+    private void logRequest(
+        HttpServletRequest request, HttpServletResponse response, ByteCountingResponseWrapper countingResponse, boolean chainCompleted
+    ) {
         try {
             if (loggingClient == null || !loggingClient.isEnabled()) {
                 return;
@@ -110,11 +128,12 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
             // Response info
             int responseStatus = response.getStatus();
             String contentType = response.getContentType();
+            Long bytes = bytesTheClientReceived(request, countingResponse, chainCompleted);
 
             // Build RequestInfo
             RequestInfo requestInfo = RequestInfo.builder().method(method).url(request.getRequestURI()).srcIp(srcIp).destIp(resolvedDestIp)
                 .destPort(resolvedDestPort).httpUserAgent(request.getHeader("User-Agent")).status(responseStatus).duration(duration)
-                .httpContentType(contentType).build();
+                .httpContentType(contentType).bytes(bytes).build();
 
             // Build metadata
             Map<String, Object> metadata = new HashMap<>();
