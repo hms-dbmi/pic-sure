@@ -119,6 +119,13 @@ public class ResultStoreStream extends InputStream {
 		writer.close();
 	}
 
+	/**
+	 * Releases the writer of a result that will never be read, as {@link ResultWriter#abandon()} describes it.
+	 */
+	public void abandonWriter() {
+		writer.abandon();
+	}
+
 	public File getFile() {
 		return writer.getFile();
 	}

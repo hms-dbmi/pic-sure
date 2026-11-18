@@ -41,6 +41,13 @@ public class AsyncResult implements Runnable, Comparable<AsyncResult> {
         stream.closeWriter();
     }
 
+    /**
+     * Releases the writer of a job that will never run, without completing its result file.
+     */
+    public void abandonWriter() {
+        stream.abandonWriter();
+    }
+
     private final MediaType responseType;
 
     public MediaType getResponseType() {

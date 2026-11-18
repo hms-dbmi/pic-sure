@@ -3,7 +3,6 @@ package edu.harvard.hms.dbmi.avillach.hpds.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
 import edu.harvard.dbmi.avillach.domain.*;
-import edu.harvard.dbmi.avillach.util.UUIDv5;
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.audit.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
@@ -200,24 +199,17 @@ public class PicSureV3Service {
         if (!List.of(ResultType.DATAFRAME_TIMESERIES, ResultType.PATIENTS).contains(query.expectedResultType())) {
             return ResponseEntity.status(400).body("The write endpoint only writes time series dataframes. Fix result type.");
         }
-        String hpdsQueryID;
+        AsyncResult result;
         try {
-            QueryStatus queryStatus = convertToQueryStatus(queryService.runQuery(query));
-            String status = queryStatus.getResourceStatus();
-            hpdsQueryID = queryStatus.getResourceResultId();
-            while ("RUNNING".equalsIgnoreCase(status) || "PENDING".equalsIgnoreCase(status)) {
+            result = queryService.runQuery(query, QueryV3Service.contentKeyFor(query));
+            while (AsyncResult.Status.RUNNING.equals(result.getStatus()) || AsyncResult.Status.PENDING.equals(result.getStatus())) {
                 Thread.sleep(10000); // Yea, this is not restful. Sorry.
-                status = convertToQueryStatus(queryService.getStatusFor(hpdsQueryID)).getResourceStatus();
             }
         } catch (IOException | InterruptedException e) {
             log.warn("Error waiting for response", e);
             return ResponseEntity.internalServerError().build();
         }
 
-        AsyncResult result = queryService.getResultFor(UUID.fromString(hpdsQueryID));
-        if (result == null) {
-            return ResponseEntity.status(404).build();
-        }
         if (AsyncResult.Status.ERROR.equals(result.getStatus())) {
             return ResponseEntity.status(500).build();
         }
@@ -228,11 +220,11 @@ public class PicSureV3Service {
         boolean success = false;
         Query queryCopy = query.generateId();
         if ("phenotypic".equals(datatype)) {
-            success = fileSharingService.createPhenotypicData(queryCopy);
+            success = fileSharingService.createPhenotypicData(queryCopy, result);
         } else if ("genomic".equals(datatype)) {
             success = fileSharingService.createGenomicData(queryCopy);
         } else if ("patients".equals(datatype)) {
-            success = ResultType.PATIENTS.equals(queryCopy.expectedResultType()) && fileSharingService.createPatientList(queryCopy);
+            success = ResultType.PATIENTS.equals(queryCopy.expectedResultType()) && fileSharingService.createPatientList(queryCopy, result);
         }
         return success ? ResponseEntity.ok().build() : ResponseEntity.internalServerError().build();
     }
@@ -259,9 +251,13 @@ public class PicSureV3Service {
 
     @AuditEvent(type = "QUERY", action = "query.status")
     @PostMapping("/query/{resourceQueryId}/status")
-    public QueryStatus queryStatus(@PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest request) {
+    public ResponseEntity<QueryStatus> queryStatus(@PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest request) {
         AuditAttributes.putMetadata(httpRequest, "query_id", queryId.toString());
-        return convertToQueryStatus(queryService.getStatusFor(queryId.toString()));
+        AsyncResult result = queryService.getStatusFor(queryId.toString());
+        if (result == null) {
+            return ResponseEntity.status(404).build();
+        }
+        return ResponseEntity.ok(convertToQueryStatus(result));
     }
 
     @AuditEvent(type = "OTHER", action = "query.format")
@@ -359,7 +355,7 @@ public class PicSureV3Service {
     private ResponseEntity queryOkResponse(Object obj, Query incomingQuery, MediaType mediaType) {
         Query query = incomingQuery.generateId();
         HttpHeaders responseHeaders = new HttpHeaders();
-        responseHeaders.set(QUERY_METADATA_FIELD, UUIDv5.UUIDFromString(query.toString()).toString());
+        responseHeaders.set(QUERY_METADATA_FIELD, QueryV3Service.resultKeyFor(query).toString());
         return ResponseEntity.ok().contentType(mediaType).headers(responseHeaders).body(obj);
     }
 }
