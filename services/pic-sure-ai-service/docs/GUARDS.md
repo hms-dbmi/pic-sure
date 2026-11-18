@@ -10,7 +10,7 @@ a check is ever returned.
 
 | What the model does | What the service does | Kind | Where |
 | --- | --- | --- | --- |
-| Invents a concept path, often by copying the `phs999999` placeholder from a tool example | Refuses any call using a path that no tool result or the researcher's current query contained | refuse | `ConceptPaths`, `ToolUseLoopService.callToolSafely` |
+| Invents a concept path, often by copying the `phs999999` placeholder from a tool example | Refuses any call using a path that no tool result or the researcher's current query contained. A cross count's cells do not count, since an open CROSS_COUNT is keyed by internal consent paths; a reply may still name them | refuse | `ConceptPaths`, `ToolUseLoopService.callToolSafely` |
 | Writes a known path with doubled backslashes, or without the leading or trailing one | Treats it as the same path, and returns it to the UI exactly as the tool returned it | repair | `ConceptPaths.canonical` |
 | Sends tool arguments that are not valid JSON (usually unescaped backslashes) | Refuses, with a hint to escape backslashes as `\\` | refuse | `ConceptPaths.isMalformed` |
 | Leaks chat-template tokens into a tool name (`search_concepts<\|channel\|>commentary`) or misspells it (`search_conconcepts`) | Trims the junk and snaps to the clearly closest tool name. Left as-is, Bedrock rejects the whole conversation when the name is replayed | repair | `ConverseSdkModelClient.toolName`, `RequestedToolCall` |
@@ -36,7 +36,7 @@ a check is ever returned.
 | Says the selected variables changed ("your selected variables now include ...") when no proposal this message changed them | Asks the model once to rewrite its reply saying only what actually changed. Sentences that say the selection did *not* change do not count, and a counted query the reply says it applied is proposed instead (next rows) | repair (one round-trip) | `ReplyText.claimsSelectionChanged`, `ToolUseLoopService.claimsUnmadeSelectionChange` |
 | Appends a recap of the researcher's screen ("Current view: query ..., facets ...") to its reply | Removes the trailing recap, which also keeps it out of stored history | repair | `ReplyText` |
 | Says the variables are "now selected" after a lookup the service applied as a search | The `propose_query` result says what was applied ("Their table now lists the variables matching ... nothing was added to them") instead of a bare `received` | prevent | `ProposalRules.accepted` |
-| Counts the cohort with `count_participants`, says the query changed ("I included BMI in the query"), but never calls `propose_query` | Runs the counted query through every check a real `propose_query` call gets. Only a sentence saying the query changed counts, not an offer ("let me know if you'd like ...") | repair | `ReplyText.claimsQueryChanged`, `ToolUseLoopService.proposeCountedQuery` |
+| Counts the cohort with `count_participants` or `authorized_count_participants`, says the query changed ("I included BMI in the query"), but never calls `propose_query` | Runs the counted query through every check a real `propose_query` call gets. Only a sentence saying the query changed counts, not an offer ("let me know if you'd like ...") | repair | `ReplyText.claimsQueryChanged`, `ToolUseLoopService.proposeCountedQuery` |
 | Answers from one search, naming paths from it, but proposes nothing (often listing only some of the matches) | Proposes that search, so the table shows every match. With more than one matching search it does not guess, except that a reply claiming the screen changed, or a turn whose last matching search was narrowed by facets, always gets the last matching search (with those facets) | repair | `ToolUseLoopService.respond`, `ToolUseLoopService.replyShowsSearchResults` |
 | Keeps retrying a tool that fails with the same error (even with different arguments) | Adds "retrying will not help" to the second identical error; on the third, stops tool use and asks for an answer, the same way as the iteration cap | repair | `ToolUseLoopService` (`MAX_REPEATED_FAILURES`) |
 | Writes its proposal as the reply instead of calling `propose_query` | Runs that JSON through every check a real `propose_query` call gets; if any fails, nothing is proposed | repair | `ReplyText.proposalArguments`, `ToolUseLoopService.proposeFromReply` |
@@ -58,6 +58,22 @@ Consequences worth knowing:
   build on what is on screen. They go in the user turn rather than the system prompt so the system prompt stays identical and cacheable.
   The UI's empty starting query (nothing selected, no filters) is left out: shown, it reads to the model as a query on screen for it
   to change, which pushes lookups toward `propose_query`.
+
+## Per-study counts
+
+"How many participants are in each study?" is not a dictionary question: studies are not variables, so searching for them finds nothing,
+and the model tends to loop on searches or invent paths such as `\Nhanes\SUBJECT_ID\`. Three things keep it honest:
+
+- The system prompt sends it to `authorized_study_counts` (or `cross_count` for an open caller) before any search, and says to report
+  the tool's note and to say the breakdown is not available rather than search for study variables.
+- An empty open `cross_count` result carries a note saying the channel answered and the breakdown is not defined for this data, so
+  the model does not read an empty list as a failure to retry.
+- `authorized_study_counts` uses study consents when the open channel lists them per study, which it does not by default (it returns only the total, as the UI reads it) or when the data has none, and otherwise counts each dataset by its largest demographic candidate, which is the route most deployments take.
+- A lone `\_studies_consents\` cell in a `cross_count` result is the total across studies; the result's `note` says so, and the reply must not present it as a per-study count.
+  That figure is a lower bound unless one candidate covers everyone, and the tool says so (`basis`, `matchesTotal`, `note`); the
+  reply should pass that on and must not add the studies into a total unless `matchesTotal` is true.
+
+Known limit: a dataset whose participants all lack the demographic candidates is undercounted, and only `matchesTotal` shows it.
 
 ## Known limits not handled by the service
 

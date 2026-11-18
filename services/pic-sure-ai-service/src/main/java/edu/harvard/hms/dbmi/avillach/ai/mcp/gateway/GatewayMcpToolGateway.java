@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.ai.mcp.gateway;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -53,11 +54,23 @@ public class GatewayMcpToolGateway implements McpToolGateway {
     private static final String PROTOCOL_VERSION = "2025-06-18";
     private static final MediaType EVENT_STREAM = MediaType.valueOf("text/event-stream");
     private static final String UNAVAILABLE = "The dictionary/query service is unavailable right now. Try again shortly.";
+    /** A count that times out would do the same work again, so unlike {@link #UNAVAILABLE} this caps retries. */
+    private static final String COUNT_UNAVAILABLE =
+        "The count did not finish in time, or the query service could not be reached. Do not run "
+            + "the same count again in this turn; tell the researcher, or try a narrower query.";
 
     /** Header carrying the shared secret that tells the gateway a {@code /mcp} call comes from this service. */
     static final String SERVICE_TOKEN_HEADER = VerifiedCaller.AI_SERVICE_TOKEN_HEADER;
 
+    /**
+     * The count tools, open and authorized, which can take far longer than a dictionary call, so they get the count read timeout. The names
+     * are pic-sure-mcp's.
+     */
+    static final Set<String> COUNT_TOOLS =
+        Set.of("count_participants", "cross_count", "authorized_count_participants", "authorized_cross_count", "authorized_study_counts");
+
     private final RestClient restClient;
+    private final RestClient countClient;
     private final ObjectMapper objectMapper;
     private final String serviceToken;
     private volatile boolean initialized;
@@ -69,12 +82,15 @@ public class GatewayMcpToolGateway implements McpToolGateway {
      * @param assistantEnabled {@code picsure.ai.enabled}; when false a blank {@code gatewayUrl} or {@code serviceToken} does not stop the
      *        service starting, because a disabled assistant never calls the gateway
      * @param readTimeout without one the HTTP client waits forever, hanging the chat turn
+     * @param countReadTimeout the read timeout for {@link #COUNT_TOOLS} calls, longer than pic-sure-mcp's own wait for them so that a slow
+     *        count ends with the MCP's message
      */
     public GatewayMcpToolGateway(
         @Value("${picsure.ai.mcp.gateway-url:}") String gatewayUrl, @Value("${picsure.ai.mcp.service-token:}") String serviceToken,
         @Value("${picsure.ai.enabled:false}") boolean assistantEnabled, ObjectMapper objectMapper,
         @Value("${picsure.ai.mcp.connect-timeout:5s}") Duration connectTimeout,
-        @Value("${picsure.ai.mcp.read-timeout:20s}") Duration readTimeout
+        @Value("${picsure.ai.mcp.read-timeout:20s}") Duration readTimeout,
+        @Value("${picsure.ai.mcp.count-read-timeout:130s}") Duration countReadTimeout
     ) {
         boolean urlBlank = gatewayUrl == null || gatewayUrl.isBlank();
         boolean tokenBlank = serviceToken == null || serviceToken.isBlank();
@@ -85,17 +101,16 @@ public class GatewayMcpToolGateway implements McpToolGateway {
             throw new IllegalStateException("picsure.ai.mcp.service-token is required when picsure.ai.enabled=true and mcp.mode=gateway");
         }
         this.serviceToken = tokenBlank ? "" : serviceToken.trim();
-        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(connectTimeout);
-        requestFactory.setReadTimeout(readTimeout);
-        this.restClient = RestClient.builder().baseUrl((urlBlank ? "" : gatewayUrl) + "/mcp").requestFactory(requestFactory).build();
+        String baseUrl = (urlBlank ? "" : gatewayUrl) + "/mcp";
+        this.restClient = client(baseUrl, connectTimeout, readTimeout);
+        this.countClient = client(baseUrl, connectTimeout, countReadTimeout);
         this.objectMapper = objectMapper;
     }
 
     @Override
     public List<ToolDefinition> listTools(CallerContext caller) {
         ensureInitialized(caller);
-        JsonNode response = post(rpcRequest(1, "tools/list", objectMapper.createObjectNode()), caller);
+        JsonNode response = post(restClient, rpcRequest(1, "tools/list", objectMapper.createObjectNode()), caller);
         // Thrown, not read as an empty list: with no tools the turn would still run, and the model would answer from memory.
         if (response == null || !response.path("result").path("tools").isArray()) {
             String message = response == null ? "empty response" : response.path("error").path("message").asText("no tool list");
@@ -120,10 +135,10 @@ public class GatewayMcpToolGateway implements McpToolGateway {
         try {
             // Inside the try: a failed handshake is the same outage to the model, and its raw message (URL, status) must not reach it.
             ensureInitialized(caller);
-            response = post(rpcRequest(2, "tools/call", params), caller);
+            response = post(COUNT_TOOLS.contains(name) ? countClient : restClient, rpcRequest(2, "tools/call", params), caller);
         } catch (RestClientException e) {
             log.warn("MCP tools/call failed: tool={} error={}", name, ErrorSummary.of(e));
-            return ToolResult.failure(UNAVAILABLE);
+            return ToolResult.failure(COUNT_TOOLS.contains(name) ? COUNT_UNAVAILABLE : UNAVAILABLE);
         }
         if (response == null) {
             log.warn("MCP tools/call returned no body: tool={}", name);
@@ -166,7 +181,7 @@ public class GatewayMcpToolGateway implements McpToolGateway {
             clientInfo.put("name", "pic-sure-ai-service");
             clientInfo.put("version", "1.0.0");
             params.set("clientInfo", clientInfo);
-            JsonNode response = post(rpcRequest(0, "initialize", params), caller);
+            JsonNode response = post(restClient, rpcRequest(0, "initialize", params), caller);
             JsonNode error = response == null ? null : response.path("error");
             if (error != null && !error.isMissingNode()) {
                 throw new RestClientException("MCP initialize failed: " + error.path("message").asText("JSON-RPC error"));
@@ -175,14 +190,21 @@ public class GatewayMcpToolGateway implements McpToolGateway {
             ObjectNode notification = objectMapper.createObjectNode();
             notification.put("jsonrpc", "2.0");
             notification.put("method", "notifications/initialized");
-            post(notification, caller);
+            post(restClient, notification, caller);
             initialized = true;
         }
     }
 
-    private JsonNode post(ObjectNode body, CallerContext caller) {
+    private static RestClient client(String baseUrl, Duration connectTimeout, Duration readTimeout) {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(connectTimeout);
+        requestFactory.setReadTimeout(readTimeout);
+        return RestClient.builder().baseUrl(baseUrl).requestFactory(requestFactory).build();
+    }
+
+    private JsonNode post(RestClient client, ObjectNode body, CallerContext caller) {
         try {
-            return restClient.post().contentType(MediaType.APPLICATION_JSON).accept(MediaType.APPLICATION_JSON, EVENT_STREAM)
+            return client.post().contentType(MediaType.APPLICATION_JSON).accept(MediaType.APPLICATION_JSON, EVENT_STREAM)
                 .headers(headers -> {
                     if (!serviceToken.isEmpty()) {
                         headers.set(SERVICE_TOKEN_HEADER, serviceToken);

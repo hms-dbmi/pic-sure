@@ -24,7 +24,8 @@ import static io.swagger.v3.oas.annotations.media.Schema.RequiredMode.NOT_REQUIR
  * the tool, and {@code authorizationFilters}, {@code picsureId}, {@code id}, and {@code not} on either clause type do not exist here, so
  * the strict binder rejects them as unknown fields. {@link #toQuery} maps the input onto the real record.
  *
- * @param select concept paths to select; they have no effect on the open count tools, and in adapter code they add output columns for
+ * @param select concept paths to select; they have no effect on the open count tools or the authorized single count, they name what
+ *        authorized_cross_count counts for CROSS_COUNT and OBSERVATION_CROSS_COUNT, and in adapter code they add output columns for
  *        participant and timestamp results and name what a cross_count counts
  * @param phenotypicClause the phenotypic filter tree, a single filter or a nested subquery
  * @param genomicFilters genomic filters
@@ -41,8 +42,9 @@ public record QueryInput(
 
     /** The schema description of {@code select}, which the model reads in every query tool's input schema. */
     public static final String SELECT_DESCRIPTION = "Concept paths to select. select has no effect on the open count tools, "
-        + "count_participants and cross_count. For get_adapter_code, select adds output columns for participant and timestamp results, "
-        + "and names the concept paths cross_count counts on the authorized channel.";
+        + "count_participants and cross_count, or on authorized_count_participants. For authorized_cross_count, select is required with "
+        + "CROSS_COUNT and OBSERVATION_CROSS_COUNT and names the concept paths counted. For get_adapter_code, select adds output columns "
+        + "for participant and timestamp results, and names the concept paths cross_count counts on the authorized channel.";
 
     /** Longest concept path accepted in a filter or in {@code select}, in characters. */
     public static final int MAX_CONCEPT_PATH_LENGTH = 2000;

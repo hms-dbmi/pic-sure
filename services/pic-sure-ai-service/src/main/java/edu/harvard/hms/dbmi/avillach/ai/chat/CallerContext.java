@@ -46,6 +46,14 @@ public record CallerContext(String authorization, String requestId, String userI
     }
 
     /**
+     * @return this caller as an open-access one, for a turn the UI marked open-access: the same token and user, but never offered an
+     *         authorized tool. Its {@link #owner()} differs from the original's, so conversations are keyed by the original.
+     */
+    public CallerContext asOpenAccess() {
+        return new CallerContext(authorization, requestId, userId, GatewayUserResolver.ACCESS_TYPE_OPEN);
+    }
+
+    /**
      * Writes {@link #authorization()} onto an outbound request's headers. A tool gateway calls this when forwarding the caller's identity
      * to the MCP endpoint; never used for the Bedrock call, which has its own, unrelated AWS credential.
      *

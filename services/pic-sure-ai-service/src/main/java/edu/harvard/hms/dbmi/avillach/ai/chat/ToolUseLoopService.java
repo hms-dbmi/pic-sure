@@ -80,23 +80,35 @@ class ToolUseLoopService implements ChatOrchestrator {
     );
 
     /**
-     * A logged-in researcher has exact, consent-filtered counts in their results panel, and the only counts this service can run are the
-     * obfuscated open ones, so those tools are withheld and the prompt says the assistant cannot count.
+     * A logged-in researcher may see both the open and the authorized pages, so they get both kinds of count: exact ones on the authorized
+     * channel with their own token, and obfuscated open ones. The prompt keeps the two apart. Open callers get no authorized tools.
      */
     static final String AUTHORIZED_PROMPT = PROMPT_TEMPLATE.replace(
-        "{{capabilities}}", "You can search the data dictionary and list facets,"
+        "{{capabilities}}",
+        "You can search the data dictionary, list facets, and run exact counts filtered by the researcher's own consents as well as obfuscated open-access counts,"
     ).replace(
         "{{counts}}",
-        "You cannot count participants: the researcher's own results panel shows their exact counts, so when they ask how many participants match, say that and point them to it; never give or estimate a count."
+        "The authorized count tools give exact counts, limited to the studies and consents the researcher can access, so they find no one in a study outside that access. The open count tools give obfuscated open-access counts that ignore their consents. Use an exact count by default; use an open count when they ask for a feasibility check or an open-access number, or when an exact count finds no one or is refused for lack of access and the data may be outside what they can access. Report each number separately and say which kind it is; you may say an open count was run because the exact count found no one or was refused, but never present an open count as exact, add the two, or treat their difference as meaningful."
     );
 
-    /** Tools that run on the obfuscated open channel, which an authorized caller's own results panel supersedes. */
-    static final Set<String> OPEN_ONLY_TOOLS = Set.of("count_participants", "cross_count");
+    private static final String AUTHORIZED_COUNT_PARTICIPANTS = "authorized_count_participants";
+
+    /** Tools that run on the authorized channel with the caller's token, which an open caller's token cannot use. */
+    static final Set<String> AUTHORIZED_ONLY_TOOLS =
+        Set.of(AUTHORIZED_COUNT_PARTICIPANTS, "authorized_cross_count", "authorized_study_counts");
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
     static final String LIST_FACETS = "list_facets";
-    private static final String COUNT_PARTICIPANTS = "count_participants";
+    /** The single-count tools; a successful call's query is kept for {@link #proposeCountedQuery}. */
+    private static final Set<String> COUNTED_QUERY_TOOLS = Set.of("count_participants", AUTHORIZED_COUNT_PARTICIPANTS);
+
+    /**
+     * The cross-count tools, and the per-study count tool, whose studies are consent paths or dataset names. Their cells echo the paths the
+     * query named, or, for an open CROSS_COUNT, internal consent paths the open channel put in, so their results never teach the path guard
+     * a path.
+     */
+    private static final Set<String> CROSS_COUNT_TOOLS = Set.of("cross_count", "authorized_cross_count", "authorized_study_counts");
     static final String SEARCH_CONCEPTS = "search_concepts";
 
     private static final int MAX_EMPTY_RETRIES = 2;
@@ -182,7 +194,9 @@ class ToolUseLoopService implements ChatOrchestrator {
         try {
             // Inside the try so a rejected request still gets its one turn line (a WARN naming the invalid field).
             ProposeQueryInput currentQuery = ChatStateValidator.requireValid(request);
-            return handleTurn(request, caller, stats, currentQuery);
+            // An open-access page narrows the tools and prompt only; the conversation stays keyed by who the caller really is.
+            CallerContext effective = request.openAccessRequested() ? caller.asOpenAccess() : caller;
+            return handleTurn(request, caller.owner(), effective, stats, currentQuery);
         } catch (PicsureException e) {
             logFailedTurn(caller, stats, e.getStatus(), e.getErrorType(), e.getCause() == null ? e : e.getCause());
             throw e;
@@ -212,19 +226,30 @@ class ToolUseLoopService implements ChatOrchestrator {
         NONE, ITERATION_CAP, REPEATED_FAILURE
     }
 
+    /**
+     * @param tool a tool name
+     * @return whether the concept paths in that tool's results may be used in a tool call or a proposal, which is false for the cross-count
+     *         tools; a reply may still name them (see {@link TurnState#quotablePaths})
+     */
+    static boolean teachesPaths(String tool) {
+        return !CROSS_COUNT_TOOLS.contains(tool);
+    }
+
     private static boolean isAuthorized(CallerContext caller) {
         return GatewayUserResolver.ACCESS_TYPE_AUTHORIZED.equals(caller.accessType());
     }
 
     private boolean isExcluded(String tool, CallerContext caller) {
-        return excludedTools.contains(tool) || isAuthorized(caller) && OPEN_ONLY_TOOLS.contains(tool);
+        return excludedTools.contains(tool) || !isAuthorized(caller) && AUTHORIZED_ONLY_TOOLS.contains(tool);
     }
 
-    private ChatResponse handleTurn(ChatRequest request, CallerContext caller, TurnStats stats, ProposeQueryInput currentQuery) {
+    private ChatResponse handleTurn(
+        ChatRequest request, String owner, CallerContext caller, TurnStats stats, ProposeQueryInput currentQuery
+    ) {
         List<ToolDefinition> tools = new ArrayList<>(listTools(caller).stream().filter(tool -> !isExcluded(tool.name(), caller)).toList());
         String systemPrompt = isAuthorized(caller) ? AUTHORIZED_PROMPT : OPEN_PROMPT;
         tools.add(proposeQueryTool.definition());
-        ConversationStore.Key conversation = new ConversationStore.Key(caller.owner(), request.conversationId());
+        ConversationStore.Key conversation = new ConversationStore.Key(owner, request.conversationId());
         List<ConversationTurn> earlier = conversations.turns(conversation);
         Optional<ConversationStore.Eviction> evicted = earlier.isEmpty() ? conversations.evictionOf(conversation) : Optional.empty();
         List<ConversationEntry> history = new ArrayList<>(EarlierTurns.entries(earlier));
@@ -243,7 +268,9 @@ class ToolUseLoopService implements ChatOrchestrator {
         // Only the modeled fields, the ones CurrentState shows the model: a path in authorizationFilters was never shown to it.
         state.queryLocked = currentQuery != null && currentQuery.exceedsSizeLimit(maxFilters);
         if (currentQuery != null && !state.queryLocked) {
-            state.conceptPaths.learnFrom(ChatStateValidator.toJson(currentQuery));
+            JsonNode shown = ChatStateValidator.toJson(currentQuery);
+            state.conceptPaths.learnFrom(shown);
+            state.quotablePaths.learnFrom(shown);
         }
         state.knownFacets.learnFrom(request.facets());
 
@@ -270,7 +297,7 @@ class ToolUseLoopService implements ChatOrchestrator {
                     LogSanitizer.clean(unknownPaths)
                 );
                 history.add(new AssistantToolCallEntry(turn.text(), List.of()));
-                history.add(new UserEntry(pathRepairMessage(unknownPaths, state.conceptPaths)));
+                history.add(new UserEntry(pathRepairMessage(unknownPaths, state.quotablePaths)));
             } else if (claimsUnmadeSelectionChange(turn, state)) {
                 // Told plainly that nothing was added, gpt-oss still wrote that it was, because that is what the researcher asked for.
                 state.selectionRepairAsked = true;
@@ -375,7 +402,7 @@ class ToolUseLoopService implements ChatOrchestrator {
     }
 
     private static List<String> unknownPathsIn(String text, TurnState state) {
-        return ReplyText.unknownPaths(ReplyText.cleaned(text, state.conceptPaths), state.conceptPaths);
+        return ReplyText.unknownPaths(ReplyText.cleaned(text, state.quotablePaths), state.quotablePaths);
     }
 
     static final String SELECTION_REPAIR_MESSAGE =
@@ -431,7 +458,7 @@ class ToolUseLoopService implements ChatOrchestrator {
             facets = Set.copyOf(state.facets).equals(shownFacets) ? null : List.copyOf(state.facets);
         }
         String search = state.search == null || state.search.equals(shownSearch) ? null : state.search;
-        String reply = ReplyText.cleaned(text, state.conceptPaths);
+        String reply = ReplyText.cleaned(text, state.quotablePaths);
         if (!state.hasProposal() && replyShowsSearchResults(reply, state)) {
             String found = state.searches.lastMatchedSearchWithoutMisses();
             search = found == null || found.equals(shownSearch) ? null : found;
@@ -488,14 +515,16 @@ class ToolUseLoopService implements ChatOrchestrator {
             ToolResult result = state.toolsStopped ? ToolResult.failure(CAP_REACHED_RESULT)
                 : withRepeatedFailureCheck(call, callToolSafely(call, arguments, caller, state), state);
             if (!result.error()) {
-                state.conceptPaths.learnFrom(result.content());
+                state.learnPathsFrom(call.name(), result.content());
                 if (!ProposeQueryTool.NAME.equals(call.name())) {
                     state.toolOutputs.add(new ConversationTurn.ToolOutput(call.name(), call.argumentsJson(), result.content()));
                 }
                 if (SEARCH_CONCEPTS.equals(call.name())) {
                     state.searches.learn(arguments, readJson(result.content()));
                 }
-                if (COUNT_PARTICIPANTS.equals(call.name())) {
+                // Either kind of count feeds it: the counted query is only proposed for the researcher to review, and the query service
+                // applies their access to whatever they run.
+                if (COUNTED_QUERY_TOOLS.contains(call.name())) {
                     state.learnCountedQuery(arguments);
                 }
                 if (LIST_FACETS.equals(call.name())) {

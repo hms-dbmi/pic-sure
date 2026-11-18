@@ -22,7 +22,7 @@ Both routes exist only when `AI_ENABLED=true`; otherwise they answer 404. Every 
 
 | Route | Purpose |
 | --- | --- |
-| `POST /ai/chat` | One chat turn. Body: `message` (required, max 4000 chars), `conversationId` (required), `requestId` (required, one per message), and the researcher's current `query`, `facets`, `search` (each optional). Returns `response` plus `query`, `facets` and `search` **only when the turn changed them**; a part that is present replaces that part of the screen whole. `query` carries only `select`, `phenotypicClause` and `genomicFilters`. |
+| `POST /ai/chat` | One chat turn. Body: `message` (required, max 4000 chars), `conversationId` (required), `requestId` (required, one per message), and the researcher's current `query`, `facets`, `search` (each optional), and `openAccess` (optional; `true` when the UI is on an open-access page, so a logged-in researcher gets the open tools and prompt only; blank or false leaves the caller's own access type in charge, and it can never widen it). Returns `response` plus `query`, `facets` and `search` **only when the turn changed them**; a part that is present replaces that part of the screen whole. `query` carries only `select`, `phenotypicClause` and `genomicFilters`. |
 | `GET /ai/chat/{requestId}` | The stored reply to an earlier message: 200 with the reply, 202 while it is still being answered, 404 when nothing is stored (never arrived, failed, or expired). This is the retry path after a dropped connection. |
 
 There is deliberately no `consents` field: access control is solely a function of the caller's JWT.
@@ -80,9 +80,13 @@ passed to the model so it does not add it back.
 The gateway's MCP tools (from `pic-sure-mcp`) plus one local tool, minus exclusions:
 
 - `search_concepts`, `list_facets`, `get_concept`, `get_concepts`: always.
-- `count_participants`, `cross_count`: obfuscated open-access counts that ignore consents. **Withheld from logged-in
-  (`authorized`) callers**, whose results panel already shows exact counts; their system prompt says the assistant cannot count.
-  Open-access callers would get them, with a prompt that says counts are obfuscated, but they are rejected with 403 before the tool set is chosen (see [Who may use the assistant](#who-may-use-the-assistant)), so that path is currently unreachable through the gateway.
+- `authorized_count_participants`, `authorized_cross_count`, `authorized_study_counts`: exact counts filtered by the caller's own
+  consents, run with their token. `authorized_study_counts` is participants per study: by study consent concept when the data has
+  them, otherwise by dataset from the dictionary (see `pic-sure-mcp`). **Offered to logged-in (`authorized`) callers only.**
+- `count_participants`, `cross_count`: obfuscated open-access counts that ignore consents. Offered to every caller. A logged-in
+  researcher can see both the open and the authorized pages, so they get both kinds of count; their system prompt says to prefer an
+  exact count for data they can access, to name which kind each number is, and never to combine or compare the two.
+  Open-access callers get only these, with a prompt that says counts are obfuscated, but they are rejected with 403 before the tool set is chosen (see [Who may use the assistant](#who-may-use-the-assistant)), so that path is currently unreachable through the gateway.
 - `get_adapter_code`: withheld by default (`AI_MCP_EXCLUDED_TOOLS`).
 - `propose_query` (local, never sent to the gateway): proposes a query, facet selection and/or search for the researcher to review.
   The selected variables are a change (`addSelect` / `removeSelect`), not a list.
@@ -110,7 +114,8 @@ test-run logs: the two services are developed in the same tree and have drifted 
 | `AI_SERVICE_TOKEN` | yes, if `AI_ENABLED=true` and `AI_MCP_MODE=gateway` | Shared secret sent as `X-PIC-SURE-AI-TOKEN` on every `/mcp` call, so the gateway admits the assistant by `ASSISTED_SEARCH` and not `PIC_SURE_MCP`. Must equal the gateway's `AI_SERVICE_TOKEN`. |
 | `PICSURE_GATEWAY_URL` | yes, if `AI_ENABLED=true` and `AI_MCP_MODE=gateway` | Base URL of the gateway's `/mcp` route. Same gateway URL `pic-sure-mcp` itself binds via `picsure.mcp.gateway-url` — one gateway URL, shared across both services' deploy config. |
 | `AI_MCP_CONNECT_TIMEOUT` | no, default `5s` | Connect timeout for gateway MCP calls. |
-| `AI_MCP_READ_TIMEOUT` | no, default `20s` | Read timeout for gateway MCP calls. Without one the HTTP client waits forever, so a stuck dictionary call would hang the whole chat turn. |
+| `AI_MCP_READ_TIMEOUT` | no, default `20s` | Read timeout for gateway MCP calls other than counts. Without one the HTTP client waits forever, so a stuck dictionary call would hang the whole chat turn. |
+| `AI_MCP_COUNT_READ_TIMEOUT` | no, default `130s` | Read timeout for the count tools, open and authorized. It is longer than pic-sure-mcp's 120s wait for an authorized cross count, so a slow count usually ends with the MCP's own message; if this timeout fires first, the model is told not to run the same count again. |
 | `AI_MCP_EXCLUDED_TOOLS` | no, default `get_adapter_code` | Comma-separated gateway tool names withheld from the model, and refused if it requests one anyway. The default drops the adapter-code tool, which the chat UI has no use for and whose long definition is resent on every model call (tool definitions were most of the ~4,900 input tokens per call). Set it blank to offer every tool. |
 | `AI_CONVERSATION_STORE` | no, default `memory` | Where conversations and turn results live. `memory` is the only implementation: lost on restart, not shared between instances. |
 | `AI_CONVERSATION_IDLE_TIMEOUT` | no, default `60m` | A conversation idle this long is dropped. Also bounds how stale a replayed lookup can be if the caller's access changes. |

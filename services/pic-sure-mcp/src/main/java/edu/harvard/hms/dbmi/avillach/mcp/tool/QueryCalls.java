@@ -5,9 +5,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.util.function.Function;
 import java.util.function.Supplier;
 
-/** Runs an open query call for a tool, logging a failure and mapping it to a {@link ToolFailure} that carries no downstream text. */
+/** Runs a query call for a tool, logging a failure and mapping it to a {@link ToolFailure} that carries no downstream text. */
 final class QueryCalls {
 
     private static final Logger log = LoggerFactory.getLogger(QueryCalls.class);
@@ -26,14 +27,32 @@ final class QueryCalls {
      * @throws ToolFailure when the call fails
      */
     static <T> T run(String path, Supplier<T> call) {
+        return run(path, call, ToolFailure::fromQueryDownstream, ToolFailure::queryUnavailable);
+    }
+
+    /**
+     * Runs the call like {@link #run(String, Supplier)}, with the failure messages chosen by the caller.
+     *
+     * @param path the fixed gateway path or a short label, used for logging
+     * @param call the query call
+     * @param onResponseError maps a failed response to the failure to throw
+     * @param onNoResponse the failure to throw when there was no response
+     * @param <T> the call's result type
+     * @return the call's result
+     * @throws ToolFailure when the call fails
+     */
+    static <T> T run(
+        String path, Supplier<T> call, Function<RestClientResponseException, ToolFailure> onResponseError,
+        Supplier<ToolFailure> onNoResponse
+    ) {
         try {
             return call.get();
         } catch (RestClientResponseException e) {
-            log.warn("Open query call failed: status={} path={}", e.getStatusCode().value(), path);
-            throw ToolFailure.fromQueryDownstream(e);
+            log.warn("Query call failed: status={} path={}", e.getStatusCode().value(), path);
+            throw onResponseError.apply(e);
         } catch (RestClientException e) {
-            log.warn("Open query call failed: {} path={}", e.getClass().getSimpleName(), path);
-            throw ToolFailure.queryUnavailable();
+            log.warn("Query call failed: {} path={}", e.getClass().getSimpleName(), path);
+            throw onNoResponse.get();
         }
     }
 }

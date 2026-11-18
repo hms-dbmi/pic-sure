@@ -27,6 +27,9 @@ import jakarta.validation.constraints.Size;
  * @param query the researcher's current query object, if any
  * @param facets the researcher's current facet selection, in the slimmed {@link FacetSelection} shape
  * @param search the researcher's current dictionary search text, if any
+ * @param openAccess true when the UI is on an open-access page, so the assistant should answer with open-access tools only. Blank or false
+ *        means the caller's own access type decides. This can only narrow what a caller gets, never widen it: it is not an authorization
+ *        signal, and an open caller who sends false still gets no authorized tool.
  */
 @Schema(description = "One researcher chat turn, plus the query, facet selection and dictionary-search state the turn starts from.")
 public record ChatRequest(
@@ -46,8 +49,24 @@ public record ChatRequest(
         description = "The researcher's current query object, if any: a full v3 query. Fields the assistant does not model "
             + "(expectedResultType, authorizationFilters, ...) are accepted and ignored; the rest is validated."
     ) JsonNode query, @Schema(description = "The researcher's current facet selection, if any.") List<FacetSelection> facets,
-    @Schema(description = "The researcher's current dictionary search text, if any.", example = "blood pressure") JsonNode search
+    @Schema(description = "The researcher's current dictionary search text, if any.", example = "blood pressure") JsonNode search,
+    @Schema(
+        description = "Set to true when the researcher is on an open-access page: the assistant then uses open-access tools only, even "
+            + "for a logged-in researcher. Leave out otherwise. It never grants access."
+    ) Boolean openAccess
 ) {
+
+    /** A request that does not say it is on an open-access page. */
+    public ChatRequest(
+        String message, String conversationId, String requestId, JsonNode query, List<FacetSelection> facets, JsonNode search
+    ) {
+        this(message, conversationId, requestId, query, facets, search, null);
+    }
+
+    /** @return whether the UI asked for open-access tools only; blank counts as no */
+    public boolean openAccessRequested() {
+        return Boolean.TRUE.equals(openAccess);
+    }
 
     /** Upper bound on {@code message}, so an oversized prompt is rejected by validation before it reaches the model. */
     public static final int MAX_MESSAGE_LENGTH = 4000;

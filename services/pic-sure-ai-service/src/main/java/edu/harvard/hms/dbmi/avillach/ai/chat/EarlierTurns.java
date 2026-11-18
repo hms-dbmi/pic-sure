@@ -116,7 +116,7 @@ final class EarlierTurns {
     static void learnInto(TurnState state, List<ConversationTurn> turns) {
         for (ConversationTurn turn : turns) {
             for (ToolOutput output : turn.toolResults()) {
-                state.conceptPaths.learnFrom(output.content());
+                state.learnPathsFrom(output.toolName(), output.content());
                 if (ToolUseLoopService.SEARCH_CONCEPTS.equals(output.toolName())) {
                     JsonNode arguments = ToolUseLoopService.readJson(output.argumentsJson());
                     // A miss under a facet says nothing about the search once the researcher clears it.

@@ -61,8 +61,10 @@ class McpProtocolIT {
     private static final String ACCEPT = "application/json, text/event-stream";
     private static final String DOWNSTREAM_SECRET = "hpds-internal-detail-4c1b";
     private static final String QUERY_SYNC = "/hpds/open/query/sync";
-    private static final Set<String> TOOL_NAMES =
-        Set.of("search_concepts", "list_facets", "get_concept", "count_participants", "cross_count", "get_adapter_code", "get_concepts");
+    private static final Set<String> TOOL_NAMES = Set.of(
+        "search_concepts", "list_facets", "get_concept", "count_participants", "cross_count", "get_adapter_code", "get_concepts",
+        "authorized_count_participants", "authorized_cross_count", "authorized_study_counts"
+    );
     private static final Set<String> QUERY_TOOLS = Set.of("count_participants", "cross_count", "get_adapter_code");
 
     private static final WireMockServer GATEWAY = startGateway();

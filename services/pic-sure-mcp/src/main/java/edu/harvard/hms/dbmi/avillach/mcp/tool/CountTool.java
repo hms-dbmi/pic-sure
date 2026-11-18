@@ -34,7 +34,8 @@ public class CountTool {
             count that ignores the caller's consents and study access. It carries a small random offset (count, with variance giving the \
             band the true count lies in), and a count below the threshold is hidden (suppressed true, with threshold, as in "< 10"). \
             Use it for a rough cohort size or a feasibility check. It is never the authorized answer. For an exact count filtered by the \
-            user's consents, pass the same query to get_adapter_code with resultType count. \
+            user's consents, pass the same query to authorized_count_participants when the user is signed in, or to get_adapter_code with resultType count for \
+            code the user runs themselves. \
             Build the query from conceptPath values that search_concepts returns. A clause is either a filter (phenotypicFilterType and \
             conceptPath, plus values for a categorical FILTER or min and max for a numeric FILTER; REQUIRED and ANY_RECORD_OF take \
             neither) or a subquery (operator AND or OR, and phenotypicClauses, each a filter or another subquery). genomicFilters are \

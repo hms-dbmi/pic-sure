@@ -116,6 +116,25 @@ class EarlierTurnsTest {
     }
 
     @Test
+    void anEarlierCrossCountsPathsMayBeQuotedButNotUsed() {
+        TurnState state = new TurnState(null);
+        ConversationTurn counted = new ConversationTurn(
+            "per study?", "ok",
+            List.of(
+                new ConversationTurn.ToolOutput(
+                    "cross_count", "{\"resultType\":\"CROSS_COUNT\",\"query\":{}}",
+                    "{\"cells\":[{\"conceptPath\":\"\\\\_studies_consents\\\\phs000001\\\\\",\"count\":40}]}"
+                )
+            ), null
+        );
+
+        EarlierTurns.learnInto(state, List.of(counted));
+
+        assertFalse(state.conceptPaths.isKnown("\\_studies_consents\\phs000001\\"));
+        assertTrue(state.quotablePaths.isKnown("\\_studies_consents\\phs000001\\"));
+    }
+
+    @Test
     void aMissUnderAFacetIsNotCarriedIntoLaterTurns() {
         TurnState state = new TurnState(null);
         ConversationTurn narrowed = new ConversationTurn(

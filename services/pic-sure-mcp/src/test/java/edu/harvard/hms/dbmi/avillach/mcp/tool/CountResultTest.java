@@ -22,8 +22,23 @@ class CountResultTest {
     }
 
     @Test
-    void parsesAnExactCount() {
+    void parsesAnExactCount() throws Exception {
         assertThat(CountResult.parse("57")).isEqualTo(new CountResult("57", 57, null, null, false));
+        assertThat(CountResult.parse("57").isExact()).isTrue();
+        assertThat(JSON.writeValueAsString(CountResult.parse("57"))).doesNotContain("exact");
+    }
+
+    @Test
+    void parsesAnExactCountUpToTheIntRange() {
+        assertThat(CountResult.parse("1234567890").count()).isEqualTo(1234567890);
+        assertThat(CountResult.parse(String.valueOf(Integer.MAX_VALUE)).isExact()).isTrue();
+    }
+
+    @Test
+    void anObfuscatedOrSuppressedCountIsNotExact() {
+        assertThat(CountResult.parse("1234 ±3").isExact()).isFalse();
+        assertThat(CountResult.parse("< 10").isExact()).isFalse();
+        assertThat(CountResult.parse("-1").isExact()).isFalse();
     }
 
     @Test
@@ -40,7 +55,7 @@ class CountResultTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"", "about 40", "12 ±", "-5", "99999999999", "1234 ±3 ±4", "<", "{\"a\":1}"})
+    @ValueSource(strings = {"", "about 40", "12 ±", "-5", "99999999999", "2147483648", "1234 ±3 ±4", "<", "{\"a\":1}"})
     void returnsAMalformedDisplayAloneWithoutFailing(String display) throws Exception {
         CountResult result = CountResult.parse(display);
 

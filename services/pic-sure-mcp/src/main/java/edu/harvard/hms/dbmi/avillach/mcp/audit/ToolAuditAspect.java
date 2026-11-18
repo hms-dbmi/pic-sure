@@ -5,6 +5,8 @@ import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.dbmi.avillach.logging.RequestInfo;
 import edu.harvard.hms.dbmi.avillach.mcp.caller.CallerHeaders;
+import edu.harvard.hms.dbmi.avillach.mcp.tool.AuthorizedCountTool;
+import edu.harvard.hms.dbmi.avillach.mcp.tool.AuthorizedChannelTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.CountTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.ToolFailure;
 import io.modelcontextprotocol.common.McpTransportContext;
@@ -30,9 +32,10 @@ import java.util.stream.Collectors;
  * <p>The event carries the annotation's type and action, an {@code outcome} of {@code success} or {@code failure}, the request ID, the
  * gateway's {@code X-User-Id} as {@code user_id}, and only these argument fields: {@code search} (search text), {@code terms} (the search
  * terms joined with {@code |}), {@code page}, {@code page_size}, {@code dataset}, {@code concept_path}, {@code concept_paths} (the concept
- * paths joined with {@code |}), and {@code result_type} for the count tools and {@code get_adapter_code}. Each text field is cut at
- * {@value #MAX_FIELD_LENGTH} characters. Nothing from a query body, and never a credential, is read. A failure event also carries
- * {@code error.error_type} of {@code tool_failure} or {@code internal}, and no message.
+ * paths joined with {@code |}), and {@code result_type} for the count tools and {@code get_adapter_code}. Every
+ * {@link AuthorizedChannelTool} also carries {@code channel} {@code authorized}, so an exact read is never mistaken for an open count. Each
+ * text field is cut at {@value #MAX_FIELD_LENGTH} characters. Nothing from a query body, and never a credential, is read. A failure event
+ * also carries {@code error.error_type} of {@code tool_failure} or {@code internal}, and no message.
  *
  * <p>Sending is fire-and-forget. A failure to build or send an event is logged once at WARN with its exception class and never reaches the
  * tool call.
@@ -106,6 +109,9 @@ public class ToolAuditAspect {
             Map<String, Object> metadata = new LinkedHashMap<>();
             metadata.put("outcome", failure == null ? "success" : "failure");
             putIfPresent(metadata, "user_id", clean(headers.userId()));
+            if (joinPoint.getTarget() instanceof AuthorizedChannelTool) {
+                metadata.put("channel", "authorized");
+            }
             metadata.putAll(argumentFields(joinPoint));
             LoggingEvent.Builder event = LoggingEvent.builder(audit.type()).action(audit.action()).metadata(metadata)
                 .request(RequestInfo.builder().requestId(headers.requestId()).build());
@@ -143,7 +149,7 @@ public class ToolAuditAspect {
     }
 
     private static String resultType(Object target, Map<?, ?> arguments) {
-        if (target instanceof CountTool) {
+        if (target instanceof CountTool || target instanceof AuthorizedCountTool) {
             return "COUNT";
         }
         Object declared = arguments.get("resultType");
