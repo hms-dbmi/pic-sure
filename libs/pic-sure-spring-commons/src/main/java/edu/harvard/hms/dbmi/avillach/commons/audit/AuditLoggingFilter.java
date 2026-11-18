@@ -209,7 +209,8 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     }
 
     /**
-     * Returns the body size to report, or null when the counted bytes are not what the client received.
+     * Returns the body size to report, or null when the counted bytes are not what the client received. Public so that an audit filter that
+     * does not extend this class reports {@code bytes} by the same rule.
      *
      * @param request the audited request
      * @param response the wrapper that counted the body
@@ -217,7 +218,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
      * @return null after {@code sendError}, use of the response's writer, a thrown chain or the start of asynchronous processing; 0 for a
      *         {@code HEAD} request or a status that cannot carry a body; otherwise the counted bytes
      */
-    private static Long bytesTheClientReceived(HttpServletRequest request, ByteCountingResponseWrapper response, boolean chainReturned) {
+    public static Long bytesTheClientReceived(HttpServletRequest request, ByteCountingResponseWrapper response, boolean chainReturned) {
         if (!chainReturned || response.isByteCountUnknown() || request.isAsyncStarted()) {
             return null;
         }

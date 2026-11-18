@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.filter;
 
+import static edu.harvard.hms.dbmi.avillach.commons.audit.AuditLoggingFilter.bytesTheClientReceived;
+
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
@@ -66,28 +68,8 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     }
 
     /**
-     * Returns the body size to report, or null when the counted bytes are not what the client received.
-     *
-     * @param request the audited request
-     * @param response the wrapper that counted the body
-     * @param chainCompleted false when the rest of the chain exited by throwing
-     * @return null after {@code sendError}, use of the response's writer, a thrown chain or the start of asynchronous processing; 0 for a
-     *         {@code HEAD} request or a status that cannot carry a body (1xx, 204 and 304); otherwise the counted bytes
-     */
-    private static Long bytesTheClientReceived(HttpServletRequest request, ByteCountingResponseWrapper response, boolean chainCompleted) {
-        if (!chainCompleted || response.isByteCountUnknown() || request.isAsyncStarted()) {
-            return null;
-        }
-        int status = response.getStatus();
-        boolean statusCannotCarryBody = (status >= 100 && status < 200) || status == 204 || status == 304;
-        if ("HEAD".equalsIgnoreCase(request.getMethod()) || statusCannotCarryBody) {
-            return 0L;
-        }
-        return response.getByteCount();
-    }
-
-    /**
-     * Builds and sends the audit event for a finished request. Nothing thrown while doing so reaches the caller.
+     * Builds and sends the audit event for a finished request. Nothing thrown while doing so reaches the caller. {@code bytes} is what
+     * {@link edu.harvard.hms.dbmi.avillach.commons.audit.AuditLoggingFilter#bytesTheClientReceived} returns for the counting wrapper.
      *
      * @param request the request being audited
      * @param response the response the status and content type are read from
