@@ -15,6 +15,8 @@ import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.TestDataService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.util.Paginator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 import org.springframework.http.ResponseEntity;
@@ -81,6 +83,20 @@ class PicSureV3ServiceStatusTest {
         assertEquals(queryId.toString(), response.getBody().getResourceResultId());
     }
 
+    @ParameterizedTest
+    @EnumSource(value = AsyncResult.Status.class, names = {"RUNNING", "PENDING", "RETRY"})
+    void resultOfARunningJobIs409(AsyncResult.Status status) {
+        UUID queryId = UUID.randomUUID();
+        AsyncResult job = jobWithStatus(status);
+        when(queryService.getResultFor(queryId)).thenReturn(job);
+
+        ResponseEntity<?> response = service.queryResult(queryId, mock(QueryRequest.class));
+
+        assertEquals(409, response.getStatusCode().value());
+        assertEquals("Status : " + status.name(), response.getBody());
+        verify(job, never()).open();
+    }
+
     @Test
     void resultOfAnErroredJobIs400() {
         UUID queryId = UUID.randomUUID();
@@ -99,6 +115,20 @@ class PicSureV3ServiceStatusTest {
         when(queryService.getResultFor(queryId)).thenReturn(null);
 
         assertEquals(404, service.queryResult(queryId, mock(QueryRequest.class)).getStatusCode().value());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = AsyncResult.Status.class, names = {"RUNNING", "PENDING", "RETRY"})
+    void signedUrlOfARunningJobIs409(AsyncResult.Status status) throws IOException {
+        UUID queryId = UUID.randomUUID();
+        AsyncResult job = jobWithStatus(status);
+        when(queryService.getResultFor(queryId)).thenReturn(job);
+
+        ResponseEntity<?> response = service.querySignedURL(queryId, mock(QueryRequest.class));
+
+        assertEquals(409, response.getStatusCode().value());
+        assertEquals("Status : " + status.name(), response.getBody());
+        verify(signUrlService, never()).uploadFile(any(), any());
     }
 
     @Test

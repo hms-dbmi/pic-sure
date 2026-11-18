@@ -183,8 +183,20 @@ public class PicSureV3Service {
             result.open();
             return ResponseEntity.ok().contentType(result.getResponseType()).body(new InputStreamResource(result.getStream()));
         } else {
-            return ResponseEntity.status(400).body("Status : " + result.getStatus().name());
+            return notReadyResponse(result);
         }
+    }
+
+    /**
+     * Answers a result or signed URL request for a job that has no result to serve. A job that ended in {@code ERROR} is a 400, because
+     * asking again never helps. A job that is still queued or running is a 409, which tells the caller to keep polling the status.
+     *
+     * @param result a job whose status is not {@code SUCCESS}
+     * @return the response, with {@code Status : } and the job's status as its body
+     */
+    private ResponseEntity<String> notReadyResponse(AsyncResult result) {
+        int httpStatus = result.getStatus() == AsyncResult.Status.ERROR ? 400 : 409;
+        return ResponseEntity.status(httpStatus).body("Status : " + result.getStatus().name());
     }
 
     @AuditEvent(type = "DATA_ACCESS", action = "data.write")
@@ -245,7 +257,7 @@ public class PicSureV3Service {
             log.info("Presigned url: " + presignedGetUrl);
             return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(new SignedUrlResponse(presignedGetUrl));
         } else {
-            return ResponseEntity.status(400).body("Status : " + result.getStatus().name());
+            return notReadyResponse(result);
         }
     }
 
