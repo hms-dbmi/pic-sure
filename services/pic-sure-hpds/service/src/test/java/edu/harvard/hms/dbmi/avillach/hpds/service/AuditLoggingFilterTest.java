@@ -3,7 +3,6 @@ package edu.harvard.hms.dbmi.avillach.hpds.service;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
@@ -450,49 +449,52 @@ class AuditLoggingFilterTest {
     }
 
     @Test
-    void testBytesCountsWriterOutputInTheResponseEncoding() throws Exception {
-        String text = "na\u00efve \u2603 \uD83D\uDE00";
+    void testBytesIsUnsetWhenTheBodyIsWrittenThroughTheWriter() throws Exception {
         MockHttpServletResponse response = new MockHttpServletResponse();
         FilterChain chain = (req, res) -> {
             res.setCharacterEncoding("UTF-8");
-            PrintWriter writer = res.getWriter();
-            writer.print(text);
-            writer.println();
-            writer.write('x');
+            res.getWriter().write("Status : RUNNING");
         };
 
         filter.doFilter(mockRequest("/PIC-SURE/info", "GET"), response, chain);
 
-        byte[] expected = (text + System.lineSeparator() + "x").getBytes(StandardCharsets.UTF_8);
-        assertEquals(Long.valueOf(expected.length), sentEvent().getRequest().getBytes());
-        assertArrayEquals(expected, response.getContentAsByteArray());
+        assertNull(sentEvent().getRequest().getBytes());
+        assertEquals("Status : RUNNING", response.getContentAsString());
     }
 
     @Test
-    void testBytesCountsASurrogatePairSplitAcrossTwoWrites() throws Exception {
+    void testBytesIsUnsetWhenTheWriterIsObtainedAndNeverUsed() throws Exception {
+        FilterChain chain = (req, res) -> res.getWriter();
+
+        filter.doFilter(mockRequest("/PIC-SURE/info", "GET"), new MockHttpServletResponse(), chain);
+
+        assertNull(sentEvent().getRequest().getBytes());
+    }
+
+    @Test
+    void testBytesIsZeroForANoContentStatusWhateverWasWritten() throws Exception {
         MockHttpServletResponse response = new MockHttpServletResponse();
         FilterChain chain = (req, res) -> {
-            res.setCharacterEncoding("UTF-8");
-            PrintWriter writer = res.getWriter();
-            writer.write('\uD83D');
-            writer.write('\uDE00');
+            ((HttpServletResponse) res).setStatus(204);
+            res.getOutputStream().write(new byte[31]);
+        };
+
+        filter.doFilter(mockRequest("/PIC-SURE/query/sync", "POST"), response, chain);
+
+        assertEquals(Long.valueOf(0), sentEvent().getRequest().getBytes());
+    }
+
+    @Test
+    void testBytesIsZeroForANotModifiedStatusWhateverWasWritten() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> {
+            ((HttpServletResponse) res).setStatus(304);
+            res.getOutputStream().write(new byte[31]);
         };
 
         filter.doFilter(mockRequest("/PIC-SURE/info", "GET"), response, chain);
 
-        assertEquals(Long.valueOf(4), sentEvent().getRequest().getBytes());
-    }
-
-    @Test
-    void testBytesCountsWriterOutputInTheDefaultEncoding() throws Exception {
-        MockHttpServletResponse response = new MockHttpServletResponse();
-        FilterChain chain = (req, res) -> res.getWriter().write("caf\u00e9 \u2603");
-
-        filter.doFilter(mockRequest("/PIC-SURE/info", "GET"), response, chain);
-
-        assertEquals("ISO-8859-1", response.getCharacterEncoding());
-        assertEquals(Long.valueOf(6), sentEvent().getRequest().getBytes());
-        assertEquals(6, response.getContentAsByteArray().length);
+        assertEquals(Long.valueOf(0), sentEvent().getRequest().getBytes());
     }
 
     @Test

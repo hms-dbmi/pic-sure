@@ -3,7 +3,6 @@ package edu.harvard.hms.dbmi.avillach.auth.filter;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.OptionalLong;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
@@ -12,6 +11,7 @@ import edu.harvard.dbmi.avillach.logging.SessionIdResolver;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomApplicationDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
+import edu.harvard.hms.dbmi.avillach.commons.audit.ByteCountingResponseWrapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -34,8 +34,6 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     private static final Logger logger = LoggerFactory.getLogger(AuditLoggingFilter.class);
 
     private static final String AUDIT_START_TIME = "audit_start_time";
-
-    private static final String HEAD_METHOD = "HEAD";
 
     @Value("${DEST_IP:#{null}}")
     private String destIp;
@@ -68,25 +66,24 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     }
 
     /**
-     * Reads the size of the response body for the audit event. The size is the body bytes handed to the container, before compression or
-     * chunk framing. <p> It is left unset when the container writes the body after this filter has sent its event: an exception left the
-     * chain, async handling has started, or {@code sendError} was called. Otherwise it is 0 for a HEAD request, whose body the container
-     * discards, after {@code sendRedirect}, and for a response with no body. Unset wins over 0.
+     * Returns the body size to report, or null when the counted bytes are not what the client received.
      *
-     * @param request the request being audited
-     * @param response the counting wrapper the rest of the chain wrote to
-     * @param chainCompleted whether the rest of the chain returned without throwing
-     * @return the number of body bytes, or null to leave the field unset
+     * @param request the audited request
+     * @param response the wrapper that counted the body
+     * @param chainCompleted false when the rest of the chain exited by throwing
+     * @return null after {@code sendError}, use of the response's writer, a thrown chain or the start of asynchronous processing; 0 for a
+     *         {@code HEAD} request or a status that cannot carry a body (1xx, 204 and 304); otherwise the counted bytes
      */
-    private static Long bytesWritten(HttpServletRequest request, ByteCountingResponseWrapper response, boolean chainCompleted) {
-        if (!chainCompleted || request.isAsyncStarted()) {
+    private static Long bytesTheClientReceived(HttpServletRequest request, ByteCountingResponseWrapper response, boolean chainCompleted) {
+        if (!chainCompleted || response.isByteCountUnknown() || request.isAsyncStarted()) {
             return null;
         }
-        OptionalLong byteCount = response.getByteCount();
-        if (byteCount.isEmpty()) {
-            return null;
+        int status = response.getStatus();
+        boolean statusCannotCarryBody = (status >= 100 && status < 200) || status == 204 || status == 304;
+        if ("HEAD".equalsIgnoreCase(request.getMethod()) || statusCannotCarryBody) {
+            return 0L;
         }
-        return HEAD_METHOD.equals(request.getMethod()) ? 0L : byteCount.getAsLong();
+        return response.getByteCount();
     }
 
     /**
@@ -149,7 +146,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
             // Response info
             int responseStatus = response.getStatus();
             String contentType = response.getContentType();
-            Long bytes = bytesWritten(request, countingResponse, chainCompleted);
+            Long bytes = bytesTheClientReceived(request, countingResponse, chainCompleted);
 
             // Build RequestInfo
             RequestInfo requestInfo = RequestInfo.builder().method(method).url(request.getRequestURI()).srcIp(srcIp).destIp(resolvedDestIp)

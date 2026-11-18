@@ -159,6 +159,23 @@ class AuditBytesContainerTest {
     }
 
     @Test
+    void noContentStatusSendsNoBodyAndReportsZeroWhateverWasWritten() throws Exception {
+        HttpResponse<byte[]> response = get("/cleared");
+
+        assertEquals(204, response.statusCode());
+        assertEquals(0, response.body().length);
+        assertEquals(Long.valueOf(0), sentEvent().getRequest().getBytes());
+    }
+
+    @Test
+    void bodyWrittenThroughTheWriterReachesTheClientAndReportsNoBytes() throws Exception {
+        HttpResponse<byte[]> response = get("/written");
+
+        assertEquals("Status : RUNNING", new String(response.body(), StandardCharsets.UTF_8));
+        assertNull(sentEvent().getRequest().getBytes());
+    }
+
+    @Test
     void reactiveResponseIsStillPendingWhenTheEventIsSentAndReportsNoBytes() throws Exception {
         HttpResponse<byte[]> response = get("/reactive");
 
@@ -244,6 +261,18 @@ class AuditBytesContainerTest {
         @GetMapping("/empty")
         ResponseEntity<Void> empty() {
             return ResponseEntity.ok().build();
+        }
+
+        @GetMapping("/cleared")
+        void cleared(HttpServletResponse response) throws IOException {
+            response.setStatus(204);
+            response.getOutputStream().write(new byte[DISCARDED_BODY_BYTES]);
+        }
+
+        @GetMapping("/written")
+        void written(HttpServletResponse response) throws IOException {
+            response.setCharacterEncoding("UTF-8");
+            response.getWriter().write("Status : RUNNING");
         }
 
         @GetMapping("/reactive")

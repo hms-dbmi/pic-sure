@@ -15,7 +15,6 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
-import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -513,49 +512,52 @@ class AuditLoggingFilterTest {
     }
 
     @Test
-    void shouldReportWriterOutputInTheResponseEncoding() throws Exception {
-        String text = "na\u00efve \u2603 \uD83D\uDE00";
+    void shouldLeaveBytesUnsetWhenTheBodyIsWrittenThroughTheWriter() throws Exception {
         MockHttpServletResponse response = new MockHttpServletResponse();
         FilterChain chain = (req, res) -> {
             res.setCharacterEncoding("UTF-8");
-            PrintWriter writer = res.getWriter();
-            writer.print(text);
-            writer.println();
-            writer.write('x');
+            res.getWriter().write("{\"token\":\"abc\"}");
         };
 
         filter.doFilter(new MockHttpServletRequest("GET", "/user/me"), response, chain);
 
-        byte[] expected = (text + System.lineSeparator() + "x").getBytes(StandardCharsets.UTF_8);
-        assertEquals(Long.valueOf(expected.length), sentEvent().getRequest().getBytes());
-        assertArrayEquals(expected, response.getContentAsByteArray());
+        assertNull(sentEvent().getRequest().getBytes());
+        assertEquals("{\"token\":\"abc\"}", response.getContentAsString());
     }
 
     @Test
-    void shouldCountASurrogatePairSplitAcrossTwoWrites() throws Exception {
+    void shouldLeaveBytesUnsetWhenTheWriterIsObtainedAndNeverUsed() throws Exception {
+        FilterChain chain = (req, res) -> res.getWriter();
+
+        filter.doFilter(new MockHttpServletRequest("GET", "/user/me"), new MockHttpServletResponse(), chain);
+
+        assertNull(sentEvent().getRequest().getBytes());
+    }
+
+    @Test
+    void shouldReportZeroBytesForANoContentStatusWhateverWasWritten() throws Exception {
         MockHttpServletResponse response = new MockHttpServletResponse();
         FilterChain chain = (req, res) -> {
-            res.setCharacterEncoding("UTF-8");
-            PrintWriter writer = res.getWriter();
-            writer.write('\uD83D');
-            writer.write('\uDE00');
+            ((HttpServletResponse) res).setStatus(204);
+            res.getOutputStream().write(new byte[31]);
+        };
+
+        filter.doFilter(new MockHttpServletRequest("POST", "/logout"), response, chain);
+
+        assertEquals(Long.valueOf(0), sentEvent().getRequest().getBytes());
+    }
+
+    @Test
+    void shouldReportZeroBytesForANotModifiedStatusWhateverWasWritten() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> {
+            ((HttpServletResponse) res).setStatus(304);
+            res.getOutputStream().write(new byte[31]);
         };
 
         filter.doFilter(new MockHttpServletRequest("GET", "/user/me"), response, chain);
 
-        assertEquals(Long.valueOf(4), sentEvent().getRequest().getBytes());
-    }
-
-    @Test
-    void shouldReportWriterOutputInTheDefaultEncoding() throws Exception {
-        MockHttpServletResponse response = new MockHttpServletResponse();
-        FilterChain chain = (req, res) -> res.getWriter().write("caf\u00e9 \u2603");
-
-        filter.doFilter(new MockHttpServletRequest("GET", "/user/me"), response, chain);
-
-        assertEquals("ISO-8859-1", response.getCharacterEncoding());
-        assertEquals(Long.valueOf(6), sentEvent().getRequest().getBytes());
-        assertEquals(6, response.getContentAsByteArray().length);
+        assertEquals(Long.valueOf(0), sentEvent().getRequest().getBytes());
     }
 
     @Test
