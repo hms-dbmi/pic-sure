@@ -9,14 +9,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.mock.web.MockHttpServletResponse;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
@@ -39,12 +38,12 @@ class PsamaIntrospectionFilterTest {
     @Test
     void rejectsMissingAuthorizationHeader() throws Exception {
         PsamaClient client = mock(PsamaClient.class);
-        HttpServletResponse response = responseWithWriter();
+        MockHttpServletResponse response = new MockHttpServletResponse();
         FilterChain chain = mock(FilterChain.class);
 
         filter(client, new AuditContext()).doFilter(wrap(null, new byte[0], "/query"), response, chain);
 
-        verify(response).setStatus(401);
+        assertThat(response.getStatus()).isEqualTo(401);
         verify(chain, never()).doFilter(any(), any());
         verifyNoInteractions(client);
     }
@@ -88,15 +87,13 @@ class PsamaIntrospectionFilterTest {
         when(client.introspect(any(), any()))
             .thenThrow(new IntrospectionTokenRejectedException("http://psama/token/inspect", "application_token_expired"));
         AuditContext audit = new AuditContext();
-        StringWriter body = new StringWriter();
-        HttpServletResponse response = mock(HttpServletResponse.class);
-        when(response.getWriter()).thenReturn(new PrintWriter(body));
+        MockHttpServletResponse response = new MockHttpServletResponse();
         FilterChain chain = mock(FilterChain.class);
 
         filter(client, audit).doFilter(wrap("Bearer user-token", new byte[0], "/dictionary/concepts"), response, chain);
 
-        verify(response).setStatus(502);
-        assertThat(body.toString()).contains("\"errorType\":\"introspection_unreachable\"");
+        assertThat(response.getStatus()).isEqualTo(502);
+        assertThat(response.getContentAsString()).contains("\"errorType\":\"introspection_unreachable\"");
         verify(chain, never()).doFilter(any(), any());
         assertThat(audit.getMetadata()).containsEntry("auth_result", "failure")
             .containsEntry("auth_failure_reason", "introspection_token_rejected");
@@ -107,15 +104,13 @@ class PsamaIntrospectionFilterTest {
         PsamaClient client = mock(PsamaClient.class);
         when(client.introspect(any(), any()))
             .thenReturn(new IntrospectionResponse(false, "u-1", "s-1", null, null, null, null, null, "User has no consents on file."));
-        StringWriter body = new StringWriter();
-        HttpServletResponse response = mock(HttpServletResponse.class);
-        when(response.getWriter()).thenReturn(new PrintWriter(body));
+        MockHttpServletResponse response = new MockHttpServletResponse();
 
         filter(client, new AuditContext())
             .doFilter(wrap("Bearer user-token", new byte[0], "/dictionary/concepts"), response, mock(FilterChain.class));
 
-        verify(response).setStatus(403);
-        assertThat(body.toString()).contains("User has no consents on file.");
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getContentAsString()).contains("User has no consents on file.");
     }
 
     @Test
@@ -141,12 +136,6 @@ class PsamaIntrospectionFilterTest {
 
         verifyNoInteractions(client);
         verify(chain).doFilter(eq(request), any());
-    }
-
-    private static HttpServletResponse responseWithWriter() throws Exception {
-        HttpServletResponse response = mock(HttpServletResponse.class);
-        when(response.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
-        return response;
     }
 
     private static BufferedRequestWrapper wrap(String authorization, byte[] body, String uri) {

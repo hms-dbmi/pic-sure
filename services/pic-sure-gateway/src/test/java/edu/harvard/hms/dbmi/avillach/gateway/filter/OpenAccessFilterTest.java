@@ -10,8 +10,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
@@ -197,8 +195,7 @@ class OpenAccessFilterTest {
         OpenAccessFilter f = filter(client, new AuditContext(), true);
 
         BufferedRequestWrapper req = wrap(null);
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+        MockHttpServletResponse resp = new MockHttpServletResponse();
         f.doFilter(req, resp, mock(FilterChain.class));
 
         assertThat(req.getAttribute(GatewayUserResolver.HEADER_ACCESS_TYPE)).isNull();
@@ -235,8 +232,7 @@ class OpenAccessFilterTest {
         when(client.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(false));
         OpenAccessFilter f = filter(client, new AuditContext(), true);
 
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+        MockHttpServletResponse resp = new MockHttpServletResponse();
         BufferedRequestWrapper req = wrap(null);
         f.doFilter(req, resp, mock(FilterChain.class));
 
@@ -250,12 +246,11 @@ class OpenAccessFilterTest {
         AuditContext ctx = new AuditContext();
         OpenAccessFilter f = filter(client, ctx, true);
 
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+        MockHttpServletResponse resp = new MockHttpServletResponse();
         FilterChain chain = mock(FilterChain.class);
         f.doFilter(wrap(null), resp, chain);
 
-        verify(resp).setStatus(401);
+        assertThat(resp.getStatus()).isEqualTo(401);
         verify(chain, never()).doFilter(any(), any());
         assertThat(ctx.getMetadata()).containsEntry("auth_action", "open_access.denied");
     }
