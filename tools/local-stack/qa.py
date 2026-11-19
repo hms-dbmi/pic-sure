@@ -1,6 +1,6 @@
 """Headless QA battery for the partitioned PIC-SURE stack. Standard library only; it prints and writes counts, never patient-level data.
 
-  qa.py --hpds URL --store DIR [--open URL] [--api URL] [--dict URL] [--dataset NAME] [--manifest FILE ...] [--stigvars FILE]
+  qa.py --hpds URL --store DIR [--open URL] [--api URL] [--dict URL] [--dataset NAME] [--manifest FILE ...] [--stigvars FILE] [--stigvar-limit N]
         [--require open,api,dict] [--sample N] [--seed N] [--report-dir DIR]
 
   --hpds      the HPDS that serves the partitions with the authorization filter on (queries must carry userConsents)
@@ -11,8 +11,13 @@
   --dataset   a synthetic dataset of the local stack: its ground truth (pheno.py, as compare.py computes it) is a further source of truth
   --manifest  a loader manifest (split_manifest.json, a flow manifest.json, ingest-summary.json): partitions[] with name and patients
               and/or observations (or observationsWritten); repeatable
-  --stigvars  a file of concept paths (one per line); none of them, and nothing below them, may appear in the open-mode HPDS's search, and
-              no listed concept of the partitions may answer a query there. Without the file the open stigvar check is INCONCLUSIVE
+  --stigvars  a file of concept paths (one per line), matched exactly: no listed path may appear in the open-mode HPDS's search, and no
+              listed concept of the partitions may answer a query there. A path below a listed path is not listed. Without the file the
+              open stigvar check is INCONCLUSIVE
+  --stigvar-limit  how many listed paths that are in the partitions' columnMeta are searched and queried (default 200; 0 = all): at least one
+              per study, the rest evenly spaced in the sorted paths, so max(limit, number of studies) in all, and the calls stay bounded for
+              a list of 100k+ entries. Listed paths in no examined partition are one informational row. The coverage (listed / in the
+              partitions / checked) is reported as the `coverage` row and printed in the summary
   --columnmeta-root  <partition>/columnMeta.csv from another place (the flow prefix of a release's partitions/, which has none); the
               dictionary path checks are INCONCLUSIVE for a study whose partitions have no columnMeta.csv
   --require   checks a missing target must not skip (open, api, dict, stigvar): the target missing is then a setup problem (exit 2)
@@ -26,8 +31,8 @@ Checks (each one is reported per partition or per case, as PASS, FAIL, INCONCLUS
   consent.missing         a consent with no partition counts 0 (alone and next to a real one)
   consent.none            a query without consents is refused (no count is returned)
   open.*                  the open HPDS with no consents = every partition; with consents = those partitions; unknown consent = 0
-  stigvar.open            no listed path (prefix rule: equal to it or below it) in the open HPDS's search, no listed concept answers there;
-  stigvar.control         the authorized HPDS does have the listed paths (else the check proves nothing: INCONCLUSIVE)
+  stigvar.open            no listed path (exact match) in the open HPDS's search, no listed concept answers there; one coverage row
+  stigvar.control         the authorized HPDS does have the checked listed paths (INCONCLUSIVE when none can be checked, or one is missing)
   api.same                the query-service answers what the HPDS answers, query by query
   dict.consent            the dictionary's concepts for a consent filter belong to that consent's study (or are global/harmonized)
   dict.study_paths        per-study dictionary concept paths are a subset of the study's partition columnMeta paths
@@ -206,13 +211,38 @@ def expectations(partitions, meta, manifests, truth):
 
 
 def read_stigvars(path):
+    """The listed concept paths as a set: every lookup is exact and O(1), however long the list is."""
     with open(path, encoding="utf-8") as f:
-        return [line.rstrip("\r\n") for line in f if line.strip() and not line.startswith("#")]
+        return frozenset(line.rstrip("\r\n") for line in f if line.strip() and not line.startswith("#"))
 
 
 def listed(path, stigvars):
-    """The prefix rule: a path equal to a listed path, or starting with one."""
-    return any(path == s or path.startswith(s) for s in stigvars)
+    """Exact match: only a path equal to a listed path is listed. A path below a listed path is not."""
+    return path in stigvars
+
+
+def spread(items, limit):
+    """At most `limit` of the sorted items, evenly spaced: deterministic, and the same list gives the same sample. limit 0 = all."""
+    items = sorted(items)
+    if limit <= 0 or len(items) <= limit:
+        return items
+    return [items[i * len(items) // limit] for i in range(limit)]
+
+
+def stratified(paths_studies, limit):
+    """The paths to check, sorted: the smallest path of every study that has one (so no study goes unsampled), then evenly spaced paths of
+    the rest up to `limit`. The total is max(limit, number of studies); limit 0 = all. paths_studies: {path: set of studies holding it}."""
+    if limit <= 0 or len(paths_studies) <= limit:
+        return sorted(paths_studies)
+    picked, covered = set(), set()
+    for study in sorted({st for sts in paths_studies.values() for st in sts}):
+        if study in covered:
+            continue
+        path = min(p for p, sts in paths_studies.items() if study in sts)
+        picked.add(path)
+        covered |= paths_studies[path]
+    rest = [p for p in paths_studies if p not in picked]
+    return sorted(picked | (set(spread(rest, limit - len(picked))) if limit > len(picked) else set()))
 
 
 # ----------------------------------------------------------------------------------------------------------------------------
@@ -409,32 +439,52 @@ def check_open(rep, hpds, opn, parts, sample, stigvars):
 
 
 def check_stigvars(rep, hpds, opn, stigvars, parts, meta, limit=200):
-    """No listed path (prefix rule) in the open search, and no listed concept of the partitions answers a query on the open HPDS.
-    The authorized HPDS is the control: a list that matches nothing in the data proves nothing, so it is INCONCLUSIVE."""
-    for s in stigvars:
+    """Listed paths are matched exactly (a path below a listed path is not listed). Of the listed paths that are in the partitions' columnMeta,
+    at most max(`limit`, the number of studies) (0 = all) are checked, at least one per study and the rest evenly spaced in sorted order: each must not be in the open search (the search is the whole
+    path, and only that exact path counts as a hit), and the open HPDS must count nothing on it. The authorized HPDS is the control: it must
+    have the checked paths, else the check proves nothing for them (INCONCLUSIVE). One summary row reports the coverage, with the listed paths
+    that are in no partition (informational)."""
+    have_meta = any(meta.get(p) for p in parts)
+    studies = {}  # listed path of the partitions -> the studies of the partitions that hold it
+    for p in parts:
+        for c in meta.get(p) or {}:
+            if listed(c, stigvars):
+                studies.setdefault(c, set()).add(pheno.study_of(p))
+    if have_meta:
+        candidates = len(studies)
+        checked = stratified(studies, limit)
+        coverage = (f"{len(stigvars)} listed, {len(studies)} in the partitions, {len(stigvars) - len(studies)} in no examined partition (not checked), "
+                    f"{len(checked)} checked")
+    else:
+        candidates = len(stigvars)
+        checked = spread(stigvars, limit)
+        rep.add("stigvar.open", "concepts of the partitions", INCONCLUSIVE, "no columnMeta.csv to find the listed concepts in: a sample of the list was searched")
+        coverage = f"{len(stigvars)} listed, which of them are in the partitions is unknown (no columnMeta.csv), {len(checked)} of the list searched"
+    if len(checked) < candidates:
+        coverage += f": at least one path per study, the rest evenly spaced in the sorted paths, up to --stigvar-limit {limit} (0 = all)"
+    for s in checked:
         hits = opn.search(s)
         if hits is None:
             rep.add("stigvar.open", f"search {s}", INCONCLUSIVE, "the open search did not answer")
         else:
-            bad = sorted(h for h in hits if listed(h, [s]))
-            rep.add("stigvar.open", f"search {s}", FAIL if bad else PASS, f"{len(bad)} path(s) of the list in the open search: " + "; ".join(bad[:MAX_SHOWN]) if bad else "", 0, len(bad))
+            bad = s in hits
+            rep.add("stigvar.open", f"search {s}", FAIL if bad else PASS, "the listed path is in the open search" if bad else "", 0, int(bad))
         control = hpds.search(s)
-        present = len([h for h in control if listed(h, [s])]) if control is not None else None
-        if present:
-            rep.add("stigvar.control", s, PASS, f"{present} path(s) in the authorized search")
+        if control is None:
+            rep.add("stigvar.control", s, INCONCLUSIVE, "the authorized search did not answer")
+        elif s in control:
+            rep.add("stigvar.control", s, PASS, "the path is in the authorized search")
         else:
-            rep.add("stigvar.control", s, INCONCLUSIVE, "the authorized search did not answer" if present is None else "the list entry matches nothing in the authorized HPDS: the open check proves nothing for it")
-    present = sorted({c for p in parts for c in (meta.get(p) or {}) if listed(c, stigvars)})
-    if not any(meta.get(p) for p in parts):
-        rep.add("stigvar.open", "concepts of the partitions", INCONCLUSIVE, "no columnMeta.csv to find the listed concepts in")
-    for c in present[:limit]:
-        got, _ = opn.patients([], compare.required(c))
-        if got is None:
-            rep.add("stigvar.open", f"query {c}", INCONCLUSIVE, "the open HPDS did not answer the query")
-            continue
-        rep.add("stigvar.open", f"query {c}", FAIL if got else PASS, f"the open HPDS counted {got} patients on a listed concept" if got else "", 0, got)
-    if len(present) > limit:
-        rep.add("stigvar.open", "concepts of the partitions", INCONCLUSIVE, f"{len(present)} listed concepts, the first {limit} were queried")
+            rep.add("stigvar.control", s, INCONCLUSIVE, "the listed path is not in the authorized search: the open check proves nothing for it")
+        if have_meta:
+            got, _ = opn.patients([], compare.required(s))
+            if got is None:
+                rep.add("stigvar.open", f"query {s}", INCONCLUSIVE, "the open HPDS did not answer the query")
+            else:
+                rep.add("stigvar.open", f"query {s}", FAIL if got else PASS, f"the open HPDS counted {got} patients on a listed concept" if got else "", 0, got)
+    if not checked:
+        rep.add("stigvar.control", "listed paths", INCONCLUSIVE, f"no listed path to check ({coverage}): the open check proves nothing")
+    rep.add("stigvar.open", "coverage", SKIP, coverage)
 
 
 def check_api(rep, hpds, api, parts, meta, sample):
@@ -538,6 +588,9 @@ def print_summary(rep, out_dir, verbose):
         c = by[check]
         verdict = FAIL if c[FAIL] else INCONCLUSIVE if c[INCONCLUSIVE] else PASS if c[PASS] else SKIP
         print(f"{verdict:12} {check:24} pass {c[PASS]}, fail {c[FAIL]}, inconclusive {c[INCONCLUSIVE]}, skip {c[SKIP]}")
+    for r in rep.results:
+        if r["check"] == "stigvar.open" and r["case"] == "coverage":
+            print(f"  stigvar coverage: {r['detail']}")
     for status in (FAIL, INCONCLUSIVE):
         shown = [r for r in rep.results if r["status"] == status]
         for r in shown[: (len(shown) if verbose else MAX_SHOWN * 4)]:
@@ -609,7 +662,7 @@ def run(args, inspect=services_ref.inspect_container, env_inspect=compare.docker
     if opn:
         check_open(rep, hpds, opn, parts, sample, stigvars)
         if stigvars:
-            check_stigvars(rep, hpds, opn, stigvars, parts, meta)
+            check_stigvars(rep, hpds, opn, stigvars, parts, meta, args.stigvar_limit)
         else:
             rep.add("stigvar.open", "list", INCONCLUSIVE, "no --stigvars file: nothing says what the open HPDS must not serve")
     else:
@@ -627,6 +680,13 @@ def run(args, inspect=services_ref.inspect_container, env_inspect=compare.docker
     return rep, {"partitions": len(parts), "sources": [n for n, _ in manifests] + (["truth"] if truth else []), "seconds": round(time.time() - t0, 1)}
 
 
+def non_negative(text):
+    n = int(text)
+    if n < 0:
+        raise argparse.ArgumentTypeError("must be 0 (all) or more")
+    return n
+
+
 def parse(argv):
     ap = argparse.ArgumentParser(description="Headless QA battery for the partitioned PIC-SURE stack (counts only).")
     ap.add_argument("--hpds", required=True)
@@ -637,6 +697,8 @@ def parse(argv):
     ap.add_argument("--dataset")
     ap.add_argument("--manifest", action="append", default=[])
     ap.add_argument("--stigvars")
+    ap.add_argument("--stigvar-limit", type=non_negative, default=200, help="listed paths of the partitions searched and queried: at least one per study, the rest evenly spaced "
+                    "in sorted order, so max(limit, number of studies) in all; 0 = every listed path of the partitions")
     ap.add_argument("--columnmeta-root", help="a directory with <partition>/columnMeta.csv when --store has none (a release's partitions/)")
     ap.add_argument("--hpds-container", help="the container of --hpds, whose image label says what it serves (default: every HPDS container that is running)")
     ap.add_argument("--loader-jar-file", help="a file naming the RemoveConceptFromMetadata jar that made the open columnMeta of this run")
