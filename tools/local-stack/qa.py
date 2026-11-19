@@ -14,9 +14,10 @@
   --stigvars  a file of concept paths (one per line), matched exactly: no listed path may appear in the open-mode HPDS's search, and no
               listed concept of the partitions may answer a query there. A path below a listed path is not listed. Without the file the
               open stigvar check is INCONCLUSIVE
-  --stigvar-limit  how many listed paths that are in the partitions' columnMeta are searched and queried (default 200, an evenly spaced
-              sample of the sorted paths; 0 = all); the calls stay bounded for a list of 100k+ entries. Listed paths in no partition are
-              one informational row. The coverage (listed / in the partitions / checked) is reported as the `coverage` row
+  --stigvar-limit  how many listed paths that are in the partitions' columnMeta are searched and queried (default 200; 0 = all): at least one
+              per study, the rest evenly spaced in the sorted paths, so max(limit, number of studies) in all, and the calls stay bounded for
+              a list of 100k+ entries. Listed paths in no examined partition are one informational row. The coverage (listed / in the
+              partitions / checked) is reported as the `coverage` row and printed in the summary
   --columnmeta-root  <partition>/columnMeta.csv from another place (the flow prefix of a release's partitions/, which has none); the
               dictionary path checks are INCONCLUSIVE for a study whose partitions have no columnMeta.csv
   --require   checks a missing target must not skip (open, api, dict, stigvar): the target missing is then a setup problem (exit 2)
@@ -228,6 +229,22 @@ def spread(items, limit):
     return [items[i * len(items) // limit] for i in range(limit)]
 
 
+def stratified(paths_studies, limit):
+    """The paths to check, sorted: the smallest path of every study that has one (so no study goes unsampled), then evenly spaced paths of
+    the rest up to `limit`. The total is max(limit, number of studies); limit 0 = all. paths_studies: {path: set of studies holding it}."""
+    if limit <= 0 or len(paths_studies) <= limit:
+        return sorted(paths_studies)
+    picked, covered = set(), set()
+    for study in sorted({st for sts in paths_studies.values() for st in sts}):
+        if study in covered:
+            continue
+        path = min(p for p, sts in paths_studies.items() if study in sts)
+        picked.add(path)
+        covered |= paths_studies[path]
+    rest = [p for p in paths_studies if p not in picked]
+    return sorted(picked | (set(spread(rest, limit - len(picked))) if limit > len(picked) else set()))
+
+
 # ----------------------------------------------------------------------------------------------------------------------------
 # the battery
 
@@ -423,21 +440,28 @@ def check_open(rep, hpds, opn, parts, sample, stigvars):
 
 def check_stigvars(rep, hpds, opn, stigvars, parts, meta, limit=200):
     """Listed paths are matched exactly (a path below a listed path is not listed). Of the listed paths that are in the partitions' columnMeta,
-    at most `limit` (evenly spaced in sorted order, 0 = all) are checked: each must not be in the open search (the search is the whole
+    at most max(`limit`, the number of studies) (0 = all) are checked, at least one per study and the rest evenly spaced in sorted order: each must not be in the open search (the search is the whole
     path, and only that exact path counts as a hit), and the open HPDS must count nothing on it. The authorized HPDS is the control: it must
     have the checked paths, else the check proves nothing for them (INCONCLUSIVE). One summary row reports the coverage, with the listed paths
     that are in no partition (informational)."""
     have_meta = any(meta.get(p) for p in parts)
-    in_parts = {c for p in parts for c in (meta.get(p) or {}) if listed(c, stigvars)}
+    studies = {}  # listed path of the partitions -> the studies of the partitions that hold it
+    for p in parts:
+        for c in meta.get(p) or {}:
+            if listed(c, stigvars):
+                studies.setdefault(c, set()).add(pheno.study_of(p))
     if have_meta:
-        candidates, absent = in_parts, len(stigvars) - len(in_parts)
+        candidates = len(studies)
+        checked = stratified(studies, limit)
+        coverage = (f"{len(stigvars)} listed, {len(studies)} in the partitions, {len(stigvars) - len(studies)} in no examined partition (not checked), "
+                    f"{len(checked)} checked")
     else:
-        candidates, absent = stigvars, 0
+        candidates = len(stigvars)
+        checked = spread(stigvars, limit)
         rep.add("stigvar.open", "concepts of the partitions", INCONCLUSIVE, "no columnMeta.csv to find the listed concepts in: a sample of the list was searched")
-    checked = spread(candidates, limit)
-    coverage = f"{len(stigvars)} listed, {len(in_parts)} in the partitions, {absent} in no partition (not checked), {len(checked)} checked"
-    if len(checked) < len(candidates):
-        coverage += f": an evenly spaced sample of the sorted paths, --stigvar-limit {limit} (0 = all)"
+        coverage = f"{len(stigvars)} listed, which of them are in the partitions is unknown (no columnMeta.csv), {len(checked)} of the list searched"
+    if len(checked) < candidates:
+        coverage += f": at least one path per study, the rest evenly spaced in the sorted paths, up to --stigvar-limit {limit} (0 = all)"
     for s in checked:
         hits = opn.search(s)
         if hits is None:
@@ -564,6 +588,9 @@ def print_summary(rep, out_dir, verbose):
         c = by[check]
         verdict = FAIL if c[FAIL] else INCONCLUSIVE if c[INCONCLUSIVE] else PASS if c[PASS] else SKIP
         print(f"{verdict:12} {check:24} pass {c[PASS]}, fail {c[FAIL]}, inconclusive {c[INCONCLUSIVE]}, skip {c[SKIP]}")
+    for r in rep.results:
+        if r["check"] == "stigvar.open" and r["case"] == "coverage":
+            print(f"  stigvar coverage: {r['detail']}")
     for status in (FAIL, INCONCLUSIVE):
         shown = [r for r in rep.results if r["status"] == status]
         for r in shown[: (len(shown) if verbose else MAX_SHOWN * 4)]:
@@ -653,6 +680,13 @@ def run(args, inspect=services_ref.inspect_container, env_inspect=compare.docker
     return rep, {"partitions": len(parts), "sources": [n for n, _ in manifests] + (["truth"] if truth else []), "seconds": round(time.time() - t0, 1)}
 
 
+def non_negative(text):
+    n = int(text)
+    if n < 0:
+        raise argparse.ArgumentTypeError("must be 0 (all) or more")
+    return n
+
+
 def parse(argv):
     ap = argparse.ArgumentParser(description="Headless QA battery for the partitioned PIC-SURE stack (counts only).")
     ap.add_argument("--hpds", required=True)
@@ -663,7 +697,8 @@ def parse(argv):
     ap.add_argument("--dataset")
     ap.add_argument("--manifest", action="append", default=[])
     ap.add_argument("--stigvars")
-    ap.add_argument("--stigvar-limit", type=int, default=200, help="listed paths searched and queried (evenly spaced in sorted order); 0 = every listed path of the partitions")
+    ap.add_argument("--stigvar-limit", type=non_negative, default=200, help="listed paths of the partitions searched and queried: at least one per study, the rest evenly spaced "
+                    "in sorted order, so max(limit, number of studies) in all; 0 = every listed path of the partitions")
     ap.add_argument("--columnmeta-root", help="a directory with <partition>/columnMeta.csv when --store has none (a release's partitions/)")
     ap.add_argument("--hpds-container", help="the container of --hpds, whose image label says what it serves (default: every HPDS container that is running)")
     ap.add_argument("--loader-jar-file", help="a file naming the RemoveConceptFromMetadata jar that made the open columnMeta of this run")
