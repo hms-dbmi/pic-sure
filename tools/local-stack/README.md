@@ -288,7 +288,7 @@ without the stigmatized variables):
   and the run goes on; with `DATASET=dir` that is an error.
 - A synthetic dataset (not `dir`) gets one by default: `STIGVARS` (default `fixtures/qa/stigvars.txt`) lists concept paths, and
   `RemoveConceptFromMetadata` (the release flow's tool, from the loader jars directory, run in a container) removes them from each
-  partition's columnMeta into `work/<dataset>/open-columnmeta`. It removes exact paths only. `STIGVARS=` (empty) skips it.
+  partition's columnMeta into `work/<dataset>/open-columnmeta`. It removes exact paths only, and `qa.py --stigvars` checks the same list by exact path. `STIGVARS=` (empty) skips it.
 - With neither, the open HPDS serves the same files with the filter off.
 
 An override is only valid for the store it was made from: a `columnMeta.javabin` holds offsets into that partition's
@@ -318,7 +318,7 @@ python3 qa.py --help
 | `consent.missing` | a consent with no partition counts 0, alone, with a concept, and next to a real one |
 | `consent.none` | a query without consents is refused: an answer that is not a count (today an empty 200, see Layer api). A connection error, a 5xx and "Resource is locked" are not a refusal and fail |
 | `open.none` / `open.consents` | open HPDS: no consents = every partition (equal to the auth HPDS asked for all partitions), with consents = those partitions, unknown consent = 0 |
-| `stigvar.open` / `stigvar.control` | with `--stigvars`: for each listed path, no path equal to it or starting with it in the open HPDS's search, and no concept of the partitions under a listed path (prefix rule) counts anything on the open HPDS. The authorized HPDS is the control: a list entry that matches nothing there is INCONCLUSIVE. With an open HPDS and no list the check is INCONCLUSIVE too (`QA_REQUIRE=stigvar` also fails a run with no open HPDS) |
+| `stigvar.open` / `stigvar.control` | with `--stigvars`: the listed paths are matched exactly (a path below a listed path is not listed). Of the listed paths that are in the partitions' columnMeta, `--stigvar-limit` (default 200, an evenly spaced sample of the sorted paths, 0 = all) are checked: none may be in the open HPDS's search, and the open HPDS must count nothing on it. Listed paths in no partition are one informational `coverage` row, which also says how many were listed, in the partitions and checked, so a list of 100k+ entries costs a bounded number of calls. The authorized HPDS is the control: a checked path missing there is INCONCLUSIVE, and so is a list with nothing to check. With an open HPDS and no list the check is INCONCLUSIVE too (`QA_REQUIRE=stigvar` also fails a run with no open HPDS) |
 | `api.same` | the query-service answers the HPDS's answer (counts, observation counts, no consents, unknown consent), query by query |
 | `dict.consent` | with a consent filter the dictionary returns concepts of that consent's study (or of a global / harmonized dataset), never of another study |
 | `dict.study_paths` | the study's dictionary concept paths are a subset of the union of its partitions' columnMeta paths. A release's `partitions/` has no `columnMeta.csv`: give `QA_COLUMNMETA_ROOT=<dir>/<partition>/columnMeta.csv` (for example a local copy of the pheno-load flow prefix), else this and `dict.global_paths` are INCONCLUSIVE |
