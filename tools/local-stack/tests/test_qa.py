@@ -3,6 +3,7 @@ No docker: the HPDS, the open-mode HPDS, the query-service and the dictionary ar
 import contextlib
 import csv
 import http.server
+import io
 import json
 import os
 import sys
@@ -35,7 +36,6 @@ class Fake(http.server.BaseHTTPRequestHandler):
     """One configurable HPDS. cls attributes are set by the subclass factory."""
     require_filter = True
     union = "set"  # "sum" double counts patients of two partitions
-    leak = ()  # concept paths the search still lists
     removed = ()  # concept paths the search does not list, and queries do not count
     hidden = ()  # concept paths the search does not list but queries still count
     none_reply = (200, "")  # what a query without consents gets when the filter is on
@@ -281,7 +281,7 @@ class QaTest(unittest.TestCase):
     def test_a_listed_path_in_the_open_search_fails(self):
         with open(self.stig, "w") as f:
             f.write(f"{V1}\n{V2}\n")
-        with serve(variant(Fake)) as hpds, serve(variant(Fake, require_filter=False, removed=(V1,), leak=(V2,))) as opn:
+        with serve(variant(Fake)) as hpds, serve(variant(Fake, require_filter=False, removed=(V1,))) as opn:
             rep = self.run_qa(hpds, opn, extra=["--stigvars", self.stig])
         bad = [r for r in rep.results if r["check"] == "stigvar.open" and r["status"] == qa.FAIL]
         self.assertTrue(bad)
@@ -350,13 +350,57 @@ class QaTest(unittest.TestCase):
         self.assertEqual([r["status"] for r in rep.results if r["check"] == "stigvar.control"], [qa.PASS] * 25)
         cover = [r for r in rep.results if r["case"] == "coverage"]
         self.assertEqual(len(cover), 1)
-        self.assertIn("120300 listed, 300 in the partitions, 120000 in no partition (not checked), 25 checked", cover[0]["detail"])
+        self.assertIn("120300 listed, 300 in the partitions, 120000 in no examined partition (not checked), 25 checked", cover[0]["detail"])
         self.assertLess(len(rep.results), 100)
         # the same list gives the same sample
         rep2 = qa.Report()
         with serve(counting("hpds")) as hpds, serve(counting("open")) as opn:
             qa.check_stigvars(rep2, qa.Client(hpds), qa.Client(opn), stigvars, ["phs000000.c1"], meta, 25)
         self.assertEqual([r["case"] for r in rep.results], [r["case"] for r in rep2.results])
+
+    def test_every_study_with_a_listed_path_is_checked_whatever_the_limit(self):
+        studies = [f"phs{n:06d}" for n in range(100, 140)]
+        big = {s: [f"\\{s}\\pht000001\\phv{i:08d}\\Var\\" for i in range(40)] for s in studies[:-1]}
+        lone = f"\\{studies[-1]}\\pht000001\\phv00000001\\Var\\"  # the one listed path of the last study
+        data = {f"{s}.c1": {c: {1} for c in cs + [GLOBAL]} for s, cs in big.items()}
+        data[f"{studies[-1]}.c1"] = {lone: {1}, GLOBAL: {1}}
+        meta = {p: {c: {} for c in d} for p, d in data.items()}
+        listed = frozenset(c for cs in big.values() for c in cs) | {lone}
+        rep = qa.Report()
+        with serve(variant(Fake, data=data)) as hpds, serve(variant(Fake, data=data, require_filter=False, removed=listed)) as opn:
+            qa.check_stigvars(rep, qa.Client(hpds), qa.Client(opn), listed, sorted(data), meta, 10)
+        searched = {r["case"][len("search "):] for r in rep.results if r["case"].startswith("search ")}
+        self.assertLess(10, len(studies))  # the limit is smaller than the number of studies, so the total is the number of studies
+        self.assertIn(lone, searched)
+        self.assertEqual({p.split("\\")[1] for p in searched}, set(studies))
+        self.assertEqual(len(searched), len(studies))
+        again = qa.Report()
+        with serve(variant(Fake, data=data)) as hpds, serve(variant(Fake, data=data, require_filter=False, removed=listed)) as opn:
+            qa.check_stigvars(again, qa.Client(hpds), qa.Client(opn), listed, sorted(data), meta, 10)
+        self.assertEqual([r["case"] for r in rep.results], [r["case"] for r in again.results])
+        # a limit above the number of studies fills evenly up to the limit
+        self.assertEqual(len(qa.stratified({p: {p.split("\\")[1]} for p in listed}, 100)), 100)
+
+    def test_the_coverage_is_printed_in_the_summary(self):
+        rep = qa.Report()
+        rep.add("stigvar.open", "coverage", qa.SKIP, "5 listed, 3 in the partitions, 2 in no examined partition (not checked), 3 checked")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            qa.print_summary(rep, self.tmp.name, False)
+        self.assertIn("stigvar coverage: 5 listed, 3 in the partitions", out.getvalue())
+
+    def test_without_columnmeta_the_coverage_says_membership_is_unknown(self):
+        rep = qa.Report()
+        with serve(variant(Fake)) as hpds, serve(variant(Fake, require_filter=False)) as opn:
+            qa.check_stigvars(rep, qa.Client(hpds), qa.Client(opn), frozenset([V1]), ["phs000000.c1"], {"phs000000.c1": None}, 5)
+        cover = [r for r in rep.results if r["case"] == "coverage"][0]["detail"]
+        self.assertIn("unknown", cover)
+        self.assertNotIn("in no examined partition", cover)
+
+    def test_a_negative_stigvar_limit_is_a_usage_error(self):
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as cm:
+            qa.parse(["--hpds", "h", "--store", "s", "--stigvar-limit", "-1"])
+        self.assertEqual(cm.exception.code, 2)
 
     def test_stigvar_limit_zero_checks_every_listed_path_of_the_partitions(self):
         present = [f"\\phs000000\\pht900000\\phv{i:08d}\\Var\\" for i in range(30)]
