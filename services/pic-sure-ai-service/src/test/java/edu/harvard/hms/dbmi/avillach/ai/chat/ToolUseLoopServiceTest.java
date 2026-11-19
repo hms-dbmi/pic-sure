@@ -91,14 +91,20 @@ class ToolUseLoopServiceTest {
     private static final CallerContext OPEN_CALLER = new CallerContext("Bearer picsure_s_x", "req-1", null, "open");
 
     @Test
-    void anAuthorizedCallerIsNotOfferedTheOpenOnlyCountTools() {
+    void anAuthorizedCallerGetsBothTheExactAndTheOpenCountTools() {
         FakeModelClient model = FakeModelClient.returning(doneTurn("ok"));
 
         new ToolUseLoopService(model, FakeToolGateway.listingCountTools(), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, AUTHORIZED_CALLER);
 
-        assertEquals(List.of("search_concepts", "propose_query"), model.lastToolNames);
-        assertFalse(model.lastSystemPrompt.contains("open-access"), model.lastSystemPrompt);
-        assertTrue(model.lastSystemPrompt.contains("You cannot count participants"), model.lastSystemPrompt);
+        assertEquals(
+            List.of(
+                "search_concepts", "count_participants", "cross_count", "authorized_count_participants", "authorized_cross_count",
+                "propose_query"
+            ), model.lastToolNames
+        );
+        assertFalse(model.lastSystemPrompt.contains("cannot count"), model.lastSystemPrompt);
+        assertTrue(model.lastSystemPrompt.contains("exact counts"), model.lastSystemPrompt);
+        assertTrue(model.lastSystemPrompt.contains("say which kind it is"), model.lastSystemPrompt);
         assertFalse(model.lastSystemPrompt.contains("{{"), "every placeholder is filled");
     }
 
@@ -114,7 +120,22 @@ class ToolUseLoopServiceTest {
     }
 
     @Test
-    void anAuthorizedCallersCountCallIsRefusedEvenIfTheModelMakesIt() {
+    void anOpenCallersAuthorizedCountCallIsRefusedEvenIfTheModelMakesIt() {
+        String searchResult = "{\"concepts\":[{\"conceptPath\":\"\\\\demo\\\\body\\\\bmi\\\\\"}]}";
+        String count =
+            "{\"query\":{\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"\\\\demo\\\\body\\\\bmi\\\\\"}}}";
+        FakeModelClient model = FakeModelClient.returning(
+            toolCallTurn("search_concepts", "{\"search\":\"bmi\"}"), toolCallTurn("authorized_count_participants", count), doneTurn("Done")
+        );
+        FakeToolGateway tools = FakeToolGateway.returning(searchResult);
+
+        new ToolUseLoopService(model, tools, PROPOSE_QUERY_TOOL, 8).handle(REQUEST, OPEN_CALLER);
+
+        assertEquals(List.of("search_concepts"), tools.calls.stream().map(c -> c.name).toList());
+    }
+
+    @Test
+    void anAuthorizedCallersOpenCountCallReachesTheGateway() {
         String searchResult = "{\"concepts\":[{\"conceptPath\":\"\\\\demo\\\\body\\\\bmi\\\\\"}]}";
         String count =
             "{\"query\":{\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"\\\\demo\\\\body\\\\bmi\\\\\"}}}";
@@ -125,7 +146,41 @@ class ToolUseLoopServiceTest {
 
         new ToolUseLoopService(model, tools, PROPOSE_QUERY_TOOL, 8).handle(REQUEST, AUTHORIZED_CALLER);
 
-        assertEquals(List.of("search_concepts"), tools.calls.stream().map(c -> c.name).toList());
+        assertEquals(List.of("search_concepts", "count_participants"), tools.calls.stream().map(c -> c.name).toList());
+    }
+
+    @Test
+    void aPathOnlyACrossCountReturnedIsStillUnseen() {
+        // An open CROSS_COUNT is keyed by internal consent paths the open channel put in; they must not pass the path guard.
+        String consentPath = "\\\\_studies_consents\\\\phs000001\\\\";
+        String crossCountResult = "{\"cells\":[{\"conceptPath\":\"" + consentPath + "\",\"count\":40}]}";
+        String proposal =
+            "{\"query\":{\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"" + consentPath + "\"}}}";
+        FakeModelClient model = FakeModelClient.returning(
+            toolCallTurn("cross_count", "{\"resultType\":\"CROSS_COUNT\",\"query\":{}}"),
+            toolCallTurn("authorized_count_participants", proposal), doneTurn("Done")
+        );
+        FakeToolGateway tools = FakeToolGateway.returning(crossCountResult);
+
+        new ToolUseLoopService(model, tools, PROPOSE_QUERY_TOOL, 8).handle(REQUEST, AUTHORIZED_CALLER);
+
+        assertEquals(List.of("cross_count"), tools.calls.stream().map(c -> c.name).toList());
+    }
+
+    @Test
+    void aReplyMayQuoteACrossCountsPathsWithoutARepairRound() {
+        String consentPath = "\\\\_studies_consents\\\\phs000001\\\\";
+        String crossCountResult = "{\"cells\":[{\"conceptPath\":\"" + consentPath + "\",\"count\":40}]}";
+        FakeModelClient model = FakeModelClient.returning(
+            toolCallTurn("cross_count", "{\"resultType\":\"CROSS_COUNT\",\"query\":{}}"),
+            doneTurn("About 40 participants are in `\\_studies_consents\\phs000001\\`.")
+        );
+
+        ChatResponse response = new ToolUseLoopService(model, FakeToolGateway.returning(crossCountResult), PROPOSE_QUERY_TOOL, 8)
+            .handle(REQUEST, AUTHORIZED_CALLER);
+
+        assertTrue(response.response().contains("About 40 participants"), response.response());
+        assertEquals(2, model.callCount, "no extra round asking the model to drop the path");
     }
 
     @Test
@@ -1447,6 +1502,33 @@ class ToolUseLoopServiceTest {
     }
 
     @Test
+    void anAuthorizedCountedQueryIsProposedWhenTheReplySaysTheQueryChangedButNothingWasProposed() {
+        FakeModelClient model = FakeModelClient.returning(
+            toolCallTurn("search_concepts", "{\"search\":\"age\"}"),
+            toolCallTurn("authorized_count_participants", "{\"query\":" + AGE_QUERY + "}"),
+            doneTurn("Exactly 3,102 participants. I included the age variable in the query.")
+        );
+
+        ChatResponse response = new ToolUseLoopService(model, FakeToolGateway.returning(DICTIONARY_RESULT), PROPOSE_QUERY_TOOL, 8)
+            .handle(REQUEST, AUTHORIZED_CALLER);
+
+        assertEquals(AGE_PATH, response.query().path("phenotypicClause").path("conceptPath").asText());
+    }
+
+    @Test
+    void anAuthorizedCallersOpenCountedQueryIsProposedForReviewLikeAnyCount() {
+        FakeModelClient model = FakeModelClient.returning(
+            toolCallTurn("search_concepts", "{\"search\":\"age\"}"), toolCallTurn("count_participants", "{\"query\":" + AGE_QUERY + "}"),
+            doneTurn("About 3,102 participants. I included the age variable in the query.")
+        );
+
+        ChatResponse response = new ToolUseLoopService(model, FakeToolGateway.returning(DICTIONARY_RESULT), PROPOSE_QUERY_TOOL, 8)
+            .handle(REQUEST, AUTHORIZED_CALLER);
+
+        assertEquals(AGE_PATH, response.query().path("phenotypicClause").path("conceptPath").asText());
+    }
+
+    @Test
     void aCountedQueryIsNotProposedWhenTheReplyOnlyOffersToChangeTheQuery() {
         FakeModelClient model = FakeModelClient.returning(
             toolCallTurn("search_concepts", "{\"search\":\"age\"}"), toolCallTurn("count_participants", "{\"query\":" + AGE_QUERY + "}"),
@@ -2082,8 +2164,9 @@ class ToolUseLoopServiceTest {
         /** A gateway that lists a search tool and both open-only count tools, as the real MCP endpoint does. */
         static FakeToolGateway listingCountTools() {
             FakeToolGateway gateway = new FakeToolGateway();
-            gateway.listed = List.of("search_concepts", "count_participants", "cross_count").stream()
-                .map(name -> new ToolDefinition(name, name, "{}")).toList();
+            gateway.listed =
+                List.of("search_concepts", "count_participants", "cross_count", "authorized_count_participants", "authorized_cross_count")
+                    .stream().map(name -> new ToolDefinition(name, name, "{}")).toList();
             return gateway;
         }
 

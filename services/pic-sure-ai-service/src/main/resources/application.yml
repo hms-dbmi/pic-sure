@@ -61,6 +61,10 @@ picsure:
       # Without a read timeout the HTTP client waits forever, so a stuck dictionary call would hang the whole chat turn.
       connect-timeout: ${AI_MCP_CONNECT_TIMEOUT:5s}
       read-timeout: ${AI_MCP_READ_TIMEOUT:20s}
+      # The read timeout for the count tools, open and authorized; read-timeout covers every other call. It is longer than
+      # pic-sure-mcp's 120s wait for an authorized cross count, so a slow count usually ends with the MCP's own message; if this
+      # timeout fires first, the model is told not to run the same count again.
+      count-read-timeout: ${AI_MCP_COUNT_READ_TIMEOUT:130s}
     conversation:
       # memory (default, and the only implementation): conversations and turn results live in this instance's memory, so they are
       # lost on restart and not shared between instances. Run one instance, or sticky sessions, until a shared store exists.

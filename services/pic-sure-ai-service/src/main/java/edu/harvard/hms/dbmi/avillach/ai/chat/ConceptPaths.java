@@ -19,11 +19,12 @@ import com.fasterxml.jackson.databind.node.TextNode;
 /**
  * The concept paths seen during one chat turn, used to refuse a tool call that names a path the model was never shown.
  *
- * <p>Small models invent paths, often by copying the placeholder paths in a tool's example arguments. A path counts as seen if a tool
- * result or the researcher's current query contained it; backslash variants of the same path (doubled, or missing the leading or trailing
- * one) are treated as the same path when checking, then rewritten to the form first seen before the call goes out (see
- * {@link #canonicalize(String)}), since HPDS matches concept paths by exact key. Categorical filter values are rewritten the same way when
- * they differ only in case from a value listed for that path. One instance per chat turn; not thread-safe.
+ * <p>Small models invent paths, often by copying the placeholder paths in a tool's example arguments. A path counts as seen if the results
+ * or the researcher's current query it was given contained it (a turn keeps cross-count results out of the set its tool calls are checked
+ * against; see {@link TurnState}); backslash variants of the same path (doubled, or missing the leading or trailing one) are treated as the
+ * same path when checking, then rewritten to the form first seen before the call goes out (see {@link #canonicalize(String)}), since HPDS
+ * matches concept paths by exact key. Categorical filter values are rewritten the same way when they differ only in case from a value
+ * listed for that path. One instance per chat turn; not thread-safe.
  */
 final class ConceptPaths {
 

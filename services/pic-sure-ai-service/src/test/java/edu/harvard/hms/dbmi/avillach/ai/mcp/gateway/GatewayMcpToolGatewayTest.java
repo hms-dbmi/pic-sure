@@ -55,7 +55,7 @@ class GatewayMcpToolGatewayTest {
                 .willReturn(aResponse().withStatus(202))
         );
         gateway = new GatewayMcpToolGateway(
-            server.baseUrl(), "ai-token", true, new ObjectMapper(), Duration.ofSeconds(5), Duration.ofSeconds(20)
+            server.baseUrl(), "ai-token", true, new ObjectMapper(), Duration.ofSeconds(5), Duration.ofSeconds(20), Duration.ofSeconds(130)
         );
     }
 
@@ -112,7 +112,9 @@ class GatewayMcpToolGatewayTest {
     void aBlankServiceTokenFailsFastAtStartupWhenTheAssistantIsEnabled() {
         assertThrows(
             IllegalStateException.class,
-            () -> new GatewayMcpToolGateway(server.baseUrl(), " ", true, new ObjectMapper(), Duration.ofSeconds(5), Duration.ofSeconds(20))
+            () -> new GatewayMcpToolGateway(
+                server.baseUrl(), " ", true, new ObjectMapper(), Duration.ofSeconds(5), Duration.ofSeconds(20), Duration.ofSeconds(130)
+            )
         );
     }
 
@@ -120,21 +122,27 @@ class GatewayMcpToolGatewayTest {
     void aBlankGatewayUrlFailsFastAtStartupWhenTheAssistantIsEnabled() {
         assertThrows(
             IllegalStateException.class,
-            () -> new GatewayMcpToolGateway(" ", "ai-token", true, new ObjectMapper(), Duration.ofSeconds(5), Duration.ofSeconds(20))
+            () -> new GatewayMcpToolGateway(
+                " ", "ai-token", true, new ObjectMapper(), Duration.ofSeconds(5), Duration.ofSeconds(20), Duration.ofSeconds(130)
+            )
         );
     }
 
     @Test
     void aBlankGatewayUrlDoesNotStopADisabledAssistantStarting() {
         assertDoesNotThrow(
-            () -> new GatewayMcpToolGateway("", "", false, new ObjectMapper(), Duration.ofSeconds(5), Duration.ofSeconds(20))
+            () -> new GatewayMcpToolGateway(
+                "", "", false, new ObjectMapper(), Duration.ofSeconds(5), Duration.ofSeconds(20), Duration.ofSeconds(130)
+            )
         );
     }
 
     @Test
     void aBlankServiceTokenDoesNotStopADisabledAssistantStarting() {
         assertDoesNotThrow(
-            () -> new GatewayMcpToolGateway(server.baseUrl(), " ", false, new ObjectMapper(), Duration.ofSeconds(5), Duration.ofSeconds(20))
+            () -> new GatewayMcpToolGateway(
+                server.baseUrl(), " ", false, new ObjectMapper(), Duration.ofSeconds(5), Duration.ofSeconds(20), Duration.ofSeconds(130)
+            )
         );
     }
 
@@ -219,6 +227,53 @@ class GatewayMcpToolGatewayTest {
             assertThrows(IllegalStateException.class, () -> gateway.listTools(callerWith("Bearer caller-token", "req-1")));
 
         assertTrue(e.getMessage().contains("Internal error"), e.getMessage());
+    }
+
+    @Test
+    void onlyACountCallGetsTheLongerReadTimeout() {
+        GatewayMcpToolGateway timed = new GatewayMcpToolGateway(
+            server.baseUrl(), "ai-token", true, new ObjectMapper(), Duration.ofSeconds(5), Duration.ofSeconds(1), Duration.ofSeconds(5)
+        );
+        server.stubFor(
+            post(urlEqualTo("/mcp")).withRequestBody(matchingJsonPath("$.method", equalTo("tools/list")))
+                .willReturn(okRpc("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}"))
+        );
+        server
+            .stubFor(
+                post(urlEqualTo("/mcp")).withRequestBody(matchingJsonPath("$.method", equalTo("tools/call"))).willReturn(
+                    okRpc("{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"42\"}]}}")
+                        .withFixedDelay(2000)
+                )
+            );
+        // The handshake goes first, so the timed calls below differ only in which read timeout they get.
+        assertTrue(timed.listTools(callerWith("Bearer caller-token", "req-1")).isEmpty());
+
+        assertTrue(
+            timed.callTool("search_concepts", "{}", callerWith("Bearer caller-token", "req-1")).error(),
+            "a dictionary call keeps the short read timeout"
+        );
+        for (String count : List.of("count_participants", "authorized_cross_count")) {
+            assertEquals("42", timed.callTool(count, "{}", callerWith("Bearer caller-token", "req-1")).content(), count);
+        }
+    }
+
+    @Test
+    void aCountThatTimesOutSaysNotToRunItAgain() {
+        GatewayMcpToolGateway timed = new GatewayMcpToolGateway(
+            server.baseUrl(), "ai-token", true, new ObjectMapper(), Duration.ofSeconds(5), Duration.ofSeconds(5), Duration.ofMillis(500)
+        );
+        server
+            .stubFor(
+                post(urlEqualTo("/mcp")).withRequestBody(matchingJsonPath("$.method", equalTo("tools/call"))).willReturn(
+                    okRpc("{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"42\"}]}}")
+                        .withFixedDelay(1500)
+                )
+            );
+
+        ToolResult result = timed.callTool("authorized_cross_count", "{}", callerWith("Bearer caller-token", "req-1"));
+
+        assertTrue(result.error());
+        assertTrue(result.content().contains("Do not run the same count again"), result.content());
     }
 
     @Test

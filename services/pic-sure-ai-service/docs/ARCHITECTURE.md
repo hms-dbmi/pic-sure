@@ -15,7 +15,7 @@ flowchart LR
     MODEL["Reasoning model<br/>Bedrock Converse<br/>(aws-sdk or http provider)"]
     MCP["pic-sure-mcp<br/>read-only tools"]
     DICT["Dictionary API"]
-    HPDS["HPDS open channel<br/>obfuscated counts"]
+    HPDS["HPDS<br/>open channel: obfuscated counts<br/>authorized channel: exact counts"]
 
     UI -- "POST /picsure/ai/chat<br/>Bearer JWT" --> GW
     GW -- "/ai/**" --> AI
@@ -121,7 +121,8 @@ flowchart TD
 | Tool | Source | Notes |
 | --- | --- | --- |
 | `search_concepts`, `list_facets`, `get_concept`, `get_concepts` | `pic-sure-mcp` via gateway | Always offered. |
-| `count_participants`, `cross_count` | `pic-sure-mcp` via gateway | Obfuscated open-access counts. Withheld from authorized (logged-in) callers, whose results panel shows exact counts; the system prompt tells the model it cannot count. |
+| `count_participants`, `cross_count` | `pic-sure-mcp` via gateway | Obfuscated open-access counts that ignore consents. Offered to every caller. |
+| `authorized_count_participants`, `authorized_cross_count` | `pic-sure-mcp` via gateway | Exact counts filtered by the caller's own consents, run with their token. Offered to authorized (logged-in) callers only, whose system prompt says when to use each kind and to keep the two apart. |
 | `get_adapter_code` | `pic-sure-mcp` via gateway | Withheld by default (`AI_MCP_EXCLUDED_TOOLS`) to save input tokens. |
 | `propose_query` | This service | Query, facets and search proposals. Selected variables are a change (`addSelect` / `removeSelect`), not a list. |
 
