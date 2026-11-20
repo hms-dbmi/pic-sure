@@ -54,7 +54,7 @@
         <!-- Pulled in by commons-compress 1.26+, which 1.24.0 did not depend on. Boot
              manages 3.17.0, which the advisories flag; 3.18.0 is what commons-compress
              itself asks for. -->
-        <commons-lang3.version>3.18.0</commons-lang3.version>
+        <commons-lang3.version>3.22.0</commons-lang3.version>
         <pic-sure-openapi.version>3.0.0</pic-sure-openapi.version>
         <springdoc.version>2.9.1</springdoc.version>
         <swagger-core.version>2.2.55</swagger-core.version>
