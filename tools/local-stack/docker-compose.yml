@@ -59,11 +59,15 @@ services:
 
   # DATASET=dir: the partition root and the key file of an existing dataset, mounted the way the BDC host mounts them: the key at
   # /opt/local/hpds/encryption_key (the path Crypto reads) and HPDS_DATA_DIRECTORY at the directory that holds one subdirectory per partition
+  # With GENOMIC=fixture|empty the Makefile sets HPDS_GENOMIC_OPTS to the genomic settings of the BDC authorized HPDS (profile bdc-auth-dev):
+  # hpds.genomicProcessor.impl=localPatientDistributed and HPDS_GENOMIC_DATA_DIRECTORY=/opt/local/hpds/all/. They are set here, not by activating
+  # the profile, because the profile also points the HPDS at a dev dictionary host and an S3 export bucket that do not exist locally. The genomic
+  # root is laid out all/<group>/<chromosome>/ and is mounted writable: HPDS writes its variant index caches next to the stores.
   hpds-dir:
     <<: *hpds
     container_name: picsure-local-hpds-dir
     environment:
-      JAVA_OPTS: ${HPDS_JAVA_OPTS:--Xmx1g} -Dhpds.requireAuthorizationFilter=true
+      JAVA_OPTS: ${HPDS_JAVA_OPTS:--Xmx1g} -Dhpds.requireAuthorizationFilter=true ${HPDS_GENOMIC_OPTS:-}
       PICSURE_ACTUATOR_EXPOSURE: health
       ID_BATCH_SIZE: ${HPDS_ID_BATCH_SIZE:-1000}
       HPDS_DATA_DIRECTORY: /opt/local/hpds/phenotypic/
@@ -72,6 +76,7 @@ services:
     volumes:
       - ${SERVE_ROOT:-./work/none}:/opt/local/hpds/phenotypic:ro
       - ${SERVE_KEY:-./work/none/encryption_key}:/opt/local/hpds/encryption_key:ro
+      - ${GENOMIC_ROOT:-./work/none}:/opt/local/hpds/all
 
   # open mode: the same layout, the authorization filter off. A query without consents sees every partition, a query with consents only
   # those. OPEN_ROOT is the served partition root, or a copy of it whose columnMeta.javabin files are the open ones (OPEN_COLUMNMETA_DIR).
