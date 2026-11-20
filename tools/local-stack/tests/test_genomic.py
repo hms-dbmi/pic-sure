@@ -170,6 +170,9 @@ class FixtureTest(unittest.TestCase):
         keep = {"elsewhere": os.path.join(self.tmp.name, "elsewhere"), "work/src": os.path.join(self.work, "src", "tree"), "work/genomic itself": os.path.join(self.work, "genomic")}
         for path in keep.values():
             os.makedirs(path, exist_ok=True)
+        os.makedirs(os.path.join(self.work, "genomic", "x"), exist_ok=True)
+        keep["work/genomic/.."] = os.path.join(self.work, "genomic", "..")
+        keep["work/genomic/x/.."] = os.path.join(self.work, "genomic", "x", "..")
         with mock.patch.dict(os.environ, {"WORK_DIR": self.work}), mock.patch.object(genomic, "HERE", self.root):
             for name, path in keep.items():
                 with self.assertRaises(SystemExit, msg=name) as cm:

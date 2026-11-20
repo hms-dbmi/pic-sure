@@ -244,6 +244,9 @@ def clear(path):
     if problem:
         raise SystemExit(f"refusing to remove {path}: WORK_DIR {problem}")
     base = os.path.join(os.path.realpath(work), "genomic")
+    path = os.path.abspath(path)  # normalises "..", so work/genomic/.. cannot pass as an entry inside work/genomic
+    if os.path.basename(path) in ("", ".", ".."):
+        raise SystemExit(f"refusing to remove {path}: not an entry name")
     real = os.path.join(os.path.realpath(os.path.dirname(path)), os.path.basename(path))  # the entry itself is not resolved
     if not real.startswith(base + os.sep):
         raise SystemExit(f"refusing to remove {path}: not inside {base}")
