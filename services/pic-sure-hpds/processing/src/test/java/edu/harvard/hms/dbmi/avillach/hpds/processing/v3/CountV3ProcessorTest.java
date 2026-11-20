@@ -22,8 +22,10 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -235,5 +237,22 @@ class CountV3ProcessorTest {
         assertEquals(1, crossCounts.get(agePath).get(40.0));
         // patient 3 (65) is not in the cohort, so it is absent
         assertNull(crossCounts.get(agePath).get(65.0));
+    }
+
+    @Test
+    public void runObservationCrossCounts_manyConcepts_returnsEveryConcept() {
+        Set<Integer> basePatients = Set.of(1, 2, 3);
+        List<String> concepts = IntStream.range(0, 2000).mapToObj(i -> "\\concept" + i + "\\").toList();
+        Query query = new Query(concepts, List.of(), null, List.of(), ResultType.OBSERVATION_CROSS_COUNT, null, null);
+        PhenoCube<Double> cube = new PhenoCube<>("cube", Double.class);
+        cube.setSortedByKey(new KeyAndValue[] {new KeyAndValue<>(1, 1.0), new KeyAndValue<>(2, 2.0), new KeyAndValue<>(9, 3.0)});
+
+        when(queryExecutor.getPatientSubsetForQuery(query)).thenReturn(basePatients);
+        when(phenotypicObservationStore.getCube(anyString())).thenReturn(Optional.of(cube));
+
+        Map<String, Integer> counts = countV3Processor.runObservationCrossCounts(query);
+        assertEquals(concepts.size(), counts.size());
+        assertEquals(new TreeSet<>(concepts), counts.keySet());
+        assertTrue(counts.values().stream().allMatch(count -> count == 2));
     }
 }
