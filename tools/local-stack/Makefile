@@ -92,7 +92,9 @@ GENOMIC_ON := $(if $(filter dir,$(DATASET)),$(filter fixture empty,$(GENOMIC)))
 GENOMIC_WORK := $(CURDIR)/work/genomic/$(GENOMIC)
 HPDS_GENOMIC_OPTS := $(if $(GENOMIC_ON),-Dhpds.genomicProcessor.impl=localPatientDistributed -DHPDS_GENOMIC_DATA_DIRECTORY=/opt/local/hpds/all/)
 GENOMIC_ROOT := $(if $(GENOMIC_ON),$(GENOMIC_WORK)/all)
-export HPDS_GENOMIC_OPTS GENOMIC_ROOT
+# the genomic mount is read-write (HPDS writes its variant index caches into it) only when it holds genomic data
+GENOMIC_ACCESS := $(if $(GENOMIC_ON),rw,ro)
+export HPDS_GENOMIC_OPTS GENOMIC_ROOT GENOMIC_ACCESS
 
 REPO := $(abspath $(CURDIR)/../..)
 WORK := $(CURDIR)/work
@@ -439,7 +441,6 @@ qa:
 	  $$(docker ps --format '{{.Names}}' | grep -qx picsure-local-query && echo --api http://$(API_HOST):$(API_QUERY_PORT)) \
 	  $$(docker ps --format '{{.Names}}' | grep -qx picsure-local-dict-api && echo --dict http://$(API_HOST):$(DICT_API_PORT)) \
 	  $(if $(GENOMIC_ON),--genomic-dir "$(GENOMIC_ROOT)" --genomic-manifest "$(GENOMIC_WORK)/genomic.json") \
-	  $(if $(and $(GENOMIC_SPLIT_DIR),$(filter dir,$(DATASET))),--pheno-split "$(GENOMIC_SPLIT_DIR)") \
 	  --report-dir "$(QA_REPORT)" $(QA_ARGS)
 
 # The three scenarios on a small phenotype dataset (SCENARIO_DATASET, loaded by the CSVLoader of the ref), each started and checked on its own:
@@ -457,10 +458,9 @@ qa-scenarios:
 	for s in off fixture empty; do \
 	  echo "=== scenario $$s"; extra=""; [ $$s = empty ] && extra="GENOMIC_PREFLIGHT=off"; \
 	  $(MAKE) --no-print-directory up $$vars GENOMIC=$$s $$extra > "$(WORK)/report/up-$$s.log" 2>&1 || tail -3 "$(WORK)/report/up-$$s.log"; \
-	  $(MAKE) --no-print-directory qa $$vars GENOMIC=$$s QA_REPORT="$(WORK)/report/qa-$$s" > "$(WORK)/report/qa-$$s.log" 2>&1; rc=$$?; \
+	  $(MAKE) --no-print-directory qa $$vars GENOMIC=$$s QA_ARGS="--dataset $(SCENARIO_DATASET)" QA_REPORT="$(WORK)/report/qa-$$s" > "$(WORK)/report/qa-$$s.log" 2>&1; rc=$$?; \
 	  line=$$(grep '^QA ' "$(WORK)/report/qa-$$s.log" | tail -1); grep '^scenario:' "$(WORK)/report/qa-$$s.log" | head -1; echo "$$line"; \
-	  case $$s in empty) ok=$$([ $$rc != 0 ] && grep -q 'no dataset folders' "$(WORK)/report/qa-$$s.log" && echo yes);; *) ok=$$([ $$rc = 0 ] && echo yes);; esac; \
-	  [ "$$ok" = yes ] || { bad=1; echo "  scenario $$s: NOT as expected (qa exit $$rc): $(WORK)/report/qa-$$s.log"; }; \
+	  python3 genomic.py expect $$s "$(WORK)/report/qa-$$s/qa.json" "$(WORK)/report/qa-$$s.log" || { bad=1; echo "  scenario $$s: NOT as expected (qa exit $$rc): $(WORK)/report/qa-$$s.log"; }; \
 	  printf '%s\texit %s\t%s\n' "$$s" "$$rc" "$$line" >> "$(WORK)/report/scenarios.txt"; \
 	done; $(MAKE) --no-print-directory down > /dev/null 2>&1; \
 	if [ $$bad = 0 ]; then echo "scenarios: as expected (off PASS, fixture PASS, empty FAIL with its cause)"; else echo "scenarios: NOT as expected"; fi; exit $$bad
@@ -475,10 +475,13 @@ test:
 clean:
 	@$(GUARD_WORK)
 	@$(MAKE) --no-print-directory down
+	@python3 genomic.py clear-all
 	rm -rf -- "$(WORK)"
 
-# everything loaded or compared, but not the splitter build or the HPDS image
+# everything loaded or compared, but not the splitter build or the HPDS image. work/genomic holds patient ids of the run (vcfIndex-*.tsv, genomic.json)
+# and files HPDS wrote as root: it goes through genomic.py, which removes it from a container when the host cannot
 clean-data:
 	@$(GUARD_WORK)
 	@$(MAKE) --no-print-directory down
+	@python3 genomic.py clear-all
 	@for d in $(DATASETS_ALL) report; do rm -rf -- "$(WORK)/$$d"; done

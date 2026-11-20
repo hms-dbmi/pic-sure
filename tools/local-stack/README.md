@@ -291,32 +291,47 @@ runs either, chosen by `GENOMIC`:
 ```
 make qa-scenarios                       # all three on the combined dataset (CSVLoader lane), one result line each, exit 1 unless as expected
 make up DATASET=dir HPDS_DIR=... KEY_FILE=... GENOMIC=fixture GENOMIC_SPLIT_DIR=<dir of <partition>-allConcepts.csv>
-make qa DATASET=dir HPDS_DIR=... KEY_FILE=... GENOMIC=fixture GENOMIC_SPLIT_DIR=...   # the same variables again
+make qa DATASET=dir HPDS_DIR=... KEY_FILE=... GENOMIC=fixture                          # the same GENOMIC; qa reads work/genomic/fixture/genomic.json
 make up DATASET=dir ... GENOMIC=empty   # refused before HPDS starts: the pre-flight prints the FAIL (GENOMIC_PREFLIGHT=off starts HPDS and lets it die)
 ```
 
 The two settings are written into `JAVA_OPTS` (`HPDS_GENOMIC_OPTS`) rather than activating the profile: the profile also names a dev dictionary
 host and an S3 export bucket that do not exist locally. A unit test compares them with the profile file. `make qa` prints `scenario: ...` and the
-verdict line carries the scenario (`QA PASS [phenotype only]` / `[phenotype + genomic]`); `qa.json` has `summary.scenario`.
+verdict line carries the scenario (`QA PASS [phenotype only]` / `[phenotype + genomic]`); `qa.json` has `summary.scenario`. `make qa-scenarios`
+reloads the dataset (split and CSVLoader, a few seconds) on every run, passes `--dataset` so the phenotype checks have their ground truth, and judges
+each scenario from its `qa.json` and result line (`genomic.py expect`): `off` and `fixture` need exit 0 and their own PASS line, `empty` needs exit 1,
+`QA FAIL [phenotype + genomic]` and a FAIL row of `genomic.preflight` or `genomic.startup` that names the missing dataset folders. An inconclusive run
+or a crash is not "as expected".
 
 The fixture (`genomic.py`) is built from the public 1000 Genomes test VCFs of the HPDS test resources (`open_access-1000Genomes.chr20`, `chr21`,
 `chr4`) with the `SplitChromosomeVcfLoader` of `LOADER_REF`, one run per study group, so `work/genomic/fixture/all/<group>/<chromosome>/` is what the
-loader writes. Samples are mapped to patients of the phenotype data (`GENOMIC_SPLIT_DIR`, the `<partition>-allConcepts.csv` files), dealt out over the
-partitions so that carriers lie in several, studies kept whole in a group, plus a few patients that are in no partition. The expected answers are
-computed from the VCFs in `genomic.json`, not from the loader's output. Without `GENOMIC_SPLIT_DIR` the patients are made up and the counts per
-consent cannot be known: those checks are INCONCLUSIVE (exit 2). HPDS runs as root and writes its variant index caches into the mounted genomic
-directory, so the fixture is rebuilt at every `make up` (a root-owned one is removed through a container).
+loader writes. Samples are mapped to patients of the phenotype data (`GENOMIC_SPLIT_DIR`, the `<partition>-allConcepts.csv` files, read row by row for the patient of
+every row HPDS loads; only the patient ids and a few concepts of the fixture's patients are kept, in `genomic.json`, so a release's partitions can be
+read), dealt out over the partitions so that carriers lie in several, studies kept whole in a group, plus a few patients that are in no partition. The
+expected answers are computed from the VCFs, not from the loader's output; records with the same spec are one variant, as the loader makes them.
+The split directory only builds the fixture: it does not change any phenotype check of the run. Without `GENOMIC_SPLIT_DIR` the patients are made up,
+which patients each consent grants is not known, and the checks that need it (counts per consent, phenotype + genomic, scoping per partition) are
+SKIPped with that reason; pre-flight, startup, config, the patient count, variant counts as upper bounds, the info checks, the unknown consent and
+no consents are still PASS or FAIL, so a run where everything works exits 0. HPDS runs as root and writes its variant index caches into the mounted
+genomic directory (mounted read-write only with genomic data; `GENOMIC=off` mounts nothing useful, read-only), so the fixture is rebuilt at every
+`make up`. `work/genomic` holds patient ids of the run: `make clean` and `make clean-data` remove it (through a container of the local HPDS image
+when the host cannot remove root-owned files, so no registry is needed), and nothing outside `work/genomic` is ever removed by `genomic.py`.
 
 `qa.py` checks, with `--genomic-dir`, in the checks `genomic.*`: the directory (pre-flight; the cause is named when it has no study group or
 chromosome folders), an HPDS that is not up on it (FAIL with the cause read from its log, not an inconclusive setup), that the container runs the BDC
 settings, the genomic patient count HPDS logs, variant-spec and variant-info queries (alone, per consent, and one zygosity), a phenotype + genomic
 query, and consent scoping: genomic data is not partitioned by consent, so a genomic filter alone is answered for the patients of the caller's
-consents only, an unknown consent gets 0 and no consents get no count.
+consents only, an unknown consent gets 0 and no consents get no count. The scoping rows use, per partition, a variant with carriers inside it and in
+another partition, so the expected count is not zero and a cross-partition leak changes the answer (a patient in no partition is covered by the
+all-consents row). An HPDS that is not up on a genomic directory is a FAIL when the pre-flight fails, the log names the cause, or its container
+exited. The patient count is read from the whole container log (`docker logs`, no tail).
 
 For a headless runner that serves a real release with `DATASET=dir`: `GENOMIC=fixture` is the default, so `make up` builds the fixture (it needs
 Java and Maven for the loader jar, like the other jars) and mounts it. Pass `GENOMIC_SPLIT_DIR` (a directory of the release's
 `<partition>-allConcepts.csv`) to map the fixture's samples to real patient ids and get exact counts; the ids stay in `work/` on that host. Without it
-the run is INCONCLUSIVE for the counts per consent. `GENOMIC=off` keeps the old phenotype-only run.
+the counts per consent are SKIPped (exit 0 when everything else works). `GENOMIC=off` keeps the old phenotype-only run. Open points: the settings test
+compares the profile file of this checkout, not the tree of `SERVICES_REF`; a patient in two studies is placed in the group of its first partition
+only; the variant checks send a few hundred small queries.
 
 ### Open mode
 

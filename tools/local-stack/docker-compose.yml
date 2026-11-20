@@ -76,7 +76,7 @@ services:
     volumes:
       - ${SERVE_ROOT:-./work/none}:/opt/local/hpds/phenotypic:ro
       - ${SERVE_KEY:-./work/none/encryption_key}:/opt/local/hpds/encryption_key:ro
-      - ${GENOMIC_ROOT:-./work/none}:/opt/local/hpds/all
+      - ${GENOMIC_ROOT:-./work/none}:/opt/local/hpds/all:${GENOMIC_ACCESS:-ro}
 
   # open mode: the same layout, the authorization filter off. A query without consents sees every partition, a query with consents only
   # those. OPEN_ROOT is the served partition root, or a copy of it whose columnMeta.javabin files are the open ones (OPEN_COLUMNMETA_DIR).
