@@ -16,7 +16,7 @@ def copy_stack(root):
     """A copy of the stack's Makefile and scripts at <root>/tools/local-stack; returns that directory."""
     dst = os.path.join(root, "tools", "local-stack")
     os.makedirs(dst)
-    for f in ("Makefile", "lane.py", ".env.defaults"):
+    for f in ("Makefile", "lane.py", "genomic.py", ".env.defaults"):
         shutil.copyfile(os.path.join(STACK, f), os.path.join(dst, f))
     return dst
 

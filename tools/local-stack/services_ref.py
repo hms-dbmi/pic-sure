@@ -3,7 +3,7 @@
 
   services_ref.py resolve REF               print the commit REF names (a local branch, origin/REF, upstream/REF or a sha; csvloader-partition-names upstream-first); exit 1 if none does
   services_ref.py prepare [--force] NAME... resolve, extract (git archive) and build what NAME needs; NAME is hpds, query, operations, dict or loader
-  services_ref.py get NAME FIELD            print a field of what `prepare` recorded: ref, sha, src, jar (loader: csv, rm)
+  services_ref.py get NAME FIELD            print a field of what `prepare` recorded: ref, sha, src, jar (loader: csv, rm, vcf)
   services_ref.py line                      print `services: hpds=<sha> query=<sha> dict=<sha>`
 
 Each served service is built from `git archive <sha>` of this repository, extracted to work/src/services-<sha>/ and built there with maven
@@ -57,10 +57,12 @@ SERVICES = {
                    "jars": {"jar": "services/pic-sure-operations-service/target/pic-sure-operations-service-*.jar"}},
     "dict": {"var": "DICT_REF", "module": "services/picsure-dictionary",
              "jars": {"jar": "services/picsure-dictionary/target/dictionary-*.jar"}},
-    # the loaders that produce synthetic input (the CSVLoader of lane 2) and the tool that makes the open columnMeta
+    # the loaders that produce synthetic input (the CSVLoader of lane 2, the chromosome-split VCF loader of the genomic fixture) and the tool that
+    # makes the open columnMeta
     "loader": {"var": "LOADER_REF", "module": "services/pic-sure-hpds/etl",
                "jars": {"csv": "services/pic-sure-hpds/docker/pic-sure-hpds-etl/CSVLoader-jar-with-dependencies.jar",
-                        "rm": "services/pic-sure-hpds/docker/pic-sure-hpds-etl/RemoveConceptFromMetadata-jar-with-dependencies.jar"}},
+                        "rm": "services/pic-sure-hpds/docker/pic-sure-hpds-etl/RemoveConceptFromMetadata-jar-with-dependencies.jar",
+                        "vcf": "services/pic-sure-hpds/docker/pic-sure-hpds-etl/SplitChromosomeVcfLoader-jar-with-dependencies.jar"}},
 }
 # what `make qa` and the compare report name: the served services, operations-service being part of the query side
 SERVED = ("hpds", "query", "dict")

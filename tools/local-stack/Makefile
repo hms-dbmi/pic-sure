@@ -8,6 +8,8 @@
 #   make up DATASET=dir HPDS_DIR=<partition root> KEY_FILE=<key file> [LAYERS=hpds,api,dict DICT_DUMP=<dictionary_db_*.tar>]
 #                                         serve an existing partition set, no loader runs
 #   make compare DATASET=all              the same for mini, 1000g, combined, synth and edge, then one report
+#   make qa-scenarios                     the three QA scenarios on the combined dataset: phenotype only, phenotype + genomic (BDC genomic settings),
+#                                         and the same with an empty genomic directory (which must FAIL with its cause)
 #   make jars | split | load | up | down | restart | clean | test
 #
 # Variables: DATASET (mini 1000g combined synth edge all; all is the five), FLOWS (loader flows, default: those that apply; a subset is a debug run and
@@ -18,6 +20,11 @@
 # Service code: SERVICES_REF (default csvloader-partition-names) is the commit whose HPDS, query-service, operations-service and dictionary the
 # stack serves; HPDS_REF, QUERY_REF, DICT_REF override it per service and LOADER_REF the CSVLoader of lane 2. A ref is a local branch,
 # origin/<ref>, upstream/<ref> or a sha. The commit is extracted with git archive into work/src/services-<sha>/ and built there.
+# Genomic data of the authorized HPDS (DATASET=dir): GENOMIC=fixture (default: a small genomic store built from public VCFs, laid out
+# all/<group>/<chromosome>/), empty (the genomic directory with no dataset folder: HPDS cannot start, QA must FAIL) or off (phenotype only, no genomic
+# processor). GENOMIC_SPLIT_DIR (a directory of <partition>-allConcepts.csv) maps the fixture's samples to patients of the phenotype data;
+# GENOMIC_PREFLIGHT=off starts HPDS on a genomic directory that fails the pre-flight (it then dies at start, which qa reports). SCENARIO_DATASET
+# (combined) is the dataset of qa-scenarios (a well-formed one with patients in two consents; mini has a deliberately malformed partition).
 # Dataset dir: HPDS_DIR (partition root), KEY_FILE. Open-mode HPDS: OPEN (1 = start it, default), OPEN_COLUMNMETA_DIR (per-partition
 # columnMeta.javabin overrides), STIGVARS (a file of paths removed from the open columnMeta of a synthetic dataset). Layer dict: DICT_DUMP
 # (a dictionary_db_*.tar to restore instead of the synthetic dictionary). QA: QA_MANIFEST, QA_REQUIRE, QA_COLUMNMETA_ROOT, QA_ARGS (see README).
@@ -70,6 +77,24 @@ QA_MANIFEST ?=
 QA_REQUIRE ?=
 QA_COLUMNMETA_ROOT ?=
 QA_ARGS ?=
+QA_REPORT ?= $(CURDIR)/work/report/qa
+
+# genomic data of the authorized HPDS (hpds-dir only): the BDC settings of profile bdc-auth-dev, set here explicitly (the profile also names a dev
+# dictionary host and an S3 bucket that do not exist locally)
+GENOMIC ?= fixture
+GENOMIC_SPLIT_DIR ?=
+GENOMIC_PREFLIGHT ?= check
+SCENARIO_DATASET ?= combined
+ifeq ($(filter $(GENOMIC),fixture empty off),)
+$(error GENOMIC=$(GENOMIC): one of fixture, empty, off)
+endif
+GENOMIC_ON := $(if $(filter dir,$(DATASET)),$(filter fixture empty,$(GENOMIC)))
+GENOMIC_WORK := $(CURDIR)/work/genomic/$(GENOMIC)
+HPDS_GENOMIC_OPTS := $(if $(GENOMIC_ON),-Dhpds.genomicProcessor.impl=localPatientDistributed -DHPDS_GENOMIC_DATA_DIRECTORY=/opt/local/hpds/all/)
+GENOMIC_ROOT := $(if $(GENOMIC_ON),$(GENOMIC_WORK)/all)
+# the genomic mount is read-write (HPDS writes its variant index caches into it) only when it holds genomic data
+GENOMIC_ACCESS := $(if $(GENOMIC_ON),rw,ro)
+export HPDS_GENOMIC_OPTS GENOMIC_ROOT GENOMIC_ACCESS
 
 REPO := $(abspath $(CURDIR)/../..)
 WORK := $(CURDIR)/work
@@ -138,7 +163,7 @@ ifeq ($(REBUILD),1)
 .PHONY: $(SPLITTER_JAR)
 endif
 
-.PHONY: help jars _jars _prepare _checkout-loaders split load up down restart clean clean-data run compare urls qa test _up-hpds _up-api _up-dict _image-hpds _image-api _image-dict _hpds-lanes _hpds-dir _hpds-open _hpds-open-start _open-columnmeta
+.PHONY: help jars _jars _prepare _checkout-loaders split load up down restart clean clean-data run compare urls qa qa-scenarios test _up-hpds _up-api _up-dict _image-hpds _image-api _image-dict _hpds-lanes _hpds-dir _genomic-prepare _hpds-open _hpds-open-start _open-columnmeta
 
 help:
 	@sed -n '1,/^SHELL/p' Makefile | grep '^#' | sed 's/^# \{0,1\}//'
@@ -246,7 +271,8 @@ up:
 # waits for the HPDS service $(1) on port $(2)
 define wait_hpds
 printf "waiting for $(1) on port $(2) "; \
-for i in $$(seq 1 90); do curl -fs "http://$(HPDS_HOST):$(2)/actuator/health" | grep -q UP && break; printf .; sleep 2; done; echo; \
+for i in $$(seq 1 90); do curl -fs "http://$(HPDS_HOST):$(2)/actuator/health" | grep -q UP && break; \
+  [ "$$(docker inspect -f '{{.State.Running}}' picsure-local-$(1) 2>/dev/null)" = false ] && { printf " exited"; break; }; printf .; sleep 2; done; echo; \
 curl -fs "http://$(HPDS_HOST):$(2)/actuator/health" | grep -q UP || { echo "$(1) is not healthy: $(COMPOSE) logs $(1)"; exit 1; }
 endef
 
@@ -273,8 +299,24 @@ _hpds-lanes:
 # DATASET=dir: HPDS_DIR is the partition root, KEY_FILE the key; no loader runs
 _hpds-dir:
 	@python3 serve.py check-dir "$(HPDS_DIR)" "$(KEY_FILE)"
+	@$(MAKE) --no-print-directory _genomic-prepare
 	$(COMPOSE) --profile hpds up -d hpds-dir
 	@$(call wait_hpds,hpds-dir,$(HPDS_DIR_PORT))
+
+# the genomic directory of hpds-dir (GENOMIC=fixture|empty), then the pre-flight on it: the same check qa makes, before HPDS is started on a
+# directory it cannot start on (GENOMIC_PREFLIGHT=off skips it, to see HPDS fail)
+_genomic-prepare:
+ifeq ($(GENOMIC_ON),fixture)
+	@$(GUARD_WORK)
+	@$(MAKE) --no-print-directory _prepare SVC=loader
+	@python3 genomic.py build fixture --out "$(GENOMIC_WORK)" --loader-jar "$$(python3 services_ref.py get loader vcf)" $(if $(GENOMIC_SPLIT_DIR),--split-dir "$(GENOMIC_SPLIT_DIR)")
+else ifeq ($(GENOMIC_ON),empty)
+	@$(GUARD_WORK)
+	@python3 genomic.py build empty --out "$(GENOMIC_WORK)"
+endif
+ifneq ($(GENOMIC_ON),)
+	@$(if $(filter off,$(GENOMIC_PREFLIGHT)),echo "genomic pre-flight skipped (GENOMIC_PREFLIGHT=off)",python3 genomic.py check "$(GENOMIC_ROOT)")
+endif
 
 # the open-mode HPDS: the same partitions, authorization filter off. A synthetic dataset gets an open columnMeta without the STIGVARS paths
 # (RemoveConceptFromMetadata, as the release flow does); OPEN_COLUMNMETA_DIR=<dir>/<partition>/columnMeta.javabin supplies the open files
@@ -398,7 +440,30 @@ qa:
 	  $$(docker ps --format '{{.Names}}' | grep -qx picsure-local-hpds-open && echo --open http://$(HPDS_HOST):$(HPDS_OPEN_PORT)) \
 	  $$(docker ps --format '{{.Names}}' | grep -qx picsure-local-query && echo --api http://$(API_HOST):$(API_QUERY_PORT)) \
 	  $$(docker ps --format '{{.Names}}' | grep -qx picsure-local-dict-api && echo --dict http://$(API_HOST):$(DICT_API_PORT)) \
-	  --report-dir "$(WORK)/report/qa" $(QA_ARGS)
+	  $(if $(GENOMIC_ON),--genomic-dir "$(GENOMIC_ROOT)" --genomic-manifest "$(GENOMIC_WORK)/genomic.json") \
+	  --report-dir "$(QA_REPORT)" $(QA_ARGS)
+
+# The three scenarios on a small phenotype dataset (SCENARIO_DATASET, loaded by the CSVLoader of the ref), each started and checked on its own:
+#   off      phenotype only: no genomic processor (what the stack ran before)          expected: QA PASS
+#   fixture  the BDC genomic settings and a genomic store built from the public VCFs  expected: QA PASS
+#   empty    the same settings, the genomic directory present with no dataset folder   expected: QA FAIL naming that cause (HPDS cannot start)
+# Prints the result line of each and exits 1 unless each came out as expected. Reports: work/report/qa-<scenario>/.
+qa-scenarios:
+	@$(GUARD_WORK)
+	@$(if $(filter combined synth,$(SCENARIO_DATASET)),$(MAKE) --no-print-directory $(SPLITTER_JAR))
+	@$(MAKE) --no-print-directory REBUILD= split DATASET=$(SCENARIO_DATASET)
+	@$(MAKE) --no-print-directory REBUILD= load DATASET=$(SCENARIO_DATASET) FLOWS=csvloader-split
+	@set -u; store="$(WORK)/$(SCENARIO_DATASET)/csvloader-split/store"; split="$(WORK)/$(SCENARIO_DATASET)/split"; mkdir -p "$(WORK)/report"; \
+	vars="DATASET=dir HPDS_DIR=$$store KEY_FILE=$$store/encryption_key OPEN=0 GENOMIC_SPLIT_DIR=$$split"; bad=0; : > "$(WORK)/report/scenarios.txt"; \
+	for s in off fixture empty; do \
+	  echo "=== scenario $$s"; extra=""; [ $$s = empty ] && extra="GENOMIC_PREFLIGHT=off"; \
+	  $(MAKE) --no-print-directory up $$vars GENOMIC=$$s $$extra > "$(WORK)/report/up-$$s.log" 2>&1 || tail -3 "$(WORK)/report/up-$$s.log"; \
+	  $(MAKE) --no-print-directory qa $$vars GENOMIC=$$s QA_ARGS="--dataset $(SCENARIO_DATASET)" QA_REPORT="$(WORK)/report/qa-$$s" > "$(WORK)/report/qa-$$s.log" 2>&1; rc=$$?; \
+	  line=$$(grep '^QA ' "$(WORK)/report/qa-$$s.log" | tail -1); grep '^scenario:' "$(WORK)/report/qa-$$s.log" | head -1; echo "$$line"; \
+	  python3 genomic.py expect $$s "$(WORK)/report/qa-$$s/qa.json" "$(WORK)/report/qa-$$s.log" || { bad=1; echo "  scenario $$s: NOT as expected (qa exit $$rc): $(WORK)/report/qa-$$s.log"; }; \
+	  printf '%s\texit %s\t%s\n' "$$s" "$$rc" "$$line" >> "$(WORK)/report/scenarios.txt"; \
+	done; $(MAKE) --no-print-directory down > /dev/null 2>&1; \
+	if [ $$bad = 0 ]; then echo "scenarios: as expected (off PASS, fixture PASS, empty FAIL with its cause)"; else echo "scenarios: NOT as expected"; fi; exit $$bad
 
 # the unit tests of the helpers (no Docker)
 test:
@@ -410,10 +475,13 @@ test:
 clean:
 	@$(GUARD_WORK)
 	@$(MAKE) --no-print-directory down
+	@python3 genomic.py clear-all
 	rm -rf -- "$(WORK)"
 
-# everything loaded or compared, but not the splitter build or the HPDS image
+# everything loaded or compared, but not the splitter build or the HPDS image. work/genomic holds patient ids of the run (vcfIndex-*.tsv, genomic.json)
+# and files HPDS wrote as root: it goes through genomic.py, which removes it from a container when the host cannot
 clean-data:
 	@$(GUARD_WORK)
 	@$(MAKE) --no-print-directory down
+	@python3 genomic.py clear-all
 	@for d in $(DATASETS_ALL) report; do rm -rf -- "$(WORK)/$$d"; done

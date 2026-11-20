@@ -39,6 +39,16 @@ Checks (each one is reported per partition or per case, as PASS, FAIL, INCONCLUS
   dict.global_paths       global / harmonized dictionary paths (not under a study), compared separately, against the same partitions
   dict.unknown            a consent with no partition and no dataset returns no dictionary concepts
 
+  genomic.*               with --genomic-dir (the HPDS runs the BDC genomic settings over a genomic directory laid out all/<group>/<chromosome>/):
+                          preflight (the directory has study group and chromosome folders; the cause is named when it has none), startup (an HPDS
+                          that is not up on such a directory is a FAIL with the cause from its log), config (the container runs
+                          hpds.genomicProcessor.impl=localPatientDistributed over /opt/local/hpds/all/), patients (the genomic patients HPDS loaded =
+                          the fixture's), variant_spec / info / combined (counts of variant-spec, variant-info and phenotype + genomic queries =
+                          what the VCFs and the partitions' patients imply), consent (a genomic query is answered for the patients of the caller's
+                          consents only; an unknown consent and no consents get nothing)
+  --genomic-dir DIR / --genomic-manifest FILE   the genomic directory and the fixture's genomic.json. The counts per consent need the fixture's patients per
+                          partition (built with GENOMIC_SPLIT_DIR); without them those checks are SKIPped with the reason
+
 Exit 0 = every check PASS (SKIPs allowed), 1 = any FAIL, 2 = no FAIL but a check was INCONCLUSIVE or the setup was not usable.
 Reports: DIR/qa.json and DIR/qa.tsv (default work/report/qa).
 
@@ -56,6 +66,7 @@ import json
 import os
 import random
 import re
+import subprocess
 import sys
 import time
 import urllib.error
@@ -64,6 +75,7 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import compare
+import genomic
 import pheno
 import services_ref
 
@@ -91,17 +103,19 @@ class Client(compare.Hpds):
         except Exception as e:  # noqa: BLE001
             return None, str(e)
 
-    def query(self, consents, clause=None, result="COUNT", select=None):
+    def query(self, consents, clause=None, result="COUNT", select=None, genomic_filters=None):
         q = {"userConsents": [{"value": c} for c in consents], "expectedResultType": result}
         if clause is not None:
             q["phenotypicClause"] = clause
         if select is not None:
             q["select"] = list(select)
+        if genomic_filters is not None:
+            q["genomicFilters"] = list(genomic_filters)
         return self.post(self.path, {"query": q})
 
-    def patients(self, consents, clause=None):
+    def patients(self, consents, clause=None, genomic_filters=None):
         """(count, None) or (None, why): None when the answer is not a count."""
-        code, text = self.query(consents, clause)
+        code, text = self.query(consents, clause, genomic_filters=genomic_filters)
         try:
             return int(text.strip()), None
         except ValueError:
@@ -566,6 +580,253 @@ def check_dictionary(rep, base, parts, meta, page_size, max_pages, all_parts=Non
 
 
 # ----------------------------------------------------------------------------------------------------------------------------
+# genomic data of the authorized HPDS (--genomic-dir): the BDC settings (hpds.genomicProcessor.impl=localPatientDistributed over
+# /opt/local/hpds/all/, laid out all/<group>/<chromosome>/), a fixture built by genomic.py and the answers it implies
+
+
+STARTUP_NPE = 'Cannot invoke "java.util.Collection.size()" because "c" is null'
+
+
+def container_logs(container):
+    """The whole log of a container, or None when docker or the container is not there (the seam of the startup diagnosis and of the patient count:
+    the line HPDS logs at start must not scroll out of a tail)."""
+    try:
+        r = subprocess.run(["docker", "logs", container], check=False, capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return r.stdout + r.stderr if r.returncode == 0 else None
+
+
+def container_state(container):
+    """{"running": bool, "exit": int} of a container (a stopped one too), or None when docker or the container is not there."""
+    try:
+        r = subprocess.run(["docker", "inspect", "-f", "{{.State.Running}} {{.State.ExitCode}}", container], check=False, capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    parts = r.stdout.split()
+    if r.returncode != 0 or len(parts) != 2:
+        return None
+    return {"running": parts[0] == "true", "exit": int(parts[1])}
+
+
+def scenario_label(args):
+    """Which scenario this run is, for the result line: phenotype only, or phenotype + genomic with what the genomic directory holds."""
+    if not getattr(args, "genomic_dir", None):
+        return "phenotype only (no genomic processor)"
+    if not os.path.isdir(args.genomic_dir):
+        state = "genomic data directory does not exist"
+    else:
+        groups, chromosomes = genomic.summary(args.genomic_dir)
+        state = f"{groups} study group(s), {chromosomes} chromosome folder(s)" if groups else genomic.NO_FOLDERS
+    return f"phenotype + genomic ({genomic.IMPL} over {genomic.CONTAINER_DIR}; {state})"
+
+
+def startup_failure(args, logs):
+    """Why a genomic HPDS that is not UP is not up, from its log, or None when the log does not say (or cannot be read)."""
+    text = logs(args.hpds_container) if getattr(args, "hpds_container", None) else None
+    if not text:
+        return None
+    if STARTUP_NPE in text:
+        return ("the log shows a NullPointerException in GenomicProcessorPatientMergingParentImpl.initializePatientIds: no genomic patient "
+                "ids, because the genomic data directory has no dataset folders (or a study group folder has no chromosome folders)")
+    errors = [ln.strip() for ln in text.splitlines() if "Caused by" in ln or "APPLICATION FAILED" in ln]
+    return ("the log ends with: " + errors[-1][:200]) if errors else None
+
+
+def genomic_preflight(rep, args):
+    """FAIL rows for what the mounted genomic directory lacks; the same check make runs before it starts HPDS."""
+    found = genomic.problems(args.genomic_dir)
+    for why in found:
+        rep.add("genomic.preflight", args.genomic_dir, FAIL, why)
+    if not found:
+        groups, chromosomes = genomic.summary(args.genomic_dir)
+        rep.add("genomic.preflight", args.genomic_dir, PASS, f"{groups} study group(s), {chromosomes} chromosome folder(s)")
+    return found
+
+
+def option(text, name):
+    m = re.search(rf"-D{re.escape(name)}=(\S+)", text or "")
+    return m.group(1) if m else None
+
+
+def check_genomic_config(rep, args, env_inspect):
+    """The container runs the BDC genomic settings (set explicitly, or by profile bdc-auth-dev): otherwise a run named for them says nothing."""
+    if not getattr(args, "hpds_container", None):
+        rep.add("genomic.config", "container", SKIP, "no --hpds-container to read the settings from")
+        return
+    try:
+        env = env_inspect(args.hpds_container) or []
+    except Exception as e:  # noqa: BLE001
+        rep.add("genomic.config", args.hpds_container, INCONCLUSIVE, f"cannot inspect the container: {e}")
+        return
+    kv = dict(e.split("=", 1) for e in env if "=" in e)
+    if "bdc-auth-dev" in (kv.get("SPRING_PROFILES_ACTIVE") or "").split(","):
+        rep.add("genomic.config", "profile", PASS, "profile bdc-auth-dev")
+        return
+    opts = kv.get("JAVA_OPTS", "")
+    impl = option(opts, "hpds.genomicProcessor.impl")
+    where = option(opts, "HPDS_GENOMIC_DATA_DIRECTORY") or kv.get("HPDS_GENOMIC_DATA_DIRECTORY")
+    ok = impl == genomic.IMPL and (where or "").rstrip("/") == genomic.CONTAINER_DIR.rstrip("/")
+    rep.add("genomic.config", args.hpds_container, PASS if ok else FAIL,
+            "" if ok else f"hpds.genomicProcessor.impl={impl}, HPDS_GENOMIC_DATA_DIRECTORY={where}; the BDC authorized HPDS runs "
+                          f"{genomic.IMPL} over {genomic.CONTAINER_DIR}",
+            f"{genomic.IMPL} {genomic.CONTAINER_DIR}", f"{impl} {where}")
+
+
+def check_genomic_patients(rep, args, manifest, logs):
+    """The patients HPDS loaded from the genomic stores (its own log line, read from the whole log) equal the fixture's."""
+    text = logs(args.hpds_container) if getattr(args, "hpds_container", None) else None
+    if text is None:
+        rep.add("genomic.patients", "log", INCONCLUSIVE, "the HPDS log cannot be read, so the genomic patient count is not known")
+        return
+    seen = re.findall(r"(\d+) patient ids loaded from patient partitions", text)
+    if not seen:
+        rep.add("genomic.patients", "log", FAIL, "the log has no 'patient ids loaded from patient partitions' line: no genomic processor started")
+        return
+    rep.eq("genomic.patients", "patients in the genomic stores", manifest["patients"], int(seen[-1]))
+
+
+def granted(members, consents):
+    out = set()
+    for c in consents:
+        out |= set(members.get(c, ()))
+    return out
+
+
+def four_part(spec):
+    return ",".join(spec.split(",")[:4])
+
+
+NO_MEMBERS = ("the fixture was built without the phenotype patients (no GENOMIC_SPLIT_DIR), so which patients each consent grants is not known; "
+              "the counts per consent are not checked")
+
+
+def check_genomic_queries(rep, hpds, parts, manifest, args):
+    """Variant-spec, variant-info and combined queries against what the VCFs say, with consent scoping: a genomic filter alone is answered
+    for the patients of the caller's consents only (genomic data is not partitioned by consent; the phenotype partitions scope it). The counts that
+    need to know which patients each consent grants are skipped (with the reason) when the fixture was built without that."""
+    variants = manifest["variants"]
+    members = {p: ids for p, ids in (manifest.get("members") or {}).items() if p in parts}
+    exact = bool(members)
+    chosen = spread([v["spec"] for v in variants], args.genomic_variants)
+    carr = {v["spec"]: genomic.carriers_of(v) for v in variants}
+    everyone = granted(members, list(members))
+    grant = {p: granted(members, [p]) for p in members}
+
+    def spec_filter(spec, zygosities=None):
+        f = {"key": spec}
+        if zygosities:
+            f["values"] = list(zygosities)
+        return [f]
+
+    # variant spec, one record at a time, for all consents and for each partition
+    for spec in chosen:
+        if not exact:
+            got, why = hpds.patients(parts, genomic_filters=spec_filter(spec))
+            bound = got is not None and got <= len(carr[spec])
+            rep.add("genomic.variant_spec", f"{spec} all consents (bound)", PASS if bound else FAIL,
+                    why or ("" if bound else f"{got} patients for {len(carr[spec])} carriers"), f"<= {len(carr[spec])}", got)
+            continue
+        got, why = hpds.patients(sorted(members), genomic_filters=spec_filter(spec))
+        rep.eq("genomic.variant_spec", f"{spec} all consents", len(carr[spec] & everyone), got, why)
+        for p in sorted(members):
+            got, why = hpds.patients([p], genomic_filters=spec_filter(spec))
+            rep.eq("genomic.variant_spec", f"{spec} {p}", len(carr[spec] & grant[p]), got, why)
+    if not exact:
+        rep.add("genomic.variant_spec", "counts per consent", SKIP, NO_MEMBERS)
+    # one zygosity, and the four-part spec (every record with that position and alleles)
+    with_hom = next((v for v in variants if v["hom"]), None)
+    if with_hom and exact:
+        got, why = hpds.patients(sorted(members), genomic_filters=spec_filter(with_hom["spec"], ["1/1"]))
+        rep.eq("genomic.variant_spec", f"{with_hom['spec']} homozygous only", len(set(with_hom["hom"]) & everyone), got, why)
+    if exact:
+        for key in sorted({four_part(v["spec"]) for v in variants})[:4]:
+            union = set().union(*(carr[v["spec"]] for v in variants if four_part(v["spec"]) == key))
+            got, why = hpds.patients(sorted(members), genomic_filters=spec_filter(key))
+            rep.eq("genomic.variant_spec", f"{key} (every record)", len(union & everyone), got, why)
+    # variant info: the columns are listed, a category filter finds the carriers of the variants that have the value
+    code, text = hpds.query(parts, None, "INFO_COLUMN_LISTING")
+    try:
+        listed = {c["key"] for c in json.loads(text)}
+    except (ValueError, KeyError, TypeError):
+        listed = None
+    wanted = {k for v in variants for k in v["info"]}
+    if listed is None:
+        rep.add("genomic.info", "INFO_COLUMN_LISTING", FAIL, f"HTTP {code}: no list of info columns")
+    else:
+        missing = sorted(wanted - listed)
+        rep.add("genomic.info", "INFO_COLUMN_LISTING", FAIL if missing else PASS, f"missing columns: {', '.join(missing)}" if missing else "", sorted(wanted), sorted(listed & wanted))
+    genes = sorted({v["info"]["Gene_with_variant"] for v in variants if "Gene_with_variant" in v["info"]})
+    for gene in genes:
+        match = [v for v in variants if v["info"].get("Gene_with_variant") == gene]
+        got, why = hpds.patients(sorted(members) or parts, genomic_filters=[{"key": "Gene_with_variant", "values": [gene]}])
+        if exact:
+            rep.eq("genomic.info", f"Gene_with_variant={gene}", len(set().union(*(carr[v["spec"]] for v in match)) & everyone), got, why)
+        else:
+            bound = len(set().union(*(carr[v["spec"]] for v in match)))
+            ok = got is not None and got <= bound
+            rep.add("genomic.info", f"Gene_with_variant={gene} (bound)", PASS if ok else FAIL, why or ("" if ok else f"{got} patients for {bound} carriers"), f"<= {bound}", got)
+    pair = next(((g, s) for g in genes for s in sorted({v["info"].get("Variant_severity") for v in variants if v["info"].get("Gene_with_variant") == g} - {None})), None)
+    if pair and exact:
+        match = [v for v in variants if v["info"].get("Gene_with_variant") == pair[0] and v["info"].get("Variant_severity") == pair[1]]
+        got, why = hpds.patients(sorted(members), genomic_filters=[{"key": "Gene_with_variant", "values": [pair[0]]}, {"key": "Variant_severity", "values": [pair[1]]}])
+        rep.eq("genomic.info", f"Gene_with_variant={pair[0]} and Variant_severity={pair[1]}", len(set().union(*(carr[v["spec"]] for v in match)) & everyone), got, why)
+    # phenotype and genomic filters together: the concepts of the manifest (the fixture's patients that have them), each partition's best one
+    concepts = manifest.get("concepts") or {}
+    if not (exact and concepts):
+        rep.add("genomic.combined", "phenotype + genomic", SKIP, NO_MEMBERS if not exact else "the manifest has no phenotype concepts of the fixture's patients")
+    else:
+        done = 0
+        for p in sorted(members):
+            if p not in concepts or done >= args.genomic_combined:
+                continue
+            best = None
+            for path, ids in concepts[p].items():
+                have = set(ids) & grant[p]
+                for spec, c in carr.items():
+                    n = len(c & have)
+                    if n and (best is None or n > best[0]):
+                        best = (n, path, spec)
+            if best is None:
+                continue
+            n, path, spec = best
+            got, why = hpds.patients([p], compare.required(path), spec_filter(spec))
+            rep.eq("genomic.combined", f"{p} REQUIRED + {spec}", n, got, why)
+            done += 1
+        if not done:
+            rep.add("genomic.combined", "phenotype + genomic", INCONCLUSIVE, "no concept of any partition is shared with a carrier of any fixture variant")
+    # consent scoping: a caller with the consents of one partition gets the carriers inside it, not those of the other partitions
+    if not exact:
+        rep.add("genomic.consent", "scoping", SKIP, NO_MEMBERS)
+    else:
+        shown = 0
+        for p in sorted(members):
+            sv = genomic.scoping_variant(variants, members, [p])
+            if not sv:
+                continue
+            v, inside, outside = sv
+            got, why = hpds.patients([p], genomic_filters=spec_filter(v["spec"]))
+            rep.eq("genomic.consent", f"{p}: {inside} carrier(s) of {v['spec']} inside, {outside} in other partitions not counted", inside, got, why)
+            shown += 1
+        names = sorted(members)
+        if len(names) >= 3:
+            sv = genomic.scoping_variant(variants, members, names[:2])
+            if sv:
+                v, inside, outside = sv
+                got, why = hpds.patients(names[:2], genomic_filters=spec_filter(v["spec"]))
+                rep.eq("genomic.consent", f"{' + '.join(names[:2])}: {inside} inside, {outside} in the other partitions not counted", inside, got, why)
+                shown += 1
+        if not shown:
+            rep.add("genomic.consent", "scoping", INCONCLUSIVE, "no fixture variant has carriers inside a partition and in another one: a cross-partition leak could not show")
+    spec = chosen[0]
+    got, why = hpds.patients([UNKNOWN_CONSENT], genomic_filters=spec_filter(spec))
+    rep.eq("genomic.consent", f"{UNKNOWN_CONSENT} (no partition)", 0, got, why)
+    code, text = hpds.query([], None, genomic_filters=spec_filter(spec))
+    refused, note = refusal(code, text)
+    rep.add("genomic.consent", "no consents", PASS if refused else FAIL, note)
+
+
+# ----------------------------------------------------------------------------------------------------------------------------
 
 
 def write_reports(rep, summary, out_dir):
@@ -599,15 +860,39 @@ def print_summary(rep, out_dir, verbose):
             print(f"  ... {len(shown) - MAX_SHOWN * 4} more {status} in {out_dir}/qa.tsv")
 
 
-def run(args, inspect=services_ref.inspect_container, env_inspect=compare.docker_inspect_env):
+def read_genomic_manifest(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def run(args, inspect=services_ref.inspect_container, env_inspect=compare.docker_inspect_env, logs=container_logs, state=container_state):
     t0 = time.time()
     rep = Report()
     rng = random.Random(args.seed)
     hpds = Client(args.hpds)
+    with_genomic = bool(args.genomic_dir)
+    preflight = genomic_preflight(rep, args) if with_genomic else []
     health = hpds.health()
     if health != "UP":
-        rep.add("setup", "hpds", INCONCLUSIVE, f"the HPDS at {args.hpds} is {health}")
+        cause = startup_failure(args, logs) if with_genomic else None
+        st = state(args.hpds_container) if with_genomic and args.hpds_container else None
+        exited = st is not None and not st["running"]
+        if with_genomic and (preflight or cause or exited):  # an HPDS with genomic settings that cannot start is a failure, and the cause is named
+            rep.add("genomic.startup", "hpds", FAIL, f"the HPDS at {args.hpds} is {health}" + (f"; the container exited with code {st['exit']}" if exited else "")
+                    + (f"; {cause}" if cause else "") + (f"; {preflight[0]}" if preflight else ""))
+        else:
+            rep.add("setup", "hpds", INCONCLUSIVE, f"the HPDS at {args.hpds} is {health}")
         return rep, {"setup": "hpds not up"}
+    manifest = read_genomic_manifest(args.genomic_manifest) if with_genomic and args.genomic_manifest else None
+    if with_genomic:
+        check_genomic_config(rep, args, env_inspect)
+        if not manifest or not manifest.get("variants"):
+            rep.add("genomic.patients", "manifest", INCONCLUSIVE, "no usable --genomic-manifest: the expected genomic answers are not known")
+        else:
+            check_genomic_patients(rep, args, manifest, logs)
     meta = read_store(args.store)
     if not meta:
         rep.add("setup", "store", INCONCLUSIVE, f"no partitions under {args.store}")
@@ -659,6 +944,8 @@ def run(args, inspect=services_ref.inspect_container, env_inspect=compare.docker
     check_concepts(rep, hpds, parts, meta, sample)
     check_union(rep, hpds, parts, meta, truth, args.union_pairs, rng)
     check_missing(rep, hpds, parts, sample)
+    if with_genomic and manifest and manifest.get("variants"):
+        check_genomic_queries(rep, hpds, parts, manifest, args)
     if opn:
         check_open(rep, hpds, opn, parts, sample, stigvars)
         if stigvars:
@@ -700,6 +987,11 @@ def parse(argv):
     ap.add_argument("--stigvar-limit", type=non_negative, default=200, help="listed paths of the partitions searched and queried: at least one per study, the rest evenly spaced "
                     "in sorted order, so max(limit, number of studies) in all; 0 = every listed path of the partitions")
     ap.add_argument("--columnmeta-root", help="a directory with <partition>/columnMeta.csv when --store has none (a release's partitions/)")
+    ap.add_argument("--genomic-dir", help="the genomic data directory mounted into the HPDS (all/<group>/<chromosome>/): the HPDS runs the BDC genomic settings; "
+                    "checked before anything is asked, and the genomic checks run")
+    ap.add_argument("--genomic-manifest", help="genomic.json of the fixture (genomic.py): the answers the genomic checks expect")
+    ap.add_argument("--genomic-variants", type=int, default=40, help="fixture variants queried one by one (spread over the list)")
+    ap.add_argument("--genomic-combined", type=int, default=3, help="partitions that get a phenotype + genomic query")
     ap.add_argument("--hpds-container", help="the container of --hpds, whose image label says what it serves (default: every HPDS container that is running)")
     ap.add_argument("--loader-jar-file", help="a file naming the RemoveConceptFromMetadata jar that made the open columnMeta of this run")
     ap.add_argument("--require", default="")
@@ -791,6 +1083,9 @@ def provenance(args, repo=services_ref.REPO, inspect=services_ref.inspect_contai
     if args.open and args.loader_jar_file and os.path.isfile(args.loader_jar_file):
         with open(args.loader_jar_file, encoding="utf-8") as f:
             loaders.append(f.read().strip())
+    manifest = read_genomic_manifest(args.genomic_manifest) if getattr(args, "genomic_manifest", None) and args.genomic_dir else None
+    if manifest and manifest.get("loader_jar"):  # the fixture's genomic store was written by this loader
+        loaders.append(manifest["loader_jar"])
     stores = set(served.values()) | {own_lane(args)}
     unknown = ["%s (no store label)" % c for c, st in sorted(served.items()) if not st]
     if "lane2" in stores:
@@ -811,14 +1106,16 @@ def main(argv):
     args = parse(argv)
     prov = provenance(args)
     print_provenance(prov)
+    print("scenario: " + scenario_label(args))
     rep, info = run(args)
     summary = {"counts": rep.counts(), "exit": rep.exit_code(), "targets": {"hpds": args.hpds, "open": args.open, "api": args.api, "dict": args.dict},
-               "provenance": prov, **info}
+               "provenance": prov, "scenario": scenario_label(args), **info}
     write_reports(rep, summary, args.report_dir)
     print_summary(rep, args.report_dir, args.verbose)
     c = rep.counts()
     verdict = {0: "PASS", 1: "FAIL", 2: "INCONCLUSIVE"}[rep.exit_code()]
-    print(f"QA {verdict}: {c[PASS]} pass, {c[FAIL]} fail, {c[INCONCLUSIVE]} inconclusive, {c[SKIP]} skipped (report: {args.report_dir}/qa.json, qa.tsv)")
+    short = "phenotype + genomic" if args.genomic_dir else "phenotype only"
+    print(f"QA {verdict} [{short}]: {c[PASS]} pass, {c[FAIL]} fail, {c[INCONCLUSIVE]} inconclusive, {c[SKIP]} skipped (report: {args.report_dir}/qa.json, qa.tsv)")
     return rep.exit_code()
 
 

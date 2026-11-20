@@ -12,6 +12,7 @@ make -C tools/local-stack run                   # build, load the `combined` dat
 make -C tools/local-stack run LAYERS=hpds,api   # the same, plus the API in front of lane 3's HPDS and the same queries sent through it
 make -C tools/local-stack run LAYERS=hpds,api,dict   # ... and the dictionary (Postgres + service) with a synthetic dictionary
 make -C tools/local-stack qa                    # the headless QA battery against the stack that is up (exit 0 PASS, 1 FAIL, 2 inconclusive)
+make -C tools/local-stack qa-scenarios          # the three QA scenarios (phenotype only; with genomic data; genomic directory empty), see QA scenarios
 make -C tools/local-stack down                  # stop and remove the containers
 make -C tools/local-stack test                  # the unit tests of the Python helpers (no Docker)
 ```
@@ -261,6 +262,7 @@ make qa DATASET=dir HPDS_DIR=... KEY_FILE=... QA_MANIFEST="/data/manifest.json" 
 |---|---|---|
 | `KEY_FILE` | `/opt/local/hpds/encryption_key` | the path `Crypto` reads the key from |
 | `HPDS_DIR` | `/opt/local/hpds/phenotypic/` (read-only) | `HPDS_DATA_DIRECTORY` points at it, so only the partition directories are scanned |
+| `work/genomic/<GENOMIC>/all` | `/opt/local/hpds/all/` (read-write) | the genomic data, only with `GENOMIC=fixture` or `empty` (see QA scenarios) |
 
 `HPDS_DIR` must hold only the partitions: one subdirectory each, with `allObservationsStore.javabin` and `columnMeta.javabin` (a loader's
 `store/`, or a release dataset's `partitions/`). `serve.py check-dir` refuses anything else before a container starts: the parent of
@@ -270,6 +272,66 @@ partition, so `open/` or `static/` would be served as two more, empty partitions
 - `PartitionedPhenotypicObservationStore` reads `HPDS_DATA_DIRECTORY` (default `/opt/local/hpds/`) and lists its subdirectories as the partitions; an `allObservationsStore.javabin` directly in it is the legacy unpartitioned layout, refused while the filter is on.
 - `PhenotypeMetaStore` reads `<partition>/columnMeta.javabin`.
 - `Crypto` hard-codes the key path `/opt/local/hpds/encryption_key`: the key is always mounted there, never under `HPDS_DATA_DIRECTORY`.
+
+### QA scenarios: with and without genomic data
+
+The authorized HPDS on the BDC staging stack runs profile `bdc-auth-dev`: `hpds.genomicProcessor.impl=localPatientDistributed` over
+`HPDS_GENOMIC_DATA_DIRECTORY=/opt/local/hpds/all/`. `GenomicProcessorConfig` takes the first-level directories of that path as study groups
+(at most 10) and the second-level ones as chromosomes (at most 50). With `all/` present and no directory in it HPDS dies at start
+(`NullPointerException` in `GenomicProcessorPatientMergingParentImpl.initializePatientIds`). Without a Spring profile no genomic processor starts
+at all, which is what the stack ran before and what a phenotype-only QA cannot tell from a broken genomic setup. `hpds-dir` (`DATASET=dir`) now
+runs either, chosen by `GENOMIC`:
+
+| `GENOMIC` | HPDS | expected QA |
+|---|---|---|
+| `off` | phenotype only, no genomic processor (the scenario that ran before) | `QA PASS [phenotype only]` |
+| `fixture` (default) | the two BDC settings above and a genomic fixture laid out `all/<group>/<chromosome>/` | `QA PASS [phenotype + genomic]` |
+| `empty` | the same settings, `all/` present with no directory in it | `QA FAIL [phenotype + genomic]` naming "genomic data directory has no dataset folders" |
+
+```
+make qa-scenarios                       # all three on the combined dataset (CSVLoader lane), one result line each, exit 1 unless as expected
+make up DATASET=dir HPDS_DIR=... KEY_FILE=... GENOMIC=fixture GENOMIC_SPLIT_DIR=<dir of <partition>-allConcepts.csv>
+make qa DATASET=dir HPDS_DIR=... KEY_FILE=... GENOMIC=fixture                          # the same GENOMIC; qa reads work/genomic/fixture/genomic.json
+make up DATASET=dir ... GENOMIC=empty   # refused before HPDS starts: the pre-flight prints the FAIL (GENOMIC_PREFLIGHT=off starts HPDS and lets it die)
+```
+
+The two settings are written into `JAVA_OPTS` (`HPDS_GENOMIC_OPTS`) rather than activating the profile: the profile also names a dev dictionary
+host and an S3 export bucket that do not exist locally. A unit test compares them with the profile file. `make qa` prints `scenario: ...` and the
+verdict line carries the scenario (`QA PASS [phenotype only]` / `[phenotype + genomic]`); `qa.json` has `summary.scenario`. `make qa-scenarios`
+reloads the dataset (split and CSVLoader, a few seconds) on every run, passes `--dataset` so the phenotype checks have their ground truth, and judges
+each scenario from its `qa.json` and result line (`genomic.py expect`): `off` and `fixture` need exit 0 and their own PASS line, `empty` needs exit 1,
+`QA FAIL [phenotype + genomic]` and a FAIL row of `genomic.preflight` or `genomic.startup` that names the missing dataset folders. An inconclusive run
+or a crash is not "as expected".
+
+The fixture (`genomic.py`) is built from the public 1000 Genomes test VCFs of the HPDS test resources (`open_access-1000Genomes.chr20`, `chr21`,
+`chr4`) with the `SplitChromosomeVcfLoader` of `LOADER_REF`, one run per study group, so `work/genomic/fixture/all/<group>/<chromosome>/` is what the
+loader writes. Samples are mapped to patients of the phenotype data (`GENOMIC_SPLIT_DIR`, the `<partition>-allConcepts.csv` files, read row by row for the patient of
+every row HPDS loads; only the patient ids and a few concepts of the fixture's patients are kept, in `genomic.json`, so a release's partitions can be
+read), dealt out over the partitions so that carriers lie in several, studies kept whole in a group, plus a few patients that are in no partition. The
+expected answers are computed from the VCFs, not from the loader's output; records with the same spec are one variant, as the loader makes them.
+The split directory only builds the fixture: it does not change any phenotype check of the run. Without `GENOMIC_SPLIT_DIR` the patients are made up,
+which patients each consent grants is not known, and the checks that need it (counts per consent, phenotype + genomic, scoping per partition) are
+SKIPped with that reason; pre-flight, startup, config, the patient count, variant counts as upper bounds, the info checks, the unknown consent and
+no consents are still PASS or FAIL, so a run where everything works exits 0. HPDS runs as root and writes its variant index caches into the mounted
+genomic directory (mounted read-write only with genomic data; `GENOMIC=off` mounts nothing useful, read-only), so the fixture is rebuilt at every
+`make up`. `work/genomic` holds patient ids of the run: `make clean` and `make clean-data` remove it (through a container of the local HPDS image
+when the host cannot remove root-owned files, so no registry is needed), and nothing outside `work/genomic` is ever removed by `genomic.py`.
+
+`qa.py` checks, with `--genomic-dir`, in the checks `genomic.*`: the directory (pre-flight; the cause is named when it has no study group or
+chromosome folders), an HPDS that is not up on it (FAIL with the cause read from its log, not an inconclusive setup), that the container runs the BDC
+settings, the genomic patient count HPDS logs, variant-spec and variant-info queries (alone, per consent, and one zygosity), a phenotype + genomic
+query, and consent scoping: genomic data is not partitioned by consent, so a genomic filter alone is answered for the patients of the caller's
+consents only, an unknown consent gets 0 and no consents get no count. The scoping rows use, per partition, a variant with carriers inside it and in
+another partition, so the expected count is not zero and a cross-partition leak changes the answer (a patient in no partition is covered by the
+all-consents row). An HPDS that is not up on a genomic directory is a FAIL when the pre-flight fails, the log names the cause, or its container
+exited. The patient count is read from the whole container log (`docker logs`, no tail).
+
+For a headless runner that serves a real release with `DATASET=dir`: `GENOMIC=fixture` is the default, so `make up` builds the fixture (it needs
+Java and Maven for the loader jar, like the other jars) and mounts it. Pass `GENOMIC_SPLIT_DIR` (a directory of the release's
+`<partition>-allConcepts.csv`) to map the fixture's samples to real patient ids and get exact counts; the ids stay in `work/` on that host. Without it
+the counts per consent are SKIPped (exit 0 when everything else works). `GENOMIC=off` keeps the old phenotype-only run. Open points: the settings test
+compares the profile file of this checkout, not the tree of `SERVICES_REF`; a patient in two studies is placed in the group of its first partition
+only; the variant checks send a few hundred small queries.
 
 ### Open mode
 
@@ -324,6 +386,7 @@ python3 qa.py --help
 | `dict.study_paths` | the study's dictionary concept paths are a subset of the union of its partitions' columnMeta paths. A release's `partitions/` has no `columnMeta.csv`: give `QA_COLUMNMETA_ROOT=<dir>/<partition>/columnMeta.csv` (for example a local copy of the pheno-load flow prefix), else this and `dict.global_paths` are INCONCLUSIVE |
 | `dict.global_paths` | global / harmonized dictionary paths (a dataset that is not a study) against the same partitions, reported on their own |
 | `dict.unknown` | a consent with no partition returns no concepts |
+| `genomic.*` | with `--genomic-dir` (the HPDS runs the BDC genomic settings): `preflight`, `startup`, `config`, `patients`, `variant_spec`, `info`, `combined`, `consent` (see QA scenarios) |
 
 A consent filter in the dictionary works on the study (dataset), not on the consent group: `phs000000.c1` returns every concept of `phs000000`,
 and the harmonized datasets linked to it. Exit status of `qa.py`: 0 = every check PASS (a check with no target is SKIP), 1 = any FAIL, 2 = no FAIL but a
@@ -413,6 +476,7 @@ Both loaders write next to their input, so a lane always works on copies or link
 | `make compare DATASET=mini\|1000g\|combined\|synth\|edge\|all` | `jars`, then `split`, `load`, `up` and `compare.py run` (with `api` in `LAYERS`: `--via=api --store $STORE`) per dataset, then the report. Exit status 1 on an unexplained mismatch (see The result line) |
 | `make run` | `make compare DATASET=combined`, then the URLs and the report path |
 | `make qa` | `qa.py` against the stack that is up (see QA battery): exit 0 PASS, 1 FAIL, 2 inconclusive; reports in `work/report/qa/` |
+| `make qa-scenarios` | the three QA scenarios (`GENOMIC=off`, `fixture`, `empty`) on `SCENARIO_DATASET` (default `combined`, loaded by the CSVLoader of the ref), each started and checked on its own; exit 1 unless off and fixture PASS and empty FAILs with its cause. Reports in `work/report/qa-<scenario>/` |
 | `make test` | `python3 -m unittest discover -s tests` |
 | `make down` / `restart` | stop and remove the containers of every layer (`restart` = down + up, with the same `LAYERS` and `STORE`) |
 | `make clean` / `clean-data` | remove `work/` / remove the datasets and the report but keep the splitter build and the image. Both check first (before stopping the containers) that the target resolves, symlinks followed, to this checkout's `tools/local-stack/work` and is not itself a symlink; otherwise they say why and delete nothing. The Python helpers check the same before every delete |
@@ -576,6 +640,7 @@ These are written from evidence found by running the stack (the report repeats t
 | `dictgen.py` | the synthetic dictionary (schema + data SQL) of a dataset, from its ground truth |
 | `serve.py` | `DATASET=dir` checks and the open-mode partition root |
 | `qa.py` | the headless QA battery |
+| `genomic.py` | the genomic fixture (public VCFs, `SplitChromosomeVcfLoader`), its expected answers (`genomic.json`) and the check of a genomic directory |
 | `fixtures/qa/stigvars.txt` | the stigmatized-variable list the synthetic open columnMeta is built without |
 | `lane.py` | split step and loader lanes |
 | `services_ref.py` | resolves `SERVICES_REF` (and the per-service refs), extracts and builds each commit, records and reports the provenance |
