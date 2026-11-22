@@ -32,10 +32,13 @@ Checks (each one is reported per partition or per case, as PASS, FAIL, INCONCLUS
   union                   a patient of two consents is counted once (exact with --dataset, bounds and identities otherwise)
   global.served           the open HPDS serves the sampled concepts of the global partition (a count above 0 with no consents); the authorized HPDS
                           does not serve a concept that only the global partition holds to a caller with the consents of every study partition
-                          (SKIP when every sampled concept is also in a study partition, as in globals=both, and for the open side without --open)
+                          (SKIP when every concept of the global partition is also in a study partition, as in globals=both, when no concept is
+                          sampled (--sample 0), and for the open side without --open)
   consent.missing         a consent with no partition counts 0 (alone and next to a real one)
   consent.none            a query without consents is refused (no count is returned)
-  open.*                  the open HPDS with no consents = every partition; with consents = those partitions; unknown consent = 0
+  open.*                  the open HPDS with no consents = every partition; with consents = those partitions; unknown consent = 0. With a global
+                          partition the open HPDS also serves it, so no consents is checked as bounds (the study partitions' patients, and the global
+                          partition's, up to their sum) and the patients only the global partition holds are reported
   stigvar.open            no listed path (exact match) in the open HPDS's search, no listed concept answers there; one coverage row
   stigvar.control         the authorized HPDS does have the checked listed paths (INCONCLUSIVE when none can be checked, or one is missing)
   api.same                the query-service answers what the HPDS answers, query by query
@@ -202,7 +205,8 @@ def manifest_globals(path):
     """The global mode of a release manifest (source.globals, or a top-level globals): split, global or both; None when it names none."""
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
-    mode = (data.get("source") or {}).get("globals") or data.get("globals")
+    source = data.get("source")
+    mode = (source.get("globals") if isinstance(source, dict) else None) or data.get("globals")
     return mode if mode in ("split", "global", "both") else None
 
 
@@ -364,9 +368,13 @@ def check_global(rep, hpds, opn, glob, parts, meta, sample, mode=None):
     """The global partition is not reached through a consent. The open HPDS (no consents) must serve its sampled concepts; the authorized HPDS must not
     serve a concept that only the global partition holds to a caller with the consents of every study partition."""
     elsewhere = {c for p in parts for c in meta.get(p) or {}}
+    no_meta = [p for p in parts if not meta.get(p)]
     for g in glob:
         if not meta.get(g):
             rep.add("global.served", g, INCONCLUSIVE, with_mode("no columnMeta.csv to sample concepts from", mode))
+            continue
+        if not sample[g]:
+            rep.add("global.served", g, SKIP, with_mode("no concept is sampled (--sample 0)", mode))
             continue
         for path in sample[g] if opn else ():
             got, why = opn.patients([], compare.required(path))
@@ -374,6 +382,9 @@ def check_global(rep, hpds, opn, glob, parts, meta, sample, mode=None):
             rep.add("global.served", f"{g} open {path}", PASS if ok else FAIL, with_mode("" if ok else why or f"the open HPDS counts {got} patients for a concept of the global partition", mode), ">0", got)
         if not opn:
             rep.add("global.served", f"{g} open", SKIP, with_mode("no open-mode HPDS (--open): only the authorized side is checked", mode))
+        if no_meta:
+            rep.add("global.served", f"{g} authorized", INCONCLUSIVE, with_mode(f"no columnMeta.csv for {len(no_meta)} study partitions: which concepts only the global partition holds is not known", mode))
+            continue
         only = spread([c for c in meta[g] if c not in elsewhere], len(sample[g]))
         if not only:
             rep.add("global.served", f"{g} authorized", SKIP, with_mode("every concept of the global partition is also in a study partition: the authorized HPDS may serve it", mode))
@@ -479,12 +490,28 @@ def refusal(code, text):
         return True, f"HTTP {code}, no count"
 
 
-def check_open(rep, hpds, opn, parts, sample, stigvars):
+def check_open(rep, hpds, opn, parts, sample, stigvars, glob_patients=None, glob_paths=frozenset(), all_parts=None):
+    """glob_patients: global partition -> its patient count (None when unknown). The open HPDS serves the global partitions too, so with no consents it
+    counts the study partitions' patients and those only a global partition holds: a bound, not an equality."""
     skip = [p for p in parts]
     plain = {p: [c for c in sample.get(p, []) if not listed(c, stigvars)] for p in skip}
-    allp, why_a = hpds.patients(parts)
     got, why = opn.patients([])
-    rep.eq("open.none", "no consents, no clause = all partitions", allp, got, why or why_a)
+    if glob_patients:
+        allp, why_a = hpds.patients(all_parts or parts)
+        known = [n for n in glob_patients.values() if n is not None]
+        low = max([allp] + known) if allp is not None else None
+        high = allp + sum(known) if allp is not None and len(known) == len(glob_patients) else None
+        if got is None or allp is None:
+            rep.add("open.none", "no consents, no clause = all partitions", FAIL, why or why_a or "no count", None, got)
+        else:
+            ok = low <= got and (high is None or got <= high)
+            note = (f"the open HPDS counts {got - allp} patients the study partitions do not (study partitions {allp}, "
+                    + ", ".join(f"{g} {n if n is not None else 'unknown'}" for g, n in sorted(glob_patients.items())) + ")")
+            rep.add("open.none", "no consents, no clause = all partitions", PASS if ok else FAIL,
+                    note if ok else f"expected between {low} and {high if high is not None else 'any'} patients; {note}", f"{low}..{high if high is not None else ''}", got)
+    else:
+        allp, why_a = hpds.patients(parts)
+        rep.eq("open.none", "no consents, no clause = all partitions", allp, got, why or why_a)
     for p in parts:
         want, _ = hpds.patients([p])
         got, why = opn.patients([p])
@@ -498,7 +525,10 @@ def check_open(rep, hpds, opn, parts, sample, stigvars):
     for p, c in firsts[:5]:
         want, _ = hpds.patients(parts, compare.required(c))
         got, why = opn.patients([], compare.required(c))
-        rep.eq("open.none", f"no consents REQUIRED {c}", want, got, why)
+        if c in glob_paths and want is not None and got is not None:  # a concept the global partition holds too: the open HPDS adds its patients
+            rep.add("open.none", f"no consents REQUIRED {c}", PASS if got >= want else FAIL, "" if got >= want else f"expected at least {want} (the global partition adds patients), got {got}", f">={want}", got)
+        else:
+            rep.eq("open.none", f"no consents REQUIRED {c}", want, got, why)
     got, why = opn.patients([UNKNOWN_CONSENT])
     rep.eq("open.consents", "unknown consent", 0, got, why)
 
@@ -1005,7 +1035,8 @@ def run(args, inspect=services_ref.inspect_container, env_inspect=compare.docker
     if with_genomic and manifest and manifest.get("variants"):
         check_genomic_queries(rep, hpds, parts, manifest, args)
     if opn:
-        check_open(rep, hpds, opn, parts, sample, stigvars)
+        check_open(rep, hpds, opn, parts, sample, stigvars, {g: next((n for _, n in exp[g]["patients"]), None) for g in glob},
+                   {c for g in glob for c in meta.get(g) or {}}, all_parts)
         if stigvars:
             check_stigvars(rep, hpds, opn, stigvars, parts, meta, args.stigvar_limit)
         else:

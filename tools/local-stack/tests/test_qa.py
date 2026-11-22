@@ -520,7 +520,7 @@ class QaTest(unittest.TestCase):
 
     def global_release(self, mode="global", kind=True, serve_global_to_auth=False):
         """A release with a global partition holding the global rows; in mode global the study partitions hold data rows only. Returns the fake HPDS classes."""
-        everyone = {1, 2, 3, 4, 5, 6}
+        everyone = {1, 2, 3, 4, 5, 6, 7}  # patient 7 is in no study partition: only the global partition holds it (consent and id rows, no data row)
         data = dict(DATA, **{"global": {self.CONSENTS: everyone, self.SOURCE_IDS: everyone}})
         if mode != "global":  # split / both: the study partitions hold the consents rows as well
             for p in DATA:
@@ -554,11 +554,17 @@ class QaTest(unittest.TestCase):
 
     def test_a_global_partition_is_not_a_study_partition(self):
         auth, opn_cls = self.global_release("global")
-        with serve(auth) as hpds, serve(opn_cls) as opn, serve(FakeDict) as dic:
-            rep = self.run_qa(hpds, opn, None, dic)
+        with serve(auth) as hpds, serve(opn_cls) as opn, serve(auth) as api, serve(FakeDict) as dic:
+            rep = self.run_qa(hpds, opn, api, dic)
         self.assertEqual(self.failing(rep), set())
         for check in ("partition.patients", "concept.sample", "dict.consent", "dict.study_paths", "dict.global_paths"):
             self.assertNotIn("global", {r["case"] for r in rep.results if r["check"] == check}, check)
+        for check in ("union", "open.consents", "open.none", "api.same"):
+            cases = [r["case"] for r in rep.results if r["check"] == check]
+            self.assertTrue(cases and not any("global" in c for c in cases), (check, cases))
+        none = [r for r in rep.results if r["check"] == "open.none" and r["case"].startswith("no consents, no clause")]
+        self.assertEqual([r["status"] for r in none], [qa.PASS])
+        self.assertIn("counts 1 patients the study partitions do not (study partitions 6, global 7)", none[0]["detail"])
         served = [r for r in rep.results if r["check"] == "global.served"]
         self.assertTrue(served and all(r["status"] == qa.PASS and "globals=global" in r["detail"] for r in served), served)
         self.assertEqual({"open", "authorized"}, {r["case"].split()[1] for r in served})
@@ -609,6 +615,59 @@ class QaTest(unittest.TestCase):
         bad = [r for r in rep.results if r["status"] == qa.FAIL]
         self.assertEqual([(r["check"], r["case"]) for r in bad], [("partition.patients", "phs000000.c1")])
         self.assertIn("globals=global", bad[0]["detail"])
+
+    def test_an_open_hpds_that_lacks_the_global_partition_fails_the_no_consents_bound(self):
+        auth, _ = self.global_release("global")
+        studies = {p: v for p, v in auth.data.items() if p != "global"}
+        with serve(auth) as hpds, serve(variant(Fake, data=studies, require_filter=False)) as opn:
+            rep = self.run_qa(hpds, opn)
+        self.assertIn(("open.none", "no consents, no clause = all partitions"), {(r["check"], r["case"]) for r in rep.results if r["status"] == qa.FAIL})
+
+    def test_without_study_patients_in_the_manifest_mode_global_is_inconclusive_for_partition_patients(self):
+        auth, opn_cls = self.global_release("global")
+        with open(self.manifest) as f:
+            data = json.load(f)
+        for p in data["partitions"]:
+            if p["name"] != "global":
+                del p["patients"]
+        with open(self.manifest, "w") as f:
+            json.dump(data, f)
+        with serve(auth) as hpds, serve(opn_cls) as opn:
+            rep = self.run_qa(hpds, opn)
+        rows = [r for r in rep.results if r["check"] == "partition.patients"]
+        self.assertTrue(rows and all(r["status"] == qa.INCONCLUSIVE and "globals=global" in r["detail"] for r in rows), rows)
+        self.assertEqual(self.failing(rep), set())
+
+    def test_a_global_partition_without_columnmeta_is_inconclusive(self):
+        auth, opn_cls = self.global_release("global")
+        os.remove(os.path.join(self.store, "global", "columnMeta.csv"))
+        with serve(auth) as hpds, serve(opn_cls) as opn:
+            rep = self.run_qa(hpds, opn)
+        served = [r for r in rep.results if r["check"] == "global.served"]
+        self.assertEqual([(r["case"], r["status"]) for r in served], [("global", qa.INCONCLUSIVE)])
+
+    def test_a_study_partition_without_columnmeta_makes_the_authorized_side_inconclusive(self):
+        auth, opn_cls = self.global_release("both")
+        os.remove(os.path.join(self.store, "phs999999.c1", "columnMeta.csv"))
+        with serve(auth) as hpds, serve(opn_cls) as opn:
+            rep = self.run_qa(hpds, opn)
+        served = {r["case"]: r for r in rep.results if r["check"] == "global.served"}
+        self.assertEqual(served["global authorized"]["status"], qa.INCONCLUSIVE)
+        self.assertIn("no columnMeta.csv for 1 study partitions", served["global authorized"]["detail"])
+        self.assertFalse([c for c in served if c.startswith("global authorized ")])
+        self.assertNotIn("global.served", self.failing(rep))
+
+    def test_with_no_sample_the_global_check_is_skipped_and_not_unbounded(self):
+        auth, opn_cls = self.global_release("global")
+        with serve(auth) as hpds, serve(opn_cls) as opn:
+            rep = self.run_qa(hpds, opn, extra=["--sample", "0"])
+        served = [(r["case"], r["status"]) for r in rep.results if r["check"] == "global.served"]
+        self.assertEqual(served, [("global", qa.SKIP)])
+
+    def test_a_globals_source_that_is_not_an_object_is_ignored(self):
+        with open(self.manifest, "w") as f:
+            json.dump({"source": "s3://x/", "partitions": []}, f)
+        self.assertIsNone(qa.manifest_globals(self.manifest))
 
     def test_a_manifest_without_kind_or_globals_changes_nothing(self):
         with serve(variant(Fake)) as hpds, serve(variant(Fake, require_filter=False)) as opn:
