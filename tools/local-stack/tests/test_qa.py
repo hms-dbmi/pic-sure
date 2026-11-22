@@ -515,6 +515,107 @@ class QaTest(unittest.TestCase):
             self.assertEqual(list(m), ["P"])
         self.assertEqual(qa.read_manifest(self.manifest)["P"], {"patients": 3})
 
+    CONSENTS = "\\_consents\\"
+    SOURCE_IDS = "\\_source_subject_id\\"
+
+    def global_release(self, mode="global", kind=True, serve_global_to_auth=False):
+        """A release with a global partition holding the global rows; in mode global the study partitions hold data rows only. Returns the fake HPDS classes."""
+        everyone = {1, 2, 3, 4, 5, 6}
+        data = dict(DATA, **{"global": {self.CONSENTS: everyone, self.SOURCE_IDS: everyone}})
+        if mode != "global":  # split / both: the study partitions hold the consents rows as well
+            for p in DATA:
+                data[p] = dict(DATA[p], **{g: set().union(*DATA[p].values()) for g in (self.CONSENTS, self.SOURCE_IDS)})
+        self.store = os.path.join(self.tmp.name, "store-global")
+        write_store(self.store, data)
+        parts = []
+        for p, c in data.items():
+            e = {"name": p, "patients": len(set().union(*c.values())), "observations": sum(len(s) for s in c.values()) * OBS}
+            if kind:
+                e["kind"] = "global" if p == "global" else "study"
+            parts.append(e)
+        with open(self.manifest, "w") as f:
+            json.dump({"schema": 2, "source": {"globals": mode}, "partitions": parts}, f)
+        auth = variant(Fake, data=data, partitions=(lambda self, consents: [c for c in consents if c in self.data] + ["global"] if consents else None) if serve_global_to_auth else Fake.partitions)
+        return auth, variant(Fake, data=data, require_filter=False)
+
+    def test_manifest_kind_and_globals_are_read(self):
+        self.global_release("global")
+        m = qa.read_manifest(self.manifest)
+        self.assertEqual(m["global"]["kind"], "global")
+        self.assertEqual(m["phs000000.c1"]["kind"], "study")
+        self.assertEqual(qa.manifest_globals(self.manifest), "global")
+        with open(self.manifest, "w") as f:
+            json.dump({"globals": "both", "partitions": [{"name": "P"}]}, f)
+        self.assertEqual(qa.manifest_globals(self.manifest), "both")
+        self.assertNotIn("kind", qa.read_manifest(self.manifest)["P"])
+        with open(self.manifest, "w") as f:
+            json.dump({"source": {"globals": "other"}, "partitions": []}, f)
+        self.assertIsNone(qa.manifest_globals(self.manifest))
+
+    def test_a_global_partition_is_not_a_study_partition(self):
+        auth, opn_cls = self.global_release("global")
+        with serve(auth) as hpds, serve(opn_cls) as opn, serve(FakeDict) as dic:
+            rep = self.run_qa(hpds, opn, None, dic)
+        self.assertEqual(self.failing(rep), set())
+        for check in ("partition.patients", "concept.sample", "dict.consent", "dict.study_paths", "dict.global_paths"):
+            self.assertNotIn("global", {r["case"] for r in rep.results if r["check"] == check}, check)
+        served = [r for r in rep.results if r["check"] == "global.served"]
+        self.assertTrue(served and all(r["status"] == qa.PASS and "globals=global" in r["detail"] for r in served), served)
+        self.assertEqual({"open", "authorized"}, {r["case"].split()[1] for r in served})
+        self.assertTrue(any(r["check"] == "partition.observations" and r["case"] == "global" and r["status"] == qa.PASS for r in rep.results))
+        self.assertTrue(all("globals=global" in r["detail"] for r in rep.results if r["check"] == "partition.patients"))
+
+    def test_a_global_partition_without_a_kind_is_found_by_its_name(self):
+        auth, opn_cls = self.global_release("global", kind=False)
+        with serve(auth) as hpds, serve(opn_cls) as opn:
+            rep = self.run_qa(hpds, opn)
+        self.assertNotIn("global", {r["case"] for r in rep.results if r["check"] == "partition.patients"})
+        self.assertIn("global.served", {r["check"] for r in rep.results})
+
+    def test_an_authorized_hpds_that_serves_the_global_partition_fails(self):
+        auth, opn_cls = self.global_release("global", serve_global_to_auth=True)
+        with serve(auth) as hpds, serve(opn_cls) as opn:
+            rep = self.run_qa(hpds, opn)
+        self.assertIn("global.served", self.failing(rep))
+
+    def test_a_missing_open_hpds_skips_the_open_side_only(self):
+        auth, _ = self.global_release("global")
+        with serve(auth) as hpds:
+            rep = self.run_qa(hpds)
+        rows = {r["case"].split()[1] if " " in r["case"] else r["case"]: r["status"] for r in rep.results if r["check"] == "global.served"}
+        self.assertEqual(rows, {"open": qa.SKIP, "authorized": qa.PASS})
+
+    def test_in_mode_both_the_authorized_side_is_inconclusive_and_the_study_counts_still_compare(self):
+        auth, opn_cls = self.global_release("both")
+        with serve(auth) as hpds, serve(opn_cls) as opn:
+            rep = self.run_qa(hpds, opn)
+        served = {r["case"]: r["status"] for r in rep.results if r["check"] == "global.served"}
+        self.assertEqual(served["global authorized"], qa.INCONCLUSIVE)
+        self.assertEqual(self.failing(rep), set())
+        self.assertTrue(any(r["check"] == "partition.patients" and r["case"] == "phs000000.c1" and r["status"] == qa.PASS and "globals=both" in r["detail"] for r in rep.results))
+
+    def test_a_study_count_that_differs_from_the_manifest_in_mode_global_is_still_a_failure(self):
+        auth, opn_cls = self.global_release("global")
+        with open(self.manifest) as f:
+            data = json.load(f)
+        for p in data["partitions"]:
+            if p["name"] == "phs000000.c1":
+                p["patients"] += 1
+        with open(self.manifest, "w") as f:
+            json.dump(data, f)
+        with serve(auth) as hpds, serve(opn_cls) as opn:
+            rep = self.run_qa(hpds, opn)
+        bad = [r for r in rep.results if r["status"] == qa.FAIL]
+        self.assertEqual([(r["check"], r["case"]) for r in bad], [("partition.patients", "phs000000.c1")])
+        self.assertIn("globals=global", bad[0]["detail"])
+
+    def test_a_manifest_without_kind_or_globals_changes_nothing(self):
+        with serve(variant(Fake)) as hpds, serve(variant(Fake, require_filter=False)) as opn:
+            rep = self.run_qa(hpds, opn)
+        self.assertEqual(self.failing(rep), set())
+        self.assertNotIn("global.served", {r["check"] for r in rep.results})
+        self.assertFalse(any("globals=" in r["detail"] for r in rep.results))
+
     def test_exit_codes(self):
         rep = qa.Report()
         self.assertEqual(rep.exit_code(), 0)

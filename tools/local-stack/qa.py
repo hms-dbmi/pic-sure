@@ -10,7 +10,9 @@
   --dict      the dictionary service (POST /concepts with a consent filter)
   --dataset   a synthetic dataset of the local stack: its ground truth (pheno.py, as compare.py computes it) is a further source of truth
   --manifest  a loader manifest (split_manifest.json, a flow manifest.json, ingest-summary.json): partitions[] with name and patients
-              and/or observations (or observationsWritten); repeatable
+              and/or observations (or observationsWritten), and kind (study | global) when it has one; repeatable. A release manifest's
+              source.globals (split | global | both) is named in the detail of the checks it affects. A partition of kind global (without a
+              manifest that says: one named `global`) is not a study partition: it is left out of the per-consent and per-study checks
   --stigvars  a file of concept paths (one per line), matched exactly: no listed path may appear in the open-mode HPDS's search, and no
               listed concept of the partitions may answer a query there. A path below a listed path is not listed. Without the file the
               open stigvar check is INCONCLUSIVE
@@ -28,6 +30,9 @@ Checks (each one is reported per partition or per case, as PASS, FAIL, INCONCLUS
   concept.sample          for sampled concepts of a partition: REQUIRED count = columnMeta patientCount, observation count (OBSERVATION_CROSS_COUNT)
                           = columnMeta observationCount
   union                   a patient of two consents is counted once (exact with --dataset, bounds and identities otherwise)
+  global.served           the open HPDS serves the sampled concepts of the global partition (a count above 0 with no consents); the authorized HPDS
+                          does not serve a concept that only the global partition holds to a caller with the consents of every study partition
+                          (INCONCLUSIVE when every sampled concept is also in a study partition, as in globals=both; SKIP for the open side without --open)
   consent.missing         a consent with no partition counts 0 (alone and next to a real one)
   consent.none            a query without consents is refused (no count is returned)
   open.*                  the open HPDS with no consents = every partition; with consents = those partitions; unknown consent = 0
@@ -170,7 +175,7 @@ def dict_concepts(base, consents, page_size, max_pages):
 
 
 def read_manifest(path):
-    """partition -> {"patients": n, "observations": n} from a loader manifest (only the keys it has)."""
+    """partition -> {"patients": n, "observations": n, "kind": "study"|"global"} from a loader manifest (only the keys it has; no kind = study)."""
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
     parts = data.get("partitions", [])
@@ -187,8 +192,24 @@ def read_manifest(path):
         for k in ("observations", "observationsWritten"):
             if isinstance(p.get(k), int):
                 e["observations"] = p[k]
+        if p.get("kind") in ("study", "global"):
+            e["kind"] = p["kind"]
         out[name] = e
     return out
+
+
+def manifest_globals(path):
+    """The global mode of a release manifest (source.globals, or a top-level globals): split, global or both; None when it names none."""
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    mode = (data.get("source") or {}).get("globals") or data.get("globals")
+    return mode if mode in ("split", "global", "both") else None
+
+
+def is_global(name, manifests):
+    """A partition of kind global in a manifest; when no manifest gives a kind for it, one named exactly `global`."""
+    kinds = [m[name]["kind"] for _, m in manifests if "kind" in m.get(name, {})]
+    return "global" in kinds if kinds else name == "global"
 
 
 def read_store(store):
@@ -289,18 +310,25 @@ class Report:
         return 1 if c[FAIL] else 2 if c[INCONCLUSIVE] else 0
 
 
-def check_partitions(rep, hpds, parts, meta, exp):
-    for p in parts:
-        got, why = hpds.patients([p])
-        sources = exp[p]["patients"]
-        if not sources:
-            rep.add("partition.patients", p, INCONCLUSIVE, "no source of truth for the patient count (no truth, manifest or \\_consents\\ concept)", None, got)
-        elif got is None:
-            rep.add("partition.patients", p, FAIL, why, [n for _, n in sources], got)
-        elif all(n == got for _, n in sources):
-            rep.add("partition.patients", p, PASS, "", got, got)
-        else:
-            rep.add("partition.patients", p, FAIL, "expected " + ", ".join(f"{s}={n}" for s, n in sources) + f"; HPDS {got}", [n for _, n in sources], got)
+def with_mode(detail, mode):
+    """The detail plus `globals=<mode>` when the release manifest names the mode."""
+    return "; ".join(d for d in (detail, f"globals={mode}" if mode else "") if d)
+
+
+def check_partitions(rep, hpds, parts, meta, exp, mode=None, glob=()):
+    """parts: the study partitions (counted through their consent); glob: the global partitions, whose observation total is compared only."""
+    for p in list(parts) + list(glob):
+        if p not in glob:
+            got, why = hpds.patients([p])
+            sources = exp[p]["patients"]
+            if not sources:
+                rep.add("partition.patients", p, INCONCLUSIVE, with_mode("no source of truth for the patient count (no truth, manifest or \\_consents\\ concept)", mode), None, got)
+            elif got is None:
+                rep.add("partition.patients", p, FAIL, with_mode(why, mode), [n for _, n in sources], got)
+            elif all(n == got for _, n in sources):
+                rep.add("partition.patients", p, PASS, with_mode("", mode), got, got)
+            else:
+                rep.add("partition.patients", p, FAIL, with_mode("expected " + ", ".join(f"{s}={n}" for s, n in sources) + f"; HPDS {got}", mode), [n for _, n in sources], got)
         m = meta.get(p)
         sources = exp[p]["observations"]
         if m and sources:
@@ -330,6 +358,29 @@ def check_concepts(rep, hpds, parts, meta, sample):
             rep.eq("concept.sample", f"{p} patients {path}", m["patients"], got, why)
             got, why = hpds.observations([p], path)
             rep.eq("concept.sample", f"{p} observations {path}", m["observations"], got, why)
+
+
+def check_global(rep, hpds, opn, glob, parts, meta, sample, mode=None):
+    """The global partition is not reached through a consent. The open HPDS (no consents) must serve its sampled concepts; the authorized HPDS must not
+    serve a concept that only the global partition holds to a caller with the consents of every study partition."""
+    elsewhere = {c for p in parts for c in meta.get(p) or {}}
+    for g in glob:
+        if not meta.get(g):
+            rep.add("global.served", g, INCONCLUSIVE, with_mode("no columnMeta.csv to sample concepts from", mode))
+            continue
+        for path in sample[g] if opn else ():
+            got, why = opn.patients([], compare.required(path))
+            ok = got is not None and got > 0
+            rep.add("global.served", f"{g} open {path}", PASS if ok else FAIL, with_mode("" if ok else why or f"the open HPDS counts {got} patients for a concept of the global partition", mode), ">0", got)
+        if not opn:
+            rep.add("global.served", f"{g} open", SKIP, with_mode("no open-mode HPDS (--open): only the authorized side is checked", mode))
+        only = spread([c for c in meta[g] if c not in elsewhere], len(sample[g]))
+        if not only:
+            rep.add("global.served", f"{g} authorized", INCONCLUSIVE, with_mode("every concept of the global partition is also in a study partition: the authorized HPDS may serve it", mode))
+        for path in only:
+            got, why = hpds.patients(parts, compare.required(path))
+            ok = got == 0
+            rep.add("global.served", f"{g} authorized {path}", PASS if ok else FAIL, with_mode("" if ok else why or f"the authorized HPDS counts {got} patients for a concept only the global partition holds", mode), 0, got)
 
 
 def pick_pairs(parts, truth, limit, rng):
@@ -902,8 +953,6 @@ def run(args, inspect=services_ref.inspect_container, env_inspect=compare.docker
         meta = {p: other.get(p) for p in meta}
         if not any(meta.values()):
             rep.add("setup", "columnmeta-root", INCONCLUSIVE, f"no columnMeta.csv for any partition under {args.columnmeta_root}")
-    all_parts = sorted(meta)
-    parts = all_parts[: args.max_partitions] if args.max_partitions else all_parts
     truth = None
     manifests = [(os.path.basename(m), read_manifest(m)) for m in args.manifest]
     if args.dataset:
@@ -916,8 +965,15 @@ def run(args, inspect=services_ref.inspect_container, env_inspect=compare.docker
         split = os.path.join(compare.WORK, args.dataset, "split", "split_manifest.json")
         if os.path.isfile(split):
             manifests.append(("split_manifest.json", read_manifest(split)))
-    exp = expectations(parts, meta, manifests, truth)
-    sample = sample_concepts(parts, meta, args.sample, rng)
+    glob = [p for p in sorted(meta) if is_global(p, manifests)]
+    all_parts = [p for p in sorted(meta) if p not in glob]
+    if not all_parts:
+        rep.add("setup", "store", INCONCLUSIVE, f"no study partitions under {args.store} (only the global partition)")
+        return rep, {"setup": "no study partitions"}
+    parts = all_parts[: args.max_partitions] if args.max_partitions else all_parts
+    mode = next((g for g in (manifest_globals(m) for m in args.manifest) if g), None)
+    exp = expectations(parts + glob, meta, manifests, truth)
+    sample = sample_concepts(parts + glob, meta, args.sample, rng)
     stigvars = read_stigvars(args.stigvars) if args.stigvars else []
 
     for name, url in (("open", args.open), ("api", args.api), ("dict", args.dict)):
@@ -940,10 +996,12 @@ def run(args, inspect=services_ref.inspect_container, env_inspect=compare.docker
         else:
             api = None
 
-    check_partitions(rep, hpds, parts, meta, exp)
+    check_partitions(rep, hpds, parts, meta, exp, mode, glob)
     check_concepts(rep, hpds, parts, meta, sample)
     check_union(rep, hpds, parts, meta, truth, args.union_pairs, rng)
     check_missing(rep, hpds, parts, sample)
+    if glob:
+        check_global(rep, hpds, opn, glob, all_parts, meta, sample, mode)
     if with_genomic and manifest and manifest.get("variants"):
         check_genomic_queries(rep, hpds, parts, manifest, args)
     if opn:
@@ -964,7 +1022,7 @@ def run(args, inspect=services_ref.inspect_container, env_inspect=compare.docker
         check_dictionary(rep, args.dict, parts, meta, args.dict_page_size, args.dict_max_pages, all_parts)
     else:
         rep.add("dict.consent", "dictionary", SKIP, "no dictionary (--dict)")
-    return rep, {"partitions": len(parts), "sources": [n for n, _ in manifests] + (["truth"] if truth else []), "seconds": round(time.time() - t0, 1)}
+    return rep, {"partitions": len(parts), "global_partitions": glob, "globals": mode, "sources": [n for n, _ in manifests] + (["truth"] if truth else []), "seconds": round(time.time() - t0, 1)}
 
 
 def non_negative(text):
