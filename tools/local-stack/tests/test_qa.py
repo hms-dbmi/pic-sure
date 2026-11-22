@@ -585,13 +585,14 @@ class QaTest(unittest.TestCase):
         rows = {r["case"].split()[1] if " " in r["case"] else r["case"]: r["status"] for r in rep.results if r["check"] == "global.served"}
         self.assertEqual(rows, {"open": qa.SKIP, "authorized": qa.PASS})
 
-    def test_in_mode_both_the_authorized_side_is_inconclusive_and_the_study_counts_still_compare(self):
+    def test_in_mode_both_the_authorized_side_is_skipped_and_the_study_counts_still_compare(self):
         auth, opn_cls = self.global_release("both")
         with serve(auth) as hpds, serve(opn_cls) as opn:
             rep = self.run_qa(hpds, opn)
         served = {r["case"]: r["status"] for r in rep.results if r["check"] == "global.served"}
-        self.assertEqual(served["global authorized"], qa.INCONCLUSIVE)
+        self.assertEqual(served["global authorized"], qa.SKIP)
         self.assertEqual(self.failing(rep), set())
+        self.assertNotIn(qa.INCONCLUSIVE, {r["status"] for r in rep.results if r["check"] == "global.served"})
         self.assertTrue(any(r["check"] == "partition.patients" and r["case"] == "phs000000.c1" and r["status"] == qa.PASS and "globals=both" in r["detail"] for r in rep.results))
 
     def test_a_study_count_that_differs_from_the_manifest_in_mode_global_is_still_a_failure(self):

@@ -32,7 +32,7 @@ Checks (each one is reported per partition or per case, as PASS, FAIL, INCONCLUS
   union                   a patient of two consents is counted once (exact with --dataset, bounds and identities otherwise)
   global.served           the open HPDS serves the sampled concepts of the global partition (a count above 0 with no consents); the authorized HPDS
                           does not serve a concept that only the global partition holds to a caller with the consents of every study partition
-                          (INCONCLUSIVE when every sampled concept is also in a study partition, as in globals=both; SKIP for the open side without --open)
+                          (SKIP when every sampled concept is also in a study partition, as in globals=both, and for the open side without --open)
   consent.missing         a consent with no partition counts 0 (alone and next to a real one)
   consent.none            a query without consents is refused (no count is returned)
   open.*                  the open HPDS with no consents = every partition; with consents = those partitions; unknown consent = 0
@@ -376,7 +376,7 @@ def check_global(rep, hpds, opn, glob, parts, meta, sample, mode=None):
             rep.add("global.served", f"{g} open", SKIP, with_mode("no open-mode HPDS (--open): only the authorized side is checked", mode))
         only = spread([c for c in meta[g] if c not in elsewhere], len(sample[g]))
         if not only:
-            rep.add("global.served", f"{g} authorized", INCONCLUSIVE, with_mode("every concept of the global partition is also in a study partition: the authorized HPDS may serve it", mode))
+            rep.add("global.served", f"{g} authorized", SKIP, with_mode("every concept of the global partition is also in a study partition: the authorized HPDS may serve it", mode))
         for path in only:
             got, why = hpds.patients(parts, compare.required(path))
             ok = got == 0
