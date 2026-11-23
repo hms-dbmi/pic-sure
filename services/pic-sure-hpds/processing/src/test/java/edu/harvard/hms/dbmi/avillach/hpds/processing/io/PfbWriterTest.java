@@ -278,6 +278,73 @@ public class PfbWriterTest {
     }
 
     @Test
+    public void writeAndClose_drsUriArrayHoldsNullElements_nullsAreSkippedAndTheRestWritten() throws IOException {
+        PfbWriter pfbWriter = new PfbWriter(avroFile, UUID.randomUUID().toString(), dictionaryService);
+        Mockito.when(dictionaryService.getConcepts(REQUESTED_PATHS)).thenReturn(
+            List.of(
+                new Concept(AGE_PATH, null, "Age", "demographics", "patient age", Map.of("drs_uri", "[\"drs://a\", null, \"drs://b\"]")),
+                new Concept(STROKE_PATH, null, "Stroke", "phs123", "history of stroke", Map.of("drs_uri", "[null, \"drs://c\"]"))
+            )
+        );
+
+        pfbWriter.writeHeader(HEADER);
+        pfbWriter.writeMultiValueEntity(List.of(patientRow("123", "80", "Y")));
+        pfbWriter.close();
+
+        assertEquals(1 + 2 + 1, readAll(avroFile).size());
+        Map<String, GenericRecord> rows = readDictionaryRows(avroFile);
+        assertEquals(List.of("drs://a", "drs://b"), strings((List<?>) rows.get("_demographics_age_").get("drs_uri")));
+        assertEquals(List.of("drs://c"), strings((List<?>) rows.get("_phs123_stroke_").get("drs_uri")));
+    }
+
+    @Test
+    public void writeAndClose_drsUriIsJsonNullOrOnlyNulls_writesAnEmptyArray() throws IOException {
+        PfbWriter pfbWriter = new PfbWriter(avroFile, UUID.randomUUID().toString(), dictionaryService);
+        Mockito.when(dictionaryService.getConcepts(REQUESTED_PATHS)).thenReturn(
+            List.of(
+                new Concept(AGE_PATH, null, "Age", "demographics", "patient age", Map.of("drs_uri", "null")),
+                new Concept(STROKE_PATH, null, "Stroke", "phs123", "history of stroke", Map.of("drs_uri", "[null, null]"))
+            )
+        );
+
+        pfbWriter.writeHeader(HEADER);
+        pfbWriter.writeMultiValueEntity(List.of(patientRow("123", "80", "Y")));
+        pfbWriter.close();
+
+        assertEquals(1 + 2 + 1, readAll(avroFile).size());
+        Map<String, GenericRecord> rows = readDictionaryRows(avroFile);
+        assertEquals(List.of(), strings((List<?>) rows.get("_demographics_age_").get("drs_uri")));
+        assertEquals("Age", text(rows.get("_demographics_age_"), "display"));
+        assertEquals(List.of(), strings((List<?>) rows.get("_phs123_stroke_").get("drs_uri")));
+        assertEquals("Stroke", text(rows.get("_phs123_stroke_"), "display"));
+    }
+
+    @Test
+    public void writeAndClose_drsUriIsNotAJsonArray_writesAnEmptyArrayAndTheExportSucceeds() throws IOException {
+        String objectPath = "\\phs123\\object\\";
+        PfbWriter pfbWriter = new PfbWriter(avroFile, UUID.randomUUID().toString(), dictionaryService);
+        Mockito.when(dictionaryService.getConcepts(List.of(AGE_PATH, STROKE_PATH, objectPath))).thenReturn(
+            List.of(
+                new Concept(AGE_PATH, null, "Age", "demographics", "patient age", Map.of("drs_uri", "drs://not-json")),
+                new Concept(STROKE_PATH, null, "Stroke", "phs123", "history of stroke", Map.of("drs_uri", "\"drs://a-json-string\"")),
+                new Concept(objectPath, null, "Object", "phs123", null, Map.of("drs_uri", "{\"uri\": \"drs://in-an-object\"}"))
+            )
+        );
+
+        pfbWriter.writeHeader(new String[] {"patient_id", AGE_PATH, STROKE_PATH, objectPath});
+        pfbWriter.writeMultiValueEntity(List.of(List.of(List.of("123"), List.of("80"), List.of("Y"), List.of("z"))));
+        pfbWriter.close();
+
+        assertEquals(1 + 3 + 1, readAll(avroFile).size());
+        Map<String, GenericRecord> rows = readDictionaryRows(avroFile);
+        assertEquals(List.of("_demographics_age_", "_phs123_stroke_", "_phs123_object_"), List.copyOf(rows.keySet()));
+        for (GenericRecord row : rows.values()) {
+            assertEquals(List.of(), strings((List<?>) row.get("drs_uri")));
+        }
+        assertEquals("Age", text(rows.get("_demographics_age_"), "display"));
+    }
+
+    @Test
     public void writeAndClose_pathFormattedLikePatientId_isRequestedAndWrittenAsItsOwnColumn() throws IOException {
         String patientSpaceId = "patient id";
         PfbWriter pfbWriter = new PfbWriter(avroFile, QUERY_ID, dictionaryService);
