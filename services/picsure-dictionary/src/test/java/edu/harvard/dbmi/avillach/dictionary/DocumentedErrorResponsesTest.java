@@ -35,6 +35,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import edu.harvard.dbmi.avillach.dictionary.concept.ConceptService;
+import edu.harvard.dbmi.avillach.dictionary.facet.FacetService;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import edu.harvard.dbmi.avillach.dictionary.legacysearch.LegacySearchService;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
@@ -42,11 +43,11 @@ import edu.harvard.dbmi.avillach.logging.LoggingClient;
 /**
  * Reproduces every non-2xx response the OpenAPI document declares for this service through a real HTTP request to an embedded server. The
  * controllers, services, and repositories are the production beans, reading the seeded PostgreSQL container, so each 400 and 404 comes from
- * the handler's own check against real data, except the legacy search 400s for a body Jackson cannot parse or bind. The stand-ins are the
- * audit logging client, which talks to an external logging service, a spy on {@link ConceptService} for the one case that needs the concept
- * query itself to fail, and a spy on {@link LegacySearchService} that proves a rejected legacy search never reaches the service. A 500, and
- * a 400 raised while Jackson reads the body, travel through the servlet container's error handling, so their body is Spring Boot's default
- * error document.
+ * the handler's own check against real data, except the legacy search 400s for a body Jackson cannot parse or bind and the 400 for a filter
+ * with a malformed facet, which are raised while the body is read. The stand-ins are the audit logging client, which talks to an external
+ * logging service, and spies on {@link ConceptService}, {@link FacetService} and {@link LegacySearchService}. The spies prove a rejected
+ * request never reaches its service, and the concept one also makes the concept query fail for one case. A 500, and a 400 raised while the
+ * body is read, travel through the servlet container's error handling, so their body is Spring Boot's default error document.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -84,6 +85,9 @@ class DocumentedErrorResponsesTest {
     private ConceptService conceptService;
 
     @MockitoSpyBean
+    private FacetService facetService;
+
+    @MockitoSpyBean
     private LegacySearchService legacySearchService;
 
     @MockitoBean
@@ -116,6 +120,16 @@ class DocumentedErrorResponsesTest {
             rest.postForEntity("/concepts", json("{\"facets\":[],\"search\":\"query failure probe\"}"), String.class);
 
         assertServerError(response, "/concepts");
+    }
+
+    /** A facet without a category is rejected while the body is read, before any query runs. */
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {"/concepts", "/facets"})
+    void filterWithFacetMissingItsCategoryIs400(String path) throws Exception {
+        ResponseEntity<String> response = rest.postForEntity(path, json("{\"facets\":[{\"name\":\"phs000007\"}]}"), String.class);
+
+        assertErrorDocument(response, HttpStatus.BAD_REQUEST, path);
+        verifyNoInteractions(conceptService, facetService);
     }
 
     @Test

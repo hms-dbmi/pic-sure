@@ -44,61 +44,65 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
         try {
             filterChain.doFilter(request, response);
         } finally {
-            try {
-                if (loggingClient == null || !loggingClient.isEnabled()) return;
+            logRequest(request, response, startTime);
+        }
+    }
 
-                String fullPath = request.getRequestURI();
-                String method = request.getMethod();
-                long duration = System.currentTimeMillis() - startTime;
+    private void logRequest(HttpServletRequest request, HttpServletResponse response, long startTime) {
+        try {
+            if (loggingClient == null || !loggingClient.isEnabled()) return;
 
-                String eventType = (String) request.getAttribute(AuditAttributes.EVENT_TYPE);
-                String action = (String) request.getAttribute(AuditAttributes.ACTION);
-                if (eventType == null) eventType = "UNLABELED";
-                if (action == null) action = method.toLowerCase();
+            String fullPath = request.getRequestURI();
+            String method = request.getMethod();
+            long duration = System.currentTimeMillis() - startTime;
 
-                String srcIp = extractSourceIp(request);
-                String destIp = destIpConfig != null ? destIpConfig : request.getLocalAddr();
-                int destPort = destPortConfig != null ? destPortConfig : request.getLocalPort();
+            String eventType = (String) request.getAttribute(AuditAttributes.EVENT_TYPE);
+            String action = (String) request.getAttribute(AuditAttributes.ACTION);
+            if (eventType == null) eventType = "UNLABELED";
+            if (action == null) action = method.toLowerCase();
 
-                int responseStatus = response.getStatus();
-                String contentType = response.getContentType();
-                Long bytes = parseContentLength(response.getHeader("Content-Length"));
+            String srcIp = extractSourceIp(request);
+            String destIp = destIpConfig != null ? destIpConfig : request.getLocalAddr();
+            int destPort = destPortConfig != null ? destPortConfig : request.getLocalPort();
 
-                RequestInfo requestInfo = RequestInfo.builder().method(method).url(fullPath).srcIp(srcIp).destIp(destIp).destPort(destPort)
-                    .httpUserAgent(request.getHeader("User-Agent")).status(responseStatus).duration(duration).httpContentType(contentType)
-                    .bytes(bytes).build();
+            int responseStatus = response.getStatus();
+            String contentType = response.getContentType();
+            Long bytes = parseContentLength(response.getHeader("Content-Length"));
 
-                Map<String, Object> metadata = new HashMap<>();
-                String sessionId = SessionIdResolver.resolve(request.getHeader("X-Session-Id"), srcIp, request.getHeader("User-Agent"));
+            RequestInfo requestInfo = RequestInfo.builder().method(method).url(fullPath).srcIp(srcIp).destIp(destIp).destPort(destPort)
+                .httpUserAgent(request.getHeader("User-Agent")).status(responseStatus).duration(duration).httpContentType(contentType)
+                .bytes(bytes).build();
 
-                AuditAttributes.getMetadata(request).forEach(metadata::putIfAbsent);
+            Map<String, Object> metadata = new HashMap<>();
+            String sessionId = SessionIdResolver.resolve(request.getHeader("X-Session-Id"), srcIp, request.getHeader("User-Agent"));
 
-                Map<String, Object> errorMap = null;
-                if (responseStatus >= 400) {
-                    errorMap = new HashMap<>();
-                    errorMap.put("status", responseStatus);
-                    errorMap.put("error_type", responseStatus >= 500 ? "server_error" : "client_error");
-                }
+            AuditAttributes.getMetadata(request).forEach(metadata::putIfAbsent);
 
-                LoggingEvent.Builder eventBuilder =
-                    LoggingEvent.builder(eventType).action(action).sessionId(sessionId).request(requestInfo).metadata(metadata);
-
-                String caller = request.getHeader("X-Client-Type");
-                if (caller != null && !caller.isEmpty()) eventBuilder.caller(caller);
-
-                if (errorMap != null) eventBuilder.error(errorMap);
-                LoggingEvent event = eventBuilder.build();
-
-                String authHeader = request.getHeader("Authorization");
-                String requestId = request.getHeader("X-Request-Id");
-                if (authHeader != null || requestId != null) {
-                    loggingClient.send(event, authHeader, requestId);
-                } else {
-                    loggingClient.send(event);
-                }
-            } catch (Exception e) {
-                log.warn("AuditLoggingFilter failed to log request", e);
+            Map<String, Object> errorMap = null;
+            if (responseStatus >= 400) {
+                errorMap = new HashMap<>();
+                errorMap.put("status", responseStatus);
+                errorMap.put("error_type", responseStatus >= 500 ? "server_error" : "client_error");
             }
+
+            LoggingEvent.Builder eventBuilder =
+                LoggingEvent.builder(eventType).action(action).sessionId(sessionId).request(requestInfo).metadata(metadata);
+
+            String caller = request.getHeader("X-Client-Type");
+            if (caller != null && !caller.isEmpty()) eventBuilder.caller(caller);
+
+            if (errorMap != null) eventBuilder.error(errorMap);
+            LoggingEvent event = eventBuilder.build();
+
+            String authHeader = request.getHeader("Authorization");
+            String requestId = request.getHeader("X-Request-Id");
+            if (authHeader != null || requestId != null) {
+                loggingClient.send(event, authHeader, requestId);
+            } else {
+                loggingClient.send(event);
+            }
+        } catch (Exception e) {
+            log.warn("AuditLoggingFilter failed to log request", e);
         }
     }
 

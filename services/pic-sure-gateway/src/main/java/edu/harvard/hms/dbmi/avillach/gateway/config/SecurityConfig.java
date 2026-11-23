@@ -17,6 +17,7 @@ import org.springframework.web.context.annotation.RequestScope;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
+import edu.harvard.hms.dbmi.avillach.commons.audit.ClientTypeAllowlist;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.BufferingFilter;
@@ -143,8 +144,8 @@ public class SecurityConfig {
     }
 
     @Bean
-    FilterRegistrationBean<IdentityPropagationFilter> identityFilter() {
-        var r = new FilterRegistrationBean<>(new IdentityPropagationFilter());
+    FilterRegistrationBean<IdentityPropagationFilter> identityFilter(ClientTypeAllowlist clientTypes) {
+        var r = new FilterRegistrationBean<>(new IdentityPropagationFilter(clientTypes));
         r.setOrder(50);
         r.addUrlPatterns("/*");
         return r;
