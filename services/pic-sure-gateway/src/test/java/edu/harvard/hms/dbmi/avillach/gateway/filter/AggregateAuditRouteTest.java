@@ -36,6 +36,39 @@ class AggregateAuditRouteTest {
     }
 
     /**
+     * {@code GET /hpds/auth/search/values} is the path the query service serves genomic annotation values on. The table matches the path
+     * alone, so the handler's {@code genomicConceptPath}, {@code query}, {@code page} and {@code size} query parameters play no part.
+     */
+    @Test
+    void authorizedSearchValuesMapsToSearchValues() {
+        Optional<AuditRoute> r = config.auditRouteTable().match("/hpds/auth/search/values", "GET");
+
+        assertThat(r).isPresent();
+        assertThat(r.get().getEventType()).isEqualTo("SEARCH");
+        assertThat(r.get().getAction()).isEqualTo("search.values");
+    }
+
+    @Test
+    void openSearchValuesMapsToSearchValues() {
+        Optional<AuditRoute> r = config.auditRouteTable().match("/hpds/open/search/values", "GET");
+
+        assertThat(r).isPresent();
+        assertThat(r.get().getEventType()).isEqualTo("SEARCH");
+        assertThat(r.get().getAction()).isEqualTo("search.values");
+    }
+
+    /**
+     * No handler behind the gateway serves {@code POST} on a path ending in {@code /search/{segment}}, and concept search lives at
+     * {@code /internal/search/{backend}}, which the gateway refuses to route. Such a request gets the generic audit event.
+     */
+    @Test
+    void postBelowSearchHasNoRouteEntry() {
+        assertThat(config.auditRouteTable().match("/hpds/auth/search/abc", "POST")).isEmpty();
+        assertThat(config.auditRouteTable().match("/hpds/open/search/abc", "POST")).isEmpty();
+        assertThat(config.auditRouteTable().match("/internal/search/auth", "POST")).isEmpty();
+    }
+
+    /**
      * The {@code mcp.request} entry matches only POST on the exact path. Other methods and spellings still get the generic audit event;
      * this pins only the route table entry.
      */
