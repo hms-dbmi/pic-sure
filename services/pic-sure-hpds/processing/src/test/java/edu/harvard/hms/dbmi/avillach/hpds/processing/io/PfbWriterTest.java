@@ -208,6 +208,14 @@ public class PfbWriterTest {
     }
 
     @Test
+    public void constructor_nullDictionaryService_rejectedWithMessageNamingIt() {
+        NullPointerException thrown = assertThrows(NullPointerException.class, () -> new PfbWriter(avroFile, QUERY_ID, null));
+
+        assertEquals("PfbWriter requires a DictionaryService", thrown.getMessage());
+        assertNoAvroContent(avroFile);
+    }
+
+    @Test
     public void writeHeader_alone_makesNoDictionaryCall() {
         PfbWriter pfbWriter = new PfbWriter(avroFile, UUID.randomUUID().toString(), dictionaryService);
 

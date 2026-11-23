@@ -69,9 +69,17 @@ public class PfbWriter implements ResultWriter {
     private PfbSchema schema;
     private DataFileWriter<GenericRecord> dataFileWriter;
 
+    /**
+     * Creates a writer for one export. Nothing is fetched or written until rows arrive or the writer is closed.
+     *
+     * @param tempFile the file the Avro content is written to
+     * @param queryId the query id, used in the patient and data dictionary node names
+     * @param dictionaryService the source of the concept details written to the data dictionary
+     * @throws NullPointerException if {@code dictionaryService} is null
+     */
     public PfbWriter(File tempFile, String queryId, DictionaryService dictionaryService) {
         this.file = tempFile;
-        this.dictionaryService = dictionaryService;
+        this.dictionaryService = Objects.requireNonNull(dictionaryService, "PfbWriter requires a DictionaryService");
         this.patientTableName = formatFieldName(PATIENT_TABLE_PREFIX + queryId);
         this.dataDictionaryTableName = formatFieldName(DATA_DICTIONARY_TABLE_PREFIX + queryId);
     }
