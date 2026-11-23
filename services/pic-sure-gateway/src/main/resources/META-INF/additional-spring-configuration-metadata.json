@@ -9,7 +9,7 @@
     {
       "name": "picsure.gateway.allowed-client-types",
       "type": "java.util.List<java.lang.String>",
-      "description": "X-Client-Type values the gateway accepts from callers, matched case-insensitively. A request carrying any other value is rejected with 400 unexpected_caller_type; an absent header is recorded as UNKNOWN. The reserved values mcp and service cannot be listed.",
+      "description": "X-Client-Type values the gateway accepts from callers, matched case-insensitively. A request carrying any other value is rejected with 400 unexpected_caller_type; an absent header is recorded as UNKNOWN. The reserved values mcp, service and hpds cannot be listed.",
       "defaultValue": "PYTHON_ADAPTER,R_ADAPTER,FRONTEND"
     }
   ]

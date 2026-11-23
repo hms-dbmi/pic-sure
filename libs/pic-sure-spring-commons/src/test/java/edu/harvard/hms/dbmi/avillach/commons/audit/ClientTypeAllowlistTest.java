@@ -28,6 +28,20 @@ class ClientTypeAllowlistTest {
     }
 
     @Test
+    void hpdsIsReservedAndCannotBeListedInAnyCase() {
+        for (String listed : List.of("hpds", "HPDS", "Hpds", " hpds ")) {
+            assertThatThrownBy(() -> new ClientTypeAllowlist(List.of("FRONTEND", listed))).as(listed)
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("'" + listed.trim() + "' is reserved");
+        }
+    }
+
+    @Test
+    void hpdsDoesNotResolveOnTheDefaultList() {
+        assertThat(ClientTypeAllowlist.DEFAULT.resolve("hpds")).isEmpty();
+        assertThat(ClientTypeAllowlist.DEFAULT.resolve("HPDS")).isEmpty();
+    }
+
+    @Test
     void blankEntriesAreIgnored() {
         assertThat(new ClientTypeAllowlist(List.of("", " ", "FRONTEND")).resolve("frontend")).contains("FRONTEND");
     }
