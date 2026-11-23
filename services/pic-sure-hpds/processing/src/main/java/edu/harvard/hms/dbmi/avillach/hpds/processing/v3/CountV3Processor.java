@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.stream.Collectors;
 
 /**
@@ -62,7 +63,7 @@ public class CountV3Processor implements HpdsV3Processor {
      * @return
      */
     public Map<String, Integer> runObservationCrossCounts(Query query) {
-        TreeMap<String, Integer> counts = new TreeMap<>();
+        ConcurrentSkipListMap<String, Integer> counts = new ConcurrentSkipListMap<>();
         Set<Integer> baseQueryPatientSet = queryExecutor.getPatientSubsetForQuery(query);
         query.select().parallelStream().forEach((String concept) -> {
             try {
