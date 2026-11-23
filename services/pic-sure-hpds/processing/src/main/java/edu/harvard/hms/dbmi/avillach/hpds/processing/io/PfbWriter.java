@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary.Concept;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary.DictionaryService;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary.DictionaryUnavailableException;
 import org.apache.avro.Schema;
 import org.apache.avro.file.CodecFactory;
 import org.apache.avro.file.DataFileWriter;
@@ -68,31 +69,73 @@ public class PfbWriter implements ResultWriter {
     private PfbSchema schema;
     private DataFileWriter<GenericRecord> dataFileWriter;
 
+    /**
+     * Creates a writer for one export. Nothing is fetched or written until rows arrive or the writer is closed.
+     *
+     * @param tempFile the file the Avro content is written to
+     * @param queryId the query id, used in the patient and data dictionary node names
+     * @param dictionaryService the source of the concept details written to the data dictionary
+     * @throws NullPointerException if {@code dictionaryService} is null
+     */
     public PfbWriter(File tempFile, String queryId, DictionaryService dictionaryService) {
         this.file = tempFile;
-        this.dictionaryService = dictionaryService;
+        this.dictionaryService = Objects.requireNonNull(dictionaryService, "PfbWriter requires a DictionaryService");
         this.patientTableName = formatFieldName(PATIENT_TABLE_PREFIX + queryId);
         this.dataDictionaryTableName = formatFieldName(DATA_DICTIONARY_TABLE_PREFIX + queryId);
     }
 
+    /**
+     * Records the fields of this export. Nothing is fetched or written until the first rows arrive or the writer is closed.
+     *
+     * @param data the concept paths to export, in column order
+     */
     @Override
     public void writeHeader(String[] data) {
         originalFields = List.of(data);
         formattedFields = uniqueFieldNames(originalFields);
+    }
+
+    private void ensureHeaderWritten() {
+        if (dataFileWriter == null) {
+            materializeHeader();
+        }
+    }
+
+    /**
+     * Fetches the concept details, then creates the Avro file and writes the metadata and data dictionary records. The dictionary is asked
+     * first, so a failed call leaves no Avro content behind. The Avro writer is kept only once those records are written. A failure after
+     * the file is opened closes it and leaves the header unwritten, so the next call starts over.
+     *
+     * @throws DictionaryUnavailableException if the concept details cannot be fetched
+     * @throws UncheckedIOException if the Avro file cannot be created or written
+     */
+    private void materializeHeader() {
         Map<String, Concept> concepts = lookupConcepts();
         schema = new PfbSchema(List.of(patientNode(concepts), dataDictionaryNode()));
 
-        dataFileWriter = new DataFileWriter<>(new GenericDatumWriter<>(schema.entitySchema()));
+        DataFileWriter<GenericRecord> writer = new DataFileWriter<>(new GenericDatumWriter<>(schema.entitySchema()));
         try {
             log.info("Creating temp avro file at " + file.getAbsoluteFile());
-            dataFileWriter.setCodec(CodecFactory.deflateCodec(CodecFactory.DEFAULT_DEFLATE_LEVEL));
-            dataFileWriter.create(schema.entitySchema(), file);
+            writer.setCodec(CodecFactory.deflateCodec(CodecFactory.DEFAULT_DEFLATE_LEVEL));
+            writer.create(schema.entitySchema(), file);
+            writer.append(schema.metadataEntity());
+            writeDataDictionary(writer, concepts);
         } catch (IOException e) {
+            closeAfterFailure(writer, e);
             throw new UncheckedIOException(e);
+        } catch (RuntimeException e) {
+            closeAfterFailure(writer, e);
+            throw e;
         }
+        dataFileWriter = writer;
+    }
 
-        append(schema.metadataEntity());
-        writeDataDictionary(concepts);
+    private static void closeAfterFailure(DataFileWriter<GenericRecord> writer, Exception failure) {
+        try {
+            writer.close();
+        } catch (IOException | RuntimeException closeFailure) {
+            failure.addSuppressed(closeFailure);
+        }
     }
 
     /**
@@ -146,21 +189,20 @@ public class PfbWriter implements ResultWriter {
         return new PfbSchema.Node(dataDictionaryTableName, properties, List.of());
     }
 
+    /**
+     * Fetches the details of every exported concept path except the patient id column. A path the dictionary answers more than once keeps
+     * its first answer.
+     *
+     * @return the concepts the dictionary knows, keyed by original concept path
+     * @throws DictionaryUnavailableException if the concept details cannot be fetched
+     */
     private Map<String, Concept> lookupConcepts() {
-        if (dictionaryService == null) {
-            return Map.of();
-        }
         List<String> conceptPaths = originalFields.stream().filter(field -> !PATIENT_ID.equals(field)).toList();
-        try {
-            return dictionaryService.getConcepts(conceptPaths).stream()
-                .collect(Collectors.toMap(Concept::conceptPath, Function.identity(), (first, second) -> first));
-        } catch (RuntimeException e) {
-            log.error("Error fetching concepts from dictionary service", e);
-            return Map.of();
-        }
+        return dictionaryService.getConcepts(conceptPaths).stream()
+            .collect(Collectors.toMap(Concept::conceptPath, Function.identity(), (first, second) -> first));
     }
 
-    private void writeDataDictionary(Map<String, Concept> concepts) {
+    private void writeDataDictionary(DataFileWriter<GenericRecord> writer, Map<String, Concept> concepts) throws IOException {
         for (int i = 0; i < formattedFields.size(); i++) {
             String originalField = originalFields.get(i);
             if (PATIENT_ID.equals(originalField)) {
@@ -175,7 +217,7 @@ public class PfbWriter implements ResultWriter {
                 row.put("dataset", concept.dataset());
                 row.put("description", concept.description());
             }
-            append(schema.entity(dataDictionaryTableName, formattedFields.get(i), row, List.of()));
+            writer.append(schema.entity(dataDictionaryTableName, formattedFields.get(i), row, List.of()));
         }
     }
 
@@ -226,6 +268,7 @@ public class PfbWriter implements ResultWriter {
 
     @Override
     public void writeMultiValueEntity(Collection<List<List<String>>> entities) {
+        ensureHeaderWritten();
         entities.forEach(entity -> {
             if (entity.size() != formattedFields.size()) {
                 throw new IllegalArgumentException("Entity length much match the number of fields in this document");
@@ -261,6 +304,7 @@ public class PfbWriter implements ResultWriter {
 
     @Override
     public void close() {
+        ensureHeaderWritten();
         try {
             dataFileWriter.close();
         } catch (IOException e) {

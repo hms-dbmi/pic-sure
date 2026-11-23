@@ -63,7 +63,7 @@ public class QueryService {
     @Autowired
     public QueryService(
         AbstractProcessor abstractProcessor, TimeseriesProcessor timeseriesProcessor, CountProcessor countProcessor,
-        MultiValueQueryProcessor multiValueQueryProcessor, @Autowired(required = false) DictionaryService dictionaryService,
+        MultiValueQueryProcessor multiValueQueryProcessor, DictionaryService dictionaryService,
         @Value("${SMALL_JOB_LIMIT}") Integer smallJobLimit, @Value("${SMALL_TASK_THREADS}") Integer smallTaskThreads,
         @Value("${LARGE_TASK_THREADS}") Integer largeTaskThreads, PatientProcessor patientProcessor,
         @Autowired(required = false) LoggingClient loggingClient
