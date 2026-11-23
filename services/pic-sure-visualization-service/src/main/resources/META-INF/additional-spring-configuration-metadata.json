@@ -24,6 +24,12 @@
       "description": "Base URL of pic-sure-hpds-query-service, the single HPDS ingress this service posts distribution sub-queries to. Maps from the HPDS_QUERY_SERVICE_URL environment variable, with application.properties defaulting it to http://pic-sure-hpds-query-service:8080."
     },
     {
+      "name": "picsure.query-service.internal-token",
+      "type": "java.lang.String",
+      "description": "Shared secret sent as the X-PIC-SURE-INTERNAL-TOKEN header on calls to the query-service internal search endpoint. Maps from the PICSURE_INTERNAL_TOKEN environment variable and must equal the query-service's picsure.internal.token. When blank, QueryServiceClient refuses to make the call.",
+      "defaultValue": ""
+    },
+    {
       "name": "rest-template.connect-timeout",
       "type": "java.lang.Integer",
       "description": "Connect timeout, in milliseconds, for the shared RestClient used to call downstream services. Maps from the REST_TEMPLATE_CONNECT_TIMEOUT environment variable, with application.properties defaulting it to 5000."

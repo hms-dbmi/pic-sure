@@ -7,16 +7,22 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.*;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withException;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
+import edu.harvard.dbmi.avillach.visualization.error.HpdsUpstreamException;
+import edu.harvard.dbmi.avillach.visualization.model.AccessType;
 import edu.harvard.dbmi.avillach.visualization.model.DistributionType;
 import edu.harvard.dbmi.avillach.domain.ObfuscatedCount;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.AuthorizationFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
+import java.net.ConnectException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,12 +36,16 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 @ExtendWith(MockitoExtension.class)
 class QueryServiceClientTest {
 
     private static final String BASE_URL = "http://localhost:9999/mock-query-service";
+
+    private static final String INTERNAL_TOKEN = "test-internal-secret";
 
     private static final QueryServiceClient.GatewayIdentity IDENTITY =
         new QueryServiceClient.GatewayIdentity("u-1", "sub-1", "a@b", "ROLE_X", "PRIV_A,PRIV_B");
@@ -55,7 +65,7 @@ class QueryServiceClientTest {
     void setUp() {
         RestClient.Builder builder = RestClient.builder();
         mockServer = MockRestServiceServer.bindTo(builder).build();
-        client = new QueryServiceClient(builder.build(), loggingClient, BASE_URL);
+        client = new QueryServiceClient(builder.build(), loggingClient, BASE_URL, INTERNAL_TOKEN);
     }
 
     @Test
@@ -193,5 +203,88 @@ class QueryServiceClientTest {
         assertEquals(1, event.getMetadata().get("response_series_count"));
         assertEquals(2, event.getMetadata().get("response_point_count"));
         assertEquals(List.of("\\Nhanes\\demographics\\AGE\\"), event.getMetadata().get("response_series_keys"));
+    }
+
+    @Test
+    void search_postsToAuthInternalEndpointWithOnlyTheInternalToken() {
+        mockServer.expect(requestTo(BASE_URL + "/internal/search/auth")).andExpect(method(HttpMethod.POST))
+            .andExpect(header("X-PIC-SURE-INTERNAL-TOKEN", INTERNAL_TOKEN)).andExpect(header("X-Request-Id", "request-7"))
+            .andExpect(headerDoesNotExist("X-User-Id")).andExpect(headerDoesNotExist("Authorization"))
+            .andExpect(content().json("{\"query\":\"age\"}", true))
+            .andRespond(withSuccess("{\"results\":{\"phenotypes\":{}},\"searchQuery\":\"age\"}", MediaType.APPLICATION_JSON));
+
+        SearchResults result = client.search("age", AccessType.AUTHORIZED, "request-7");
+
+        assertEquals("age", result.getSearchQuery());
+        mockServer.verify();
+    }
+
+    @Test
+    void search_postsToOpenInternalEndpoint() {
+        mockServer.expect(requestTo(BASE_URL + "/internal/search/open")).andExpect(method(HttpMethod.POST))
+            .andExpect(header("X-PIC-SURE-INTERNAL-TOKEN", INTERNAL_TOKEN))
+            .andRespond(withSuccess("{\"searchQuery\":\"age\"}", MediaType.APPLICATION_JSON));
+
+        SearchResults result = client.search("age", AccessType.OPEN, null);
+
+        assertEquals("age", result.getSearchQuery());
+        mockServer.verify();
+    }
+
+    @Test
+    void search_rejectsBlankTokenWithoutCallingQueryService() {
+        QueryServiceClient noToken = new QueryServiceClient(RestClient.builder().build(), loggingClient, BASE_URL, " ");
+
+        assertThrows(IllegalStateException.class, () -> noToken.search("age", AccessType.AUTHORIZED, "request-8"));
+        mockServer.verify();
+    }
+
+    @Test
+    void search_mapsUpstreamErrorToHpdsUpstreamException() {
+        mockServer.expect(requestTo(BASE_URL + "/internal/search/auth")).andRespond(withServerError());
+
+        HpdsUpstreamException thrown =
+            assertThrows(HpdsUpstreamException.class, () -> client.search("age", AccessType.AUTHORIZED, "request-9"));
+
+        assertTrue(thrown.getMessage().contains("500"));
+        mockServer.verify();
+    }
+
+    @Test
+    void search_reportsAnUnreachableQueryServiceWithoutItsUrl() {
+        mockServer.expect(requestTo(BASE_URL + "/internal/search/auth"))
+            .andRespond(withException(new ConnectException("Connection refused")));
+
+        HpdsUpstreamException thrown =
+            assertThrows(HpdsUpstreamException.class, () -> client.search("age", AccessType.AUTHORIZED, "request-11"));
+
+        assertEquals("Query service search failed: could not reach query service", thrown.getMessage());
+        assertFalse(thrown.getMessage().contains("localhost"));
+        assertFalse(thrown.getMessage().contains("/internal/search"));
+        ResourceAccessException cause = assertInstanceOf(ResourceAccessException.class, thrown.getCause());
+        assertTrue(cause.getMessage().contains(BASE_URL + "/internal/search/auth"));
+        mockServer.verify();
+    }
+
+    @Test
+    void search_mapsAnUnreadableResponseToHpdsUpstreamExceptionWithAFixedMessage() {
+        mockServer.expect(requestTo(BASE_URL + "/internal/search/auth")).andRespond(withSuccess("{not json", MediaType.APPLICATION_JSON));
+
+        HpdsUpstreamException thrown =
+            assertThrows(HpdsUpstreamException.class, () -> client.search("age", AccessType.AUTHORIZED, "request-12"));
+
+        assertEquals("Query service search failed: unexpected error calling query service", thrown.getMessage());
+        assertInstanceOf(RestClientException.class, thrown.getCause());
+        mockServer.verify();
+    }
+
+    @Test
+    void search_withNullQuerySendsOnlyAQueryKey() {
+        mockServer.expect(requestTo(BASE_URL + "/internal/search/auth")).andExpect(content().json("{\"query\":null}", true))
+            .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+
+        client.search(null, AccessType.AUTHORIZED, "request-10");
+
+        mockServer.verify();
     }
 }
