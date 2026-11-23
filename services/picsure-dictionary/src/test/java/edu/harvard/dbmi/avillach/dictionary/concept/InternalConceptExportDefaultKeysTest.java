@@ -21,8 +21,8 @@ import edu.harvard.hms.dbmi.avillach.commons.security.InternalTokenFilter;
 
 /**
  * Pins what {@code POST /internal/concepts/export-metadata} allows when a deployment leaves {@code metadata.internal_export_keys} at its
- * default. The default allowlist is empty, so a request for {@code drs_uri} answers 400 without reaching the repository and a request for
- * no metadata keys succeeds.
+ * default. The default allowlist holds only {@code drs_uri}, so a request for it succeeds and a request for any other key, such as
+ * {@code dcc}, answers 400 without reaching the repository.
  */
 @SpringBootTest(properties = "picsure.internal.token=" + InternalConceptExportDefaultKeysTest.TOKEN)
 @AutoConfigureMockMvc
@@ -43,18 +43,18 @@ class InternalConceptExportDefaultKeysTest {
     }
 
     @Test
-    void rejectsDrsUri() throws Exception {
-        mockMvc.perform(export("{\"conceptPaths\":[\"a\"],\"metaKeys\":[\"drs_uri\"]}")).andExpect(status().isBadRequest());
+    void acceptsDrsUri() throws Exception {
+        when(conceptRepository.getExportMetadata(List.of("a"), List.of("drs_uri"))).thenReturn(List.of());
 
-        verifyNoInteractions(conceptRepository);
+        mockMvc.perform(export("{\"conceptPaths\":[\"a\"],\"metaKeys\":[\"drs_uri\"]}")).andExpect(status().isOk());
+
+        verify(conceptRepository).getExportMetadata(List.of("a"), List.of("drs_uri"));
     }
 
     @Test
-    void acceptsARequestForNoMetaKeys() throws Exception {
-        when(conceptRepository.getExportMetadata(List.of("a"), List.of())).thenReturn(List.of());
+    void rejectsAKeyOutsideTheDefault() throws Exception {
+        mockMvc.perform(export("{\"conceptPaths\":[\"a\"],\"metaKeys\":[\"dcc\"]}")).andExpect(status().isBadRequest());
 
-        mockMvc.perform(export("{\"conceptPaths\":[\"a\"],\"metaKeys\":[]}")).andExpect(status().isOk());
-
-        verify(conceptRepository).getExportMetadata(List.of("a"), List.of());
+        verifyNoInteractions(conceptRepository);
     }
 }

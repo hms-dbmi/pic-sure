@@ -39,7 +39,7 @@ public class ConceptService {
     @Autowired
     public ConceptService(
         ConceptRepository conceptRepository, DatasetService datasetService, ConceptDecoratorService conceptDecoratorService,
-        @Value("${metadata.internal_export_keys:}") Set<String> internalExportKeys
+        @Value("${metadata.internal_export_keys:drs_uri}") Set<String> internalExportKeys
     ) {
         this.conceptRepository = conceptRepository;
         this.datasetService = datasetService;

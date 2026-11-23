@@ -221,13 +221,22 @@ public class PfbWriter implements ResultWriter {
         }
     }
 
+    /**
+     * Reads a concept's {@code drs_uri} metadata value, a JSON array of strings. Null elements are left out. A concept without the value, a
+     * value that is the JSON literal {@code null}, and a value that is not a JSON array all give an empty list, so a malformed value never
+     * fails the export.
+     *
+     * @param concept the concept the dictionary returned, or null when it returned none for the path
+     * @return the DRS URIs of the concept, never null and holding no null element
+     */
     private static List<String> drsUris(Concept concept) {
         String drsUriJson = concept == null || concept.meta() == null ? null : concept.meta().get("drs_uri");
         if (drsUriJson == null) {
             return List.of();
         }
         try {
-            return List.of(objectMapper.readValue(drsUriJson, String[].class));
+            String[] uris = objectMapper.readValue(drsUriJson, String[].class);
+            return uris == null ? List.of() : Arrays.stream(uris).filter(Objects::nonNull).toList();
         } catch (JsonProcessingException e) {
             log.error("Error parsing drs_uri as json: " + drsUriJson);
             return List.of();

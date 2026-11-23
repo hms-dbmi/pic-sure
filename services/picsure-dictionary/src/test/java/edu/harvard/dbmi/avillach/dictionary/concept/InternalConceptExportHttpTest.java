@@ -37,8 +37,7 @@ import edu.harvard.hms.dbmi.avillach.commons.security.InternalTokenFilter;
  */
 @Testcontainers
 @SpringBootTest(
-    properties = {"picsure.internal.token=" + InternalConceptExportHttpTest.TOKEN, "metadata.no_show_list=values,stigmatized,drs_uri",
-        "metadata.internal_export_keys=drs_uri"}
+    properties = {"picsure.internal.token=" + InternalConceptExportHttpTest.TOKEN, "metadata.no_show_list=values,stigmatized,drs_uri"}
 )
 @AutoConfigureMockMvc
 class InternalConceptExportHttpTest {

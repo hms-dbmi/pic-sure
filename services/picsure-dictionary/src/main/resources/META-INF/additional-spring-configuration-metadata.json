@@ -67,8 +67,8 @@
     {
       "name": "metadata.internal_export_keys",
       "type": "java.util.Set<java.lang.String>",
-      "description": "Comma-separated list of concept_node_meta keys that POST /internal/concepts/export-metadata may return. A request that asks for any other key answers 400. Blank entries are ignored and whitespace around an entry is stripped. metadata.no_show_list does not apply to that endpoint.",
-      "defaultValue": ""
+      "description": "Comma-separated list of concept_node_meta keys that POST /internal/concepts/export-metadata may return. A request that asks for any other key answers 400. HPDS requests drs_uri for every PFB export, so removing drs_uri from this list makes every PFB export fail. Blank entries are ignored and whitespace around an entry is stripped. metadata.no_show_list does not apply to that endpoint.",
+      "defaultValue": "drs_uri"
     },
     {
       "name": "metadata.no_show_list",
