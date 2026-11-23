@@ -5,6 +5,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary.DictionaryServic
 import edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary.DictionaryUnavailableException;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileReader;
+import org.apache.avro.file.DataFileWriter;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.generic.GenericRecord;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
+import org.mockito.MockedConstruction;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -426,6 +428,40 @@ public class PfbWriterTest {
 
         Mockito.verify(dictionaryService, Mockito.times(3)).getConcepts(REQUESTED_PATHS);
         assertEquals(1 + 2 + 1, readAll(unreachableFile).size());
+    }
+
+    @Test
+    @SuppressWarnings("rawtypes")
+    public void writeMultiValueEntity_dictionaryRowCannotBeAppended_closesTheWriterAndNextCallMaterializesAgain() throws IOException {
+        PfbWriter pfbWriter = new PfbWriter(avroFile, UUID.randomUUID().toString(), dictionaryService);
+        Mockito.when(dictionaryService.getConcepts(REQUESTED_PATHS)).thenReturn(List.of());
+        pfbWriter.writeHeader(HEADER);
+        IOException appendFailure = new IOException("no space left on device");
+
+        try (
+            MockedConstruction<DataFileWriter> openedWriters = Mockito.mockConstruction(
+                DataFileWriter.class, (writer, context) -> Mockito.doNothing().doThrow(appendFailure).when(writer).append(Mockito.any())
+            )
+        ) {
+            UncheckedIOException thrown =
+                assertThrows(UncheckedIOException.class, () -> pfbWriter.writeMultiValueEntity(List.of(patientRow("123", "80", "Y"))));
+
+            assertSame(appendFailure, thrown.getCause());
+            assertEquals(1, openedWriters.constructed().size());
+            DataFileWriter failedWriter = openedWriters.constructed().getFirst();
+            Mockito.verify(failedWriter, Mockito.times(2)).append(Mockito.any());
+            Mockito.verify(failedWriter, Mockito.times(1)).close();
+        }
+
+        pfbWriter.writeMultiValueEntity(List.of(patientRow("123", "80", "Y")));
+        pfbWriter.close();
+
+        Mockito.verify(dictionaryService, Mockito.times(2)).getConcepts(REQUESTED_PATHS);
+        List<GenericRecord> entities = readAll(avroFile);
+        assertEquals(1 + 2 + 1, entities.size());
+        assertEquals("Metadata", entities.get(0).get("name").toString());
+        assertEquals(List.of("_demographics_age_", "_phs123_stroke_"), List.copyOf(readDictionaryRows(avroFile).keySet()));
+        assertEquals("123", entities.get(3).get("id").toString());
     }
 
     @Test
