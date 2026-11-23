@@ -24,6 +24,14 @@ class ObservabilityConfigTest {
     }
 
     @Test
+    void startupFailsWhenHpdsIsConfiguredAsAClientType() {
+        for (String listed : List.of("hpds", "HPDS")) {
+            assertThatThrownBy(() -> config.clientTypeAllowlist(List.of("PYTHON_ADAPTER", "R_ADAPTER", "FRONTEND", listed))).as(listed)
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("'" + listed + "' is reserved");
+        }
+    }
+
+    @Test
     void aSingleConfiguredClientTypeStartsTheGateway() {
         assertThat(config.clientTypeAllowlist(List.of("FRONTEND")).resolve("frontend")).contains("FRONTEND");
     }

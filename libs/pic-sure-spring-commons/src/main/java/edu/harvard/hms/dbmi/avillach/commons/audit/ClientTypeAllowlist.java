@@ -9,16 +9,16 @@ import java.util.Optional;
 
 /**
  * The {@code X-Client-Type} values a client may present. A value is matched case-insensitively and resolves to the spelling listed here, so
- * audit events carry one form of each caller. {@code mcp} and {@code service} are reserved for callers a gateway filter has verified and
- * can never be listed.
+ * audit events carry one form of each caller. {@code mcp} and {@code service} are reserved for callers a gateway filter has verified, and
+ * {@code hpds} for the calls HPDS makes to another service without passing the gateway. None of the three can be listed.
  */
 public final class ClientTypeAllowlist {
 
     /** The caller recorded and forwarded when a request names none. It is always accepted and cannot be unlisted. */
     public static final String UNKNOWN = "UNKNOWN";
 
-    /** Caller types that only a verified source may claim. */
-    public static final List<String> RESERVED = List.of("MCP", "SERVICE");
+    /** Caller types a client can never present: only a verified source, or a service calling another service directly, may claim them. */
+    public static final List<String> RESERVED = List.of("MCP", "SERVICE", "HPDS");
 
     /** The clients PIC-SURE ships: the two adapters and the web frontend. */
     public static final ClientTypeAllowlist DEFAULT = new ClientTypeAllowlist(List.of("PYTHON_ADAPTER", "R_ADAPTER", "FRONTEND"));
