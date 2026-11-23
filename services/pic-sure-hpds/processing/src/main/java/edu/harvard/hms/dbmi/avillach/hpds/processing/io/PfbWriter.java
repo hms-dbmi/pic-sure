@@ -103,8 +103,8 @@ public class PfbWriter implements ResultWriter {
 
     /**
      * Fetches the concept details, then creates the Avro file and writes the metadata and data dictionary records. The dictionary is asked
-     * first, so a failed call leaves no Avro content behind. A failure after the file is opened closes it and leaves the header unwritten,
-     * so the next call starts over.
+     * first, so a failed call leaves no Avro content behind. The Avro writer is kept only once those records are written. A failure after
+     * the file is opened closes it and leaves the header unwritten, so the next call starts over.
      *
      * @throws DictionaryUnavailableException if the concept details cannot be fetched
      * @throws UncheckedIOException if the Avro file cannot be created or written
@@ -113,29 +113,28 @@ public class PfbWriter implements ResultWriter {
         Map<String, Concept> concepts = lookupConcepts();
         schema = new PfbSchema(List.of(patientNode(concepts), dataDictionaryNode()));
 
-        dataFileWriter = new DataFileWriter<>(new GenericDatumWriter<>(schema.entitySchema()));
+        DataFileWriter<GenericRecord> writer = new DataFileWriter<>(new GenericDatumWriter<>(schema.entitySchema()));
         try {
             log.info("Creating temp avro file at " + file.getAbsoluteFile());
-            dataFileWriter.setCodec(CodecFactory.deflateCodec(CodecFactory.DEFAULT_DEFLATE_LEVEL));
-            dataFileWriter.create(schema.entitySchema(), file);
-            append(schema.metadataEntity());
-            writeDataDictionary(concepts);
+            writer.setCodec(CodecFactory.deflateCodec(CodecFactory.DEFAULT_DEFLATE_LEVEL));
+            writer.create(schema.entitySchema(), file);
+            writer.append(schema.metadataEntity());
+            writeDataDictionary(writer, concepts);
         } catch (IOException e) {
-            closeAfterFailure(e);
+            closeAfterFailure(writer, e);
             throw new UncheckedIOException(e);
         } catch (RuntimeException e) {
-            closeAfterFailure(e);
+            closeAfterFailure(writer, e);
             throw e;
         }
+        dataFileWriter = writer;
     }
 
-    private void closeAfterFailure(Exception failure) {
+    private static void closeAfterFailure(DataFileWriter<GenericRecord> writer, Exception failure) {
         try {
-            dataFileWriter.close();
+            writer.close();
         } catch (IOException | RuntimeException closeFailure) {
             failure.addSuppressed(closeFailure);
-        } finally {
-            dataFileWriter = null;
         }
     }
 
@@ -203,7 +202,7 @@ public class PfbWriter implements ResultWriter {
             .collect(Collectors.toMap(Concept::conceptPath, Function.identity(), (first, second) -> first));
     }
 
-    private void writeDataDictionary(Map<String, Concept> concepts) {
+    private void writeDataDictionary(DataFileWriter<GenericRecord> writer, Map<String, Concept> concepts) throws IOException {
         for (int i = 0; i < formattedFields.size(); i++) {
             String originalField = originalFields.get(i);
             if (PATIENT_ID.equals(originalField)) {
@@ -218,7 +217,7 @@ public class PfbWriter implements ResultWriter {
                 row.put("dataset", concept.dataset());
                 row.put("description", concept.description());
             }
-            append(schema.entity(dataDictionaryTableName, formattedFields.get(i), row, List.of()));
+            writer.append(schema.entity(dataDictionaryTableName, formattedFields.get(i), row, List.of()));
         }
     }
 
