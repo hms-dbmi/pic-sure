@@ -5,6 +5,12 @@
       "type": "java.lang.Long",
       "description": "Throttle window, in milliseconds, during which GET /system/status reuses the last computed deep-health result instead of re-running SystemHealthService's check.",
       "defaultValue": 60000
+    },
+    {
+      "name": "picsure.gateway.allowed-client-types",
+      "type": "java.util.List<java.lang.String>",
+      "description": "X-Client-Type values the gateway accepts from callers, matched case-insensitively. A request carrying any other value is rejected with 400 unexpected_caller_type; an absent header is recorded as UNKNOWN. The reserved values mcp and service cannot be listed.",
+      "defaultValue": "PYTHON_ADAPTER,R_ADAPTER,FRONTEND"
     }
   ]
 }

@@ -10,6 +10,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.MDC;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -112,6 +113,44 @@ class InternalTokenFilterTest {
         } finally {
             MDC.remove(RequestIdFilter.MDC_KEY);
         }
+    }
+
+    private int statusThroughRegistration(String configured, String provided) throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/internal/search/auth");
+        if (provided != null) {
+            request.addHeader(InternalTokenFilter.HEADER, provided);
+        }
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        InternalTokenFilterRegistration.create(configured).getFilter().doFilter(request, response, new MockFilterChain());
+        return response.getStatus();
+    }
+
+    @ParameterizedTest(name = "configured token [{0}] accepts the stripped value")
+    @ValueSource(strings = {"expected-secret", "expected-secret\r", "expected-secret\r\n", "expected-secret ", " \texpected-secret \n"})
+    void registrationComparesAgainstTheConfiguredTokenWithSurroundingWhitespaceRemoved(String configured) throws Exception {
+        assertEquals(200, statusThroughRegistration(configured, TOKEN));
+        assertEquals(403, statusThroughRegistration(configured, "other"));
+        assertEquals(403, statusThroughRegistration(configured, null));
+    }
+
+    @ParameterizedTest(name = "configured token [{0}] rejects everything")
+    @NullSource
+    @ValueSource(strings = {"", " ", "\r\n", " \t "})
+    void registrationWithATokenThatIsBlankAfterStrippingRejectsEveryRequest(String configured) throws Exception {
+        assertEquals(403, statusThroughRegistration(configured, null));
+        assertEquals(403, statusThroughRegistration(configured, ""));
+        assertEquals(403, statusThroughRegistration(configured, " "));
+        assertEquals(403, statusThroughRegistration(configured, "anything"));
+        if (configured != null) {
+            assertEquals(403, statusThroughRegistration(configured, configured));
+        }
+    }
+
+    @Test
+    void registrationDoesNotTrimTheHeaderACallerSends() throws Exception {
+        assertEquals(403, statusThroughRegistration(TOKEN, " " + TOKEN));
+        assertEquals(403, statusThroughRegistration(TOKEN, TOKEN + " "));
+        assertEquals(403, statusThroughRegistration(TOKEN + " ", TOKEN + " "));
     }
 
     @Test

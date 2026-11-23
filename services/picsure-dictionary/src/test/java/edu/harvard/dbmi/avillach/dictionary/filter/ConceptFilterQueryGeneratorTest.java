@@ -209,4 +209,48 @@ class ConceptFilterQueryGeneratorTest {
 
         Assertions.assertEquals(expected, actual);
     }
+
+    @Test
+    void shouldAndFacetCategoriesTogether() {
+        List<Facet> harmonized = List.of(new Facet("PhenX", "nsrr_harmonized"), new Facet("taps_tool", "nsrr_harmonized"));
+        Filter harmonizedOnly = new Filter(harmonized, "", List.of());
+        Filter both = new Filter(
+            List.of(
+                new Facet("phs000007", "study_ids_dataset_ids"), new Facet("phs002715", "study_ids_dataset_ids"), harmonized.get(0),
+                harmonized.get(1)
+            ), "", List.of()
+        );
+
+        Assertions.assertEquals(List.of(229, 271), conceptIds(harmonizedOnly));
+        Assertions.assertEquals(List.of(229), conceptIds(both));
+        Assertions.assertEquals(1L, count(both));
+    }
+
+    @Test
+    void shouldKeepFacetCategoryOutOfQueryText() {
+        String category = "study ids and dataset ids";
+        Filter f = new Filter(List.of(new Facet("phs000007", category), new Facet("PhenX", "nsrr_harmonized")), "", List.of());
+
+        QueryParamPair filterPair = subject.generateFilterQuery(f, Pageable.unpaged());
+        QueryParamPair countPair = subject.generateCountQuery(f);
+
+        Assertions.assertFalse(filterPair.query().contains(category));
+        Assertions.assertFalse(countPair.query().contains(category));
+        Assertions.assertTrue(filterPair.params().getValues().containsValue(category));
+        Assertions.assertTrue(countPair.params().getValues().containsValue(category));
+        // No category has that name, so nothing matches.
+        Assertions.assertEquals(List.of(), conceptIds(f));
+        Assertions.assertEquals(0L, count(f));
+    }
+
+    private List<Integer> conceptIds(Filter filter) {
+        QueryParamPair pair = subject.generateFilterQuery(filter, Pageable.unpaged());
+        String query = "WITH " + pair.query() + "\n SELECT concept_node_id FROM concepts_filtered_sorted;";
+        return template.queryForList(query, pair.params(), Integer.class);
+    }
+
+    private long count(Filter filter) {
+        QueryParamPair pair = subject.generateCountQuery(filter);
+        return template.queryForObject(pair.query(), pair.params(), Long.class);
+    }
 }

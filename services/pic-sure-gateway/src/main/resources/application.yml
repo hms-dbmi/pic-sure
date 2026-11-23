@@ -149,6 +149,7 @@ picsure:
           url: ${PSAMA_URL:http://psama:8090}
           docs-path: /auth/v3/api-docs
           public-prefix: /psama
+    allowed-client-types: ${GATEWAY_ALLOWED_CLIENT_TYPES:PYTHON_ADAPTER,R_ADAPTER,FRONTEND}
     mcp:
       service-token: ${MCP_SERVICE_TOKEN:}
       previous-service-token: ${MCP_SERVICE_TOKEN_PREVIOUS:}

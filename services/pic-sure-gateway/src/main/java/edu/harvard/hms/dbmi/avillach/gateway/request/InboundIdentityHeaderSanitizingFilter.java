@@ -1,14 +1,19 @@
 package edu.harvard.hms.dbmi.avillach.gateway.request;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
-import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
+import edu.harvard.hms.dbmi.avillach.commons.audit.ClientTypeAllowlist;
+import edu.harvard.hms.dbmi.avillach.commons.audit.VerifiedCaller;
+import edu.harvard.hms.dbmi.avillach.gateway.error.GatewayErrors;
 import edu.harvard.hms.dbmi.avillach.commons.request.RoutedRequestPath;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.McpCallerFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.ApiKeyBearer;
@@ -26,9 +31,12 @@ import jakarta.servlet.http.HttpServletResponse;
  * inbound CLIENT request before anything downstream -- routing, the auth chain, or proxied services -- can ever see a client-supplied
  * value. <p> {@code X-Forwarded-For} is deliberately NOT stripped: the trusted front proxy legitimately appends to it, and consumers
  * ({@code AuditLoggingFilter}) take the RIGHTMOST entry -- the nearest trusted hop -- rather than the client-forgeable leftmost one.
- * {@code X-Session-Id}, {@code request-source}, and ordinary {@code X-Client-Type} values are deliberately left unstripped as client
- * telemetry. {@code X-Client-Type} is stripped whole when any of its values, or any comma-separated entry within a value, is one of the
- * reserved values {@code service} or {@code mcp} in any case, because downstream services use them to identify internal calls; only
+ * {@code X-Session-Id} and {@code request-source} are deliberately left unstripped as client telemetry. {@code X-Client-Type} must be
+ * absent, blank, or a single header line holding exactly one value on the {@link ClientTypeAllowlist}; a repeated header, a comma-separated
+ * list, or any other value is rejected with 400 {@code unexpected_caller_type} before it reaches a proxied service. An accepted value is
+ * rewritten to its listed spelling. The reserved values {@code service} and {@code mcp}, which downstream services use to identify internal
+ * calls, are never on the list, so a client cannot present them; the one exception is {@code mcp} on a request {@link McpCallerFilter} has
+ * verified. Reserved values are still hidden from the wrapped request, because only
  * {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} may set {@code mcp}, and only for a verified caller. <p>
  * {@value McpCallerFilter#TOKEN_HEADER} is always stripped, so the MCP service secret never reaches a proxied service. An
  * {@code Authorization} header carrying a PSAMA key ({@link ApiKeyBearer}) is stripped from every request except one whose decoded
@@ -41,22 +49,58 @@ import jakarta.servlet.http.HttpServletResponse;
  * {@code OpenAccessFilter} (order 20) has extracted the optional API key for PSAMA, and before the remaining DB-free auth chain
  * (introspection order 30+). This keeps the API key from downstream services, other than the MCP route, while still allowing open-access
  * validation to consume it. {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} (order 50) still runs afterward
- * and sets the gateway-resolved values on its own wrapper, which never falls through to the (already-sanitized) client
- * request for these names -- so normal propagation of resolved identity is unaffected by this filter running first.
+ * and sets the gateway-resolved values on its own wrapper, which never falls through to the (already-sanitized) client request for these
+ * names -- so normal propagation of resolved identity is unaffected by this filter running first.
  */
 public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter {
+
+    private final ClientTypeAllowlist clientTypes;
+
+    /** Creates a filter that accepts the {@link ClientTypeAllowlist#DEFAULT} client types. */
+    public InboundIdentityHeaderSanitizingFilter() {
+        this(ClientTypeAllowlist.DEFAULT);
+    }
+
+    /**
+     * Creates a filter that passes only the given client types through in {@code X-Client-Type}.
+     *
+     * @param clientTypes the client types a request may present
+     */
+    public InboundIdentityHeaderSanitizingFilter(ClientTypeAllowlist clientTypes) {
+        this.clientTypes = clientTypes;
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
         throws ServletException, IOException {
-        filterChain.doFilter(new SanitizedIdentityHeadersRequest(request), response);
+        if (hasUnexpectedCallerType(request)) {
+            GatewayErrors.write(response, HttpStatus.BAD_REQUEST, "unexpected_caller_type", "Unexpected caller type.");
+            return;
+        }
+        filterChain.doFilter(new SanitizedIdentityHeadersRequest(request, clientTypes), response);
+    }
+
+    /**
+     * Whether the request carries an X-Client-Type the gateway will not accept. The header must be absent, blank, or exactly one line
+     * holding exactly one allowed value. Repeated header lines and comma-separated lists are rejected, so the audit filter, which reads the
+     * raw header, and every later filter resolve the same caller.
+     *
+     * @param request the inbound request
+     * @return true when the header is repeated, holds a list, or names a value that is not allowed
+     */
+    private boolean hasUnexpectedCallerType(HttpServletRequest request) {
+        List<String> lines = Collections.list(request.getHeaders("X-Client-Type"));
+        if (lines.size() > 1) return true;
+        if (lines.isEmpty()) return false;
+        String value = lines.get(0).trim();
+        boolean verifiedMcp = VerifiedCaller.get(request).filter(McpCallerFilter.CALLER::equals).isPresent();
+        return !value.isEmpty() && clientTypes.resolve(value).isEmpty() && !(verifiedMcp && McpCallerFilter.CALLER.equalsIgnoreCase(value));
     }
 
     static class SanitizedIdentityHeadersRequest extends HttpServletRequestWrapper {
 
         private static final String AUTHORIZATION_HEADER = "Authorization";
         private static final String CLIENT_TYPE_HEADER = "X-Client-Type";
-        private static final Set<String> RESERVED_CLIENT_TYPES = Set.of("service", McpCallerFilter.CALLER);
 
         /**
          * Gateway-owned identity headers, spoofable source-address headers, and the internal and MCP service tokens: always hidden from the
@@ -69,9 +113,11 @@ public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter 
         );
 
         private final boolean onMcpRoute;
+        private final ClientTypeAllowlist clientTypes;
 
-        SanitizedIdentityHeadersRequest(HttpServletRequest request) {
+        SanitizedIdentityHeadersRequest(HttpServletRequest request, ClientTypeAllowlist clientTypes) {
             super(request);
+            this.clientTypes = clientTypes;
             this.onMcpRoute = McpCallerFilter.MCP_PATH.equals(RoutedRequestPath.of(request));
         }
 
@@ -83,7 +129,7 @@ public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter 
         }
 
         private boolean isStripped(String name) {
-            return isAlwaysStripped(name) || isStrippedApiKey(name) || isReservedClientType(name);
+            return isAlwaysStripped(name) || isStrippedApiKey(name) || isDisallowedClientType(name);
         }
 
         private boolean isStrippedApiKey(String name) {
@@ -97,50 +143,39 @@ public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter 
             return false;
         }
 
-        private boolean isReservedClientType(String name) {
+        private boolean isDisallowedClientType(String name) {
             if (!CLIENT_TYPE_HEADER.equalsIgnoreCase(name)) return false;
-            Enumeration<String> values = super.getHeaders(name);
-            while (values != null && values.hasMoreElements()) {
-                if (isReservedValue(values.nextElement())) return true;
-            }
-            return false;
+            String value = super.getHeader(name);
+            return value != null && !value.isBlank() && clientTypes.resolve(value.trim()).isEmpty();
         }
 
-        private static boolean isReservedValue(String value) {
-            if (value == null) return false;
-            for (String token : value.split(",")) {
-                if (isReservedToken(token.trim())) return true;
-            }
-            return false;
-        }
-
-        private static boolean isReservedToken(String token) {
-            for (String reserved : RESERVED_CLIENT_TYPES) {
-                if (reserved.equalsIgnoreCase(token)) return true;
-            }
-            return false;
+        private String canonicalClientType(String value) {
+            if (value == null) return null;
+            String trimmed = value.trim();
+            return clientTypes.resolve(trimmed).orElse(trimmed);
         }
 
         @Override
         public String getHeader(String name) {
-            return isStripped(name) ? null : super.getHeader(name);
+            if (isStripped(name)) return null;
+            String value = super.getHeader(name);
+            return CLIENT_TYPE_HEADER.equalsIgnoreCase(name) ? canonicalClientType(value) : value;
         }
 
         @Override
         public Enumeration<String> getHeaders(String name) {
-            return isStripped(name) ? Collections.emptyEnumeration() : super.getHeaders(name);
+            if (isStripped(name)) return Collections.emptyEnumeration();
+            if (!CLIENT_TYPE_HEADER.equalsIgnoreCase(name)) return super.getHeaders(name);
+            List<String> values = new ArrayList<>();
+            Enumeration<String> raw = super.getHeaders(name);
+            while (raw != null && raw.hasMoreElements())
+                values.add(canonicalClientType(raw.nextElement()));
+            return Collections.enumeration(values);
         }
 
         @Override
         public Enumeration<String> getHeaderNames() {
-            Set<String> names = new LinkedHashSet<>();
-            Enumeration<String> superNames = super.getHeaderNames();
-            while (superNames != null && superNames.hasMoreElements()) {
-                String n = superNames.nextElement();
-                if (!isStripped(n)) {
-                    names.add(n);
-                }
-            }
+            Set<String> names = HeaderNames.retain(super.getHeaderNames(), n -> !isStripped(n));
             return Collections.enumeration(names);
         }
     }

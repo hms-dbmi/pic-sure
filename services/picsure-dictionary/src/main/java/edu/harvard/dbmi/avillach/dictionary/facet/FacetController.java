@@ -63,6 +63,7 @@ public class FacetController {
 
     @Operation(summary = "Facet categories and counts for a filter", description = FACETS_DESCRIPTION)
     @ApiResponse(responseCode = "200", description = "Facet categories with their counts")
+    @ApiResponse(responseCode = "400", description = "A filter facet is null, or its name or category is missing or contains U+0000")
     @AuditEvent(type = "SEARCH", action = "facet.search")
     @PostMapping(path = "/facets")
     public ResponseEntity<List<FacetCategory>> getFacets(

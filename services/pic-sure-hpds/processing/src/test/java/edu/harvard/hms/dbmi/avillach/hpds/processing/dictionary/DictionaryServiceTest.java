@@ -285,6 +285,28 @@ class DictionaryServiceTest {
     }
 
     @Test
+    void getConcepts_urlWithoutHost_throwsUnavailableNamingPropertyAndValueWithoutCalling() {
+        DictionaryService dictionaryService = new DictionaryService("http:///concepts", TOKEN, 1000, restTemplate);
+
+        DictionaryUnavailableException thrown =
+            assertThrows(DictionaryUnavailableException.class, () -> dictionaryService.getConcepts(paths(2)));
+
+        assertTrue(thrown.getMessage().contains("dictionary.url"), thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("http:///concepts"), thrown.getMessage());
+        verifyNoInteractions(restTemplate);
+    }
+
+    @Test
+    void getConcepts_urlWithSurroundingWhitespaceAndUppercaseScheme_isAccepted() {
+        DictionaryService dictionaryService = new DictionaryService("  HTTP://dictionary-api  ", TOKEN, 1000, restTemplate);
+        stubEchoingDictionary("HTTP://dictionary-api/internal/concepts/export-metadata");
+
+        List<Concept> concepts = dictionaryService.getConcepts(paths(2));
+
+        assertEquals(2, concepts.size());
+    }
+
+    @Test
     void getConcepts_trailingSlashOnBaseUrl_isNormalized() {
         DictionaryService dictionaryService = new DictionaryService(BASE_URL + "/", TOKEN, 1000, restTemplate);
         stubEchoingDictionary(EXPORT_URL);

@@ -20,6 +20,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 
+import edu.harvard.hms.dbmi.avillach.commons.audit.ClientTypeAllowlist;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessValidation;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
@@ -120,7 +121,7 @@ class OpenAccessFilterOrderTest {
         return List.of(
             observabilityConfig.internalEndpointGuardFilter(),
             securityConfig.openAccessFilter(psama, new AuditContext(), props, new PublicEndpointPolicy(List.of())),
-            observabilityConfig.inboundIdentityHeaderSanitizingFilter()
+            observabilityConfig.inboundIdentityHeaderSanitizingFilter(ClientTypeAllowlist.DEFAULT)
         );
     }
 

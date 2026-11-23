@@ -42,6 +42,12 @@ class LoggingClientConfigTest {
     }
 
     @Test
+    void validatesBaseUrlWithoutItsSurroundingWhitespace() {
+        assertDoesNotThrow(() -> LoggingClientConfig.builder("  http://host  ", "key"));
+        assertThrows(IllegalArgumentException.class, () -> LoggingClientConfig.builder("  ftp://host  ", "key"));
+    }
+
+    @Test
     void rejectsNullZeroOrNegativeTimeouts() {
         LoggingClientConfig.Builder builder = LoggingClientConfig.builder("http://host", "key");
 

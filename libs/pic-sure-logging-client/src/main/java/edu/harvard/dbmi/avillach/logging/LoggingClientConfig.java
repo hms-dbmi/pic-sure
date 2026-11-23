@@ -1,7 +1,5 @@
 package edu.harvard.dbmi.avillach.logging;
 
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.time.Duration;
 
 /**
@@ -61,26 +59,8 @@ public final class LoggingClientConfig {
         if (apiKey == null || apiKey.trim().isEmpty()) {
             throw new IllegalArgumentException("apiKey is required");
         }
-        requireHttpUrl(baseUrl);
+        HttpUrls.requireAbsoluteHttpUrl("baseUrl", baseUrl.trim());
         return new Builder(baseUrl, apiKey);
-    }
-
-    /**
-     * A scheme-less or malformed baseUrl would otherwise surface only at send time ({@code HttpRequest} rejects non-absolute URIs), turning
-     * every fire-and-forget send into a synchronous exception. Fail at construction with a clear message instead.
-     */
-    private static void requireHttpUrl(String baseUrl) {
-        URI uri;
-        try {
-            uri = new URI(baseUrl.trim());
-        } catch (URISyntaxException e) {
-            throw new IllegalArgumentException("baseUrl is not a valid URL: " + baseUrl, e);
-        }
-        String scheme = uri.getScheme();
-        boolean http = "http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme);
-        if (!http || uri.getHost() == null) {
-            throw new IllegalArgumentException("baseUrl must be an absolute http(s) URL with a host, got: " + baseUrl);
-        }
     }
 
     private static Duration requirePositive(Duration duration, String name) {
