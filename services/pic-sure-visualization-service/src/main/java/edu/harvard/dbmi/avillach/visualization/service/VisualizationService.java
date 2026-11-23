@@ -26,6 +26,12 @@ public class VisualizationService {
 
     private static final Logger logger = LoggerFactory.getLogger(VisualizationService.class);
 
+    /** Client-visible message for an I/O failure on the query-service call, such as a refused connection or a timeout. */
+    private static final String QUERY_SERVICE_UNREACHABLE = "Could not reach the query service";
+
+    /** Client-visible message for a query-service call that failed for any reason other than an HTTP error status or an I/O failure. */
+    private static final String QUERY_SERVICE_REQUEST_FAILED = "Query service request failed";
+
     private final QueryDecomposer queryDecomposer;
     private final QueryServiceClient queryServiceClient;
     private final CategoricalDistributionProcessor categoricalDistributionProcessor;
@@ -96,12 +102,12 @@ public class VisualizationService {
                 );
             } catch (ResourceAccessException e) {
                 logger.error("Could not reach query service for {} {} query", accessType.getValue(), descriptor.resultType(), e);
-                throw new HpdsUpstreamException("Query service request failed: " + e.getMessage(), e);
+                throw new HpdsUpstreamException(QUERY_SERVICE_UNREACHABLE, e);
             } catch (VisualizationException e) {
                 throw e;
             } catch (Exception e) {
                 logger.error("Failed to execute {} {} query", accessType.getValue(), descriptor.resultType(), e);
-                throw new HpdsUpstreamException("Query service request failed: " + e.getMessage(), e);
+                throw new HpdsUpstreamException(QUERY_SERVICE_REQUEST_FAILED, e);
             }
         }
 

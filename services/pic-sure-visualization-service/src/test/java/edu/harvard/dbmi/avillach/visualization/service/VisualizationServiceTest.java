@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import edu.harvard.dbmi.avillach.visualization.error.HpdsUpstreamException;
 import edu.harvard.dbmi.avillach.visualization.model.AccessType;
 import edu.harvard.dbmi.avillach.domain.ObfuscatedCount;
 import edu.harvard.dbmi.avillach.visualization.model.VisualizationResponse;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.client.ResourceAccessException;
 
 @ExtendWith(MockitoExtension.class)
 class VisualizationServiceTest {
@@ -217,5 +219,45 @@ class VisualizationServiceTest {
         Map<String, ObfuscatedCount> race = response.categoricalData().get(0).categoricalMap();
         assertEquals(new ObfuscatedCount(45000, "45000"), race.get("White"));
         assertFalse(race.containsKey("Black"), "Null counts must be skipped, not crash");
+    }
+
+    /**
+     * An I/O failure on the query-service call is reported with a fixed message. The I/O error, which names the query-service address,
+     * stays on the cause.
+     */
+    @Test
+    void generateDistributions_queryServiceUnreachable_throwsFixedMessageAndKeepsCause() {
+        ResourceAccessException ioFailure =
+            new ResourceAccessException("I/O error on POST request for \"http://query-service.internal:8080/hpds/auth/query/sync\"");
+        when(queryServiceClient.getAuthCrossCounts(any(), any(), any(), any(), any())).thenThrow(ioFailure);
+
+        HpdsUpstreamException thrown = assertThrows(
+            HpdsUpstreamException.class,
+            () -> service.generateDistributions(singleCategoricalFilterQuery(), AccessType.AUTHORIZED, IDENTITY, null)
+        );
+
+        assertEquals("Could not reach the query service", thrown.getMessage());
+        assertSame(ioFailure, thrown.getCause());
+    }
+
+    /** Any other failure of the query-service call is reported with a fixed message, and its own message stays on the cause. */
+    @Test
+    void generateDistributions_unexpectedFailure_throwsFixedMessageAndKeepsCause() {
+        IllegalStateException failure = new IllegalStateException("could not read http://query-service.internal:8080");
+        when(queryServiceClient.getAuthCrossCounts(any(), any(), any(), any(), any())).thenThrow(failure);
+
+        HpdsUpstreamException thrown = assertThrows(
+            HpdsUpstreamException.class,
+            () -> service.generateDistributions(singleCategoricalFilterQuery(), AccessType.AUTHORIZED, IDENTITY, null)
+        );
+
+        assertEquals("Query service request failed", thrown.getMessage());
+        assertSame(failure, thrown.getCause());
+    }
+
+    private static Query singleCategoricalFilterQuery() {
+        PhenotypicFilter catFilter =
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\demographics\\race\\", Set.of("White"), null, null, null);
+        return new Query(List.of(), List.of(), catFilter, List.of(), null, null, null);
     }
 }

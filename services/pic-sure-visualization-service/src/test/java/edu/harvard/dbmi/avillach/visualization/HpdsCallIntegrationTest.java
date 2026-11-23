@@ -1,7 +1,7 @@
 package edu.harvard.dbmi.avillach.visualization;
 
 import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.startsWith;
+import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.*;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
@@ -31,7 +31,9 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultMatcher;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
@@ -64,6 +66,8 @@ class HpdsCallIntegrationTest {
 
     private static final String AUTH_SYNC_URL = "http://localhost:9999/mock-query-service/hpds/auth/query/sync";
     private static final String OPEN_SYNC_URL = "http://localhost:9999/mock-query-service/hpds/open/query/sync";
+    /** The host and port of the mocked query service, which no response body may name. */
+    private static final String QUERY_SERVICE_HOST = "localhost:9999";
     /** The frontend's body: one categorical and one continuous filter under an AND, every top-level query key present. */
     private static final String FROZEN_REQUEST = "{\"query\":{\"select\":[],\"authorizationFilters\":[],\"phenotypicClause\":{"
         + "\"operator\":\"AND\",\"phenotypicClauses\":["
@@ -274,7 +278,8 @@ class HpdsCallIntegrationTest {
 
     /**
      * An I/O failure on the query-service call (connection refused, reset, or read timeout) reaches the service as a
-     * {@code ResourceAccessException} and surfaces as a 502 naming the I/O error.
+     * {@code ResourceAccessException} and surfaces as a 502 with a fixed message. The body names neither the query-service address nor the
+     * I/O error.
      */
     @Test
     void distributions_queryServiceUnreachable_returns502BadGateway() throws Exception {
@@ -282,15 +287,15 @@ class HpdsCallIntegrationTest {
             .andRespond(withException(new ConnectException("Connection refused")));
 
         mockMvc.perform(authDistributions()).andExpect(status().isBadGateway())
-            .andExpect(jsonPath("$.error", startsWith("Query service request failed: I/O error on POST request for \"" + AUTH_SYNC_URL)))
-            .andExpect(jsonPath("$.error", containsString("Connection refused")));
+            .andExpect(jsonPath("$.error").value("Could not reach the query service")).andExpect(bodyOmits(AUTH_SYNC_URL))
+            .andExpect(bodyOmits(QUERY_SERVICE_HOST)).andExpect(bodyOmits("Connection refused"));
 
         mockServer.verify();
     }
 
     /**
      * A 200 from the query service whose body cannot be read as cross counts fails outside the HTTP and I/O branches, and the catch-all
-     * wraps it as a 502 naming the extraction failure.
+     * wraps it as a 502 with a fixed message. The body carries neither the extraction failure nor the query-service address.
      */
     @Test
     void distributions_queryServiceReturnsUnreadableBody_returns502BadGateway() throws Exception {
@@ -298,7 +303,8 @@ class HpdsCallIntegrationTest {
             .andRespond(withSuccess("[\"not\", \"cross counts\"]", MediaType.APPLICATION_JSON));
 
         mockMvc.perform(authDistributions()).andExpect(status().isBadGateway())
-            .andExpect(jsonPath("$.error", startsWith("Query service request failed: Error while extracting response")));
+            .andExpect(jsonPath("$.error").value("Query service request failed")).andExpect(bodyOmits(AUTH_SYNC_URL))
+            .andExpect(bodyOmits(QUERY_SERVICE_HOST)).andExpect(bodyOmits("Error while extracting response"));
 
         mockServer.verify();
     }
@@ -326,14 +332,15 @@ class HpdsCallIntegrationTest {
         mockServer.verify();
     }
 
-    /** An I/O failure on the open-path query-service call surfaces as a 502 naming the I/O error. */
+    /** An I/O failure on the open-path query-service call surfaces as the same fixed 502 message as on the auth path. */
     @Test
     void distributions_open_queryServiceUnreachable_returns502BadGateway() throws Exception {
         mockServer.expect(requestTo(OPEN_SYNC_URL)).andExpect(method(HttpMethod.POST))
             .andRespond(withException(new ConnectException("Connection refused")));
 
         mockMvc.perform(openDistributions()).andExpect(status().isBadGateway())
-            .andExpect(jsonPath("$.error", startsWith("Query service request failed: I/O error on POST request for \"" + OPEN_SYNC_URL)));
+            .andExpect(jsonPath("$.error").value("Could not reach the query service")).andExpect(bodyOmits(OPEN_SYNC_URL))
+            .andExpect(bodyOmits(QUERY_SERVICE_HOST)).andExpect(bodyOmits("Connection refused"));
 
         mockServer.verify();
     }
@@ -354,6 +361,16 @@ class HpdsCallIntegrationTest {
     private MockHttpServletRequestBuilder openDistributions() throws Exception {
         return post("/open/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "OPEN_ACCESS:aio.local")
             .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_OPEN).content(singleCategoricalFilterBody());
+    }
+
+    /**
+     * Matches a response whose raw body does not contain the given text anywhere, in any field.
+     *
+     * @param text the text the body must not contain
+     * @return the matcher
+     */
+    private static ResultMatcher bodyOmits(String text) {
+        return MockMvcResultMatchers.content().string(not(containsString(text)));
     }
 
     private String singleCategoricalFilterBody() throws Exception {
