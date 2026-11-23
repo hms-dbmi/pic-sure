@@ -25,6 +25,6 @@ public class InternalTokenFilterConfig {
      */
     @Bean
     public FilterRegistrationBean<InternalTokenFilter> internalTokenFilter(@Value("${picsure.internal.token:}") String token) {
-        return InternalTokenFilterRegistration.create(token == null ? null : token.strip());
+        return InternalTokenFilterRegistration.create(token);
     }
 }
