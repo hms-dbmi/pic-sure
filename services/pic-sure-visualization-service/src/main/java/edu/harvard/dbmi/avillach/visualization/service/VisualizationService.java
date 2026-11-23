@@ -91,17 +91,15 @@ public class VisualizationService {
                 if (e.getStatusCode().value() == 403) {
                     throw new ConsentDeniedException("Consent does not permit this visualization query", e);
                 }
-                throw new HpdsUpstreamException(
-                    "Query service request failed with status " + e.getStatusCode().value() + ": " + e.getStatusText(), e
-                );
+                throw HpdsUpstreamException.failedWithStatus(e);
             } catch (ResourceAccessException e) {
                 logger.error("Could not reach query service for {} {} query", accessType.getValue(), descriptor.resultType(), e);
-                throw new HpdsUpstreamException("Query service request failed: " + e.getMessage(), e);
+                throw HpdsUpstreamException.unreachable(e);
             } catch (VisualizationException e) {
                 throw e;
             } catch (Exception e) {
                 logger.error("Failed to execute {} {} query", accessType.getValue(), descriptor.resultType(), e);
-                throw new HpdsUpstreamException("Query service request failed: " + e.getMessage(), e);
+                throw HpdsUpstreamException.requestFailed(e);
             }
         }
 

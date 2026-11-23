@@ -109,19 +109,17 @@ public class QueryServiceClient {
                 "query-service internal search failed requestId={} accessType={} status={}", requestId, accessTypeValue(accessType),
                 e.getStatusCode().value()
             );
-            throw new HpdsUpstreamException(
-                "Query service search failed with status " + e.getStatusCode().value() + ": " + e.getStatusText(), e
-            );
+            throw HpdsUpstreamException.failedWithStatus(e);
         } catch (ResourceAccessException e) {
             logger.warn(
                 "Could not reach query service for internal search requestId={} accessType={}", requestId, accessTypeValue(accessType), e
             );
-            throw new HpdsUpstreamException("Query service search failed: could not reach query service", e);
+            throw HpdsUpstreamException.unreachable(e);
         } catch (RestClientException e) {
             logger.warn(
                 "query-service internal search failed unexpectedly requestId={} accessType={}", requestId, accessTypeValue(accessType), e
             );
-            throw new HpdsUpstreamException("Query service search failed: unexpected error calling query service", e);
+            throw HpdsUpstreamException.requestFailed(e);
         }
     }
 

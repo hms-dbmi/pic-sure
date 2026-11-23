@@ -258,7 +258,7 @@ class QueryServiceClientTest {
         HpdsUpstreamException thrown =
             assertThrows(HpdsUpstreamException.class, () -> client.search("age", AccessType.AUTHORIZED, "request-11"));
 
-        assertEquals("Query service search failed: could not reach query service", thrown.getMessage());
+        assertEquals("Could not reach the query service", thrown.getMessage());
         assertFalse(thrown.getMessage().contains("localhost"));
         assertFalse(thrown.getMessage().contains("/internal/search"));
         ResourceAccessException cause = assertInstanceOf(ResourceAccessException.class, thrown.getCause());
@@ -273,7 +273,7 @@ class QueryServiceClientTest {
         HpdsUpstreamException thrown =
             assertThrows(HpdsUpstreamException.class, () -> client.search("age", AccessType.AUTHORIZED, "request-12"));
 
-        assertEquals("Query service search failed: unexpected error calling query service", thrown.getMessage());
+        assertEquals("Query service request failed", thrown.getMessage());
         assertInstanceOf(RestClientException.class, thrown.getCause());
         mockServer.verify();
     }
