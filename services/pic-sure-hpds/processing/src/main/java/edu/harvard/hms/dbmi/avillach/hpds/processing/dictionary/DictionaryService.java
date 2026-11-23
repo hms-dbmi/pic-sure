@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary;
 
 import com.google.common.collect.Lists;
+import edu.harvard.dbmi.avillach.logging.HttpUrls;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
@@ -13,8 +14,6 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -145,15 +144,10 @@ public class DictionaryService {
         if (dictionaryUrl.isEmpty()) {
             throw new DictionaryUnavailableException("No dictionary URL is configured, set " + URL_PROPERTY);
         }
-        URI uri;
         try {
-            uri = new URI(dictionaryUrl);
-        } catch (URISyntaxException e) {
-            throw new DictionaryUnavailableException(URL_PROPERTY + " is not a valid URI: " + dictionaryUrl, e);
-        }
-        boolean httpScheme = "http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme());
-        if (!httpScheme || uri.getHost() == null) {
-            throw new DictionaryUnavailableException(URL_PROPERTY + " must be an absolute http or https URL but was: " + dictionaryUrl);
+            HttpUrls.requireAbsoluteHttpUrl(URL_PROPERTY, dictionaryUrl);
+        } catch (IllegalArgumentException e) {
+            throw new DictionaryUnavailableException(e.getMessage(), e);
         }
         return dictionaryUrl;
     }
