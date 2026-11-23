@@ -139,4 +139,20 @@ class ClientTypeAgreementTest {
         assertThat(reachedDownstream.get()).isFalse();
         assertThat(auditedEvent().getCaller()).isEqualTo(ClientTypeAllowlist.UNKNOWN);
     }
+
+    @Test
+    void anOutsideCallerClaimingHpdsIsRejectedAndNeitherAuditedNorForwardedAsHpds() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/dictionary/concepts");
+        request.addHeader("X-Client-Type", "hpds");
+
+        MockHttpServletResponse response = run(request);
+
+        assertThat(response.getStatus()).isEqualTo(400);
+        assertThat(response.getContentAsString()).contains("unexpected_caller_type");
+        assertThat(reachedDownstream.get()).isFalse();
+        assertThat(forwardedClientType.get()).isNull();
+        LoggingEvent event = auditedEvent();
+        assertThat(event.getCaller()).isEqualTo(ClientTypeAllowlist.UNKNOWN);
+        assertThat(event.getMetadata()).containsEntry("client_type_claimed", "hpds");
+    }
 }
