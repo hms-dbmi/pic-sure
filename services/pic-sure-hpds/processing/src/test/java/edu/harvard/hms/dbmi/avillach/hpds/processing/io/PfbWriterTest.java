@@ -254,6 +254,31 @@ public class PfbWriterTest {
     }
 
     @Test
+    public void writeAndClose_pathFormattedLikePatientId_isRequestedAndWrittenAsItsOwnColumn() throws IOException {
+        String patientSpaceId = "patient id";
+        PfbWriter pfbWriter = new PfbWriter(avroFile, QUERY_ID, dictionaryService);
+        Mockito.when(dictionaryService.getConcepts(List.of(patientSpaceId)))
+            .thenReturn(List.of(new Concept(patientSpaceId, "patient id", "Patient Id Concept", "phs123", null, null)));
+
+        pfbWriter.writeHeader(new String[] {"patient_id", patientSpaceId});
+        pfbWriter.writeMultiValueEntity(List.of(List.of(List.of("123"), List.of("a", "b"))));
+        pfbWriter.close();
+
+        Mockito.verify(dictionaryService, Mockito.times(1)).getConcepts(List.of(patientSpaceId));
+        Mockito.verifyNoMoreInteractions(dictionaryService);
+        Map<String, GenericRecord> rows = readDictionaryRows(avroFile);
+        assertEquals(List.of("patient_id_2"), List.copyOf(rows.keySet()));
+        assertEquals(patientSpaceId, text(rows.get("patient_id_2"), "concept_path"));
+        assertEquals("Patient Id Concept", text(rows.get("patient_id_2"), "display"));
+        GenericRecord patient = readAll(avroFile).getLast();
+        assertEquals(PATIENT_NODE, patient.get("name").toString());
+        assertEquals("123", patient.get("id").toString());
+        GenericRecord patientRow = (GenericRecord) patient.get("object");
+        assertEquals("123", patientRow.get("patient_id").toString());
+        assertEquals(List.of("a", "b"), strings((List<?>) patientRow.get("patient_id_2")));
+    }
+
+    @Test
     public void writeMultiValueEntity_dictionaryFails_propagatesAndWritesNoAvro() {
         PfbWriter pfbWriter = new PfbWriter(avroFile, UUID.randomUUID().toString(), dictionaryService);
         DictionaryUnavailableException failure = new DictionaryUnavailableException("dictionary is down");
