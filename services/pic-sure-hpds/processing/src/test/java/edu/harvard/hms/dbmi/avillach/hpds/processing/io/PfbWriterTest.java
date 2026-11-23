@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing.io;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary.Concept;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary.DictionaryService;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary.DictionaryUnavailableException;
+import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileReader;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.generic.GenericRecord;
@@ -19,6 +20,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +33,9 @@ import static org.junit.jupiter.api.Assertions.*;
 @ExtendWith(MockitoExtension.class)
 public class PfbWriterTest {
 
+    private static final String QUERY_ID = "0b6c4f8a-1111-2222-3333-444455556666";
+    private static final String PATIENT_NODE = "pic_sure_patients_0b6c4f8a_1111_2222_3333_444455556666";
+    private static final String DICTIONARY_NODE = "pic_sure_data_dictionary_0b6c4f8a_1111_2222_3333_444455556666";
     private static final String AGE_PATH = "\\demographics\\age\\";
     private static final String STROKE_PATH = "\\phs123\\stroke\\";
     private static final String[] HEADER = {"patient_id", AGE_PATH, STROKE_PATH};
@@ -40,7 +45,7 @@ public class PfbWriterTest {
     private DictionaryService dictionaryService;
 
     @TempDir
-    private Path tempDir;
+    Path tempDir;
 
     private File avroFile;
 
@@ -49,52 +54,68 @@ public class PfbWriterTest {
         avroFile = tempDir.resolve("result.avro").toFile();
     }
 
-    /**
-     * Reads every entity record back from an Avro file written by {@link PfbWriter}.
-     *
-     * @param file the Avro file to read
-     * @return the entity records in file order
-     */
-    private static List<GenericRecord> readEntities(File file) {
-        List<GenericRecord> entities = new ArrayList<>();
-        try (DataFileReader<GenericRecord> reader = new DataFileReader<>(file, new GenericDatumReader<>())) {
-            reader.forEach(entities::add);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
-        return entities;
-    }
+    @Test
+    public void writeValidPFB() throws IOException {
+        File file = tempDir.resolve("result.avro").toFile();
+        PfbWriter pfbWriter = new PfbWriter(file, QUERY_ID, dictionaryService);
 
-    /**
-     * Reads the data dictionary rows back from an Avro file written by {@link PfbWriter}.
-     *
-     * @param file the Avro file to read
-     * @return the data dictionary rows keyed by their formatted concept path
-     */
-    private static Map<String, GenericRecord> readDictionaryRows(File file) {
-        Map<String, GenericRecord> rows = new LinkedHashMap<>();
-        for (GenericRecord entity : readEntities(file)) {
-            if (entity.get("name").toString().startsWith("pic_sure_data_dictionary_")) {
-                rows.put(entity.get("id").toString(), (GenericRecord) entity.get("object"));
-            }
-        }
-        return rows;
-    }
+        Mockito.when(dictionaryService.getConcepts(List.of("\\demographics\\age\\", "\\phs123\\stroke\\"))).thenReturn(
+            List.of(
+                new Concept(
+                    "\\demographics\\age\\", "age", "AGE", null, "patient age", Map.of("drs_uri", "[\"a-drs.uri\", \"another-drs.uri\"]")
+                )
+            )
+        );
 
-    private static String text(GenericRecord record, String field) {
-        return Objects.toString(record.get(field), null);
-    }
+        pfbWriter.writeHeader(new String[] {"patient_id", "\\demographics\\age\\", "\\phs123\\stroke\\"});
+        List<List<String>> nullableList = new ArrayList<>();
+        nullableList.add(List.of("123"));
+        nullableList.add(null);
+        nullableList.add(List.of("Y"));
+        pfbWriter.writeMultiValueEntity(List.of(nullableList, List.of(List.of("456"), List.of("80"), List.of("N", "Y"))));
+        pfbWriter.close();
 
-    private static List<List<String>> patientRow(String patientId, String age, String stroke) {
-        return List.of(List.of(patientId), List.of(age), List.of(stroke));
-    }
+        List<GenericRecord> entities = readAll(file);
+        assertEquals(5, entities.size());
 
-    private static void assertNoAvroContent(File file) {
-        assertTrue(!file.exists() || file.length() == 0, "expected no Avro content but found " + file.length() + " bytes");
+        GenericRecord metadata = entities.get(0);
+        assertEquals("Metadata", metadata.get("name").toString());
+        assertNull(metadata.get("id"));
+        List<?> nodes = (List<?>) ((GenericRecord) metadata.get("object")).get("nodes");
+        assertEquals(
+            List.of(PATIENT_NODE, DICTIONARY_NODE), nodes.stream().map(node -> ((GenericRecord) node).get("name").toString()).toList()
+        );
+        GenericRecord ageProperty = (GenericRecord) ((List<?>) ((GenericRecord) nodes.get(0)).get("properties")).get(1);
+        assertEquals("_demographics_age_", ageProperty.get("name").toString());
+        assertEquals(
+            Map.of("concept_path", "\\demographics\\age\\", "display", "AGE", "description", "patient age"),
+            stringMap((Map<?, ?>) ageProperty.get("values"))
+        );
+
+        GenericRecord ageDictionary = entities.get(1);
+        assertEquals(DICTIONARY_NODE, ageDictionary.get("name").toString());
+        assertEquals("_demographics_age_", ageDictionary.get("id").toString());
+        GenericRecord ageDictionaryRow = (GenericRecord) ageDictionary.get("object");
+        assertEquals("\\demographics\\age\\", ageDictionaryRow.get("concept_path").toString());
+        assertEquals("AGE", ageDictionaryRow.get("display").toString());
+        assertEquals(List.of("a-drs.uri", "another-drs.uri"), strings((List<?>) ageDictionaryRow.get("drs_uri")));
+
+        GenericRecord strokeDictionaryRow = (GenericRecord) entities.get(2).get("object");
+        assertEquals("\\phs123\\stroke\\", strokeDictionaryRow.get("concept_path").toString());
+        assertNull(strokeDictionaryRow.get("display"));
+
+        GenericRecord patient = entities.get(4);
+        assertEquals(PATIENT_NODE, patient.get("name").toString());
+        assertEquals("456", patient.get("id").toString());
+        GenericRecord patientRow = (GenericRecord) patient.get("object");
+        assertEquals("456", patientRow.get("patient_id").toString());
+        assertEquals(List.of("80"), strings((List<?>) patientRow.get("_demographics_age_")));
+        assertEquals(List.of("N", "Y"), strings((List<?>) patientRow.get("_phs123_stroke_")));
+        assertEquals(List.of(), strings((List<?>) ((GenericRecord) entities.get(3).get("object")).get("_demographics_age_")));
     }
 
     @Test
-    public void writeValidPFB() {
+    public void writeMultiValueEntity_twoBatches_appendsEveryPatientRow() throws IOException {
         PfbWriter pfbWriter = new PfbWriter(avroFile, UUID.randomUUID().toString(), dictionaryService);
 
         Mockito.when(dictionaryService.getConcepts(REQUESTED_PATHS)).thenReturn(
@@ -121,11 +142,69 @@ public class PfbWriterTest {
         );
         pfbWriter.close();
 
-        List<GenericRecord> entities = readEntities(avroFile);
+        List<GenericRecord> entities = readAll(avroFile);
         assertEquals(1 + 2 + 6, entities.size());
-        assertEquals("metadata", entities.get(0).get("name").toString());
+        assertEquals("Metadata", entities.get(0).get("name").toString());
         GenericRecord ageRow = readDictionaryRows(avroFile).get("_demographics_age_");
-        assertEquals(List.of("a-drs.uri", "another-drs.uri"), ((List<?>) ageRow.get("drs_uri")).stream().map(Object::toString).toList());
+        assertEquals(List.of("a-drs.uri", "another-drs.uri"), strings((List<?>) ageRow.get("drs_uri")));
+    }
+
+    @Test
+    public void writeHeader_envelopeMatchesPypfb() throws IOException {
+        File file = tempDir.resolve("result.avro").toFile();
+        Mockito.when(dictionaryService.getConcepts(List.of("\\demographics\\age\\"))).thenReturn(List.of());
+        PfbWriter pfbWriter = new PfbWriter(file, QUERY_ID, dictionaryService);
+        pfbWriter.writeHeader(new String[] {"patient_id", "\\demographics\\age\\"});
+        pfbWriter.close();
+
+        Schema schema;
+        try (DataFileReader<GenericRecord> reader = new DataFileReader<>(file, new GenericDatumReader<>())) {
+            schema = reader.getSchema();
+        }
+        assertEquals("Entity", schema.getFullName());
+        assertEquals(List.of("id", "name", "object", "relations"), schema.getFields().stream().map(Schema.Field::name).toList());
+        List<Schema> objectTypes = schema.getField("object").schema().getTypes();
+        assertEquals(List.of("Metadata", PATIENT_NODE, DICTIONARY_NODE), objectTypes.stream().map(Schema::getFullName).toList());
+        Schema link = objectTypes.getFirst().getField("nodes").schema().getElementType().getField("links").schema().getElementType();
+        assertEquals(List.of("multiplicity", "dst", "name"), link.getFields().stream().map(Schema.Field::name).toList());
+        assertEquals(Schema.Type.MAP, objectTypes.getFirst().getField("misc").schema().getType());
+    }
+
+    @Test
+    public void writeHeader_collidingFieldNames_getUniqueColumns() throws IOException {
+        File file = tempDir.resolve("result.avro").toFile();
+        Mockito.when(dictionaryService.getConcepts(List.of("\\a b\\", "\\a_b\\"))).thenReturn(
+            List.of(new Concept("\\a_b\\", "a_b", "Underscore", null, null, null), new Concept("\\a b\\", "a b", "Space", null, null, null))
+        );
+        PfbWriter pfbWriter = new PfbWriter(file, QUERY_ID, dictionaryService);
+        pfbWriter.writeHeader(new String[] {"patient_id", "\\a b\\", "\\a_b\\"});
+        pfbWriter.writeMultiValueEntity(List.of(List.of(List.of("1"), List.of("x"), List.of("y"))));
+        pfbWriter.close();
+
+        List<GenericRecord> entities = readAll(file);
+        assertEquals("\\a b\\", ((GenericRecord) entities.get(1).get("object")).get("concept_path").toString());
+        assertEquals("_a_b_", entities.get(1).get("id").toString());
+        assertEquals("Space", text((GenericRecord) entities.get(1).get("object"), "display"));
+        assertEquals("\\a_b\\", ((GenericRecord) entities.get(2).get("object")).get("concept_path").toString());
+        assertEquals("_a_b__2", entities.get(2).get("id").toString());
+        assertEquals("Underscore", text((GenericRecord) entities.get(2).get("object"), "display"));
+        GenericRecord patientRow = (GenericRecord) entities.get(3).get("object");
+        assertEquals(List.of("x"), strings((List<?>) patientRow.get("_a_b_")));
+        assertEquals(List.of("y"), strings((List<?>) patientRow.get("_a_b__2")));
+    }
+
+    @Test
+    public void writeHeader_dictionaryFails_failsTheExportAndWritesNoAvro() {
+        File file = tempDir.resolve("result.avro").toFile();
+        RuntimeException failure = new RuntimeException("dictionary down");
+        Mockito.when(dictionaryService.getConcepts(Mockito.any())).thenThrow(failure);
+        PfbWriter pfbWriter = new PfbWriter(file, QUERY_ID, dictionaryService);
+        pfbWriter.writeHeader(new String[] {"patient_id", "\\demographics\\age\\"});
+
+        RuntimeException thrown = assertThrows(RuntimeException.class, pfbWriter::close);
+
+        assertSame(failure, thrown);
+        assertNoAvroContent(file);
     }
 
     @Test
@@ -139,7 +218,7 @@ public class PfbWriterTest {
     }
 
     @Test
-    public void writeAndClose_dictionaryRowsCarryConceptDetails_patientIdNotRequested() {
+    public void writeAndClose_dictionaryRowsCarryConceptDetails_patientIdNotRequested() throws IOException {
         PfbWriter pfbWriter = new PfbWriter(avroFile, UUID.randomUUID().toString(), dictionaryService);
         Mockito.when(dictionaryService.getConcepts(REQUESTED_PATHS)).thenReturn(
             List.of(
@@ -195,19 +274,19 @@ public class PfbWriterTest {
     }
 
     @Test
-    public void close_noRowsWritten_writesMetadataAndDictionary() {
+    public void close_noRowsWritten_writesMetadataAndDictionary() throws IOException {
         PfbWriter pfbWriter = new PfbWriter(avroFile, UUID.randomUUID().toString(), dictionaryService);
         Mockito.when(dictionaryService.getConcepts(REQUESTED_PATHS)).thenReturn(List.of());
         pfbWriter.writeHeader(HEADER);
 
         pfbWriter.close();
 
-        assertEquals(3, readEntities(avroFile).size());
+        assertEquals(3, readAll(avroFile).size());
         assertNull(readDictionaryRows(avroFile).get("_demographics_age_").get("display"));
     }
 
     @Test
-    public void writeMultiValueEntity_avroFileCannotBeCreated_nextCallMaterializesAgain() {
+    public void writeMultiValueEntity_avroFileCannotBeCreated_nextCallMaterializesAgain() throws IOException {
         File missingDirectory = tempDir.resolve("missing").toFile();
         File unreachableFile = new File(missingDirectory, "result.avro");
         PfbWriter pfbWriter = new PfbWriter(unreachableFile, UUID.randomUUID().toString(), dictionaryService);
@@ -222,11 +301,11 @@ public class PfbWriterTest {
         pfbWriter.close();
 
         Mockito.verify(dictionaryService, Mockito.times(3)).getConcepts(REQUESTED_PATHS);
-        assertEquals(1 + 2 + 1, readEntities(unreachableFile).size());
+        assertEquals(1 + 2 + 1, readAll(unreachableFile).size());
     }
 
     @Test
-    public void duplicatePathsInDictionaryResponse_firstWins() {
+    public void duplicatePathsInDictionaryResponse_firstWins() throws IOException {
         PfbWriter pfbWriter = new PfbWriter(avroFile, UUID.randomUUID().toString(), dictionaryService);
         Mockito.when(dictionaryService.getConcepts(REQUESTED_PATHS)).thenReturn(
             List.of(
@@ -264,5 +343,51 @@ public class PfbWriterTest {
         PfbWriter pfbWriter = new PfbWriter(new File("target/test-result.avro"), UUID.randomUUID().toString(), dictionaryService);
         String formattedName = pfbWriter.formatFieldName("$$$my garbage @vro var!able nam#");
         assertEquals("___my_garbage__vro_var_able_nam_", formattedName);
+    }
+
+    private static List<GenericRecord> readAll(File file) throws IOException {
+        List<GenericRecord> entities = new ArrayList<>();
+        try (DataFileReader<GenericRecord> reader = new DataFileReader<>(file, new GenericDatumReader<>())) {
+            reader.forEach(entities::add);
+        }
+        return entities;
+    }
+
+    /**
+     * Reads the data dictionary rows back from an Avro file written by {@link PfbWriter}.
+     *
+     * @param file the Avro file to read
+     * @return the data dictionary rows keyed by their entity id, the formatted field name of the concept
+     */
+    private static Map<String, GenericRecord> readDictionaryRows(File file) throws IOException {
+        Map<String, GenericRecord> rows = new LinkedHashMap<>();
+        for (GenericRecord entity : readAll(file)) {
+            if (entity.get("name").toString().startsWith("pic_sure_data_dictionary_")) {
+                rows.put(entity.get("id").toString(), (GenericRecord) entity.get("object"));
+            }
+        }
+        return rows;
+    }
+
+    private static String text(GenericRecord record, String field) {
+        return Objects.toString(record.get(field), null);
+    }
+
+    private static List<String> strings(List<?> values) {
+        return values.stream().map(value -> value == null ? null : value.toString()).toList();
+    }
+
+    private static Map<String, String> stringMap(Map<?, ?> values) {
+        Map<String, String> out = new HashMap<>();
+        values.forEach((key, value) -> out.put(key.toString(), value.toString()));
+        return out;
+    }
+
+    private static List<List<String>> patientRow(String patientId, String age, String stroke) {
+        return List.of(List.of(patientId), List.of(age), List.of(stroke));
+    }
+
+    private static void assertNoAvroContent(File file) {
+        assertTrue(!file.exists() || file.length() == 0, "expected no Avro content but found " + file.length() + " bytes");
     }
 }

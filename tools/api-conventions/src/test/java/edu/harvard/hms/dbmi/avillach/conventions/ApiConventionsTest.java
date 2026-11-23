@@ -114,6 +114,11 @@ class ApiConventionsTest {
     }
 
     @Test
+    void everyInternalHandlerUsesAnInternalAuditAction() {
+        report("internal-handlers-use-internal-audit-action", overAllModules(AuditRules::internalHandlersUseInternalAuditAction));
+    }
+
+    @Test
     void everyNamedPathVariableAppearsInAMappedPath() {
         report("path-variables-in-template", overAllModules(RoutingRules::pathVariablesAppearInTemplate));
     }

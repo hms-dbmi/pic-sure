@@ -12,6 +12,8 @@ import org.springframework.mock.web.MockHttpServletResponse;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
 
 class AuditLoggingFilterTest {
 
@@ -86,5 +88,15 @@ class AuditLoggingFilterTest {
         verify(loggingClient).send(captor.capture());
         assertEquals("UNLABELED", captor.getValue().getEventType());
         assertEquals("get", captor.getValue().getAction());
+    }
+
+    @Test
+    void handlerFailurePropagatesWhenAuditLoggingIsOff() {
+        when(loggingClient.isEnabled()).thenReturn(false);
+        FilterChain failing = (request, response) -> {
+            throw new ServletException("handler failed");
+        };
+
+        assertThrows(ServletException.class, () -> filter.doFilter(mockRequest(), new MockHttpServletResponse(), failing));
     }
 }

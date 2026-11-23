@@ -27,6 +27,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 /**
  * Posts distribution sub-queries to {@code pic-sure-hpds-query-service}, the single HPDS ingress. This service does NOT talk to HPDS
@@ -86,7 +87,8 @@ public class QueryServiceClient {
      * @param requestId optional correlation id sent as {@code X-Request-Id} when present
      * @return the search results returned by query-service
      * @throws IllegalStateException if no internal token is configured
-     * @throws HpdsUpstreamException if query-service rejects the call or cannot be reached
+     * @throws HpdsUpstreamException if query-service rejects the call, cannot be reached, or the call fails in the client for any other
+     *         reason, such as a response body that cannot be read. The message never contains the query-service URL.
      */
     public SearchResults search(String query, AccessType accessType, String requestId) {
         if (internalToken == null || internalToken.isBlank()) {
@@ -114,7 +116,12 @@ public class QueryServiceClient {
             logger.warn(
                 "Could not reach query service for internal search requestId={} accessType={}", requestId, accessTypeValue(accessType), e
             );
-            throw new HpdsUpstreamException("Query service search failed: " + e.getMessage(), e);
+            throw new HpdsUpstreamException("Query service search failed: could not reach query service", e);
+        } catch (RestClientException e) {
+            logger.warn(
+                "query-service internal search failed unexpectedly requestId={} accessType={}", requestId, accessTypeValue(accessType), e
+            );
+            throw new HpdsUpstreamException("Query service search failed: unexpected error calling query service", e);
         }
     }
 

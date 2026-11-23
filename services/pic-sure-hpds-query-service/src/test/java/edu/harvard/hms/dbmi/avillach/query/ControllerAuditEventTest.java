@@ -23,7 +23,8 @@ import edu.harvard.dbmi.avillach.logging.AuditEvent;
 /**
  * Pins the {@link AuditEvent} label on every request handler in this service. Controllers are found by classpath scan and handlers by their
  * {@link RequestMapping} meta-annotation, so no Spring context starts. A new handler without a label, a new handler missing from
- * {@link #EXPECTED}, or a changed label fails the build. The labels mirror the gateway's audit route table for the same paths.
+ * {@link #EXPECTED}, or a changed label fails the build. The labels mirror the gateway's audit route table for the same paths, except the
+ * handler under {@code /internal/}, which the gateway never routes and whose action starts with {@code internal_}.
  *
  * <p>Only controllers compiled into the main output, the same code source as {@link QueryServiceApplication}, are counted. Test fixtures
  * such as the probe controllers other tests declare under this package are compiled into the test output and are excluded.
@@ -40,7 +41,7 @@ class ControllerAuditEventTest {
             Map.entry("HpdsQueryController.signedUrl", "DATA_ACCESS query.signed_url"),
             Map.entry("HpdsQueryController.metadata", "QUERY query.metadata"),
             Map.entry("AggregateController.querySync", "QUERY query.sync"), Map.entry("AggregateController.query", "QUERY query.submitted"),
-            Map.entry("InternalSearchController.search", "SEARCH search.execute"),
+            Map.entry("InternalSearchController.search", "SEARCH internal_search.execute"),
             Map.entry("HpdsSearchController.values", "SEARCH search.values")
         )
     );

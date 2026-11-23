@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.*;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withException;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
@@ -21,6 +22,7 @@ import edu.harvard.dbmi.avillach.domain.ObfuscatedCount;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.AuthorizationFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
+import java.net.ConnectException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,7 +36,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 @ExtendWith(MockitoExtension.class)
 class QueryServiceClientTest {
@@ -243,6 +247,34 @@ class QueryServiceClientTest {
             assertThrows(HpdsUpstreamException.class, () -> client.search("age", AccessType.AUTHORIZED, "request-9"));
 
         assertTrue(thrown.getMessage().contains("500"));
+        mockServer.verify();
+    }
+
+    @Test
+    void search_reportsAnUnreachableQueryServiceWithoutItsUrl() {
+        mockServer.expect(requestTo(BASE_URL + "/internal/search/auth"))
+            .andRespond(withException(new ConnectException("Connection refused")));
+
+        HpdsUpstreamException thrown =
+            assertThrows(HpdsUpstreamException.class, () -> client.search("age", AccessType.AUTHORIZED, "request-11"));
+
+        assertEquals("Query service search failed: could not reach query service", thrown.getMessage());
+        assertFalse(thrown.getMessage().contains("localhost"));
+        assertFalse(thrown.getMessage().contains("/internal/search"));
+        ResourceAccessException cause = assertInstanceOf(ResourceAccessException.class, thrown.getCause());
+        assertTrue(cause.getMessage().contains(BASE_URL + "/internal/search/auth"));
+        mockServer.verify();
+    }
+
+    @Test
+    void search_mapsAnUnreadableResponseToHpdsUpstreamExceptionWithAFixedMessage() {
+        mockServer.expect(requestTo(BASE_URL + "/internal/search/auth")).andRespond(withSuccess("{not json", MediaType.APPLICATION_JSON));
+
+        HpdsUpstreamException thrown =
+            assertThrows(HpdsUpstreamException.class, () -> client.search("age", AccessType.AUTHORIZED, "request-12"));
+
+        assertEquals("Query service search failed: unexpected error calling query service", thrown.getMessage());
+        assertInstanceOf(RestClientException.class, thrown.getCause());
         mockServer.verify();
     }
 

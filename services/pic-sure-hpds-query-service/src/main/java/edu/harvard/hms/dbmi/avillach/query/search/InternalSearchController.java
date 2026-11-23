@@ -31,7 +31,7 @@ public class InternalSearchController {
      * @param req the search request
      * @return the concepts and variant annotations that match the search term
      */
-    @AuditEvent(type = "SEARCH", action = "search.execute")
+    @AuditEvent(type = "SEARCH", action = "internal_search.execute")
     @PostMapping("/internal/search/{backend}")
     public SearchResults search(@PathVariable("backend") String backend, @RequestBody SearchRequest req) {
         return service.search(backend, req);
