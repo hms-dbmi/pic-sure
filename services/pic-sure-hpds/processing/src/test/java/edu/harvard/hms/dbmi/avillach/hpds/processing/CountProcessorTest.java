@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,8 +13,13 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -50,6 +57,23 @@ public class CountProcessorTest {
         when(mockAbstractProcessor.getVariantList(query)).thenReturn(List.of("variant1", "variant2"));
         Map<String, Object> countResponse = countProcessor.runVariantCount(query);
         assertEquals(2, countResponse.get("count"));
+    }
+
+    @Test
+    public void runObservationCrossCounts_manyConcepts_returnsEveryConcept() {
+        List<String> concepts = IntStream.range(0, 2000).mapToObj(i -> "\\concept" + i + "\\").toList();
+        Query query = new Query();
+        query.setCrossCountFields(concepts);
+        PhenoCube<Double> cube = new PhenoCube<>("cube", Double.class);
+        cube.setSortedByKey(new KeyAndValue[] {new KeyAndValue<>(1, 1.0), new KeyAndValue<>(2, 2.0), new KeyAndValue<>(9, 3.0)});
+
+        when(mockAbstractProcessor.getPatientSubsetForQuery(query)).thenReturn(Set.of(1, 2, 3));
+        when(mockAbstractProcessor.getCube(anyString())).thenReturn(cube);
+
+        Map<String, Integer> counts = countProcessor.runObservationCrossCounts(query);
+        assertEquals(concepts.size(), counts.size());
+        assertEquals(new TreeSet<>(concepts), counts.keySet());
+        assertTrue(counts.values().stream().allMatch(count -> count == 2));
     }
 
     // todo: test these directly in AbstractProcessor

@@ -37,10 +37,10 @@ import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
 
 /**
- * Full-context MockMvc coverage of {@code /hpds/{backend}/search/**}. Every call resolves to the same {@code /v3} HPDS downstream URL,
- * since {@link edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector} always resolves the v3 base regardless of backend.
- * {@code auth} and {@code open} are pointed at distinct paths on one WireMock instance so backend selection is verifiable without running
- * two servers.
+ * Full-context MockMvc coverage of {@code /hpds/{backend}/search/values} and of the removal of the public search mapping. Every call
+ * resolves to the same {@code /v3} HPDS downstream URL, since {@link edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector} always
+ * resolves the v3 base regardless of backend. {@code auth} and {@code open} are pointed at distinct paths on one WireMock instance so
+ * backend selection is verifiable without running two servers.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
@@ -71,47 +71,11 @@ class HpdsSearchControllerTest {
     private MockMvc mockMvc;
 
     @MockitoBean
-    private OperationsClient operationsClient; // unused by search, present so the whole context (incl. query controllers) wires cleanly
+    private OperationsClient operationsClient; // unused by values, present so the whole context (incl. query controllers) wires cleanly
 
     @BeforeEach
     void resetStubs() {
         hpds.resetAll();
-    }
-
-    @Test
-    void searchOnAuthBackendMapsToTheV3DownstreamUrl() throws Exception {
-        hpds.stubFor(WireMock.post(urlEqualTo("/AUTH/v3/search")).willReturn(okJson("{\"searchQuery\":\"q\",\"results\":{}}")));
-
-        mockMvc.perform(
-            post("/hpds/auth/search").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"query\":\"q\"}")
-        ).andExpect(status().isOk());
-
-        hpds.verify(1, postRequestedFor(urlEqualTo("/AUTH/v3/search")));
-    }
-
-    @Test
-    void searchOnOpenBackendResolvesToOpenUrl() throws Exception {
-        hpds.stubFor(WireMock.post(urlEqualTo("/OPEN/v3/search")).willReturn(okJson("{\"searchQuery\":\"q\",\"results\":{}}")));
-
-        mockMvc.perform(
-            post("/hpds/open/search").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"query\":\"q\"}")
-        ).andExpect(status().isOk());
-
-        hpds.verify(postRequestedFor(urlEqualTo("/OPEN/v3/search")));
-    }
-
-    @Test
-    void searchNeverHitsTheNonVersionedDownstreamUrl() throws Exception {
-        hpds.stubFor(WireMock.post(urlEqualTo("/AUTH/v3/search")).willReturn(okJson("{\"searchQuery\":\"q\",\"results\":{}}")));
-
-        mockMvc.perform(
-            post("/hpds/auth/search").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"query\":\"q\"}")
-        ).andExpect(status().isOk());
-
-        hpds.verify(0, postRequestedFor(urlEqualTo("/AUTH/search")));
     }
 
     @Test
@@ -127,31 +91,6 @@ class HpdsSearchControllerTest {
         ).andExpect(status().isOk()).andExpect(jsonPath("$.total").value(0));
 
         hpds.verify(1, getRequestedFor(urlPathEqualTo("/AUTH/v3/search/values/")));
-    }
-
-    @Test
-    void searchSendsHpdsTheTermInTheSameEnvelopeAndIgnoresOtherMembers() throws Exception {
-        hpds.stubFor(WireMock.post(urlEqualTo("/AUTH/v3/search")).willReturn(okJson("{\"results\":{},\"searchQuery\":\"age\"}")));
-
-        mockMvc.perform(
-            post("/hpds/auth/search").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"resourceUUID\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\",\"query\":\"age\"}")
-        ).andExpect(status().isOk()).andExpect(content().string("{\"results\":{},\"searchQuery\":\"age\"}"));
-
-        hpds.verify(
-            postRequestedFor(urlEqualTo("/AUTH/v3/search"))
-                .withRequestBody(equalTo("{\"@type\":\"GeneralQueryRequest\",\"query\":\"age\",\"resourceUUID\":null}"))
-        );
-    }
-
-    @Test
-    void searchWithATermThatIsNotTextIs400() throws Exception {
-        mockMvc.perform(
-            post("/hpds/auth/search").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"query\":{\"expectedResultType\":\"COUNT\"}}")
-        ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("bad_request"));
-
-        hpds.verify(0, postRequestedFor(urlEqualTo("/AUTH/v3/search")));
     }
 
     @Test
@@ -171,18 +110,15 @@ class HpdsSearchControllerTest {
     }
 
     @Test
-    void hpdsFailureOnSearchSurfacesAs502() throws Exception {
-        hpds.stubFor(WireMock.post(urlEqualTo("/AUTH/v3/search")).willReturn(aResponse().withStatus(500)));
+    void publicSearchIsNoLongerServedOnEitherPrefix() throws Exception {
+        for (String path : new String[] {"/hpds/auth/search", "/hpds/open/search", "/v3/search"}) {
+            mockMvc.perform(
+                post(path).header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"query\":\"q\"}")
+            ).andExpect(result -> assertThat(result.getResponse().getStatus()).as(path).isIn(404, 405));
+        }
 
-        mockMvc.perform(
-            post("/hpds/auth/search").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"query\":\"q\"}")
-        ).andExpect(status().isBadGateway());
-    }
-
-    @Test
-    void searchWithoutGatewayIdentityIsRejected() throws Exception {
-        mockMvc.perform(post("/hpds/auth/search").contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"q\"}"))
-            .andExpect(result -> assertThat(result.getResponse().getStatus()).isIn(401, 403));
+        hpds.verify(0, postRequestedFor(urlEqualTo("/AUTH/v3/search")));
+        hpds.verify(0, postRequestedFor(urlEqualTo("/OPEN/v3/search")));
     }
 }

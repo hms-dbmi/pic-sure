@@ -18,6 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.hms.dbmi.avillach.commons.security.InternalTokenFilter;
 
 
 /**
@@ -25,8 +26,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * {@code FilterRegistrationBean} scoped to the {@code /internal/*} URL pattern) together with {@link InternalQueryController}, same posture
  * as {@code NamedDatasetControllerTest}: no mocked security layer. {@code picsure.operations.internal-token} is set in
  * {@code src/test/resources/application.yml}, so the "unconfigured token fail-closed" behavior itself is covered by the dedicated pure-unit
- * {@code InternalTokenFilterTest} (constructing the filter directly with a blank token) rather than here. The context-path-robustness of
- * the URL-pattern-based registration itself is covered separately by {@code InternalTokenFilterContextPathTest}.
+ * {@code InternalTokenFilterTest} in spring-commons (constructing the filter directly with a blank token) rather than here. The
+ * context-path-robustness of the URL-pattern-based registration itself is covered separately by {@code InternalTokenFilterContextPathTest}.
  */
 @SpringBootTest
 @AutoConfigureMockMvc

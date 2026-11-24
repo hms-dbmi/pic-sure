@@ -51,10 +51,8 @@ public final class RoutingRules {
     public static List<String> pathVariablesAppearInTemplate(String module, JavaClasses classes) {
         List<String> violations = new ArrayList<>();
         for (JavaClass controller : Controllers.of(classes)) {
-            List<String> prefixes = paths(directAnnotation(controller.getAnnotations(), List.of(REQUEST_MAPPING)));
             for (JavaMethod handler : Controllers.handlerMethods(controller)) {
-                List<String> suffixes = paths(directAnnotation(handler.getAnnotations(), METHOD_MAPPINGS));
-                List<String> templates = combine(prefixes, suffixes);
+                List<String> templates = mappedPaths(controller, handler);
                 Set<String> declared = new LinkedHashSet<>();
                 templates.forEach(template -> declared.addAll(templateVariables(template)));
                 for (String name : pathVariableNames(handler)) {
@@ -67,6 +65,25 @@ public final class RoutingRules {
             }
         }
         return violations;
+    }
+
+    /**
+     * Reads every path a handler maps: each class-level {@code @RequestMapping} path joined with each
+     * method-level mapping path, both read from {@code value} and {@code path}. A side that declares no
+     * path counts as the empty path. A method path with no leading slash is joined with one, as Spring
+     * joins {@code /user} and {@code {id}} into {@code /user/{id}}. A prefix set outside the annotations,
+     * such as a servlet context path, is not part of the result. Only mapping annotations written directly
+     * on the controller class and on the handler method are read, so a class-level mapping inherited from a
+     * superclass or an interface, or one supplied through a composed annotation, is not seen.
+     *
+     * @param controller the class that declares the handler
+     * @param handler a handler method of that class
+     * @return the mapped paths, class paths in declared order and method paths within each
+     */
+    static List<String> mappedPaths(JavaClass controller, JavaMethod handler) {
+        List<String> prefixes = paths(directAnnotation(controller.getAnnotations(), List.of(REQUEST_MAPPING)));
+        List<String> suffixes = paths(directAnnotation(handler.getAnnotations(), METHOD_MAPPINGS));
+        return combine(prefixes, suffixes);
     }
 
     /**
@@ -143,7 +160,8 @@ public final class RoutingRules {
         List<String> combined = new ArrayList<>();
         for (String prefix : prefixes) {
             for (String suffix : suffixes) {
-                combined.add(prefix + suffix);
+                boolean unseparated = !suffix.isEmpty() && !suffix.startsWith("/") && !prefix.endsWith("/");
+                combined.add(prefix + (unseparated ? "/" : "") + suffix);
             }
         }
         return combined;
