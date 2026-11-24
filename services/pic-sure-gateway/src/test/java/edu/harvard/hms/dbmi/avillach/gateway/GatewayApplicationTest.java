@@ -8,6 +8,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
 import org.springframework.security.core.userdetails.UserDetailsService;
 
+import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitStore;
+
 @SpringBootTest
 class GatewayApplicationTest {
 
@@ -17,6 +19,16 @@ class GatewayApplicationTest {
     @Test
     void contextLoads() {
         assertThat(context).isNotNull();
+    }
+
+    /**
+     * Bucket4j on the classpath activates Spring Cloud Gateway's own {@code Bucket4jFilterConfiguration}. No route uses its
+     * {@code RateLimit} filter (the limiter is our own filters over {@link RateLimitStore}), but the context must still start with it.
+     */
+    @Test
+    void startsWithBucket4jOnTheClasspath() {
+        assertThat(context.containsBean("bucket4jFilterFunctionsSupplier")).isTrue();
+        assertThat(context.getBeanNamesForType(RateLimitStore.class)).hasSize(1);
     }
 
     /**
