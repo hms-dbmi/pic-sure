@@ -10,6 +10,10 @@ public record OpenAccessValidation(
     boolean valid, String keyType, String keyId, String displayPrefix, String denial, String refreshedToken
 ) {
 
+    public static final String KEY_TYPE_USER = "USER";
+    public static final String KEY_TYPE_PLATFORM = "PLATFORM";
+    public static final String KEY_TYPE_SESSION = "SESSION";
+
     public static final String DENIAL_KEY_MISSING = "key_missing";
     public static final String DENIAL_KEY_INVALID = "key_invalid";
     public static final String DENIAL_RULES = "rules";
