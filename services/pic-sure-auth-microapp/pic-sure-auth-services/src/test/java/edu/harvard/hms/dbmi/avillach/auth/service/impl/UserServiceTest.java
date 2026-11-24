@@ -10,6 +10,7 @@ import edu.harvard.hms.dbmi.avillach.auth.model.fenceMapping.StudyMetaData;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
+import edu.harvard.hms.dbmi.avillach.auth.repository.UserTestProfileRepository;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
@@ -68,6 +69,8 @@ public class UserServiceTest {
     @Mock
     private UserConsentsRepository userConsentsRepository;
     @Mock
+    private UserTestProfileRepository userTestProfileRepository;
+    @Mock
     private FenceMappingUtility fenceMappingUtility;
 
     @AfterEach
@@ -82,7 +85,7 @@ public class UserServiceTest {
 
         jwtUtil = new JWTUtil(generate256Base64Secret(), true);
         userService = new UserService(
-            basicMailService, tosService, userRepository, connectionRepository, roleService, userConsentsRepository, fenceMappingUtility,
+            basicMailService, tosService, userRepository, connectionRepository, roleService, userConsentsRepository, userTestProfileRepository, fenceMappingUtility,
             defaultTokenExpirationTime, longTermTokenExpirationTime, mockJwtUtil, "ADMIN,SUPER_ADMIN", null, sessionService
         );
     }
@@ -531,6 +534,59 @@ public class UserServiceTest {
         ArgumentCaptor<UserConsents> userConsentsCaptor = ArgumentCaptor.forClass(UserConsents.class);
         verify(userConsentsRepository).save(userConsentsCaptor.capture());
         assertEquals(Map.of("\\_consents\\", Set.of("phs1234.c1")), userConsentsCaptor.getValue().getConsents());
+    }
+
+    @Test
+    public void updateUserConsents_enabledTestProfile_replacesPassportConsents() {
+        when(fenceMappingUtility.getFENCEMapping()).thenReturn(Map.of(
+            "phs1234.c1", new StudyMetaData().setHarmonized(false).setDataType("P"),
+            "phs456.c2", new StudyMetaData().setHarmonized(false).setDataType("P")
+        ));
+        User user = createTestUser();
+        TestProfile profile = new TestProfile().setName("profile").setConsents(Set.of("phs456.c2"));
+        when(userTestProfileRepository.findByUserId(user.getUuid())).thenReturn(new UserTestProfile().setTestProfile(profile));
+
+        userService.updateUserConsents(user, Set.of("phs1234.c1"));
+
+        ArgumentCaptor<UserConsents> userConsentsCaptor = ArgumentCaptor.forClass(UserConsents.class);
+        verify(userConsentsRepository).save(userConsentsCaptor.capture());
+        assertEquals(Map.of("\\_consents\\", Set.of("phs456.c2")), userConsentsCaptor.getValue().getConsents());
+    }
+
+    @Test
+    public void updateUserConsents_disabledTestProfile_usesPassportConsents() {
+        when(fenceMappingUtility.getFENCEMapping()).thenReturn(Map.of(
+            "phs1234.c1", new StudyMetaData().setHarmonized(false).setDataType("P"),
+            "phs456.c2", new StudyMetaData().setHarmonized(false).setDataType("P")
+        ));
+        User user = createTestUser();
+        TestProfile profile = new TestProfile().setName("profile").setConsents(Set.of("phs456.c2"));
+        when(userTestProfileRepository.findByUserId(user.getUuid())).thenReturn(new UserTestProfile().setTestProfile(profile).setEnabled(false));
+
+        userService.updateUserConsents(user, Set.of("phs1234.c1"));
+
+        ArgumentCaptor<UserConsents> userConsentsCaptor = ArgumentCaptor.forClass(UserConsents.class);
+        verify(userConsentsRepository).save(userConsentsCaptor.capture());
+        assertEquals(Map.of("\\_consents\\", Set.of("phs1234.c1")), userConsentsCaptor.getValue().getConsents());
+    }
+
+    @Test
+    public void updateUserConsents_testProfile_derivesHarmonizedAndTopmedConsents() {
+        when(fenceMappingUtility.getFENCEMapping()).thenReturn(Map.of("phs456.c2", new StudyMetaData().setHarmonized(true).setDataType("G")));
+        User user = createTestUser();
+        TestProfile profile = new TestProfile().setName("profile").setConsents(Set.of("phs456.c2"));
+        when(userTestProfileRepository.findByUserId(user.getUuid())).thenReturn(new UserTestProfile().setTestProfile(profile));
+
+        userService.updateUserConsents(user, Set.of());
+
+        ArgumentCaptor<UserConsents> userConsentsCaptor = ArgumentCaptor.forClass(UserConsents.class);
+        verify(userConsentsRepository).save(userConsentsCaptor.capture());
+        assertEquals(
+            Map.of(
+                "\\_consents\\", Set.of("phs456.c2"), "\\_harmonized_consent\\", Set.of("phs456.c2"), "\\_topmed_consents\\",
+                Set.of("phs456.c2")
+            ), userConsentsCaptor.getValue().getConsents()
+        );
     }
 
     @Test

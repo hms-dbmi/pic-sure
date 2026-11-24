@@ -7,6 +7,7 @@ import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.hms.dbmi.avillach.auth.entity.UserClaims;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
+import edu.harvard.hms.dbmi.avillach.auth.repository.UserTestProfileRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
@@ -43,7 +44,7 @@ class UserServiceClaimsLoggingTest {
         TOSService tosService = mock(TOSService.class);
         userService = new UserService(
             mock(BasicMailService.class), tosService, mock(UserRepository.class), mock(ConnectionRepository.class), mock(RoleService.class),
-            mock(UserConsentsRepository.class), mock(FenceMappingUtility.class), 3600000L, 2592000000L, mock(JWTUtil.class),
+            mock(UserConsentsRepository.class), mock(UserTestProfileRepository.class), mock(FenceMappingUtility.class), 3600000L, 2592000000L, mock(JWTUtil.class),
             "ADMIN,SUPER_ADMIN", mock(LoggingClient.class), mock(SessionService.class)
         );
 

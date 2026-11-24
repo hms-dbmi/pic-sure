@@ -51,7 +51,7 @@ class RASSessionLogoutConcurrencyTest {
     void concurrentLoginsKeepPassportAndSessionTogetherAndOldLogoutCannotClearTheReplacement() throws Exception {
         SessionService sessions = new SessionService(8 * 60 * 60 * 1000, new ConcurrentMapCacheManager("sessions"), null);
         JWTUtil jwt = new JWTUtil("a-test-client-secret-long-enough-for-hmac-sha-256", false);
-        UserService users = spy(new UserService(null, mock(TOSService.class), null, null, null, null, null,
+        UserService users = spy(new UserService(null, mock(TOSService.class), null, null, null, null, null, null,
             60_000, 60_000, jwt, "", null, sessions));
         CacheEvictionService eviction = new CacheEvictionService(sessions, mock(AccessRuleService.class));
         Connection connection = new Connection();

@@ -39,6 +39,7 @@ import edu.harvard.hms.dbmi.avillach.auth.model.request.UserCreateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.UserUpdateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
+import edu.harvard.hms.dbmi.avillach.auth.repository.UserTestProfileRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
@@ -56,7 +57,7 @@ class UserServiceOverPostingTest {
     private final RoleService roleService = mock(RoleService.class);
     private final UserService userService = new UserService(
         mock(BasicMailService.class), mock(TOSService.class), userRepository, connectionRepository, roleService,
-        mock(UserConsentsRepository.class), mock(FenceMappingUtility.class), 3600000L, 2592000000L, mock(JWTUtil.class),
+        mock(UserConsentsRepository.class), mock(UserTestProfileRepository.class), mock(FenceMappingUtility.class), 3600000L, 2592000000L, mock(JWTUtil.class),
         "ADMIN,SUPER_ADMIN", mock(LoggingClient.class), mock(SessionService.class)
     );
 

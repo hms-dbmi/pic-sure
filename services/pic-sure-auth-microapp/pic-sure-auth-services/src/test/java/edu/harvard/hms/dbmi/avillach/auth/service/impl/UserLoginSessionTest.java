@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 import edu.harvard.hms.dbmi.avillach.auth.entity.UserClaims;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
+import edu.harvard.hms.dbmi.avillach.auth.repository.UserTestProfileRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
@@ -70,7 +71,7 @@ class UserLoginSessionTest {
     private UserService users(JWTUtil signer) {
         return new UserService(mock(BasicMailService.class), tos, mock(UserRepository.class),
             mock(ConnectionRepository.class), mock(RoleService.class), mock(UserConsentsRepository.class),
-            mock(FenceMappingUtility.class), 3_600_000, 86_400_000, signer, "ADMIN", null, sessions);
+            mock(UserTestProfileRepository.class), mock(FenceMappingUtility.class), 3_600_000, 86_400_000, signer, "ADMIN", null, sessions);
     }
 
     private UserClaims claims() {
