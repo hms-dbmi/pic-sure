@@ -20,6 +20,8 @@ import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.audit.ClientTypeAllowlist;
+import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
+import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitProperties;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.AuditFilterConfig;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter;
 import jakarta.servlet.Filter;
@@ -43,8 +45,14 @@ class ClientTypeAgreementTest {
         when(logging.isEnabled()).thenReturn(true);
         AuditContext audit = new AuditContext();
         AuditFilterConfig auditConfig = new AuditFilterConfig();
-        Filter auditFilter =
-            auditConfig.auditLoggingFilter(logging, auditConfig.auditRouteTable(), audit, ClientTypeAllowlist.DEFAULT).getFilter();
+        RateLimitProperties rateLimitOff = new RateLimitProperties(
+            false, new RateLimitProperties.KeyLimits(60, 3000), new RateLimitProperties.KeyLimits(60, 3000),
+            new RateLimitProperties.IpLimits(60, 3000, 300), new RateLimitProperties.Store(1000), List.of(), List.of()
+        );
+        Filter auditFilter = auditConfig
+            .auditLoggingFilter(
+                logging, auditConfig.auditRouteTable(), audit, ClientTypeAllowlist.DEFAULT, rateLimitOff, new ClientIpResolver(List.of())
+            ).getFilter();
         Filter sanitizer = new ObservabilityConfig().inboundIdentityHeaderSanitizingFilter(ClientTypeAllowlist.DEFAULT).getFilter();
         HttpServlet downstream = new HttpServlet() {
             @Override

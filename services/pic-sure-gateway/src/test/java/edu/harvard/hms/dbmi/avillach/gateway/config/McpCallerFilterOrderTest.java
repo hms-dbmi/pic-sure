@@ -26,11 +26,13 @@ import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.audit.VerifiedCaller;
+import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionResponse;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.AuditFilterConfig;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.McpCallerFilter;
+import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitProperties;
 import jakarta.servlet.Filter;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
@@ -65,6 +67,18 @@ class McpCallerFilterOrderTest {
             security.introspectionFilter(psama, audit, noPublicRoutes),
             security.openAccessFilter(psama, audit, security.openAccessRequests(props(openAccessEnabled), noPublicRoutes)),
             mcpRegistration(), observability.internalEndpointGuardFilter()
+        );
+    }
+
+    /** The real audit registration, with rate limiting off and no trusted proxies so {@code srcIp} keeps the base filter's rule. */
+    private FilterRegistrationBean<?> auditRegistration(LoggingClient logging) {
+        RateLimitProperties rateLimitOff = new RateLimitProperties(
+            false, new RateLimitProperties.KeyLimits(60, 3000), new RateLimitProperties.KeyLimits(60, 3000),
+            new RateLimitProperties.IpLimits(60, 3000, 300), new RateLimitProperties.Store(1000), List.of(), List.of()
+        );
+        AuditFilterConfig auditConfig = new AuditFilterConfig();
+        return auditConfig.auditLoggingFilter(
+            logging, auditConfig.auditRouteTable(), audit, ClientTypeAllowlist.DEFAULT, rateLimitOff, new ClientIpResolver(List.of())
         );
     }
 
@@ -161,9 +175,7 @@ class McpCallerFilterOrderTest {
     void auditedCallerComesFromTheVerifiedAttributeNotTheClaimedHeader() throws Exception {
         LoggingClient logging = mock(LoggingClient.class);
         when(logging.isEnabled()).thenReturn(true);
-        AuditFilterConfig auditConfig = new AuditFilterConfig();
-        FilterRegistrationBean<?> auditRegistration =
-            auditConfig.auditLoggingFilter(logging, auditConfig.auditRouteTable(), audit, ClientTypeAllowlist.DEFAULT);
+        FilterRegistrationBean<?> auditRegistration = auditRegistration(logging);
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/mcp");
         request.addHeader("X-Client-Type", "PYTHON_ADAPTER");
 
@@ -180,9 +192,7 @@ class McpCallerFilterOrderTest {
     void unverifiedAdapterRequestIsAuditedWithItsClaimedClientTypeAsCaller() throws Exception {
         LoggingClient logging = mock(LoggingClient.class);
         when(logging.isEnabled()).thenReturn(true);
-        AuditFilterConfig auditConfig = new AuditFilterConfig();
-        FilterRegistrationBean<?> auditRegistration =
-            auditConfig.auditLoggingFilter(logging, auditConfig.auditRouteTable(), audit, ClientTypeAllowlist.DEFAULT);
+        FilterRegistrationBean<?> auditRegistration = auditRegistration(logging);
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
         request.addHeader("X-Client-Type", "PYTHON_ADAPTER");
 
@@ -198,9 +208,7 @@ class McpCallerFilterOrderTest {
     void rejectedCredentialIsAuditedAsAFailureWithoutTheTokenValue() throws Exception {
         LoggingClient logging = mock(LoggingClient.class);
         when(logging.isEnabled()).thenReturn(true);
-        AuditFilterConfig auditConfig = new AuditFilterConfig();
-        FilterRegistrationBean<?> auditRegistration =
-            auditConfig.auditLoggingFilter(logging, auditConfig.auditRouteTable(), audit, ClientTypeAllowlist.DEFAULT);
+        FilterRegistrationBean<?> auditRegistration = auditRegistration(logging);
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
         request.addHeader(McpCallerFilter.TOKEN_HEADER, "leaked-looking-value");
 

@@ -29,14 +29,15 @@ import jakarta.servlet.http.HttpServletResponse;
  * {@link GatewayUserResolver#HEADER_ACCESS_TYPE}, the spoofable source-address headers {@code X-Real-IP} and {@code Forwarded}, and the
  * service-to-service {@code X-PIC-SURE-INTERNAL-TOKEN} (a client-presented internal token must never transit the gateway) from every
  * inbound CLIENT request before anything downstream -- routing, the auth chain, or proxied services -- can ever see a client-supplied
- * value. <p> {@code X-Forwarded-For} is deliberately NOT stripped: the trusted front proxy legitimately appends to it, and consumers
- * ({@code AuditLoggingFilter}) take the RIGHTMOST entry -- the nearest trusted hop -- rather than the client-forgeable leftmost one.
- * {@code X-Session-Id} and {@code request-source} are deliberately left unstripped as client telemetry. {@code X-Client-Type} must be
- * absent, blank, or a single header line holding exactly one value on the {@link ClientTypeAllowlist}; a repeated header, a comma-separated
- * list, or any other value is rejected with 400 {@code unexpected_caller_type} before it reaches a proxied service. An accepted value is
- * rewritten to its listed spelling. The reserved values {@code service} and {@code mcp}, which downstream services use to identify internal
- * calls, are never on the list, so a client cannot present them; the one exception is {@code mcp} on a request {@link McpCallerFilter} has
- * verified. Reserved values are still hidden from the wrapped request, because only
+ * value. <p> {@code X-Forwarded-For} is deliberately NOT stripped: the trusted front proxies legitimately append to it, and the gateway
+ * reads it through {@code ClientIpResolver}, which honours it from trusted proxies alone and takes the rightmost untrusted hop. Audit
+ * {@code srcIp} uses the rightmost entry when no trusted proxies are configured or resolution fails. Neither reads the client-forgeable
+ * leftmost one. {@code X-Session-Id} and {@code request-source} are deliberately left unstripped as client telemetry. {@code X-Client-Type}
+ * must be absent, blank, or a single header line holding exactly one value on the {@link ClientTypeAllowlist}; a repeated header, a
+ * comma-separated list, or any other value is rejected with 400 {@code unexpected_caller_type} before it reaches a proxied service. An
+ * accepted value is rewritten to its listed spelling. The reserved values {@code service} and {@code mcp}, which downstream services use to
+ * identify internal calls, are never on the list, so a client cannot present them; the one exception is {@code mcp} on a request
+ * {@link McpCallerFilter} has verified. Reserved values are still hidden from the wrapped request, because only
  * {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} may set {@code mcp}, and only for a verified caller. <p>
  * {@value McpCallerFilter#TOKEN_HEADER} is always stripped, so the MCP service secret never reaches a proxied service. An
  * {@code Authorization} header carrying a PSAMA key ({@link ApiKeyBearer}) is stripped from every request except one whose decoded

@@ -60,20 +60,28 @@ class AuditFilterOrderTest {
     private static final RateLimitStore ALWAYS_BREACHED = subject -> new RateLimitDecision(false, RateLimitDecision.Window.BURST, 30);
 
     static FilterRegistrationBean<?> throttleRegistration(GatewaySecurityProperties props, RateLimitStore store) {
-        RateLimitProperties rateLimit = new RateLimitProperties(
-            true, new RateLimitProperties.KeyLimits(60, 3000), new RateLimitProperties.KeyLimits(60, 3000),
-            new RateLimitProperties.IpLimits(60, 3000, 300), new RateLimitProperties.Store(1000), List.of(CidrRange.parse("192.0.2.10/32")),
-            List.of()
-        );
+        return throttleRegistration(props, store, new AuditContext());
+    }
+
+    static FilterRegistrationBean<?> throttleRegistration(GatewaySecurityProperties props, RateLimitStore store, AuditContext audit) {
         SecurityConfig security = new SecurityConfig();
         return security.prevalidationThrottleFilter(
-            security.openAccessRequests(props, new PublicEndpointPolicy(List.of())), rateLimit, new ClientIpResolver(List.of()), store
+            security.openAccessRequests(props, new PublicEndpointPolicy(List.of())), rateLimit(), new ClientIpResolver(List.of()), store,
+            audit
         );
     }
 
     static FilterRegistrationBean<?> openAccessRegistration(PsamaClient psama, AuditContext audit, GatewaySecurityProperties props) {
         SecurityConfig security = new SecurityConfig();
         return security.openAccessFilter(psama, audit, security.openAccessRequests(props, new PublicEndpointPolicy(List.of())));
+    }
+
+    private static RateLimitProperties rateLimit() {
+        return new RateLimitProperties(
+            true, new RateLimitProperties.KeyLimits(60, 3000), new RateLimitProperties.KeyLimits(60, 3000),
+            new RateLimitProperties.IpLimits(60, 3000, 300), new RateLimitProperties.Store(1000), List.of(CidrRange.parse("192.0.2.10/32")),
+            List.of()
+        );
     }
 
     private static LoggingClient enabledLoggingClient() {
@@ -84,7 +92,11 @@ class AuditFilterOrderTest {
 
     private static FilterRegistrationBean<?> auditRegistration(LoggingClient client, AuditContext audit) {
         AuditFilterConfig config = new AuditFilterConfig();
-        return config.auditLoggingFilter(client, config.auditRouteTable(), audit, ClientTypeAllowlist.DEFAULT);
+        RateLimitProperties rateLimit = rateLimit();
+        return config.auditLoggingFilter(
+            client, config.auditRouteTable(), audit, ClientTypeAllowlist.DEFAULT, rateLimit,
+            new ClientIpResolver(rateLimit.trustedProxies())
+        );
     }
 
     @Test
@@ -118,8 +130,9 @@ class AuditFilterOrderTest {
         FilterRegistrationBean<?> openAccess = openAccessRegistration(psama, audit, props(true));
 
         MockHttpServletResponse response = new MockHttpServletResponse();
-        containerOrderedChain(List.of(openAccess, throttleRegistration(props(true), ALWAYS_BREACHED), auditRegistration(logging, audit)))
-            .doFilter(new MockHttpServletRequest("POST", "/query/sync"), response);
+        containerOrderedChain(
+            List.of(openAccess, throttleRegistration(props(true), ALWAYS_BREACHED, audit), auditRegistration(logging, audit))
+        ).doFilter(new MockHttpServletRequest("POST", "/query/sync"), response);
 
         assertThat(response.getStatus()).isEqualTo(429);
         verifyNoInteractions(psama);
@@ -160,7 +173,9 @@ class AuditFilterOrderTest {
         assertThat(auditOrder).isLessThan(security.bufferingFilter(props(true), new SimpleMeterRegistry()).getOrder())
             .isLessThan(throttleRegistration(props(true), ALWAYS_BREACHED).getOrder())
             .isLessThan(openAccessRegistration(mock(PsamaClient.class), audit, props(true)).getOrder())
-            .isLessThan(security.introspectionFilter(mock(PsamaClient.class), audit, new PublicEndpointPolicy(List.of())).getOrder());
+            .isLessThan(security.introspectionFilter(mock(PsamaClient.class), audit, new PublicEndpointPolicy(List.of())).getOrder())
+            .isLessThan(new ObservabilityConfig().internalEndpointGuardFilter().getOrder())
+            .isLessThan(security.perKeyRateLimitFilter(rateLimit(), new ClientIpResolver(List.of()), ALWAYS_BREACHED, audit).getOrder());
 
         // Spring Security's chain can reject before any gateway filter runs (401/403), so audit must wrap it too.
         assertThat(auditOrder).isLessThan(SecurityProperties.DEFAULT_FILTER_ORDER);

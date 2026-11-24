@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.gateway.filter;
 
 import java.util.List;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -12,6 +13,11 @@ import edu.harvard.hms.dbmi.avillach.commons.audit.AuditLoggingFilter;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditRoute;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditRouteTable;
 import edu.harvard.hms.dbmi.avillach.commons.audit.ClientTypeAllowlist;
+import edu.harvard.hms.dbmi.avillach.commons.net.ClientIp;
+import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
+import edu.harvard.hms.dbmi.avillach.commons.net.UnresolvablePeerException;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.ApiKeyBearer;
+import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitProperties;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingClientFactory;
 
@@ -62,13 +68,24 @@ public class AuditFilterConfig {
 
     @Bean
     public FilterRegistrationBean<AuditLoggingFilter> auditLoggingFilter(
-        LoggingClient client, AuditRouteTable routes, AuditContext audit, ClientTypeAllowlist clientTypes
+        LoggingClient client, AuditRouteTable routes, AuditContext audit, ClientTypeAllowlist clientTypes, RateLimitProperties rateLimit,
+        ClientIpResolver clientIps
     ) {
         // The base filter skips paths ending in /system/status or /openapi.json and paths containing /info/,
         // /bin/continuous, or /logging. Gateway-local actuator and API-documentation paths are also skipped.
-        AuditLoggingFilter filter = new AuditLoggingFilter(
-            client, routes, audit, List.of("/info/", "/bin/continuous", "/logging", "/actuator", "/openapi", "/swagger-ui"), clientTypes
-        );
+        List<String> skipContains = List.of("/info/", "/bin/continuous", "/logging", "/actuator", "/openapi", "/swagger-ui");
+        Predicate<String> forwardAuthorization = authorization -> ApiKeyBearer.extract(authorization) == null;
+        AuditLoggingFilter filter = rateLimit.trustedProxies().isEmpty()
+            ? new AuditLoggingFilter(client, routes, audit, skipContains, clientTypes, forwardAuthorization)
+            : new AuditLoggingFilter(client, routes, audit, skipContains, clientTypes, forwardAuthorization, request -> {
+                ClientIp ip;
+                try {
+                    ip = clientIps.resolve(request);
+                } catch (UnresolvablePeerException e) {
+                    return request.getRemoteAddr();
+                }
+                return ip.resolutionFailed() ? AuditLoggingFilter.resolveSourceIp(request) : ip.address().getHostAddress();
+            });
         var registration = new FilterRegistrationBean<>(filter);
         registration.setOrder(AUDIT_FILTER_ORDER);
         registration.addUrlPatterns("/*");

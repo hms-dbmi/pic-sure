@@ -164,7 +164,7 @@ class PerKeyRateLimitFilterTest {
         );
         return new Gateway(
             new OpenAccessFilter(client, new AuditContext(), new OpenAccessRequests(true, publicEndpoints)),
-            new PerKeyRateLimitFilter(props, resolver, recording)
+            new PerKeyRateLimitFilter(props, resolver, recording, new AuditContext())
         );
     }
 

@@ -113,7 +113,7 @@ class PrevalidationThrottleFilterTest {
         );
         OpenAccessRequests openAccessRequests = new OpenAccessRequests(openAccessEnabled, publicEndpoints);
         return new Gateway(
-            new PrevalidationThrottleFilter(props, openAccessRequests, resolver, recording),
+            new PrevalidationThrottleFilter(props, openAccessRequests, resolver, recording, new AuditContext()),
             new OpenAccessFilter(client, new AuditContext(), openAccessRequests)
         );
     }

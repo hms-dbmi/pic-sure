@@ -1,9 +1,13 @@
 package edu.harvard.hms.dbmi.avillach.commons.audit;
 
 import java.io.IOException;
+import java.util.Enumeration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
+import java.util.function.Predicate;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,12 +26,16 @@ import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * Base {@link OncePerRequestFilter} that maps each non-skipped request to an {@link AuditRoute} and emits an audit event through the
- * {@link LoggingClient}. Both the skip check and route matching use {@link RoutedRequestPath}, the decoded path a path-pattern router
+ * {@link LoggingClient}. Both the event-skip check and route matching use {@link RoutedRequestPath}, the decoded path a path-pattern router
  * matches, so an encoded spelling of a path is skipped or gets the same event type and action exactly as its plain spelling does; the
- * event's {@code url} stays the raw request URI. {@code shouldNotFilter} is deliberately {@code protected} and non-final so gateway
- * subclasses can widen the skip set for pass-through paths.
+ * event's {@code url} stays the raw request URI. Requests {@link #skipsEvent} matches still run inside the filter and emit nothing, unless
+ * the chain marks them with {@link #AUDIT_REQUIRED_ATTRIBUTE}; subclasses widen that skip set by overriding {@code skipsEvent}. Overriding
+ * the protected, non-final {@code shouldNotFilter} bypasses the filter outright, so such requests are never audited, marked or not.
  */
 public class AuditLoggingFilter extends OncePerRequestFilter {
+
+    /** Request attribute that, when {@link Boolean#TRUE}, forces an event for a path or method this filter otherwise skips. */
+    public static final String AUDIT_REQUIRED_ATTRIBUTE = AuditLoggingFilter.class.getName() + ".required";
 
     private static final Logger logger = LoggerFactory.getLogger(AuditLoggingFilter.class);
 
@@ -36,6 +44,8 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     private final AuditContext audit;
     private final List<String> skipContains;
     private final ClientTypeAllowlist clientTypes;
+    private final Predicate<String> forwardAuthorization;
+    private final Function<HttpServletRequest, String> sourceIp;
 
     /**
      * Creates a filter that records the client-supplied {@code X-Client-Type} header as the audit event's {@code caller}.
@@ -64,18 +74,46 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     public AuditLoggingFilter(
         LoggingClient client, AuditRouteTable routes, AuditContext audit, List<String> skipContains, ClientTypeAllowlist clientTypes
     ) {
+        this(client, routes, audit, skipContains, clientTypes, authorization -> true);
+    }
+
+    /**
+     * @param clientTypes as for the five-argument constructor
+     * @param forwardAuthorization whether a request's {@code Authorization} value is passed on to the logging service, which reads user
+     *        claims from it; a rejected value is dropped and the event is sent without one
+     */
+    public AuditLoggingFilter(
+        LoggingClient client, AuditRouteTable routes, AuditContext audit, List<String> skipContains, ClientTypeAllowlist clientTypes,
+        Predicate<String> forwardAuthorization
+    ) {
+        this(client, routes, audit, skipContains, clientTypes, forwardAuthorization, AuditLoggingFilter::resolveSourceIp);
+    }
+
+    /**
+     * @param clientTypes as above
+     * @param forwardAuthorization as above
+     * @param sourceIp the client address recorded as the event's {@code srcIp}, which also seeds the fallback session id
+     */
+    public AuditLoggingFilter(
+        LoggingClient client, AuditRouteTable routes, AuditContext audit, List<String> skipContains, ClientTypeAllowlist clientTypes,
+        Predicate<String> forwardAuthorization, Function<HttpServletRequest, String> sourceIp
+    ) {
         this.client = client;
         this.routes = routes;
         this.audit = audit;
         this.skipContains = skipContains != null ? List.copyOf(skipContains) : List.of();
         this.clientTypes = clientTypes;
+        this.forwardAuthorization = Objects.requireNonNull(forwardAuthorization, "forwardAuthorization");
+        this.sourceIp = Objects.requireNonNull(sourceIp, "sourceIp");
     }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        if (client == null || !client.isEnabled()) {
-            return true;
-        }
+        return client == null || !client.isEnabled();
+    }
+
+    /** Whether the request's event is dropped unless {@link #AUDIT_REQUIRED_ATTRIBUTE} is set. */
+    protected boolean skipsEvent(HttpServletRequest request) {
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
             return true;
         }
@@ -102,10 +140,12 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
         try {
             filterChain.doFilter(request, response);
         } finally {
-            try {
-                emit(request, response, System.currentTimeMillis() - startTime);
-            } catch (Exception e) {
-                logger.warn("AuditLoggingFilter failed to log request", e);
+            if (!skipsEvent(request) || Boolean.TRUE.equals(request.getAttribute(AUDIT_REQUIRED_ATTRIBUTE))) {
+                try {
+                    emit(request, response, System.currentTimeMillis() - startTime);
+                } catch (Exception e) {
+                    logger.warn("AuditLoggingFilter failed to log request", e);
+                }
             }
         }
     }
@@ -123,7 +163,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
             requestId = MDC.get("requestId");
         }
 
-        String srcIp = resolveSourceIp(request);
+        String srcIp = sourceIp.apply(request);
         String userAgent = request.getHeader("User-Agent");
         String sessionId = SessionIdResolver.resolve(request.getHeader("X-Session-Id"), srcIp, userAgent);
 
@@ -166,6 +206,9 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
         LoggingEvent event = eventBuilder.build();
 
         String authHeader = request.getHeader("Authorization");
+        if (authHeader != null && !forwardAuthorization.test(authHeader)) {
+            authHeader = null;
+        }
         if (authHeader != null || requestId != null) {
             client.send(event, authHeader, requestId);
         } else {
@@ -176,13 +219,21 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     /**
      * Takes the RIGHTMOST X-Forwarded-For entry, not the leftmost: clients can send an arbitrary XFF header of their own, and the trusted
      * front proxy (AIO httpd) APPENDS the address it saw -- so the rightmost entry is the nearest trusted hop and cannot be client-forged,
-     * while the leftmost is whatever the client chose to send.
+     * while the leftmost is whatever the client chose to send. A repeated header is read from its last line, which holds that entry. A
+     * blank rightmost entry, or a header of only commas, falls back to the connection peer, so a malformed header never drops the event.
+     * The default {@code srcIp} source.
      */
-    private String resolveSourceIp(HttpServletRequest request) {
-        String forwardedFor = request.getHeader("X-Forwarded-For");
-        if (forwardedFor != null && !forwardedFor.isBlank()) {
-            String[] hops = forwardedFor.split(",");
-            return hops[hops.length - 1].trim();
+    public static String resolveSourceIp(HttpServletRequest request) {
+        String forwardedFor = null;
+        Enumeration<String> lines = request.getHeaders("X-Forwarded-For");
+        while (lines != null && lines.hasMoreElements()) {
+            forwardedFor = lines.nextElement();
+        }
+        if (forwardedFor != null) {
+            String[] hops = forwardedFor.split(",", -1);
+            if (hops.length > 0 && !hops[hops.length - 1].isBlank()) {
+                return hops[hops.length - 1].trim();
+            }
         }
         return request.getRemoteAddr();
     }
