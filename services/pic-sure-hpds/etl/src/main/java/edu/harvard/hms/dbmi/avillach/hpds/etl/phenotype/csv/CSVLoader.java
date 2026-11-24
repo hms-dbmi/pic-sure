@@ -38,6 +38,14 @@ public class CSVLoader {
 
     private static final int DATETIME = 4;
 
+    private static final String ALL_CONCEPTS_SUFFIX = "-allConcepts.csv";
+
+    /**
+     * When true, a concept path whose last segment equals the row's text value drops that segment (for example "\var\Yes\" with the text
+     * value "Yes" becomes "\var\"). Off by default; start the JVM with -Dhpds.csvloader.rollUpVarNames=true to turn it on.
+     */
+    private static final boolean ROLL_UP_VAR_NAMES = Boolean.getBoolean("hpds.csvloader.rollUpVarNames");
+
     private LoadingStore store;
     private Path partitionDirectory;
     private Path allConceptsPath;
@@ -58,7 +66,7 @@ public class CSVLoader {
 
             for (Path allConceptFile : allConceptFiles) {
                 String fileName = allConceptFile.getFileName().toString();
-                String partitionName = fileName.split("-")[0];
+                String partitionName = partitionNameFor(fileName);
 
                 Path partitionDirectory = allConceptFile.getParent().resolve(partitionName);
                 Files.createDirectories(partitionDirectory);
@@ -71,6 +79,29 @@ public class CSVLoader {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    /**
+     * The partition is the file name without the "-allConcepts.csv" suffix, so consent values that contain "-" (for example
+     * "tutorial-biolincc_camp") keep their full name. Other names fall back to the text before the first "-".
+     */
+    static String partitionNameFor(String fileName) {
+        if (fileName.endsWith(ALL_CONCEPTS_SUFFIX) && fileName.length() > ALL_CONCEPTS_SUFFIX.length()) {
+            return fileName.substring(0, fileName.length() - ALL_CONCEPTS_SUFFIX.length());
+        }
+        return fileName.split("-")[0];
+    }
+
+    /**
+     * Returns the concept path to store for a row. With rollUp off the path is returned unchanged. With rollUp on, a path that ends with
+     * the row's text value as its last segment loses that segment, so "\var\Yes\" with the text value "Yes" becomes "\var\".
+     */
+    static String conceptPathFor(String conceptPathFromRow, String textValue, boolean rollUp) {
+        if (!rollUp) {
+            return conceptPathFromRow;
+        }
+        return conceptPathFromRow.endsWith("\\" + textValue + "\\") ? conceptPathFromRow.replaceAll("\\\\[^\\\\]*\\\\$", "\\\\")
+            : conceptPathFromRow;
     }
 
     public CSVLoader(Path allConceptsPath, Path partitionDirectory) {
@@ -118,18 +149,9 @@ public class CSVLoader {
             if (textValueFromRow != null) {
                 textValueFromRow = textValueFromRow.replaceAll("\\ufffd", "");
             }
-            String conceptPath =
-                conceptPathFromRow.endsWith("\\" + textValueFromRow + "\\") ? conceptPathFromRow.replaceAll("\\\\[^\\\\]*\\\\$", "\\\\")
-                    : conceptPathFromRow;
+            String conceptPath = conceptPathFor(conceptPathFromRow, textValueFromRow, ROLL_UP_VAR_NAMES);
             // This is not getDouble because we need to handle null values, not coerce them into 0s
             String numericValue = record.get(NUMERIC_VALUE);
-            if ((numericValue == null || numericValue.isEmpty()) && textValueFromRow != null) {
-                try {
-                    numericValue = Double.parseDouble(textValueFromRow) + "";
-                } catch (NumberFormatException e) {
-
-                }
-            }
             boolean isAlpha = (numericValue == null || numericValue.isEmpty());
             if (currentConcept[0] == null || !currentConcept[0].name.equals(conceptPath)) {
                 log.debug(conceptPath);

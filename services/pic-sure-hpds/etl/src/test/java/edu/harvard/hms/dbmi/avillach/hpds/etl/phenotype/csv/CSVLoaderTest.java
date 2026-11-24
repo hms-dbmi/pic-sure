@@ -1,0 +1,78 @@
+package edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.csv;
+
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.FileInputStream;
+import java.io.ObjectInputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.TreeMap;
+import java.util.zip.GZIPInputStream;
+
+class CSVLoaderTest {
+
+    @Test
+    void shouldStripSuffixFromStudyConsent() {
+        Assertions.assertEquals("phs000000.c1", CSVLoader.partitionNameFor("phs000000.c1-allConcepts.csv"));
+    }
+
+    @Test
+    void shouldKeepHyphenatedConsent() {
+        Assertions.assertEquals("tutorial-biolincc_camp", CSVLoader.partitionNameFor("tutorial-biolincc_camp-allConcepts.csv"));
+        Assertions.assertEquals("open_access-1000Genomes", CSVLoader.partitionNameFor("open_access-1000Genomes-allConcepts.csv"));
+    }
+
+    @Test
+    void shouldFallBackToTextBeforeFirstHyphenWithoutSuffix() {
+        Assertions.assertEquals("phs999999.c2", CSVLoader.partitionNameFor("phs999999.c2-other_allConcepts.csv"));
+        Assertions.assertEquals("allConcepts.csv", CSVLoader.partitionNameFor("allConcepts.csv"));
+    }
+
+    @Test
+    void shouldKeepLegacyNameForBareSuffix() {
+        Assertions.assertEquals("", CSVLoader.partitionNameFor("-allConcepts.csv"));
+    }
+
+    @Test
+    void shouldKeepConceptPathWhenRollUpIsOff() {
+        Assertions.assertEquals("\\phs000000\\var\\Yes\\", CSVLoader.conceptPathFor("\\phs000000\\var\\Yes\\", "Yes", false));
+    }
+
+    @Test
+    void shouldRollUpLastSegmentWhenItMatchesTextValue() {
+        Assertions.assertEquals("\\phs000000\\var\\", CSVLoader.conceptPathFor("\\phs000000\\var\\Yes\\", "Yes", true));
+    }
+
+    @Test
+    void shouldKeepConceptPathWhenTextValueDiffers() {
+        Assertions.assertEquals("\\phs000000\\var\\Yes\\", CSVLoader.conceptPathFor("\\phs000000\\var\\Yes\\", "No", false));
+        Assertions.assertEquals("\\phs000000\\var\\Yes\\", CSVLoader.conceptPathFor("\\phs000000\\var\\Yes\\", "No", true));
+    }
+
+    @Test
+    void shouldKeepConceptPathWhenTextValueIsNull() {
+        Assertions.assertEquals("\\phs000000\\var\\Yes\\", CSVLoader.conceptPathFor("\\phs000000\\var\\Yes\\", null, false));
+        Assertions.assertEquals("\\phs000000\\var\\Yes\\", CSVLoader.conceptPathFor("\\phs000000\\var\\Yes\\", null, true));
+    }
+
+    @Test
+    void shouldStoreNumericLookingTextValueAsText(@TempDir Path testDir) throws Exception {
+        Files.copy(Path.of("src/test/resources/test_named_encryption_key"), testDir.resolve("encryption_key"));
+        Files.writeString(testDir.resolve("phs000000.c1-allConcepts.csv"), "1,\\phs000000\\var\\,,1,1\n2,\\phs000000\\var\\,,2,1\n");
+
+        CSVLoader.main(new String[] {testDir.toString()});
+
+        try (
+            var in =
+                new ObjectInputStream(new GZIPInputStream(new FileInputStream(testDir.resolve("phs000000.c1/columnMeta.javabin").toFile())))
+        ) {
+            ColumnMeta meta = ((TreeMap<String, ColumnMeta>) in.readObject()).get("\\phs000000\\var\\");
+            Assertions.assertTrue(meta.isCategorical());
+            Assertions.assertEquals(List.of("1", "2"), meta.getCategoryValues());
+        }
+    }
+}
