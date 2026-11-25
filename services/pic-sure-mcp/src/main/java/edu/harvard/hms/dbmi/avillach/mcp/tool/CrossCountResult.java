@@ -21,18 +21,31 @@ import static io.swagger.v3.oas.annotations.media.Schema.RequiredMode.NOT_REQUIR
  * @param cells the cells kept, in the order the open channel returned them
  * @param cellsOmitted how many cells the cap dropped, when it dropped any
  * @param withheld true when no result was returned, which is how the open channel withholds small results
+ * @param note set when the channel answered with no cells, saying so in words so a caller does not read an empty list as a failure to retry
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record CrossCountResult(
     @Schema(description = "The result type that ran") String resultType,
     @Schema(description = "How many cells were returned") int totalCells, @Schema(description = "The cells kept") List<Cell> cells,
     @Schema(requiredMode = NOT_REQUIRED, description = "How many cells the cap dropped") Integer cellsOmitted,
-    @Schema(requiredMode = NOT_REQUIRED, description = WITHHELD_DESCRIPTION) Boolean withheld
+    @Schema(requiredMode = NOT_REQUIRED, description = WITHHELD_DESCRIPTION) Boolean withheld,
+    @Schema(requiredMode = NOT_REQUIRED, description = "Present when there are no cells, saying what that means") String note
 ) {
+
+    /** What an answer with no cells means: the channel ran fine, so there is nothing to retry or search for. */
+    public static final String NO_CELLS_NOTE = "The channel answered but returned no cells: this breakdown is not defined for the data "
+        + "here (for example, a deployment without study consent concepts). Report that it is not available; do not retry or search for it.";
 
     /** The schema description of {@code withheld}. An empty body is not a threshold signal, so it names no participant count. */
     public static final String WITHHELD_DESCRIPTION =
         "True when no result was returned (the open channel withholds small results), so there are no cells";
+
+    /** The concept path the open channel's total is keyed by, and the only cell it returns when it is set to answer with the total only. */
+    public static final String STUDY_CONSENTS_ROOT = "\\_studies_consents\\";
+
+    /** What a lone total cell means: this is how many participants match across all studies, and says nothing per study. */
+    public static final String TOTAL_ONLY_NOTE = "The only cell is the total across all studies. This deployment's open channel returns "
+        + "just that total, so there is no count per study or consent; do not present it as a per-study number.";
 
     /** The most cells a result carries. */
     public static final int MAX_CELLS = 100;
@@ -59,7 +72,7 @@ public record CrossCountResult(
      * @return a result with no cells and {@code withheld} true
      */
     public static CrossCountResult withheld(String resultType) {
-        return new CrossCountResult(resultType, 0, List.of(), null, true);
+        return new CrossCountResult(resultType, 0, List.of(), null, true, null);
     }
 
     /**
@@ -87,7 +100,17 @@ public record CrossCountResult(
         }
         int omitted = Math.max(all.size() - MAX_CELLS, 0);
         List<Cell> kept = omitted == 0 ? List.copyOf(all) : List.copyOf(all.subList(0, MAX_CELLS));
-        return new CrossCountResult(resultType, all.size(), kept, omitted == 0 ? null : omitted, null);
+        return new CrossCountResult(resultType, all.size(), kept, omitted == 0 ? null : omitted, null, noteFor(resultType, all));
+    }
+
+    private static String noteFor(String resultType, List<Cell> cells) {
+        if (!"CROSS_COUNT".equals(resultType)) {
+            return null;
+        }
+        if (cells.isEmpty()) {
+            return NO_CELLS_NOTE;
+        }
+        return cells.size() == 1 && STUDY_CONSENTS_ROOT.equals(cells.get(0).conceptPath()) ? TOTAL_ONLY_NOTE : null;
     }
 
     private static String display(JsonNode value) {

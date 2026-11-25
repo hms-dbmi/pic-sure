@@ -12,6 +12,8 @@ import edu.harvard.hms.dbmi.avillach.mcp.tool.CountResult;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.CountTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.CrossCountResult;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.CrossCountTool;
+import edu.harvard.hms.dbmi.avillach.mcp.tool.StudyCountsResult;
+import edu.harvard.hms.dbmi.avillach.mcp.tool.StudyCountsTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.ToolFailure;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.json.jackson.JacksonMcpJsonMapper;
@@ -56,12 +58,13 @@ public class QueryToolConfig {
      * @param crossCountTool the {@code cross_count} tool
      * @param authorizedCountTool the {@code authorized_count_participants} tool
      * @param authorizedCrossCountTool the {@code authorized_cross_count} tool
+     * @param studyCountsTool the {@code authorized_study_counts} tool
      * @return the query tool specifications
      */
     @Bean
     public List<SyncToolSpecification> queryToolSpecifications(
         CountTool countTool, CrossCountTool crossCountTool, AuthorizedCountTool authorizedCountTool,
-        AuthorizedCrossCountTool authorizedCrossCountTool
+        AuthorizedCrossCountTool authorizedCrossCountTool, StudyCountsTool studyCountsTool
     ) {
         SyncToolSpecification count = SyncToolSpecification.builder()
             .tool(tool(CountTool.NAME, CountTool.TITLE, CountTool.DESCRIPTION, CountTool.Input.class, CountResult.class))
@@ -90,7 +93,15 @@ public class QueryToolConfig {
                     context, request
                 ) -> respond(AuthorizedCrossCountTool.NAME, () -> authorizedCrossCountTool.handle(context, request.arguments()))
             ).build();
-        return List.of(count, crossCount, authorizedCount, authorizedCrossCount);
+        SyncToolSpecification studyCounts = SyncToolSpecification.builder()
+            .tool(
+                tool(
+                    StudyCountsTool.NAME, StudyCountsTool.TITLE, StudyCountsTool.DESCRIPTION, StudyCountsTool.Input.class,
+                    StudyCountsResult.class
+                )
+            ).callHandler((context, request) -> respond(StudyCountsTool.NAME, () -> studyCountsTool.handle(context, request.arguments())))
+            .build();
+        return List.of(count, crossCount, authorizedCount, authorizedCrossCount, studyCounts);
     }
 
     /**

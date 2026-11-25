@@ -14,6 +14,7 @@
 | `cross_count` | Returns obfuscated open-access cross counts for a query. |
 | `authorized_count_participants` | Returns the caller's exact, consent-filtered participant count for a query, using their own token. The authorized twin of `count_participants`; fails without a token. |
 | `authorized_cross_count` | Returns exact, consent-filtered cross-count cells (CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT, or OBSERVATION_CROSS_COUNT, which only this tool serves). The authorized twin of `cross_count`. |
+| `authorized_study_counts` | Returns the caller's exact participants per study. Counts by study consent concept when the data has them, otherwise by dataset (see below). Takes no arguments; fails without a token. |
 | `get_adapter_code` | Returns Python, R, or bash code the user runs with their own token for exact, consent-filtered results. |
 
 ## The channel rule
@@ -22,6 +23,10 @@ Query calls go to two fixed paths and nowhere else. `OpenQueryClient` posts to `
 
 `search_concepts` takes an optional `facets` list of `{category, name}` pairs, copied from `list_facets`, and sends them to the dictionary with the search; the dictionary needs only those two fields per facet (the UI sends more). With facets and neither `search` nor `terms` it browses everything in those facets (the dictionary takes an empty search); without facets one of them is required. Each facet narrows every term of a `terms` search. At most 10 facets, each part at most 200 characters.
 
+
+## Participants per study
+
+`authorized_study_counts` checks for study consents first, when the open channel will list them: its `CROSS_COUNT` is keyed by every concept path under `\_studies_consents\`, so cells besides the root total mean the data has consents, and one exact authorized `CROSS_COUNT` over those paths is the answer (`basis: study_consents`). Do not expect that to fire everywhere. The open backend answers with only the total by default (`AGGREGATE_OBFUSCATION_CROSS_COUNT_TOTAL_ONLY`, on unless changed), which is also all the UI reads, and deployments such as the All-in-One have no consent concepts at all. A lone `\_studies_consents\` cell is a total across studies, not a per-study count, and `cross_count` says so in a `note`. In those cases, and so most of the time, the tool takes the dictionary route: for each `dataset_id` facet it asks the dictionary for up to 25 candidate concepts (a search for subject id, sex, gender and age, or the dictionary's first page if that finds nothing), remembers those paths for an hour, and on every call counts them as the caller and takes the largest exact count per dataset (`basis: dictionary_sample`). This assumes each study is a `dataset_id` facet. The dictionary is open, so the remembered paths do not depend on who asked; no count is cached or used to choose, because counts depend on the caller's consents (and the open channel's counts can be suppressed outright). A dataset count is a lower bound unless one candidate covers everyone; the result carries `totalParticipants`, `matchesTotal` and a note for that.
 
 ## Adapter code
 

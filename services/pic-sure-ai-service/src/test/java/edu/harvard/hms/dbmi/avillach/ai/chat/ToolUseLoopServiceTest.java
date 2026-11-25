@@ -99,7 +99,7 @@ class ToolUseLoopServiceTest {
         assertEquals(
             List.of(
                 "search_concepts", "count_participants", "cross_count", "authorized_count_participants", "authorized_cross_count",
-                "propose_query"
+                "authorized_study_counts", "propose_query"
             ), model.lastToolNames
         );
         assertFalse(model.lastSystemPrompt.contains("cannot count"), model.lastSystemPrompt);
@@ -117,6 +117,34 @@ class ToolUseLoopServiceTest {
         assertEquals(List.of("search_concepts", "count_participants", "cross_count", "propose_query"), model.lastToolNames);
         assertTrue(model.lastSystemPrompt.contains("obfuscated open-access counts"), model.lastSystemPrompt);
         assertFalse(model.lastSystemPrompt.contains("{{"), "every placeholder is filled");
+    }
+
+    @Test
+    void aLoggedInCallerOnAnOpenAccessPageGetsOnlyTheOpenTools() {
+        FakeModelClient model = FakeModelClient.returning(doneTurn("ok"));
+        ChatRequest openPage = new ChatRequest("hi", "conv-1", "req-1", null, null, null, true);
+
+        new ToolUseLoopService(model, FakeToolGateway.listingCountTools(), PROPOSE_QUERY_TOOL, 8).handle(openPage, AUTHORIZED_CALLER);
+
+        assertEquals(List.of("search_concepts", "count_participants", "cross_count", "propose_query"), model.lastToolNames);
+        assertTrue(model.lastSystemPrompt.contains("obfuscated open-access counts"), model.lastSystemPrompt);
+    }
+
+    @Test
+    void aBlankOrFalseOpenAccessFlagLeavesAnAuthorizedCallerAuthorizedAndNeverWidensAnOpenOne() {
+        for (Boolean flag : new Boolean[] {null, false}) {
+            FakeModelClient authorized = FakeModelClient.returning(doneTurn("ok"));
+            ChatRequest request = new ChatRequest("hi", "conv-1", "req-1", null, null, null, flag);
+            new ToolUseLoopService(authorized, FakeToolGateway.listingCountTools(), PROPOSE_QUERY_TOOL, 8)
+                .handle(request, AUTHORIZED_CALLER);
+            assertTrue(authorized.lastToolNames.contains("authorized_cross_count"), "flag=" + flag);
+            assertTrue(authorized.lastToolNames.contains("authorized_study_counts"), "flag=" + flag);
+
+            FakeModelClient open = FakeModelClient.returning(doneTurn("ok"));
+            new ToolUseLoopService(open, FakeToolGateway.listingCountTools(), PROPOSE_QUERY_TOOL, 8).handle(request, OPEN_CALLER);
+            assertFalse(open.lastToolNames.contains("authorized_cross_count"), "flag=" + flag);
+            assertFalse(open.lastToolNames.contains("authorized_study_counts"), "flag=" + flag);
+        }
     }
 
     @Test
@@ -2164,9 +2192,10 @@ class ToolUseLoopServiceTest {
         /** A gateway that lists a search tool and both open-only count tools, as the real MCP endpoint does. */
         static FakeToolGateway listingCountTools() {
             FakeToolGateway gateway = new FakeToolGateway();
-            gateway.listed =
-                List.of("search_concepts", "count_participants", "cross_count", "authorized_count_participants", "authorized_cross_count")
-                    .stream().map(name -> new ToolDefinition(name, name, "{}")).toList();
+            gateway.listed = List.of(
+                "search_concepts", "count_participants", "cross_count", "authorized_count_participants", "authorized_cross_count",
+                "authorized_study_counts"
+            ).stream().map(name -> new ToolDefinition(name, name, "{}")).toList();
             return gateway;
         }
 

@@ -11,6 +11,7 @@ import edu.harvard.hms.dbmi.avillach.mcp.tool.CountTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.AuthorizedCountTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.AuthorizedCrossCountTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.CrossCountTool;
+import edu.harvard.hms.dbmi.avillach.mcp.tool.StudyCountsTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.ToolFailure;
 import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.server.McpStatelessServerFeatures.SyncToolSpecification;
@@ -38,7 +39,8 @@ class QueryToolConfigTest {
     void setUp() {
         countTool = mock(CountTool.class);
         List<SyncToolSpecification> specs = new QueryToolConfig().queryToolSpecifications(
-            countTool, mock(CrossCountTool.class), mock(AuthorizedCountTool.class), mock(AuthorizedCrossCountTool.class)
+            countTool, mock(CrossCountTool.class), mock(AuthorizedCountTool.class), mock(AuthorizedCrossCountTool.class),
+            mock(StudyCountsTool.class)
         );
         countSpec = specs.get(0);
         crossCountSpec = specs.get(1);

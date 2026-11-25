@@ -252,7 +252,7 @@ class GatewayMcpToolGatewayTest {
             timed.callTool("search_concepts", "{}", callerWith("Bearer caller-token", "req-1")).error(),
             "a dictionary call keeps the short read timeout"
         );
-        for (String count : List.of("count_participants", "authorized_cross_count")) {
+        for (String count : List.of("count_participants", "authorized_cross_count", "authorized_study_counts")) {
             assertEquals("42", timed.callTool(count, "{}", callerWith("Bearer caller-token", "req-1")).content(), count);
         }
     }

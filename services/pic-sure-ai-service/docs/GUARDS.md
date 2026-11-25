@@ -59,6 +59,22 @@ Consequences worth knowing:
   The UI's empty starting query (nothing selected, no filters) is left out: shown, it reads to the model as a query on screen for it
   to change, which pushes lookups toward `propose_query`.
 
+## Per-study counts
+
+"How many participants are in each study?" is not a dictionary question: studies are not variables, so searching for them finds nothing,
+and the model tends to loop on searches or invent paths such as `\Nhanes\SUBJECT_ID\`. Three things keep it honest:
+
+- The system prompt sends it to `authorized_study_counts` (or `cross_count` for an open caller) before any search, and says to report
+  the tool's note and to say the breakdown is not available rather than search for study variables.
+- An empty open `cross_count` result carries a note saying the channel answered and the breakdown is not defined for this data, so
+  the model does not read an empty list as a failure to retry.
+- `authorized_study_counts` uses study consents when the open channel lists them per study, which it does not by default (it returns only the total, as the UI reads it) or when the data has none, and otherwise counts each dataset by its largest demographic candidate, which is the route most deployments take.
+- A lone `\_studies_consents\` cell in a `cross_count` result is the total across studies; the result's `note` says so, and the reply must not present it as a per-study count.
+  That figure is a lower bound unless one candidate covers everyone, and the tool says so (`basis`, `matchesTotal`, `note`); the
+  reply should pass that on and must not add the studies into a total unless `matchesTotal` is true.
+
+Known limit: a dataset whose participants all lack the demographic candidates is undercounted, and only `matchesTotal` shows it.
+
 ## Known limits not handled by the service
 
 Seen with `openai.gpt-oss-20b-1:0` in testing; prompt changes have not fixed them, and the service either cannot detect them or

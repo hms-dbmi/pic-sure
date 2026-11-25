@@ -30,7 +30,7 @@ class InstructionsTest {
 
     private static final List<String> RULE_SENTENCES = List.of(
         "The server never reads participant-level data. Its only authorized reads are exact counts, in authorized_count_participants and authorized_cross_count.",
-        "For a signed-in user's exact count, use authorized_count_participants or authorized_cross_count.",
+        "For a signed-in user's exact count, use authorized_count_participants or authorized_cross_count; for each study, authorized_study_counts.",
         "To find variables or browse studies and facets, use search_concepts, list_facets, and get_concept.",
         "For a rough cohort size or a feasibility check, use count_participants or cross_count.",
         "For exact counts as code to run, use get_adapter_code with resultType count.",
@@ -176,7 +176,7 @@ class InstructionsTest {
         for (JsonNode tool : result.path("tools")) {
             tools.put(tool.path("name").asText(), tool);
         }
-        assertThat(tools).hasSize(9);
+        assertThat(tools).hasSize(10);
         return tools;
     }
 

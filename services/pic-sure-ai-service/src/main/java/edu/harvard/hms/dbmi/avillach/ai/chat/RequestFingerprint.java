@@ -24,8 +24,10 @@ final class RequestFingerprint {
         try {
             // Object fields are sorted by writing through plain maps, which ORDER_MAP_ENTRIES_BY_KEYS covers and a JsonNode tree is not.
             Object canonical = JSON.convertValue(
-                Arrays.asList(request.conversationId(), request.message(), request.query(), request.facets(), request.search()),
-                Object.class
+                Arrays.asList(
+                    request.conversationId(), request.message(), request.query(), request.facets(), request.search(),
+                    request.openAccessRequested()
+                ), Object.class
             );
             String content = JSON.writeValueAsString(canonical);
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content.getBytes(StandardCharsets.UTF_8)));

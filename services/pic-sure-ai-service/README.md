@@ -22,7 +22,7 @@ Both routes exist only when `AI_ENABLED=true`; otherwise they answer 404. Every 
 
 | Route | Purpose |
 | --- | --- |
-| `POST /ai/chat` | One chat turn. Body: `message` (required, max 4000 chars), `conversationId` (required), `requestId` (required, one per message), and the researcher's current `query`, `facets`, `search` (each optional). Returns `response` plus `query`, `facets` and `search` **only when the turn changed them**; a part that is present replaces that part of the screen whole. `query` carries only `select`, `phenotypicClause` and `genomicFilters`. |
+| `POST /ai/chat` | One chat turn. Body: `message` (required, max 4000 chars), `conversationId` (required), `requestId` (required, one per message), and the researcher's current `query`, `facets`, `search` (each optional), and `openAccess` (optional; `true` when the UI is on an open-access page, so a logged-in researcher gets the open tools and prompt only; blank or false leaves the caller's own access type in charge, and it can never widen it). Returns `response` plus `query`, `facets` and `search` **only when the turn changed them**; a part that is present replaces that part of the screen whole. `query` carries only `select`, `phenotypicClause` and `genomicFilters`. |
 | `GET /ai/chat/{requestId}` | The stored reply to an earlier message: 200 with the reply, 202 while it is still being answered, 404 when nothing is stored (never arrived, failed, or expired). This is the retry path after a dropped connection. |
 
 There is deliberately no `consents` field: access control is solely a function of the caller's JWT.
@@ -80,8 +80,9 @@ passed to the model so it does not add it back.
 The gateway's MCP tools (from `pic-sure-mcp`) plus one local tool, minus exclusions:
 
 - `search_concepts`, `list_facets`, `get_concept`, `get_concepts`: always.
-- `authorized_count_participants`, `authorized_cross_count`: exact counts filtered by the caller's own consents, run with their
-  token. **Offered to logged-in (`authorized`) callers only.**
+- `authorized_count_participants`, `authorized_cross_count`, `authorized_study_counts`: exact counts filtered by the caller's own
+  consents, run with their token. `authorized_study_counts` is participants per study: by study consent concept when the data has
+  them, otherwise by dataset from the dictionary (see `pic-sure-mcp`). **Offered to logged-in (`authorized`) callers only.**
 - `count_participants`, `cross_count`: obfuscated open-access counts that ignore consents. Offered to every caller. A logged-in
   researcher can see both the open and the authorized pages, so they get both kinds of count; their system prompt says to prefer an
   exact count for data they can access, to name which kind each number is, and never to combine or compare the two.

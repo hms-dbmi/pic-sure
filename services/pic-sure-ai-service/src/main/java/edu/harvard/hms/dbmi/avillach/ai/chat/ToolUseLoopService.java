@@ -94,7 +94,8 @@ class ToolUseLoopService implements ChatOrchestrator {
     private static final String AUTHORIZED_COUNT_PARTICIPANTS = "authorized_count_participants";
 
     /** Tools that run on the authorized channel with the caller's token, which an open caller's token cannot use. */
-    static final Set<String> AUTHORIZED_ONLY_TOOLS = Set.of(AUTHORIZED_COUNT_PARTICIPANTS, "authorized_cross_count");
+    static final Set<String> AUTHORIZED_ONLY_TOOLS =
+        Set.of(AUTHORIZED_COUNT_PARTICIPANTS, "authorized_cross_count", "authorized_study_counts");
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -103,10 +104,11 @@ class ToolUseLoopService implements ChatOrchestrator {
     private static final Set<String> COUNTED_QUERY_TOOLS = Set.of("count_participants", AUTHORIZED_COUNT_PARTICIPANTS);
 
     /**
-     * The cross-count tools. Their cells echo the paths the query named, or, for an open CROSS_COUNT, internal consent paths the open
-     * channel put in, so their results never teach the path guard a path.
+     * The cross-count tools, and the per-study count tool, whose studies are consent paths or dataset names. Their cells echo the paths the
+     * query named, or, for an open CROSS_COUNT, internal consent paths the open channel put in, so their results never teach the path guard
+     * a path.
      */
-    private static final Set<String> CROSS_COUNT_TOOLS = Set.of("cross_count", "authorized_cross_count");
+    private static final Set<String> CROSS_COUNT_TOOLS = Set.of("cross_count", "authorized_cross_count", "authorized_study_counts");
     static final String SEARCH_CONCEPTS = "search_concepts";
 
     private static final int MAX_EMPTY_RETRIES = 2;
@@ -192,7 +194,9 @@ class ToolUseLoopService implements ChatOrchestrator {
         try {
             // Inside the try so a rejected request still gets its one turn line (a WARN naming the invalid field).
             ProposeQueryInput currentQuery = ChatStateValidator.requireValid(request);
-            return handleTurn(request, caller, stats, currentQuery);
+            // An open-access page narrows the tools and prompt only; the conversation stays keyed by who the caller really is.
+            CallerContext effective = request.openAccessRequested() ? caller.asOpenAccess() : caller;
+            return handleTurn(request, caller.owner(), effective, stats, currentQuery);
         } catch (PicsureException e) {
             logFailedTurn(caller, stats, e.getStatus(), e.getErrorType(), e.getCause() == null ? e : e.getCause());
             throw e;
@@ -239,11 +243,13 @@ class ToolUseLoopService implements ChatOrchestrator {
         return excludedTools.contains(tool) || !isAuthorized(caller) && AUTHORIZED_ONLY_TOOLS.contains(tool);
     }
 
-    private ChatResponse handleTurn(ChatRequest request, CallerContext caller, TurnStats stats, ProposeQueryInput currentQuery) {
+    private ChatResponse handleTurn(
+        ChatRequest request, String owner, CallerContext caller, TurnStats stats, ProposeQueryInput currentQuery
+    ) {
         List<ToolDefinition> tools = new ArrayList<>(listTools(caller).stream().filter(tool -> !isExcluded(tool.name(), caller)).toList());
         String systemPrompt = isAuthorized(caller) ? AUTHORIZED_PROMPT : OPEN_PROMPT;
         tools.add(proposeQueryTool.definition());
-        ConversationStore.Key conversation = new ConversationStore.Key(caller.owner(), request.conversationId());
+        ConversationStore.Key conversation = new ConversationStore.Key(owner, request.conversationId());
         List<ConversationTurn> earlier = conversations.turns(conversation);
         Optional<ConversationStore.Eviction> evicted = earlier.isEmpty() ? conversations.evictionOf(conversation) : Optional.empty();
         List<ConversationEntry> history = new ArrayList<>(EarlierTurns.entries(earlier));

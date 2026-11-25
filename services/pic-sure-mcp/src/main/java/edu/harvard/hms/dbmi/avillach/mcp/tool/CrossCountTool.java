@@ -42,10 +42,12 @@ public class CrossCountTool {
             each categorical concept filtered in the query. CONTINUOUS_CROSS_COUNT gives one cell per bin of each continuous concept \
             filtered in the query, or one cell per distinct value where the site does not bin. withheld true means no result was \
             returned (the open channel withholds small results), and there are no cells. \
-            CROSS_COUNT gives one cell per study consent concept. The open channel replaces select with every concept path under \
-            \\_studies_consents\\, so the cells are keyed by those paths, and the \\_studies_consents\\ cell itself, the participants \
-            matching the query across all studies, is kept rather than dropped. select is passed on unchanged, but the open channel uses it \
-            for none of the three. At most 100 cells are returned, and cellsOmitted says how many were dropped. These cells are never the \
+            CROSS_COUNT is keyed by study consent concepts: the open channel replaces select with every concept path under \
+            \\_studies_consents\\. The \\_studies_consents\\ cell, the participants matching the query across all studies, is always kept, \
+            and it may be the only cell: a deployment can return just that total with no cell per study or consent, and one with no study \
+            consents returns no cells at all. A lone total is not a per-study count, and no cells means the breakdown is not available. \
+            select is passed on unchanged, but the open channel uses it for none of the three. At most 100 cells are returned, and \
+            cellsOmitted says how many were dropped. These cells are never the \
             authorized answer. For exact counts filtered by the user's consents, use authorized_cross_count when the user is signed in, or get_adapter_code with \
             resultType cross_count for code the user runs themselves; in either, select chooses the concept paths a CROSS_COUNT counts. The query takes the same \
             shape as in count_participants, with no result type and no not field. The phs999999 paths in the example are placeholders only. Never use them, and use real conceptPath values from search_concepts. Example arguments: \

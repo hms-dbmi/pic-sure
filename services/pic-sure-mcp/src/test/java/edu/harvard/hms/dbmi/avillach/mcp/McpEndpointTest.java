@@ -54,7 +54,7 @@ class McpEndpointTest {
         assertThat(tools.isArray()).isTrue();
         assertThat(tools).extracting(t -> t.path("name").asText()).containsExactlyInAnyOrder(
             "search_concepts", "list_facets", "get_concept", "get_concepts", "count_participants", "cross_count",
-            "authorized_count_participants", "authorized_cross_count", "get_adapter_code"
+            "authorized_count_participants", "authorized_cross_count", "authorized_study_counts", "get_adapter_code"
         );
         for (JsonNode tool : tools) {
             JsonNode annotations = tool.path("annotations");

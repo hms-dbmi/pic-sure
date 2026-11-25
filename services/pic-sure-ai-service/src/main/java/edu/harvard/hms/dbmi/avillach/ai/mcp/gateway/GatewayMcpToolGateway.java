@@ -67,7 +67,7 @@ public class GatewayMcpToolGateway implements McpToolGateway {
      * are pic-sure-mcp's.
      */
     static final Set<String> COUNT_TOOLS =
-        Set.of("count_participants", "cross_count", "authorized_count_participants", "authorized_cross_count");
+        Set.of("count_participants", "cross_count", "authorized_count_participants", "authorized_cross_count", "authorized_study_counts");
 
     private final RestClient restClient;
     private final RestClient countClient;
