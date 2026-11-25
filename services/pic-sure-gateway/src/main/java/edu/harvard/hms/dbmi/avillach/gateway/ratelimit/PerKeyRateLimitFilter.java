@@ -15,7 +15,8 @@ import jakarta.servlet.http.HttpServletRequest;
  * UUID's bucket and a session from its {@code sub}'s, wherever the request comes from. A PLATFORM key from a source on the platform
  * allowlist is exempt; one from anywhere else, and a grant with no key identity (no key presented, or an older PSAMA), draws from the
  * resolved client IP's bucket (IPv6 by /64). A failed IP resolution is never exempt. Requests that weren't granted open access pass
- * untouched, as does everything when the limiter is disabled.
+ * untouched, as does a proven {@code pic-sure-mcp} loop-back call (see {@link RateLimitFilter}) and everything when the limiter is
+ * disabled.
  */
 public class PerKeyRateLimitFilter extends RateLimitFilter {
 
@@ -23,7 +24,9 @@ public class PerKeyRateLimitFilter extends RateLimitFilter {
         super(props, clientIps, store, audit);
     }
 
-    /** The bucket for a granted request, or null for an exempt one. Identity PSAMA reported incompletely falls back to the client IP. */
+    /**
+     * What a granted request is charged to, or null for an exempt one. Identity PSAMA reported incompletely falls back to the client IP.
+     */
     @Override
     protected Target target(HttpServletRequest req) {
         if (!Boolean.TRUE.equals(req.getAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_GRANTED))) {

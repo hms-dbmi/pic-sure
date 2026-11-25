@@ -35,8 +35,8 @@ import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitStore;
 import io.micrometer.core.instrument.MeterRegistry;
 
 /**
- * Wires the DB-free auth filter chain: {@code BufferingFilter}(10) -&gt; {@code PrevalidationThrottleFilter}(16) -&gt;
- * {@code McpCallerFilter}(17) -&gt; {@code OpenAccessFilter}(20) -&gt; {@code PerKeyRateLimitFilter}(22) -&gt;
+ * Wires the DB-free auth filter chain: {@code BufferingFilter}(10) -&gt; {@code McpCallerFilter}(17) -&gt;
+ * {@code PrevalidationThrottleFilter}(18) -&gt; {@code OpenAccessFilter}(20) -&gt; {@code PerKeyRateLimitFilter}(22) -&gt;
  * {@code PsamaIntrospectionFilter}(30) -&gt; {@code TokenRefreshResponseFilter}(40) -&gt; {@code IdentityPropagationFilter}(50). The audit
  * filter is wired in {@code AuditFilterConfig}, ahead of all of them. No datasource or JPA is used. {@link PsamaClient} talks to PSAMA over
  * HTTP. <p> Spring Security itself stays permit-all because the introspection filter above enforces the authentication boundary.
@@ -54,7 +54,7 @@ public class SecurityConfig {
     static final Duration AUTH_CONNECT_TIMEOUT = Duration.ofSeconds(2);
     static final Duration AUTH_READ_TIMEOUT = Duration.ofSeconds(10);
 
-    /** Order of {@link McpCallerFilter}: after the internal-endpoint guard (15), before open access (20). */
+    /** Order of {@link McpCallerFilter}: after the internal-endpoint guard (15), before the throttle (18) and open access (20). */
     static final int MCP_CALLER_FILTER_ORDER = 17;
 
     static final ClientHttpRequestFactorySettings AUTH_REQUEST_FACTORY_SETTINGS =
@@ -112,21 +112,10 @@ public class SecurityConfig {
         return r;
     }
 
-    @Bean
-    FilterRegistrationBean<PrevalidationThrottleFilter> prevalidationThrottleFilter(
-        OpenAccessRequests openAccessRequests, RateLimitProperties rateLimit, ClientIpResolver clientIps, RateLimitStore store,
-        AuditContext audit
-    ) {
-        var r = new FilterRegistrationBean<>(new PrevalidationThrottleFilter(rateLimit, openAccessRequests, clientIps, store, audit));
-        r.setOrder(16);
-        r.addUrlPatterns("/*");
-        return r;
-    }
-
     /**
      * Registers {@link McpCallerFilter} after {@code InternalEndpointGuardFilter} (15) and before {@code OpenAccessFilter} (20), so an
      * invalid MCP credential is rejected before PSAMA is called and the header is read before {@code InboundIdentityHeaderSanitizingFilter}
-     * (25) runs.
+     * (25) runs. It also precedes {@code PrevalidationThrottleFilter} (18), so the limiter can exempt a proven loop-back call.
      *
      * @param audit the request-scoped audit metadata holder
      * @param props the configured MCP service secrets
@@ -136,6 +125,17 @@ public class SecurityConfig {
     FilterRegistrationBean<McpCallerFilter> mcpCallerFilter(AuditContext audit, McpProperties props) {
         var r = new FilterRegistrationBean<>(new McpCallerFilter(audit, props.serviceToken(), props.previousServiceToken()));
         r.setOrder(MCP_CALLER_FILTER_ORDER);
+        r.addUrlPatterns("/*");
+        return r;
+    }
+
+    @Bean
+    FilterRegistrationBean<PrevalidationThrottleFilter> prevalidationThrottleFilter(
+        OpenAccessRequests openAccessRequests, RateLimitProperties rateLimit, ClientIpResolver clientIps, RateLimitStore store,
+        AuditContext audit
+    ) {
+        var r = new FilterRegistrationBean<>(new PrevalidationThrottleFilter(rateLimit, openAccessRequests, clientIps, store, audit));
+        r.setOrder(18);
         r.addUrlPatterns("/*");
         return r;
     }

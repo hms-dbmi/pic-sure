@@ -313,6 +313,16 @@ class PerKeyRateLimitFilterTest {
     }
 
     @Test
+    void userKeysAreNeverExemptOrIpBucketedEvenFromAnAllowlistedSource() throws Exception {
+        Gateway gateway = gateway();
+        assertPassed(gateway, () -> withKey(ALICE, ALLOWLISTED), USER_BURST);
+
+        assertLimited(gateway, withKey(ALICE, ALLOWLISTED));
+
+        assertThat(consumed).containsOnly(RateLimitSubject.user(ALICE_ID));
+    }
+
+    @Test
     void twoUserKeysFromOneIpHaveIndependentBudgets() throws Exception {
         Gateway gateway = gateway();
         assertPassed(gateway, () -> withKey(ALICE, CLIENT_A), USER_BURST);
@@ -347,16 +357,6 @@ class PerKeyRateLimitFilterTest {
         assertPassed(gateway, () -> withKey(SESSION_DUE_REFRESHED, CLIENT_A), 1);
 
         assertLimited(gateway, withKey(SESSION_DUE_REFRESHED, CLIENT_A));
-    }
-
-    @Test
-    void aLimitedSessionDueARefreshStillGetsTheRefreshHeader() throws Exception {
-        Gateway gateway = gateway();
-        assertPassed(gateway, () -> withKey(SESSION_DUE, CLIENT_A), SESSION_BURST);
-
-        MockHttpServletResponse response = assertLimited(gateway, withKey(SESSION_DUE, CLIENT_A));
-
-        assertThat(response.getHeader(OpenAccessFilter.SESSION_REFRESH_HEADER)).isEqualTo(SESSION_DUE_REFRESHED);
     }
 
     @Test

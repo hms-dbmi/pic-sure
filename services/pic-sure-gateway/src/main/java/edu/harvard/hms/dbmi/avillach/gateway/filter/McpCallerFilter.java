@@ -15,20 +15,22 @@ import edu.harvard.hms.dbmi.avillach.commons.request.RoutedRequestPath;
 import edu.harvard.hms.dbmi.avillach.gateway.error.GatewayErrors;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * Proves that a request came from {@code pic-sure-mcp} and records that as the request's {@link VerifiedCaller}. It runs before
- * {@link OpenAccessFilter} and the introspection filter, so a bad credential is rejected before PSAMA is called, and before
- * {@code InboundIdentityHeaderSanitizingFilter}, so it reads {@value #TOKEN_HEADER} before that filter removes it.
+ * {@link OpenAccessFilter} and the introspection filter, so a bad credential is rejected before PSAMA is called, before both rate-limit
+ * stages, so they can exempt a proven loop-back call, and before {@code InboundIdentityHeaderSanitizingFilter}, so it reads
+ * {@value #TOKEN_HEADER} before that filter removes it.
  *
  * <ul> <li>A {@value #TOKEN_HEADER} value equal to the current or the previous configured secret, compared in constant time, marks the
- * request verified caller {@value #CALLER}.</li> <li>A present value that matches neither gets 401 {@code invalid_service_credential}, and
- * the audit metadata records the failure. When no secret is configured, every presented value is invalid.</li> <li>An absent header changes
- * nothing.</li> <li>A request whose {@link RoutedRequestPath} is exactly {@value #MCP_PATH} is marked verified caller {@value #CALLER},
- * since only the MCP route serves it. That is the decoded path the router matches, so an encoded spelling such as {@code /%6Dcp} is marked
- * too.</li> </ul>
+ * request verified caller {@value #CALLER} and {@linkplain #provedServiceSecret proven}.</li> <li>A present value that matches neither gets
+ * 401 {@code invalid_service_credential}, and the audit metadata records the failure. When no secret is configured, every presented value
+ * is invalid.</li> <li>An absent header changes nothing.</li> <li>A request whose {@link RoutedRequestPath} is exactly {@value #MCP_PATH}
+ * is marked verified caller {@value #CALLER}, since only the MCP route serves it. That is the decoded path the router matches, so an
+ * encoded spelling such as {@code /%6Dcp} is marked too. It is not proven, since anyone can send that path.</li> </ul>
  *
  * <p>The presented value is never logged, echoed in the response, or written to audit metadata.
  */
@@ -44,6 +46,8 @@ public class McpCallerFilter extends OncePerRequestFilter {
 
     /** The public path of the MCP endpoint itself. */
     public static final String MCP_PATH = "/mcp";
+
+    private static final String SECRET_PROVEN_ATTRIBUTE = McpCallerFilter.class.getName() + ".secretProven";
 
     private final AuditContext audit;
     private final byte[] serviceToken;
@@ -79,11 +83,23 @@ public class McpCallerFilter extends OncePerRequestFilter {
                 return;
             }
             VerifiedCaller.set(req, CALLER);
+            req.setAttribute(SECRET_PROVEN_ATTRIBUTE, Boolean.TRUE);
         }
         if (MCP_PATH.equals(RoutedRequestPath.of(req))) {
             VerifiedCaller.set(req, CALLER);
         }
         chain.doFilter(req, resp);
+    }
+
+    /**
+     * Whether this filter matched the request's {@value #TOKEN_HEADER} against a configured secret. Unlike {@link VerifiedCaller}, a
+     * request marked {@value #CALLER} only because of its path is not proven.
+     *
+     * @param req the request being served
+     * @return true for a proven {@code pic-sure-mcp} loop-back call
+     */
+    public static boolean provedServiceSecret(ServletRequest req) {
+        return Boolean.TRUE.equals(req.getAttribute(SECRET_PROVEN_ATTRIBUTE));
     }
 
     private boolean matchesConfiguredToken(String presented) {

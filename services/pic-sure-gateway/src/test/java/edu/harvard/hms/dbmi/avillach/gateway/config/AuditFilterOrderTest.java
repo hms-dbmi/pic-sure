@@ -76,7 +76,7 @@ class AuditFilterOrderTest {
         return security.openAccessFilter(psama, audit, security.openAccessRequests(props, new PublicEndpointPolicy(List.of())));
     }
 
-    private static RateLimitProperties rateLimit() {
+    static RateLimitProperties rateLimit() {
         return new RateLimitProperties(
             true, new RateLimitProperties.KeyLimits(60, 3000), new RateLimitProperties.KeyLimits(60, 3000),
             new RateLimitProperties.IpLimits(60, 3000, 300), new RateLimitProperties.Store(1000), List.of(CidrRange.parse("192.0.2.10/32")),
