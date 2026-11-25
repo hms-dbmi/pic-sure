@@ -7,10 +7,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
+import edu.harvard.hms.dbmi.avillach.auth.model.fenceMapping.StudyMetaData;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
+import edu.harvard.hms.dbmi.avillach.auth.repository.UserTestProfileRepository;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.BdcConsentsBuilder;
@@ -54,6 +56,7 @@ public class UserService {
     private final long tokenExpirationTime;
     private static final long defaultTokenExpirationTime = 1000L * 60 * 60; // 1 hour
     private final UserConsentsRepository userConsentsRepository;
+    private final UserTestProfileRepository userTestProfileRepository;
     private final FenceMappingUtility fenceMappingUtility;
 
     public long longTermTokenExpirationTime;
@@ -67,7 +70,8 @@ public class UserService {
     @Autowired
     public UserService(
         BasicMailService basicMailService, TOSService tosService, UserRepository userRepository, ConnectionRepository connectionRepository,
-        RoleService roleService, UserConsentsRepository userConsentsRepository, FenceMappingUtility fenceMappingUtility,
+        RoleService roleService, UserConsentsRepository userConsentsRepository, UserTestProfileRepository userTestProfileRepository,
+        FenceMappingUtility fenceMappingUtility,
         @Value("${application.token.expiration.time}") long tokenExpirationTime,
         @Value("${application.long.term.token.expiration.time}") long longTermTokenExpirationTime, JWTUtil jwtUtil,
         @Value("${application.token.inclusionRoles}") String tokenInclusionRoles, LoggingClient loggingClient, SessionService sessionService
@@ -78,6 +82,7 @@ public class UserService {
         this.connectionRepository = connectionRepository;
         this.roleService = roleService;
         this.userConsentsRepository = userConsentsRepository;
+        this.userTestProfileRepository = userTestProfileRepository;
         this.fenceMappingUtility = fenceMappingUtility;
         this.tokenExpirationTime = tokenExpirationTime > 0 ? tokenExpirationTime : defaultTokenExpirationTime;
         logger.info("Token Expiration Time : {}", tokenExpirationTime);
@@ -630,7 +635,7 @@ public class UserService {
 
     public User updateUserConsents(User user, Set<String> userConsentStrings) {
         Set<String> consents =
-            new BdcConsentsBuilder(fenceMappingUtility.getFENCEMapping(), userConsentStrings).createConsents();
+            new BdcConsentsBuilder(fenceMappingUtility.getFENCEMapping(), consentStringsFor(user, userConsentStrings)).createConsents();
         UserConsents userConsents = userConsentsRepository.findByUserId(user.getUuid());
         if (userConsents == null) {
             logger.info("Creating user consents");
@@ -642,6 +647,22 @@ public class UserService {
         userConsentsRepository.save(userConsents);
 
         return user;
+    }
+
+    private Set<String> consentStringsFor(User user, Set<String> passportConsentStrings) {
+        UserTestProfile userTestProfile = userTestProfileRepository.findByUserId(user.getUuid());
+        if (userTestProfile == null || !userTestProfile.isEnabled()) {
+            return passportConsentStrings;
+        }
+        TestProfile testProfile = userTestProfile.getTestProfile();
+        logger.info("User {} is assigned test profile {}; using its consents", user.getUuid(), testProfile.getName());
+        Map<String, StudyMetaData> fenceMapping = fenceMappingUtility.getFENCEMapping();
+        Set<String> unknownConsents =
+            testProfile.getConsents().stream().filter(consent -> !fenceMapping.containsKey(consent)).collect(Collectors.toSet());
+        if (!unknownConsents.isEmpty()) {
+            logger.warn("Test profile {} has consents not in the FENCE mapping, ignoring them: {}", testProfile.getName(), unknownConsents);
+        }
+        return testProfile.getConsents();
     }
 
     /**
