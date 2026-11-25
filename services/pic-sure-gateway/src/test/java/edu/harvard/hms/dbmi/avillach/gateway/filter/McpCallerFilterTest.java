@@ -51,6 +51,7 @@ class McpCallerFilterTest {
         assertThat(chainCalled).isTrue();
         assertThat(response.getStatus()).isEqualTo(200);
         assertThat(VerifiedCaller.get(request)).contains("mcp");
+        assertThat(McpCallerFilter.provedServiceSecret(request)).isTrue();
         assertThat(audit.getMetadata()).isEmpty();
     }
 
@@ -62,6 +63,7 @@ class McpCallerFilterTest {
 
         assertThat(chainCalled).isTrue();
         assertThat(VerifiedCaller.get(request)).contains("mcp");
+        assertThat(McpCallerFilter.provedServiceSecret(request)).isTrue();
     }
 
     @Test
@@ -75,6 +77,7 @@ class McpCallerFilterTest {
         assertThat(response.getStatus()).isEqualTo(401);
         assertThat(response.getContentAsString()).contains("\"errorType\":\"invalid_service_credential\"").doesNotContain(presented);
         assertThat(VerifiedCaller.get(request)).isEmpty();
+        assertThat(McpCallerFilter.provedServiceSecret(request)).isFalse();
         assertThat(audit.getMetadata()).containsEntry("auth_result", "failure")
             .containsEntry("auth_failure_reason", "invalid_service_credential");
         assertThat(audit.getMetadata().values()).doesNotContain(presented);
@@ -112,13 +115,14 @@ class McpCallerFilterTest {
     }
 
     @Test
-    void mcpPathIsMarkedVerifiedCallerMcpWithoutAToken() throws Exception {
+    void mcpPathIsMarkedVerifiedCallerMcpWithoutATokenButNotProven() throws Exception {
         MockHttpServletRequest request = request("/mcp", null);
 
         run(new McpCallerFilter(audit, null, null), request);
 
         assertThat(chainCalled).isTrue();
         assertThat(VerifiedCaller.get(request)).contains("mcp");
+        assertThat(McpCallerFilter.provedServiceSecret(request)).isFalse();
     }
 
     @Test

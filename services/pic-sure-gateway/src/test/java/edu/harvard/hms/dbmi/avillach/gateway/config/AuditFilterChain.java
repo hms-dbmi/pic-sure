@@ -68,6 +68,7 @@ final class AuditFilterChain {
             observability.requestIdFilter(), observability.accessLogFilter(),
             auditConfig.auditLoggingFilter(logging, auditConfig.auditRouteTable(), audit, ClientTypeAllowlist.DEFAULT, rateLimit, clientIps),
             security.bufferingFilter(props, new SimpleMeterRegistry()),
+            security.mcpCallerFilter(audit, new McpProperties(null, null)),
             security.prevalidationThrottleFilter(openAccessRequests, rateLimit, clientIps, store, audit),
             observability.internalEndpointGuardFilter(), security.openAccessFilter(psama, audit, openAccessRequests),
             security.perKeyRateLimitFilter(rateLimit, clientIps, store, audit), observability.inboundIdentityHeaderSanitizingFilter(ClientTypeAllowlist.DEFAULT)

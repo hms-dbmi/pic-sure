@@ -19,6 +19,7 @@ import edu.harvard.hms.dbmi.avillach.commons.audit.AuditLoggingFilter;
 import edu.harvard.hms.dbmi.avillach.commons.net.CidrRange;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIp;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
+import edu.harvard.hms.dbmi.avillach.gateway.filter.McpCallerFilter;
 import jakarta.servlet.http.HttpServletRequest;
 
 class RateLimitFilterTest {
@@ -74,6 +75,23 @@ class RateLimitFilterTest {
         assertThat(chain.getRequest()).isSameAs(request);
         assertThat(request.getAttribute(AuditLoggingFilter.AUDIT_REQUIRED_ATTRIBUTE)).isNull();
         assertThat(audit.getMetadata()).isEmpty();
+        verifyNoInteractions(store);
+    }
+
+    // both stages inherit doFilterInternal, so this covers the throttle and the per-key limiter
+    @Test
+    void aLoopBackCallThatProvedTheMcpSecretIsNeverTargetedOrCharged() throws Exception {
+        RateLimitFilter limiter = new RateLimitFilter(properties(true), new ClientIpResolver(List.of()), store, audit) {
+            @Override
+            protected Target target(HttpServletRequest req) {
+                throw new AssertionError("a proven loop-back call must not be targeted");
+            }
+        };
+        request.addHeader(McpCallerFilter.TOKEN_HEADER, "mcp-secret");
+
+        new McpCallerFilter(audit, "mcp-secret", null).doFilter(request, response, (req, resp) -> limiter.doFilter(req, resp, chain));
+
+        assertThat(chain.getRequest()).isSameAs(request);
         verifyNoInteractions(store);
     }
 

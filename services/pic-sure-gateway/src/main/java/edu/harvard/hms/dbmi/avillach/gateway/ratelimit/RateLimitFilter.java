@@ -15,6 +15,7 @@ import edu.harvard.hms.dbmi.avillach.commons.net.ClientIp;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
 import edu.harvard.hms.dbmi.avillach.commons.net.UnresolvablePeerException;
 import edu.harvard.hms.dbmi.avillach.gateway.error.GatewayErrors;
+import edu.harvard.hms.dbmi.avillach.gateway.filter.McpCallerFilter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -22,8 +23,9 @@ import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * The flow both rate-limit stages share: a request the stage doesn't charge passes, and any other draws from its subject's bucket and gets
- * the standard 429 once that bucket is empty. Everything passes while the limiter is disabled. A peer the resolver cannot parse is refused
- * with 500 rather than admitted or thrown.
+ * the standard 429 once that bucket is empty. Everything passes while the limiter is disabled, and so does a {@code pic-sure-mcp} loop-back
+ * call that {@link McpCallerFilter#provedServiceSecret proved the service secret}, since MCP tool calls are budgeted at the user's
+ * {@code /mcp} request. A peer the resolver cannot parse is refused with 500 rather than admitted or thrown.
  */
 abstract class RateLimitFilter extends OncePerRequestFilter {
 
@@ -55,7 +57,7 @@ abstract class RateLimitFilter extends OncePerRequestFilter {
         throws ServletException, IOException {
         Target target;
         try {
-            target = enabled ? target(req) : null;
+            target = enabled && !McpCallerFilter.provedServiceSecret(req) ? target(req) : null;
         } catch (UnresolvablePeerException e) {
             log.error("Cannot resolve connection peer '{}' in {}", req.getRemoteAddr(), getClass().getName());
             req.setAttribute(AuditLoggingFilter.AUDIT_REQUIRED_ATTRIBUTE, Boolean.TRUE);

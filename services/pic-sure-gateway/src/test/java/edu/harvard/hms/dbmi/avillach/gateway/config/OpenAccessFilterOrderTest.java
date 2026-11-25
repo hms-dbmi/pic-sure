@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -23,13 +24,14 @@ import org.springframework.mock.web.MockHttpServletResponse;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.ClientTypeAllowlist;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
-import edu.harvard.hms.dbmi.avillach.commons.net.CidrRange;
 import edu.harvard.hms.dbmi.avillach.commons.net.ClientIpResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessValidation;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
+import edu.harvard.hms.dbmi.avillach.gateway.filter.McpCallerFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.OpenAccessFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitDecision;
 import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitProperties;
+import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitStore;
 import edu.harvard.hms.dbmi.avillach.gateway.ratelimit.RateLimitSubject;
 import edu.harvard.hms.dbmi.avillach.gateway.request.InboundIdentityHeaderSanitizingFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.request.InternalEndpointGuardFilter;
@@ -42,6 +44,8 @@ import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 
 class OpenAccessFilterOrderTest {
+
+    private static final String MCP_SECRET = "configured-mcp-secret";
 
     @Test
     void assembledFiltersRejectInternalRequestsBeforeOpenAccessCallsPsama() throws Exception {
@@ -58,25 +62,22 @@ class OpenAccessFilterOrderTest {
     }
 
     @Test
-    void assembledFiltersThrottleAfterBufferingAndTheInternalGuardAndBeforeOpenAccess() {
+    void assembledFiltersThrottleAfterBufferingTheInternalGuardAndTheMcpCredentialCheckAndBeforeOpenAccess() {
         GatewaySecurityProperties props = props();
         int throttle = AuditFilterOrderTest.throttleRegistration(props, subject -> null).getOrder();
 
         assertThat(throttle).isGreaterThan(new SecurityConfig().bufferingFilter(props, new SimpleMeterRegistry()).getOrder())
             .isGreaterThan(new ObservabilityConfig().internalEndpointGuardFilter().getOrder())
+            .isGreaterThan(SecurityConfig.MCP_CALLER_FILTER_ORDER)
             .isLessThan(AuditFilterOrderTest.openAccessRegistration(mock(PsamaClient.class), new AuditContext(), props).getOrder());
     }
 
     @Test
     void perKeyLimiterRunsAfterOpenAccessGrantsAndBeforeTheIdentityHeaderSanitizer() {
         GatewaySecurityProperties props = props();
-        RateLimitProperties rateLimit = new RateLimitProperties(
-            true, new RateLimitProperties.KeyLimits(60, 3000), new RateLimitProperties.KeyLimits(60, 3000),
-            new RateLimitProperties.IpLimits(60, 3000, 300), new RateLimitProperties.Store(1000), List.of(CidrRange.parse("192.0.2.10/32")),
-            List.of()
-        );
         int perKey = new SecurityConfig()
-            .perKeyRateLimitFilter(rateLimit, new ClientIpResolver(List.of()), subject -> null, new AuditContext()).getOrder();
+            .perKeyRateLimitFilter(AuditFilterOrderTest.rateLimit(), new ClientIpResolver(List.of()), subject -> null, new AuditContext())
+            .getOrder();
 
         assertThat(perKey)
             .isGreaterThan(AuditFilterOrderTest.openAccessRegistration(mock(PsamaClient.class), new AuditContext(), props).getOrder())
@@ -100,6 +101,58 @@ class OpenAccessFilterOrderTest {
         });
 
         assertThat(response.getStatus()).isEqualTo(404);
+        assertThat(charged).isEmpty();
+        verifyNoInteractions(psama);
+    }
+
+    @Test
+    void aLoopBackCallThatProvesTheMcpSecretIsValidatedButChargedInNeitherStage() throws Exception {
+        PsamaClient psama = mock(PsamaClient.class);
+        when(psama.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(true));
+        List<RateLimitSubject> charged = new ArrayList<>();
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("Authorization", "Bearer picsure_u_testKeyValue123");
+        request.addHeader(McpCallerFilter.TOKEN_HEADER, MCP_SECRET);
+        AtomicReference<HttpServletRequest> downstream = new AtomicReference<>();
+
+        invokeInRegisteredOrder(
+            limitedRegistrations(psama, charged), request, new MockHttpServletResponse(),
+            (req, resp) -> downstream.set((HttpServletRequest) req)
+        );
+
+        assertThat(downstream.get()).isNotNull();
+        verify(psama).validateOpenAccess(any());
+        assertThat(charged).isEmpty();
+    }
+
+    @Test
+    void theMcpPathWithoutTheSecretIsChargedInBothStages() throws Exception {
+        PsamaClient psama = mock(PsamaClient.class);
+        when(psama.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(true));
+        List<RateLimitSubject> charged = new ArrayList<>();
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/mcp");
+        request.addHeader("Authorization", "Bearer picsure_u_testKeyValue123");
+
+        invokeInRegisteredOrder(limitedRegistrations(psama, charged), request, new MockHttpServletResponse(), (req, resp) -> {
+        });
+
+        InetAddress peer = InetAddress.getByName(request.getRemoteAddr());
+        assertThat(charged).containsExactly(RateLimitSubject.prevalidationIp(peer), RateLimitSubject.ip(peer));
+    }
+
+    @Test
+    void aWrongMcpSecretIsRefusedBeforeTheThrottleChargesOrPsamaIsCalled() throws Exception {
+        PsamaClient psama = mock(PsamaClient.class);
+        List<RateLimitSubject> charged = new ArrayList<>();
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("Authorization", "Bearer picsure_u_testKeyValue123");
+        request.addHeader(McpCallerFilter.TOKEN_HEADER, "wrong-secret");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        invokeInRegisteredOrder(limitedRegistrations(psama, charged), request, response, (req, resp) -> {
+        });
+
+        assertThat(response.getStatus()).isEqualTo(401);
         assertThat(charged).isEmpty();
         verifyNoInteractions(psama);
     }
@@ -169,6 +222,22 @@ class OpenAccessFilterOrderTest {
         return new GatewaySecurityProperties(
             List.of(), true, 1024, "http://psama.local/introspect", "http://psama.local/open-access", "svc-token"
         );
+    }
+
+    /** The assembled chain plus {@code McpCallerFilter} and both limiter stages, admitting every charge and recording it in order. */
+    private static List<FilterRegistrationBean<? extends Filter>> limitedRegistrations(PsamaClient psama, List<RateLimitSubject> charged) {
+        RateLimitStore recording = subject -> {
+            charged.add(subject);
+            return new RateLimitDecision(true, null, 0);
+        };
+        SecurityConfig security = new SecurityConfig();
+        List<FilterRegistrationBean<? extends Filter>> registrations = new ArrayList<>(assembledRegistrations(psama));
+        registrations.add(security.mcpCallerFilter(new AuditContext(), new McpProperties(MCP_SECRET, null)));
+        registrations.add(AuditFilterOrderTest.throttleRegistration(props(), recording));
+        registrations.add(
+            security.perKeyRateLimitFilter(AuditFilterOrderTest.rateLimit(), new ClientIpResolver(List.of()), recording, new AuditContext())
+        );
+        return registrations;
     }
 
     private static List<FilterRegistrationBean<? extends Filter>> assembledRegistrations(PsamaClient psama) {

@@ -15,7 +15,7 @@
     {
       "name": "picsure.gateway.rate-limit.enabled",
       "type": "java.lang.Boolean",
-      "description": "Master switch for both rate-limit stages (pre-validation per-IP throttle and post-grant per-key limiter). Enabling requires trusted-proxies. Env: RATE_LIMIT_ENABLED.",
+      "description": "Master switch for both rate-limit stages (pre-validation per-IP throttle and post-grant per-key limiter). A pic-sure-mcp loop-back call that presents the MCP service secret is exempt from both. Enabling requires trusted-proxies. Env: RATE_LIMIT_ENABLED.",
       "defaultValue": false
     },
     {
