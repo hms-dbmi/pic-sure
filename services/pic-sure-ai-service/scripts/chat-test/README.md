@@ -13,6 +13,8 @@ report you score by hand. Use it whenever you change the model, the system promp
 
 Needs Node 22 (built-in `fetch`), no `npm install`.
 
+The count tests (T21, T30-T34) assume a logged-in (authorized) token, the only kind that is offered the exact `authorized_*` count tools. The service only accepts logged-in callers today; with any other token those tests will not pass as written.
+
 ## Running
 
 1. Start the stack with the service configured for the model under test (`BEDROCK_MODEL_ID`, etc.; see the service
@@ -85,7 +87,7 @@ node scripts/chat-test/summarize.mjs scripts/chat-test/runs/<new>-results.json s
 The `claim` column counts replies that say variables are "shown in your table" with no search, facets or query to
 back that up. `refused` counts tool calls the service rejected (`error=true`).
 
-Models are not deterministic. Tests that tend to flake (T7, T14, T18, T21) run several times. Judge a change by its
+Models are not deterministic. Tests that tend to flake (T7, T14, T18, T21, T30, T31, T32, T35) run several times. Judge a change by its
 pass rate across runs, and rerun with `--only <id> --runs 5` before trusting one surprising result.
 
 ## Editing the suite

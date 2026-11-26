@@ -227,7 +227,7 @@
       "name": "Count question is not a query change",
       "runs": 3,
       "message": "How many female participants over 40 are there?",
-      "pass": "count_participants called; prose gives the count as obfuscated, not exact; NO query returned (the counted-query guard must not fire on a plain count question; a \"checking the counted query\" log line is a FAIL unless the reply really claimed the query changed, then note the wording). A search is acceptable."
+      "pass": "authorized_count_participants called (the run token is a logged-in one); prose gives the count as exact, limited to the studies they can access, not obfuscated; NO query returned (the counted-query guard must not fire on a plain count question; a \"checking the counted query\" log line is a FAIL unless the reply really claimed the query changed, then note the wording). count_participants instead of the authorized tool is PARTIAL unless the reply says the number is an obfuscated open-access one. A search is acceptable."
     },
     {
       "id": "T22",
@@ -369,6 +369,61 @@
         }
       ],
       "pass": "Turn 1 as T18. Turn 2, with no query on screen, adds the four `\\Nhanes\\questionnaire\\alcohol use\\` paths from turn 1 to the selected variables: query returned with those four in select and no filters (an export of every participant they can access). An \"Unknown concept path\" refusal on a turn-1 path is a FAIL, and so is a reply claiming they were added when no query was returned."
+    },
+    {
+      "id": "T30",
+      "name": "Open-access count on request",
+      "runs": 3,
+      "message": "What does the open-access count say for female participants over 40?",
+      "pass": "count_participants called, not authorized_count_participants; prose says the number is an obfuscated open-access count that ignores their consents, never exact; NO query returned. Calling the authorized tool instead, or giving an open number as exact, is a FAIL."
+    },
+    {
+      "id": "T31",
+      "name": "Exact and open counts kept apart",
+      "runs": 3,
+      "message": "Give me both the exact count and the open-access count of female participants over 40",
+      "pass": "Both authorized_count_participants and count_participants called; each number is reported separately and labelled exact or open-access (obfuscated). FAIL if the two are added, averaged, called a match, or the difference between them is read as meaningful, or if the open number is presented as exact. NO query returned."
+    },
+    {
+      "id": "T32",
+      "name": "Cross count by study, or an honest no",
+      "runs": 3,
+      "message": "How many participants do I have in each study?",
+      "pass": "authorized_study_counts called before any search for study or consent variables, with no invented concept path. The reply gives each study with its exact count, labelled exact, and passes on the tool's note: on this AIO (no study consents) the basis is dictionary_sample, so the reply should say counts are per dataset, name Nhanes, Synthea and 1000Genomes, and not add them into a total unless matchesTotal is true. The totals should be the live ones (Nhanes 9,999, Synthea 11,644, 1000Genomes 4,978, total 26,621) for this token. One further tool call at most, no iteration cap. A reply that gives one dataset's count as the total, searches for study variables, or says it cannot break counts down is a FAIL."
+    },
+    {
+      "id": "T35",
+      "name": "Cross count by study on an open-access page",
+      "runs": 3,
+      "message": "How many participants do I have in each study?",
+      "body": {
+        "openAccess": true
+      },
+      "pass": "Same message and token as T32 with openAccess true, so only open tools exist: cross_count called (authorized_cross_count is never offered or called) before any search for study variables; the reply reports the cells labelled obfuscated open-access, or says the breakdown is not available here. Never exact, never a made-up path."
+    },
+    {
+      "id": "T33",
+      "name": "Authorized count then query change claim",
+      "runs": 3,
+      "message": "Count the female participants over 40 and add BMI to my query",
+      "body": {
+        "query": "$fixture:uiEmptyQuery"
+      },
+      "pass": "authorized_count_participants called; query returned with SEX [female], AGE min 40 and BMI in select, whether proposed by the model or by the counted-query guard (a \"checking the counted query\" log line is acceptable here: note it, and check the returned query matches what was counted). The count is given as exact. A reply claiming BMI was added with no query returned is a FAIL."
+    },
+    {
+      "id": "T34",
+      "name": "Count with open fallback (memory)",
+      "runs": 3,
+      "turns": [
+        {
+          "message": "How many female participants over 40 are there?"
+        },
+        {
+          "message": "What would the open-access count be for the same group?"
+        }
+      ],
+      "pass": "Turn 1 as T21. Turn 2: count_participants called with the same filters as turn 1 (no re-search needed); the open number is reported separately, labelled obfuscated open-access, and not compared with or added to the exact one; no query."
     }
   ]
 }
