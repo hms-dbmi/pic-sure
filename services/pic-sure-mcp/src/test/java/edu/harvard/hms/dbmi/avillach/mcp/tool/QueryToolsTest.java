@@ -136,6 +136,12 @@ class QueryToolsTest {
         server.verify();
         assertThat(result.resultType()).isEqualTo(type.name());
         assertThat(result.cells()).isEmpty();
+        // The no-cells note speaks of study consents, so only the study-consent CROSS_COUNT carries it.
+        if (type.name().equals("CROSS_COUNT")) {
+            assertThat(result.note()).isEqualTo(CrossCountResult.NO_CELLS_NOTE);
+        } else {
+            assertThat(result.note()).isNull();
+        }
     }
 
     @Test
@@ -148,10 +154,22 @@ class QueryToolsTest {
         assertThat(result.totalCells()).isEqualTo(2);
         assertThat(result.cellsOmitted()).isNull();
         assertThat(result.withheld()).isNull();
+        assertThat(result.note()).isNull();
         assertThat(result.cells()).containsExactly(
             new CrossCountResult.Cell("\\_studies_consents\\", null, new CountResult("1234 ±3", 1234, 3, null, false)),
             new CrossCountResult.Cell("\\_studies_consents\\phs1\\", null, new CountResult("< 10", null, null, 10, true))
         );
+    }
+
+    @Test
+    void aLoneStudyConsentsTotalCarriesANoteThatItIsNotPerStudy() throws Exception {
+        server.expect(requestTo(SYNC)).andRespond(withSuccess("""
+            {"\\\\_studies_consents\\\\":"1234 ±3"}""", MediaType.APPLICATION_JSON));
+
+        CrossCountResult result = crossCount.handle(context, args("{\"resultType\":\"CROSS_COUNT\",\"query\":{}}"));
+
+        assertThat(result.totalCells()).isEqualTo(1);
+        assertThat(result.note()).isEqualTo(CrossCountResult.TOTAL_ONLY_NOTE);
     }
 
     @Test
@@ -190,7 +208,7 @@ class QueryToolsTest {
 
         CrossCountResult result = crossCount.handle(context, args("{\"resultType\":\"CONTINUOUS_CROSS_COUNT\",\"query\":" + QUERY + "}"));
 
-        assertThat(result).isEqualTo(new CrossCountResult("CONTINUOUS_CROSS_COUNT", 0, java.util.List.of(), null, true));
+        assertThat(result).isEqualTo(new CrossCountResult("CONTINUOUS_CROSS_COUNT", 0, java.util.List.of(), null, true, null));
         assertThat(JSON.writeValueAsString(result))
             .isEqualTo("{\"resultType\":\"CONTINUOUS_CROSS_COUNT\",\"totalCells\":0,\"cells\":[],\"withheld\":true}");
     }
@@ -244,7 +262,7 @@ class QueryToolsTest {
             .toQuery(edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType.COUNT);
         bind(CrossCountTool.DESCRIPTION.substring(CrossCountTool.DESCRIPTION.indexOf("{\"resultType\"")), CrossCountTool.Input.class)
             .query().toQuery(edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType.CATEGORICAL_CROSS_COUNT);
-        assertThat(CrossCountTool.DESCRIPTION).contains("\\_studies_consents\\ cell itself").contains("kept rather than dropped")
-            .contains("At most " + CrossCountResult.MAX_CELLS + " cells");
+        assertThat(CrossCountTool.DESCRIPTION).contains("always kept").contains("may be the only cell")
+            .contains("A lone total is not a per-study count").contains("At most " + CrossCountResult.MAX_CELLS + " cells");
     }
 }

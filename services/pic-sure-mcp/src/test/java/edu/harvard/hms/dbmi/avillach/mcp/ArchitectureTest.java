@@ -18,7 +18,9 @@ import edu.harvard.hms.dbmi.avillach.mcp.codegen.BashGenerator;
 import edu.harvard.hms.dbmi.avillach.mcp.config.GatewayClientConfig;
 import edu.harvard.hms.dbmi.avillach.mcp.config.GatewayRequestInterceptor;
 import edu.harvard.hms.dbmi.avillach.mcp.gateway.DictionaryClient;
+import edu.harvard.hms.dbmi.avillach.mcp.gateway.AuthorizedQueryClient;
 import edu.harvard.hms.dbmi.avillach.mcp.gateway.OpenQueryClient;
+import edu.harvard.hms.dbmi.avillach.mcp.tool.AuthorizedChannelTool;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springaicommunity.mcp.annotation.McpTool;
@@ -51,9 +53,10 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Architecture rules that hold the service to the open channel and to audited tools. The service reaches PIC-SURE data only through the
- * gateway's open channel, with one outbound HTTP client, no Spring Security and no database, and every tool call sends an audit event.
- * These rules fail the build when a change would break any of that, instead of leaving it to review.
+ * Architecture rules that hold the service to the open channel, its one authorized count path, and audited tools. The service reaches
+ * PIC-SURE data through the gateway's open channel and, from {@link AuthorizedQueryClient} only, the authorized sync path, with only the
+ * gateway clients {@code GatewayClientConfig} builds, no Spring Security and no database, and every tool call sends an audit event. These
+ * rules fail the build when a change would break any of that, instead of leaving it to review.
  *
  * <p>The main classes are imported with ArchUnit, tests excluded. ArchUnit does not expose the string literals in a class's constant pool,
  * so the channel rule reads the compiled class files under {@code target/classes} directly and scans their UTF8 constant entries.
@@ -72,6 +75,10 @@ class ArchitectureTest {
     private static final String AUTHORIZED_PATH = "/hpds/auth";
     private static final String BACKEND_TEMPLATE = "{backend}";
     private static final String OPEN_QUERY_SYNC_PATH = "/hpds/open/query/sync";
+    /** The one authorized path, allowed only as a constant of {@link AuthorizedQueryClient}, which sends counts as the caller. */
+    private static final String AUTHORIZED_QUERY_SYNC_PATH = "/hpds/auth/query/sync";
+    /** The package-private helper every authorized tool sends through. */
+    private static final String AUTHORIZED_QUERY_CALLS = ROOT + ".tool.AuthorizedQueryCalls";
     private static final List<String> TRAVERSAL_MARKERS = List.of("/..", "../", "%2e");
     /** Path segments that, alone or leading a relative path, could build an HPDS URL from parts; see the channel rule. */
     private static final Set<String> CHANNEL_SEGMENTS = Set.of("hpds", "auth");
@@ -115,16 +122,19 @@ class ArchitectureTest {
      * <p>One class file is exempt: {@link BashGenerator}'s own, {@link #TEXT_ONLY_CLASS_FILE}. That class writes a bash script for the user
      * to run, and the script has to name the authorized channel ({@code /picsure/hpds/auth/query}) as text. It is exempt by class, not by
      * package, and its nested classes are still scanned. What keeps it from making a request is {@link #codegenMakesNoRequest} (nothing in
-     * {@code codegen} depends on the gateway clients or configuration) and {@link #onlyTheTwoGatewayClientsStartRequests} (only the open
-     * query and dictionary clients start a request). The exempt file must exist, so the exemption cannot outlive the class it names.
+     * {@code codegen} depends on the gateway clients or configuration) and {@link #onlyTheThreeGatewayClientsStartRequests} (only the open
+     * query, authorized query, and dictionary clients start a request). The exempt file must exist, so the exemption cannot outlive the
+     * class it names.
      */
     @Test
     void noClassNamesTheAuthorizedChannel() throws IOException {
         Path classes = mainClassesDirectory();
         List<String> violations = new ArrayList<>();
         boolean sawOpenQueryPath = false;
+        boolean sawAuthorizedQueryPath = false;
         boolean sawTextOnlyClass = false;
         String openQueryClientFile = OpenQueryClient.class.getName().replace('.', '/') + ".class";
+        String authorizedQueryClientFile = AuthorizedQueryClient.class.getName().replace('.', '/') + ".class";
         String gatewayDirectory = ROOT.replace('.', '/') + "/gateway/";
         try (Stream<Path> files = Files.walk(classes)) {
             for (Path file : files.filter(f -> f.toString().endsWith(".class")).toList()) {
@@ -135,7 +145,10 @@ class ArchitectureTest {
                 }
                 boolean inGateway = relative.startsWith(gatewayDirectory);
                 for (String constant : utf8Constants(Files.readAllBytes(file))) {
-                    if (
+                    boolean permitted = relative.equals(authorizedQueryClientFile) && constant.equals(AUTHORIZED_QUERY_SYNC_PATH);
+                    if (permitted) {
+                        sawAuthorizedQueryPath = true;
+                    } else if (
                         namesAuthorizedChannel(constant) || isQueryPathOtherThanSync(constant) || containsTraversal(constant)
                             || (inGateway && isChannelSegment(constant))
                     ) {
@@ -149,13 +162,18 @@ class ArchitectureTest {
         }
         assertTrue(
             violations.isEmpty(),
-            "The service may call only " + OPEN_QUERY_SYNC_PATH + ". These class constants name " + AUTHORIZED_PATH + ", a "
-                + BACKEND_TEMPLATE + " template, an HPDS or query path other than " + OPEN_QUERY_SYNC_PATH
+            "The service may call only " + OPEN_QUERY_SYNC_PATH + " and, from AuthorizedQueryClient, " + AUTHORIZED_QUERY_SYNC_PATH
+                + ". These class constants name " + AUTHORIZED_PATH + ", a " + BACKEND_TEMPLATE
+                + " template, an HPDS or query path other than " + OPEN_QUERY_SYNC_PATH
                 + ", a dot segment (/.., ../, %2e), or, in the gateway package, a bare " + CHANNEL_SEGMENTS + " segment: " + violations
         );
         assertTrue(
             sawTextOnlyClass,
             "The class scan exempts " + TEXT_ONLY_CLASS_FILE + ", which is not under " + classes + "; remove or correct the exemption"
+        );
+        assertTrue(
+            sawAuthorizedQueryPath,
+            "The class scan did not find " + AUTHORIZED_QUERY_SYNC_PATH + " in " + authorizedQueryClientFile + " under " + classes
         );
         assertTrue(
             sawOpenQueryPath,
@@ -195,8 +213,8 @@ class ArchitectureTest {
         assertTrue(
             violations.isEmpty(),
             "Configuration may not name " + AUTHORIZED_PATH + ", a " + BACKEND_TEMPLATE + " template, an HPDS or query path other than "
-                + OPEN_QUERY_SYNC_PATH + ", or a dot segment (/.., ../, %2e), because the service reaches only the open channel. Found in: "
-                + violations
+                + OPEN_QUERY_SYNC_PATH + ", or a dot segment (/.., ../, %2e), because the service reaches only the open channel and, from "
+                + "AuthorizedQueryClient, the authorized sync path. Found in: " + violations
         );
         assertTrue(
             scanned.contains("application.yml"),
@@ -238,23 +256,45 @@ class ArchitectureTest {
                 DescribedPredicate.describe(
                     "are RestClient or its nested types", c -> c.getName().equals(REST_CLIENT) || c.getName().startsWith(REST_CLIENT + "$")
                 )
-            ).because("tools must call the gateway through DictionaryClient or OpenQueryClient, whose paths are fixed").check(mainClasses);
+            )
+            .because(
+                "tools must call the gateway through DictionaryClient, OpenQueryClient, or AuthorizedQueryClient, whose paths are fixed"
+            ).check(mainClasses);
     }
 
     /**
-     * Only {@link OpenQueryClient} and {@link DictionaryClient} start a {@code RestClient} request, so no other class, in {@code gateway}
-     * or {@code config}, can assemble a gateway URL. Those two clients hold every path the service calls as a fixed constant. A method
-     * reference such as {@code restClient::post} counts as starting a request.
+     * Every class outside {@code gateway} that uses {@link AuthorizedQueryClient}, directly or through the {@code AuthorizedQueryCalls}
+     * helper, implements {@link AuthorizedChannelTool}, so the audit aspect marks each of its calls as an authorized read and none can pass
+     * for an open count. The helper itself is the one exception. A configuration class that used the client would fail here too.
      */
     @Test
-    void onlyTheTwoGatewayClientsStartRequests() {
-        noClasses().that().doNotBelongToAnyOf(OpenQueryClient.class, DictionaryClient.class).should()
+    void everyUserOfTheAuthorizedClientIsMarked() {
+        classes().that().resideOutsideOfPackage(GATEWAY).and().doNotHaveFullyQualifiedName(AUTHORIZED_QUERY_CALLS)
+            .and(
+                DescribedPredicate.describe(
+                    "use AuthorizedQueryClient or AuthorizedQueryCalls",
+                    c -> c.getDirectDependenciesFromSelf().stream().map(d -> d.getTargetClass().getName())
+                        .anyMatch(name -> name.equals(AuthorizedQueryClient.class.getName()) || name.equals(AUTHORIZED_QUERY_CALLS))
+                )
+            ).should().implement(AuthorizedChannelTool.class)
+            .because("the audit aspect records channel=authorized only for AuthorizedChannelTool beans").check(mainClasses);
+    }
+
+    /**
+     * Only {@link OpenQueryClient}, {@link AuthorizedQueryClient}, and {@link DictionaryClient} start a {@code RestClient} request, so no
+     * other class, in {@code gateway} or {@code config}, can assemble a gateway URL. Those three clients hold every path the service calls
+     * as a fixed constant. A method reference such as {@code restClient::post} counts as starting a request.
+     */
+    @Test
+    void onlyTheThreeGatewayClientsStartRequests() {
+        noClasses().that().doNotBelongToAnyOf(OpenQueryClient.class, AuthorizedQueryClient.class, DictionaryClient.class).should()
             .accessTargetWhere(
                 methodAccess(
                     "starts a RestClient request",
                     access -> access.getTargetOwner().getName().equals(REST_CLIENT) && REQUEST_METHODS.contains(access.getName())
                 )
-            ).because("the open query and dictionary clients are the only classes that choose a gateway path").check(mainClasses);
+            ).because("the open query, authorized query, and dictionary clients are the only classes that choose a gateway path")
+            .check(mainClasses);
     }
 
     /**

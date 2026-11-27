@@ -11,8 +11,27 @@ import com.fasterxml.jackson.databind.JsonNode;
 /** What one chat turn has learned and accepted so far. A later proposal replaces an earlier one only for the parts it sends. */
 final class TurnState {
 
-    /** Concept paths seen in the request or in a tool result; only these may be used or proposed. */
+    /**
+     * Concept paths seen in the request or in a tool result other than a cross count's; only these may be used or proposed. A cross count's
+     * cells can be internal consent paths the open channel put in, so they never reach a tool call or a proposal.
+     */
     final ConceptPaths conceptPaths = new ConceptPaths();
+    /** Every concept path seen in the request or in any tool result, cross counts included: the paths a reply may name. */
+    final ConceptPaths quotablePaths = new ConceptPaths();
+
+    /**
+     * Records the paths in a tool result: always as quotable, and as usable unless it is a cross count's.
+     *
+     * @param tool the tool that returned the result
+     * @param content the result content
+     */
+    void learnPathsFrom(String tool, String content) {
+        quotablePaths.learnFrom(content);
+        if (ToolUseLoopService.teachesPaths(tool)) {
+            conceptPaths.learnFrom(content);
+        }
+    }
+
     /** Facets seen in the request or in a list_facets result; only these may be used or proposed. */
     final KnownFacets knownFacets = new KnownFacets();
     final SearchHistory searches = new SearchHistory();
@@ -50,7 +69,7 @@ final class TurnState {
     boolean selectionRepairAsked;
     /** Every successful dictionary lookup this turn, kept with the conversation so later turns can rebuild what it showed. */
     final List<ConversationTurn.ToolOutput> toolOutputs = new ArrayList<>();
-    /** The query of the latest successful count_participants call, or null. */
+    /** The query of the latest successful count_participants or authorized_count_participants call, or null. */
     JsonNode lastCountedQuery;
 
     /** @param currentQuery the query the request arrived with, or null */
@@ -58,7 +77,7 @@ final class TurnState {
         this.currentQuery = currentQuery;
     }
 
-    /** @param arguments a successful count_participants call's arguments */
+    /** @param arguments a successful single count call's arguments */
     void learnCountedQuery(JsonNode arguments) {
         if (arguments.path("query").isObject()) {
             lastCountedQuery = arguments.path("query");

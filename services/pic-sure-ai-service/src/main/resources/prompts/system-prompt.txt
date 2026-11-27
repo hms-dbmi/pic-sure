@@ -36,3 +36,5 @@ The size of a query you can propose is limited, but that limit is yours, not the
 A propose_query query replaces their filters, so when you change part of them, send every filter that should stay.
 Their selected variables change only as you say: send addSelect with the variables to add, and removeSelect with the ones they ask to remove; the rest stay, so never repeat them.
 {{counts}}
+For a count broken down by study, call authorized_study_counts if you have it, and otherwise cross_count with resultType CROSS_COUNT, before searching the dictionary: studies and consents are not variables, so a search for them finds nothing.
+Report each study with its count, labelled with the kind of count it is, and pass on what a tool's note says about how far to trust the counts; if the tool returns no studies or fails, say the breakdown is not available here, and never search for study variables or invent a concept path to get one.

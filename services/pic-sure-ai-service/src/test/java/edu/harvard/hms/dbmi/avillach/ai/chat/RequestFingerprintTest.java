@@ -28,4 +28,16 @@ class RequestFingerprintTest {
             RequestFingerprint.of(request("{\"select\":[\"a\",\"b\"]}")), RequestFingerprint.of(request("{\"select\":[\"b\",\"a\"]}"))
         );
     }
+
+    @Test
+    void anOpenAccessRequestIsNotTheSameRequestAsTheSameMessageWithoutIt() {
+        assertNotEquals(
+            RequestFingerprint.of(new ChatRequest("hello", "c", "r", null, null, null, true)),
+            RequestFingerprint.of(new ChatRequest("hello", "c", "r", null, null, null, null))
+        );
+        assertEquals(
+            RequestFingerprint.of(new ChatRequest("hello", "c", "r", null, null, null, false)),
+            RequestFingerprint.of(new ChatRequest("hello", "c", "r", null, null, null, null))
+        );
+    }
 }

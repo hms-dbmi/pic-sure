@@ -5,7 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 /**
  * Entry point for the PIC-SURE MCP server. The service answers MCP JSON-RPC over stateless Streamable HTTP on {@code /mcp} and reaches
- * PIC-SURE data only through the gateway's open channel.
+ * PIC-SURE data through the gateway's open channel, plus count-only queries on the authorized channel sent with the caller's own token.
  */
 @SpringBootApplication
 public class McpApplication {

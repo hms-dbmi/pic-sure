@@ -16,9 +16,9 @@
     <packaging>jar</packaging>
 
     <name>pic-sure-mcp</name>
-    <description>MCP server for PIC-SURE: stateless Streamable HTTP tools that search the dictionary and run
-        obfuscated open counts by calling back through the gateway. Open channel only, no database, no Spring
-        Security.</description>
+    <description>MCP server for PIC-SURE: stateless Streamable HTTP tools that search the dictionary, run
+        obfuscated open counts, and run the caller's own exact counts by calling back through the gateway. Open channel
+        plus count-only authorized queries sent with the caller's token, no database, no Spring Security.</description>
 
     <properties>
         <archunit.version>1.4.1</archunit.version>

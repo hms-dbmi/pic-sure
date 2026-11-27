@@ -63,8 +63,14 @@
     {
       "name": "picsure.ai.mcp.read-timeout",
       "type": "java.time.Duration",
-      "description": "How long GatewayMcpToolGateway waits for a response from the gateway's /mcp route.",
+      "description": "How long GatewayMcpToolGateway waits for a response from the gateway's /mcp route, for every call but a count tool call (see picsure.ai.mcp.count-read-timeout).",
       "defaultValue": "20s"
+    },
+    {
+      "name": "picsure.ai.mcp.count-read-timeout",
+      "type": "java.time.Duration",
+      "description": "How long GatewayMcpToolGateway waits for a response to a count tool call, open or authorized. Maps from the AI_MCP_COUNT_READ_TIMEOUT environment variable.",
+      "defaultValue": "130s"
     },
     {
       "name": "picsure.ai.conversation.store",

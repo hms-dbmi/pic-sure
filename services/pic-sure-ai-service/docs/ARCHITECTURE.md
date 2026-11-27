@@ -15,7 +15,7 @@ flowchart LR
     MODEL["Reasoning model<br/>Bedrock Converse<br/>(aws-sdk or http provider)"]
     MCP["pic-sure-mcp<br/>read-only tools"]
     DICT["Dictionary API"]
-    HPDS["HPDS open channel<br/>obfuscated counts"]
+    HPDS["HPDS<br/>open channel: obfuscated counts<br/>authorized channel: exact counts"]
 
     UI -- "POST /picsure/ai/chat<br/>Bearer JWT" --> GW
     GW -- "/ai/**" --> AI
@@ -121,13 +121,22 @@ flowchart TD
 | Tool | Source | Notes |
 | --- | --- | --- |
 | `search_concepts`, `list_facets`, `get_concept`, `get_concepts` | `pic-sure-mcp` via gateway | Always offered. |
-| `count_participants`, `cross_count` | `pic-sure-mcp` via gateway | Obfuscated open-access counts. Withheld from authorized (logged-in) callers, whose results panel shows exact counts; the system prompt tells the model it cannot count. |
+| `count_participants`, `cross_count` | `pic-sure-mcp` via gateway | Obfuscated open-access counts that ignore consents. Offered to every caller. |
+| `authorized_count_participants`, `authorized_cross_count` | `pic-sure-mcp` via gateway | Exact counts filtered by the caller's own consents, run with their token. Offered to authorized (logged-in) callers only, whose system prompt says when to use each kind and to keep the two apart. |
+| `authorized_study_counts` | `pic-sure-mcp` via gateway | Exact participants per study, as the caller. Authorized callers only. Counts by study consent concept when the open channel lists them per study, otherwise (the usual case) by dataset from cached dictionary candidates (see the `pic-sure-mcp` README). Its studies may be consent paths, so it is treated like a cross count and teaches the path guard nothing. |
 | `get_adapter_code` | `pic-sure-mcp` via gateway | Withheld by default (`AI_MCP_EXCLUDED_TOOLS`) to save input tokens. |
 | `propose_query` | This service | Query, facets and search proposals. Selected variables are a change (`addSelect` / `removeSelect`), not a list. |
 
 The system prompt has two variants (open and authorized caller) built from one template, so it stays identical between turns and
 cacheable. The researcher's current query, facets and search are appended to the user message as labeled data, not put in the
 prompt.
+
+Which variant and tool set a turn gets comes from the gateway's access type, narrowed by the request's optional `openAccess` field.
+A logged-in researcher can be on an open-access page, and the service cannot tell which page from the token, so the UI sets
+`openAccess: true` there and the turn then runs as an open caller: open prompt, no authorized tools. Blank or false changes nothing.
+The field can only narrow, never widen: it is not an authorization signal, and an open caller who sends false still gets no
+authorized tool. Conversations and stored replies stay keyed by the caller's real identity, and the flag is part of the request
+fingerprint, so a replay with a different flag is a different request.
 
 ## 4. Identity, ownership and stored state
 

@@ -97,6 +97,61 @@ public class ToolFailure extends RuntimeException {
     }
 
     /**
+     * Maps a failed authorized count response to a short message. The message depends only on the status code; the body and headers are
+     * never read. A 502 gets its own message because the query service returns it both for a failed HPDS call and when it cannot verify the
+     * caller's consents, which includes a caller with no consents at all, so repeated retries may never help.
+     *
+     * @param e the downstream failure
+     * @return a failure whose message names what went wrong
+     */
+    public static ToolFailure fromAuthorizedQueryDownstream(RestClientResponseException e) {
+        int status = e.getStatusCode().value();
+        if (status == 400) {
+            return new ToolFailure("The query service rejected the query. Check the concept paths and values with search_concepts.");
+        }
+        if (status == 401) {
+            return new ToolFailure(
+                "The gateway did not accept this request's credentials. Ask the user to sign in to PIC-SURE again; if that does not help, "
+                    + "this server's gateway credential needs attention."
+            );
+        }
+        if (status == 403) {
+            return new ToolFailure(
+                "The user's PIC-SURE access does not permit this authorized count. They may need access to authorized queries or to the "
+                    + "studies in the query."
+            );
+        }
+        if (status == 502) {
+            return new ToolFailure(
+                "The query service could not complete the authorized count: it could not verify the user's consents, or the data "
+                    + "service failed. A user with no study access also gets this answer. Retry once at most; if it fails again, tell the "
+                    + "user, and mention that it can mean they have no authorized study access."
+            );
+        }
+        if (status == 503) {
+            // The query service answers 503 backend_not_configured when this deployment has no authorized data backend.
+            return new ToolFailure("Authorized counts are not available on this PIC-SURE deployment. Do not retry; tell the user.");
+        }
+        if (e.getStatusCode().is5xxServerError()) {
+            return authorizedQueryUnavailable();
+        }
+        return new ToolFailure("The query service rejected the request.");
+    }
+
+    /**
+     * The failure for an authorized count that failed with no clear cause, or never produced a response, such as a timeout. Unlike
+     * {@link #queryUnavailable()}, it caps retries, since a timed-out count would do the same work again.
+     *
+     * @return a failure saying the authorized count is unavailable
+     */
+    public static ToolFailure authorizedQueryUnavailable() {
+        return new ToolFailure(
+            "The authorized count failed or took too long. Retry once at most; if it fails again, tell the user authorized counts are "
+                + "unavailable right now, or try a smaller query."
+        );
+    }
+
+    /**
      * The failure for an open query call that never produced a response, such as a refused connection or a timeout.
      *
      * @return a failure saying the query service is unavailable
