@@ -81,8 +81,8 @@ The gateway's MCP tools (from `pic-sure-mcp`) plus one local tool, minus exclusi
 
 - `search_concepts`, `list_facets`, `get_concept`, `get_concepts`: always.
 - `authorized_count_participants`, `authorized_cross_count`, `authorized_study_counts`: exact counts filtered by the caller's own
-  consents, run with their token. `authorized_study_counts` is participants per study: by study consent concept when the data has
-  them, otherwise by dataset from the dictionary (see `pic-sure-mcp`). **Offered to logged-in (`authorized`) callers only.**
+  consents, run with their token. `authorized_study_counts` is participants per study: by study consent concept when the open channel
+  lists them per study, otherwise (the usual case) by dataset from the dictionary (see `pic-sure-mcp`). **Offered to logged-in (`authorized`) callers only.**
 - `count_participants`, `cross_count`: obfuscated open-access counts that ignore consents. Offered to every caller. A logged-in
   researcher can see both the open and the authorized pages, so they get both kinds of count; their system prompt says to prefer an
   exact count for data they can access, to name which kind each number is, and never to combine or compare the two.
@@ -149,6 +149,5 @@ The `-Dtest` pattern keeps upstream modules' tests from running. `ArchitectureTe
 `ai.model` touches Bedrock or Spring AI types. Both this module and `pic-sure-mcp` are Spotless-clean and CI runs `spotless:check` on them, so run
 `mvn -pl services/pic-sure-ai-service spotless:apply` before you push.
 
-Model-behavior regressions are checked with a separate chat-test runner (a suite of single- and multi-turn questions run against a
-locally built service); it is not part of this repo. Unit tests cannot show them.
-
+Model-behavior regressions are checked with the chat-test suite in `scripts/chat-test/` (single- and multi-turn questions run against
+a locally built service); see [docs/MODEL.md](docs/MODEL.md#regression-testing-a-model-or-prompt-change). Unit tests cannot show them.
