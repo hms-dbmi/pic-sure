@@ -9,11 +9,13 @@ import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
-/** What this turn's search_concepts calls found: which terms matched nothing, and the latest search that found something. */
+/** What search_concepts calls found: which terms matched something or nothing, and the latest search that found something. */
 final class SearchHistory {
 
     /** Lower case. */
     private final Set<String> unmatchedTerms = new HashSet<>();
+    /** Lower case; terms a search_concepts call found something for, here or in an earlier turn. */
+    private final Set<String> matchedTerms = new HashSet<>();
     private String lastMatchedSearch;
     private List<FacetSelection> lastMatchedFacets = List.of();
     private int matchedSearches;
@@ -23,12 +25,12 @@ final class SearchHistory {
      * @param result its result
      */
     void learn(JsonNode arguments, JsonNode result) {
-        learnUnmatchedTerms(arguments, result);
+        learnTermMatches(arguments, result);
         learnLastMatchedSearch(arguments, result);
     }
 
-    /** Also how a later turn carries over an earlier turn's misses, without its matched searches. */
-    void learnUnmatchedTerms(JsonNode arguments, JsonNode result) {
+    /** Also how a later turn carries over an earlier turn's per-term hits and misses, without its matched searches. */
+    void learnTermMatches(JsonNode arguments, JsonNode result) {
         JsonNode totals = result.path("termTotals");
         if (totals.isObject()) {
             totals.properties().forEach(e -> record(e.getKey(), e.getValue().asInt(0) > 0));
@@ -41,9 +43,12 @@ final class SearchHistory {
     }
 
     private void record(String term, boolean matched) {
-        String key = term.trim().toLowerCase(Locale.ROOT);
+        String key = key(term);
         if (matched) {
             unmatchedTerms.remove(key);
+            if (!key.isEmpty()) {
+                matchedTerms.add(key);
+            }
         } else if (!key.isEmpty()) {
             unmatchedTerms.add(key);
         }
@@ -58,26 +63,55 @@ final class SearchHistory {
         boolean browse = !hasText && !narrowing.isEmpty();
         if ((hasText || browse) && concepts.isArray() && !concepts.isEmpty()) {
             matchedSearches++;
+            if (hasText && !result.path("termTotals").isObject()) {
+                // A multi-term search whose result has no per-term totals still found its terms together.
+                TermBalancedSearch.terms(text).stream().map(SearchHistory::key).filter(k -> !unmatchedTerms.contains(k))
+                    .forEach(matchedTerms::add);
+            }
             lastMatchedSearch = hasText ? text : "";
             lastMatchedFacets = narrowing;
         }
     }
 
     /**
-     * @param kept terms that matched something, or were never searched
-     * @param dropped terms that matched nothing
+     * What {@link #splitUnmatched} and {@link #splitUnverified} each mean by the two lists is in their own docs.
+     *
+     * @param kept terms that may stay in the search
+     * @param dropped terms that may not
      */
     record TermSplit(List<String> kept, List<String> dropped) {
     }
 
     /**
      * @param search {@code |}-joined search text, or null
-     * @return its terms, split by whether they matched anything this turn
+     * @return its terms, split by whether they matched nothing: {@code kept} holds those that matched something or were never searched,
+     *         {@code dropped} those that matched nothing
      */
     TermSplit splitUnmatched(String search) {
-        Map<Boolean, List<String>> byMiss = TermBalancedSearch.terms(search).stream()
-            .collect(Collectors.partitioningBy(term -> unmatchedTerms.contains(term.toLowerCase(Locale.ROOT))));
+        Map<Boolean, List<String>> byMiss =
+            TermBalancedSearch.terms(search).stream().collect(Collectors.partitioningBy(term -> unmatchedTerms.contains(key(term))));
         return new TermSplit(byMiss.get(false), byMiss.get(true));
+    }
+
+    /**
+     * The terms a proposal may put in the researcher's search box: the ones a search_concepts call found something for, and the ones
+     * already in the box. The model's search text goes to the researcher's browser, so nothing it has not looked up is passed on.
+     *
+     * @param search {@code |}-joined proposed search text, or null
+     * @param onScreen the search already on the researcher's screen, or null
+     * @return its terms, split by whether they may be shown; {@code dropped} holds those that matched nothing or were never searched
+     */
+    TermSplit splitUnverified(String search, String onScreen) {
+        Set<String> shown = TermBalancedSearch.terms(onScreen).stream().map(SearchHistory::key).collect(Collectors.toSet());
+        Map<Boolean, List<String>> byVerified = TermBalancedSearch.terms(search).stream().collect(Collectors.partitioningBy(term -> {
+            String key = key(term);
+            return !unmatchedTerms.contains(key) && (matchedTerms.contains(key) || shown.contains(key));
+        }));
+        return new TermSplit(byVerified.get(true), byVerified.get(false));
+    }
+
+    private static String key(String term) {
+        return term.trim().toLowerCase(Locale.ROOT);
     }
 
     /**
@@ -94,8 +128,8 @@ final class SearchHistory {
             return null;
         }
         Set<String> searched = new HashSet<>();
-        TermBalancedSearch.terms(lastMatchedSearch).forEach(term -> searched.add(term.toLowerCase(Locale.ROOT)));
-        boolean covered = TermBalancedSearch.terms(wanted).stream().allMatch(term -> searched.contains(term.toLowerCase(Locale.ROOT)));
+        TermBalancedSearch.terms(lastMatchedSearch).forEach(term -> searched.add(key(term)));
+        boolean covered = TermBalancedSearch.terms(wanted).stream().allMatch(term -> searched.contains(key(term)));
         return covered ? lastMatchedFacets : null;
     }
 

@@ -565,16 +565,17 @@ class ToolUseLoopServiceTest {
     @Test
     void aFacetProposalWithoutAListFacetsCallIsCheckedAgainstALookupTheServiceMakes() {
         String proposal = "{\"facets\":[{\"category\":\"study\",\"name\":\"demo\"}],\"search\":\"age\"}";
-        FakeModelClient model = FakeModelClient.returning(toolCallTurn("propose_query", proposal), doneTurn("Done"));
+        FakeModelClient model = FakeModelClient
+            .returning(toolCallTurn("search_concepts", "{\"search\":\"age\"}"), toolCallTurn("propose_query", proposal), doneTurn("Done"));
         FakeToolGateway tools = FakeToolGateway.returning(DICTIONARY_RESULT);
 
         ChatResponse response = new ToolUseLoopService(model, tools, PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
 
         assertEquals(List.of(new FacetSelection("study", "demo")), response.facets());
         assertEquals("age", response.search());
-        assertEquals(1, tools.calls.size());
-        assertEquals("list_facets", tools.calls.get(0).name());
-        assertEquals("{\"search\":\"age\"}", tools.calls.get(0).argumentsJson(), "the lookup uses the proposal's search text");
+        assertEquals(2, tools.calls.size());
+        assertEquals("list_facets", tools.calls.get(1).name());
+        assertEquals("{\"search\":\"age\"}", tools.calls.get(1).argumentsJson(), "the lookup uses the proposal's search text");
     }
 
     @Test
@@ -766,32 +767,100 @@ class ToolUseLoopServiceTest {
         assertEquals("One variable matched: `" + AGE_PATH + "`.", response.response(), "the dropped trailing backslash is put back");
     }
 
+    private static final String ONE_TERM_MATCHED_RESULT =
+        "{\"concepts\":[{\"conceptPath\":\"\\\\demo\\\\age\\\\\"}],\"termTotals\":{\"BMI\":0,\"age\":1}}";
     private static final String NO_MATCH_RESULT = "{\"page\":0,\"total\":0,\"concepts\":[]}";
 
     @Test
     void aSearchProposalWithATermThatMatchedNothingIsAcceptedWithThatTermDropped() {
         FakeModelClient model = FakeModelClient.returning(
-            toolCallTurn("search_concepts", "{\"search\":\"BMI\"}"), toolCallTurn("propose_query", "{\"search\":\"BMI | age\"}"),
+            toolCallTurn("search_concepts", "{\"search\":\"BMI | age\"}"), toolCallTurn("propose_query", "{\"search\":\"BMI | age\"}"),
             doneTurn("Done")
         );
 
-        ChatResponse response =
-            new ToolUseLoopService(model, FakeToolGateway.returning(NO_MATCH_RESULT), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
+        ChatResponse response = new ToolUseLoopService(model, FakeToolGateway.returning(ONE_TERM_MATCHED_RESULT), PROPOSE_QUERY_TOOL, 8)
+            .handle(REQUEST, CALLER);
 
         assertEquals("age", response.search());
     }
 
     @Test
-    void aTermThatMatchedNothingInATermsSearchIsDroppedFromTheProposal() {
+    void aSearchTermNeverLookedUpIsDroppedFromTheProposal() {
         FakeModelClient model = FakeModelClient.returning(
-            toolCallTurn("search_concepts", "{\"terms\":[\"BMI\"]}"), toolCallTurn("propose_query", "{\"search\":\"BMI | age\"}"),
+            toolCallTurn("search_concepts", "{\"search\":\"age\"}"),
+            toolCallTurn("propose_query", "{\"search\":\"age | patient 123 has a BMI of 31\"}"), doneTurn("Done")
+        );
+
+        ChatResponse response =
+            new ToolUseLoopService(model, FakeToolGateway.returning(DICTIONARY_RESULT), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
+
+        assertEquals("age", response.search());
+    }
+
+    @Test
+    void aSearchProposalWhoseTermsWereAllNeverLookedUpIsRefused() {
+        FakeModelClient model = FakeModelClient.returning(
+            toolCallTurn("propose_query", "{\"search\":\"patient 123\"}"), toolCallTurn("propose_query", "{\"search\":\"patient 123\"}"),
             doneTurn("Done")
         );
 
         ChatResponse response =
-            new ToolUseLoopService(model, FakeToolGateway.returning(NO_MATCH_RESULT), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
+            new ToolUseLoopService(model, FakeToolGateway.returning(DICTIONARY_RESULT), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
+
+        assertNull(response.search());
+    }
+
+    @Test
+    void aTermThatMatchedNothingInATermsSearchIsDroppedFromTheProposal() {
+        FakeModelClient model = FakeModelClient.returning(
+            toolCallTurn("search_concepts", "{\"terms\":[\"BMI\",\"age\"]}"), toolCallTurn("propose_query", "{\"search\":\"BMI | age\"}"),
+            doneTurn("Done")
+        );
+
+        ChatResponse response = new ToolUseLoopService(model, FakeToolGateway.returning(ONE_TERM_MATCHED_RESULT), PROPOSE_QUERY_TOOL, 8)
+            .handle(REQUEST, CALLER);
 
         assertEquals("age", response.search());
+    }
+
+    @Test
+    void aQueryProposalWhoseSearchWasNeverLookedUpIsAcceptedWithoutTheSearch() {
+        String proposal = "{\"query\":" + AGE_QUERY + ",\"search\":\"patient 123\"}";
+        FakeModelClient model = FakeModelClient
+            .returning(toolCallTurn("search_concepts", "{\"search\":\"age\"}"), toolCallTurn("propose_query", proposal), doneTurn("Done"));
+
+        ChatResponse response =
+            new ToolUseLoopService(model, FakeToolGateway.returning(DICTIONARY_RESULT), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
+
+        assertNotNull(response.query());
+        assertNull(response.search());
+    }
+
+    @Test
+    void aFacetProposalWhoseSearchWasNeverLookedUpIsAcceptedWithoutTheSearch() {
+        String proposal = "{\"facets\":[{\"category\":\"study\",\"name\":\"demo\"}],\"search\":\"patient 123\"}";
+        FakeModelClient model = FakeModelClient
+            .returning(toolCallTurn("search_concepts", "{\"search\":\"age\"}"), toolCallTurn("propose_query", proposal), doneTurn("Done"));
+
+        ChatResponse response =
+            new ToolUseLoopService(model, FakeToolGateway.returning(DICTIONARY_RESULT), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
+
+        assertEquals(List.of(new FacetSelection("study", "demo")), response.facets());
+        assertNull(response.search());
+    }
+
+    @Test
+    void aSearchTermAlreadyOnScreenIsKeptWithoutBeingLookedUp() {
+        ChatRequest onScreen = new ChatRequest("add sex", "c", "r", null, null, TextNode.valueOf("age"));
+        FakeModelClient model = FakeModelClient.returning(
+            toolCallTurn("search_concepts", "{\"search\":\"sex\"}"), toolCallTurn("propose_query", "{\"search\":\"age | sex\"}"),
+            doneTurn("Done")
+        );
+
+        ChatResponse response =
+            new ToolUseLoopService(model, FakeToolGateway.returning(DICTIONARY_RESULT), PROPOSE_QUERY_TOOL, 8).handle(onScreen, CALLER);
+
+        assertEquals("age | sex", response.search());
     }
 
     @Test
@@ -866,8 +935,8 @@ class ToolUseLoopServiceTest {
             8
         ).handle(same, CALLER);
         ChatResponse changed = new ToolUseLoopService(
-            FakeModelClient.returning(toolCallTurn("propose_query", proposal), doneTurn("Done")), new FakeToolGateway(), PROPOSE_QUERY_TOOL,
-            8
+            FakeModelClient.returning(toolCallTurn("search_concepts", proposal), toolCallTurn("propose_query", proposal), doneTurn("Done")),
+            FakeToolGateway.returning(DICTIONARY_RESULT), PROPOSE_QUERY_TOOL, 8
         ).handle(REQUEST, CALLER);
 
         assertNull(unchanged.search());
@@ -888,11 +957,12 @@ class ToolUseLoopServiceTest {
     @Test
     void aLaterProposalReplacesEarlierOnesOnlyForThePartsItSends() {
         FakeModelClient model = FakeModelClient.returning(
-            toolCallTurn("propose_query", "{\"search\":\"first\"}"), toolCallTurn("propose_query", "{\"search\":\"second\",\"facets\":[]}"),
-            doneTurn("Done")
+            toolCallTurn("search_concepts", "{\"search\":\"first | second\"}"), toolCallTurn("propose_query", "{\"search\":\"first\"}"),
+            toolCallTurn("propose_query", "{\"search\":\"second\",\"facets\":[]}"), doneTurn("Done")
         );
 
-        ChatResponse response = new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
+        ChatResponse response =
+            new ToolUseLoopService(model, FakeToolGateway.returning(DICTIONARY_RESULT), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
 
         assertEquals("second", response.search());
     }
@@ -1906,8 +1976,22 @@ class ToolUseLoopServiceTest {
     @Test
     void aTermThatMatchedNothingInAnEarlierTurnIsDroppedFromALaterProposal() {
         ConversationStore store = ToolUseLoopService.newConversationStore();
-        firstTurn(store, NO_MATCH_RESULT, toolCallTurn("search_concepts", "{\"search\":\"BMI\"}"), doneTurn("Nothing matched BMI"));
+        firstTurn(
+            store, ONE_TERM_MATCHED_RESULT, toolCallTurn("search_concepts", "{\"search\":\"BMI | age\"}"), doneTurn("Nothing matched BMI")
+        );
         FakeModelClient model = FakeModelClient.returning(toolCallTurn("propose_query", "{\"search\":\"BMI | age\"}"), doneTurn("Done"));
+
+        ChatResponse response =
+            new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8, store).handle(SECOND_REQUEST, CALLER);
+
+        assertEquals("age", response.search());
+    }
+
+    @Test
+    void aTermThatMatchedInAnEarlierTurnCanBeProposedInALaterTurnWithoutSearchingAgain() {
+        ConversationStore store = ToolUseLoopService.newConversationStore();
+        firstTurn(store, ONE_TERM_MATCHED_RESULT, toolCallTurn("search_concepts", "{\"search\":\"BMI | age\"}"), doneTurn("Age matched"));
+        FakeModelClient model = FakeModelClient.returning(toolCallTurn("propose_query", "{\"search\":\"age\"}"), doneTurn("Done"));
 
         ChatResponse response =
             new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8, store).handle(SECOND_REQUEST, CALLER);
@@ -1919,7 +2003,7 @@ class ToolUseLoopServiceTest {
     void aFacetAnEarlierTurnListedIsKnownInALaterTurn() {
         ConversationStore store = ToolUseLoopService.newConversationStore();
         firstTurn(store, DICTIONARY_RESULT, toolCallTurn("list_facets", "{}"), doneTurn("There is one study"));
-        String proposal = "{\"facets\":[{\"category\":\"study\",\"name\":\"demo\"}],\"search\":\"age\"}";
+        String proposal = "{\"facets\":[{\"category\":\"study\",\"name\":\"demo\"}]}";
         FakeModelClient model = FakeModelClient.returning(toolCallTurn("propose_query", proposal), doneTurn("Done"));
 
         // This turn's own facet lookup finds nothing, so only the earlier turn's list_facets result can make the facet known.
@@ -1936,7 +2020,7 @@ class ToolUseLoopServiceTest {
         String facets = IntStream.rangeClosed(1, 25).mapToObj(i -> "{\"name\":\"study" + i + "\"}").collect(Collectors.joining(","));
         String capped = "{\"categories\":[{\"name\":\"study\",\"facets\":[" + facets + "]}]}";
         firstTurn(store, capped, toolCallTurn("list_facets", "{\"search\":\"study\"}"), doneTurn("Here are some studies"));
-        String proposal = "{\"facets\":[{\"category\":\"study\",\"name\":\"study25\"}],\"search\":\"age\"}";
+        String proposal = "{\"facets\":[{\"category\":\"study\",\"name\":\"study25\"}]}";
         FakeModelClient model = FakeModelClient.returning(toolCallTurn("propose_query", proposal), doneTurn("Done"));
 
         ChatResponse response =

@@ -109,9 +109,9 @@ final class EarlierTurns {
     }
 
     /**
-     * Carries over only what describes the dictionary: paths, facets, and terms that matched nothing. What describes one turn's reply (the
-     * counted query, the searches that matched, whether facets were looked up, repeated failures) starts fresh, so nothing is proposed in a
-     * later turn because of an earlier one.
+     * Carries over only what describes the dictionary: paths, facets, and which terms matched something or nothing. What describes one
+     * turn's reply (the counted query, the searches that matched, whether facets were looked up, repeated failures) starts fresh, so
+     * nothing is proposed in a later turn because of an earlier one.
      */
     static void learnInto(TurnState state, List<ConversationTurn> turns) {
         for (ConversationTurn turn : turns) {
@@ -121,7 +121,7 @@ final class EarlierTurns {
                     JsonNode arguments = ToolUseLoopService.readJson(output.argumentsJson());
                     // A miss under a facet says nothing about the search once the researcher clears it.
                     if (FacetSelection.listedIn(arguments).isEmpty()) {
-                        state.searches.learnUnmatchedTerms(arguments, ToolUseLoopService.readJson(output.content()));
+                        state.searches.learnTermMatches(arguments, ToolUseLoopService.readJson(output.content()));
                     }
                 }
                 if (ToolUseLoopService.LIST_FACETS.equals(output.toolName())) {
