@@ -47,7 +47,7 @@ final class ProposalRules {
 
     /**
      * Keeps the researcher's filters, applies the proposed changes to their selected variables, adds the facets a proposed search was run
-     * with, and drops search terms that matched nothing.
+     * with, and drops search terms that no search_concepts call found something for.
      *
      * @param proposal a proposal that passed {@link ProposeQueryTool}'s checks
      * @param state this turn's state; the adjusted proposal is accepted into it
@@ -86,7 +86,8 @@ final class ProposalRules {
             }
             selectNote = selectNote(proposal.query(), before, proposal.removeSelect());
         }
-        return acceptDroppingUnmatchedTerms(withSearchFacets(proposal, state.searches), state, selectNote, searchBefore);
+        List<FacetSelection> sentFacets = proposal.facets();
+        return acceptDroppingUnverifiedTerms(withSearchFacets(proposal, state.searches), sentFacets, state, selectNote, searchBefore);
     }
 
     /** @return the filters and added variables of a proposed query that the researcher had removed by hand, as proposed */
@@ -191,23 +192,36 @@ final class ProposalRules {
         return narrowing == null ? proposal : proposal.withFacets(narrowing);
     }
 
-    private static ToolResult acceptDroppingUnmatchedTerms(Proposal proposal, TurnState state, String selectNote, String searchBefore) {
-        SearchHistory.TermSplit split = state.searches.splitUnmatched(proposal.search());
+    /** @param sentFacets the facets the model itself proposed, as opposed to the ones {@link #withSearchFacets} attached for its search */
+    private static ToolResult acceptDroppingUnverifiedTerms(
+        Proposal proposal, List<FacetSelection> sentFacets, TurnState state, String selectNote, String searchBefore
+    ) {
+        SearchHistory.TermSplit split = state.searches.splitUnverified(proposal.search(), searchBefore);
         if (split.dropped().isEmpty()) {
             state.accept(proposal);
             return accepted(proposal, null, selectNote, searchBefore);
         }
+        String dropped = String.join(", ", split.dropped());
+        String reason = " because no search_concepts call found anything for them (they matched nothing, or were never searched). A "
+            + "term that was never searched can be shown once search_concepts finds something for it.";
         if (split.kept().isEmpty()) {
+            if (proposal.query() != null || sentFacets != null || !proposal.removeSelect().isEmpty()) {
+                // The rest of the proposal is sound, so only its search text is lost, and the facets that came with that search.
+                Proposal withoutSearch = proposal.withSearch(null).withFacets(sentFacets);
+                state.accept(withoutSearch);
+                return accepted(withoutSearch, "Dropped the search " + dropped + reason, selectNote, searchBefore);
+            }
             return ToolResult.failure(
-                "None of the terms in the search \"" + proposal.search() + "\" matched anything. Call search_concepts with "
-                    + "different terms (for example \"body mass index\" rather than \"BMI\"), then propose_query with the terms that matched."
+                "None of the terms in the search \"" + proposal.search()
+                    + "\" matched anything in a search_concepts call: they matched nothing, or were never searched. Call search_concepts "
+                    + "with them, or with different terms (for example \"body mass index\" rather than \"BMI\"), then propose_query with the "
+                    + "terms that matched."
             );
         }
         String keptSearch = String.join(" | ", split.kept());
         Proposal trimmed = proposal.withSearch(keptSearch);
         state.accept(trimmed);
-        String note = "Dropped " + String.join(", ", split.dropped())
-            + " from the search because nothing matched. Their search is now only: " + keptSearch + ".";
+        String note = "Dropped " + dropped + " from the search" + reason + " Their search is now only: " + keptSearch + ".";
         return accepted(trimmed, note, selectNote, searchBefore);
     }
 
