@@ -9,12 +9,14 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.github.benmanes.caffeine.cache.Ticker;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.MissingNode;
@@ -120,6 +122,14 @@ class ToolUseLoopService implements ChatOrchestrator {
     static final String FALLBACK_TEXT =
         "I wasn't able to finish gathering the information for this request. Please try rephrasing, or ask again.";
 
+    /**
+     * What the researcher is told when the conversation they continued was dropped to make room; see {@link ConversationStore#evictionOf}.
+     */
+    static final String LIMIT_NOTICE = "Only a few conversations are kept at a time, so this one was closed to make room for newer ones. "
+        + "Your earlier messages here are no longer available, so this message starts a new conversation.";
+    static final String CLEANUP_NOTICE = "This conversation was cleared during routine system cleanup. "
+        + "Your earlier messages here are no longer available, so this message starts a new conversation.";
+
     private final ConverseModelClient modelClient;
     private final McpToolGateway toolGateway;
     private final ProposeQueryTool proposeQueryTool;
@@ -138,8 +148,12 @@ class ToolUseLoopService implements ChatOrchestrator {
         this(modelClient, toolGateway, proposeQueryTool, maxIterations, Set.of(), conversations);
     }
 
+    /**
+     * A store for tests and the convenience constructors above. Its limits are fixed here and do not follow {@code application.yml}: the
+     * running service gets its store from Spring, bound to {@code picsure.ai.conversation.*}.
+     */
     static ConversationStore newConversationStore() {
-        return new InMemoryConversationStore(Duration.ofHours(1), 50, 50_000_000L);
+        return new InMemoryConversationStore(Duration.ofHours(1), 50, 50_000_000L, 2, 10_000, Ticker.systemTicker());
     }
 
     /**
@@ -212,6 +226,7 @@ class ToolUseLoopService implements ChatOrchestrator {
         tools.add(proposeQueryTool.definition());
         ConversationStore.Key conversation = new ConversationStore.Key(caller.owner(), request.conversationId());
         List<ConversationTurn> earlier = conversations.turns(conversation);
+        Optional<ConversationStore.Eviction> evicted = earlier.isEmpty() ? conversations.evictionOf(conversation) : Optional.empty();
         List<ConversationEntry> history = new ArrayList<>(EarlierTurns.entries(earlier));
         int maxFilters = proposeQueryTool.maxFilters();
         String message =
@@ -251,7 +266,8 @@ class ToolUseLoopService implements ChatOrchestrator {
                 state.pathRepairAsked = true;
                 stats.corrections.add("pathRepair");
                 log.debug(
-                    "Reply names {} path(s) no tool returned; asking the model to correct them: {}", unknownPaths.size(), unknownPaths
+                    "Reply names {} path(s) no tool returned; asking the model to correct them: {}", unknownPaths.size(),
+                    LogSanitizer.clean(unknownPaths)
                 );
                 history.add(new AssistantToolCallEntry(turn.text(), List.of()));
                 history.add(new UserEntry(pathRepairMessage(unknownPaths, state.conceptPaths)));
@@ -303,7 +319,11 @@ class ToolUseLoopService implements ChatOrchestrator {
             "Chat turn: outcome={} stop={} proposed=[{}] earlierTurns={} userId={} {}", fallback ? "fallback" : "answered",
             stop.name().toLowerCase(Locale.ROOT), String.join(", ", proposed), earlier.size(), caller.userId(), stats.summary()
         );
-        return response;
+        return evicted.map(why -> response.withNotice(noticeFor(why))).orElse(response);
+    }
+
+    private static String noticeFor(ConversationStore.Eviction why) {
+        return why == ConversationStore.Eviction.LIMIT ? LIMIT_NOTICE : CLEANUP_NOTICE;
     }
 
     /** 5xx is this service or a dependency failing; anything else is a request this turn could not serve. */

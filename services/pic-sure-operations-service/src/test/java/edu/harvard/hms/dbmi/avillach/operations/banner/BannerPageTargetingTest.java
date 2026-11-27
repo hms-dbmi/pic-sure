@@ -78,9 +78,7 @@ class BannerPageTargetingTest {
 
     @BeforeEach
     void seedPriorityAllocator() {
-        allocatorRepository.saveAndFlush(
-            new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1)
-        );
+        allocatorRepository.saveAndFlush(new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1));
     }
 
     @Test
@@ -112,8 +110,7 @@ class BannerPageTargetingTest {
         assertThat(storedTargets).isEqualTo(expected);
         assertThat(versionTargets).isEqualTo(expected);
         mockMvc.perform(get("/banners").headers(adminHeaders())).andExpect(status().isOk())
-            .andExpect(jsonPath("$[0].pageTargets[0].kind").value("EXACT"))
-            .andExpect(jsonPath("$[0].pageTargets[0].path").value("/help"));
+            .andExpect(jsonPath("$[0].pageTargets[0].kind").value("EXACT")).andExpect(jsonPath("$[0].pageTargets[0].path").value("/help"));
         mockMvc.perform(get("/banners/active")).andExpect(status().isOk())
             .andExpect(jsonPath("$[0].pageTargets[2].kind").value("PARAMETERIZED"))
             .andExpect(jsonPath("$[0].pageTargets[3].path").value("/admin")).andExpect(jsonPath("$[0].createdBy").doesNotExist());
@@ -124,22 +121,16 @@ class BannerPageTargetingTest {
         JsonNode targeted = publish(objectMapper.readTree("[{\"kind\":\"EXACT\",\"path\":\"/help\"}]"));
         publish(objectMapper.readTree("[{\"kind\":\"ALL\"}]"));
 
-        mockMvc.perform(get("/banners/active")).andExpect(status().isOk())
-            .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(2)))
+        mockMvc.perform(get("/banners/active")).andExpect(status().isOk()).andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(2)))
             .andExpect(jsonPath("$[0].uuid").value(targeted.get("uuid").asText()))
             .andExpect(jsonPath("$[0].htmlContent").value("<p>Page-targeted notice</p>"))
-            .andExpect(jsonPath("$[0].title").value("Page target"))
-            .andExpect(jsonPath("$[0].appearance").value("PRIMARY"))
-            .andExpect(jsonPath("$[0].icon").value("INFORMATION"))
-            .andExpect(jsonPath("$[0].dismissible").value(true))
-            .andExpect(jsonPath("$[0].audience").value("EVERYONE"))
-            .andExpect(jsonPath("$[0].placement").value("SITE_TOP"))
-            .andExpect(jsonPath("$[0].pageTargets[0].kind").value("EXACT"))
-            .andExpect(jsonPath("$[0].pageTargets[0].path").value("/help"))
+            .andExpect(jsonPath("$[0].title").value("Page target")).andExpect(jsonPath("$[0].appearance").value("PRIMARY"))
+            .andExpect(jsonPath("$[0].icon").value("INFORMATION")).andExpect(jsonPath("$[0].dismissible").value(true))
+            .andExpect(jsonPath("$[0].audience").value("EVERYONE")).andExpect(jsonPath("$[0].placement").value("SITE_TOP"))
+            .andExpect(jsonPath("$[0].pageTargets[0].kind").value("EXACT")).andExpect(jsonPath("$[0].pageTargets[0].path").value("/help"))
             .andExpect(jsonPath("$[0].priority").isNumber())
             .andExpect(jsonPath("$[0].presentationHash").value(targeted.get("presentationHash").asText()))
-            .andExpect(jsonPath("$[0].createdBy").doesNotExist())
-            .andExpect(jsonPath("$[1].pageTargets[0].kind").value("ALL"));
+            .andExpect(jsonPath("$[0].createdBy").doesNotExist()).andExpect(jsonPath("$[1].pageTargets[0].kind").value("ALL"));
     }
 
     @ParameterizedTest
@@ -149,20 +140,15 @@ class BannerPageTargetingTest {
         JsonNode malformed = publish(objectMapper.readTree("[{\"kind\":\"EXACT\",\"path\":\"/hidden\"}]"));
         publish(objectMapper.readTree("[{\"kind\":\"ALL\"}]"));
         UUID malformedUuid = UUID.fromString(malformed.get("uuid").asText());
-        jdbcTemplate.update(
-            "UPDATE banner_occurrence SET page_targets = ? FORMAT JSON WHERE uuid = ?",
-            storedTargets, malformedUuid
-        );
+        jdbcTemplate.update("UPDATE banner_occurrence SET page_targets = ? FORMAT JSON WHERE uuid = ?", storedTargets, malformedUuid);
         entityManager.clear();
-        String storedJson = jdbcTemplate.queryForObject(
-            "SELECT page_targets FROM banner_occurrence WHERE uuid = ?", String.class, malformedUuid
-        );
+        String storedJson =
+            jdbcTemplate.queryForObject("SELECT page_targets FROM banner_occurrence WHERE uuid = ?", String.class, malformedUuid);
         assertThat(objectMapper.readTree(storedJson).isArray()).isTrue();
 
         mockMvc.perform(get("/banners").headers(adminHeaders())).andExpect(status().isOk())
             .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(1)));
-        mockMvc.perform(get("/banners/active")).andExpect(status().isOk())
-            .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(1)));
+        mockMvc.perform(get("/banners/active")).andExpect(status().isOk()).andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(1)));
         assertThat(output.getOut()).contains("Ignoring banner " + malformedUuid + " because its stored page targets are invalid");
     }
 
@@ -183,9 +169,7 @@ class BannerPageTargetingTest {
 
     @Test
     void normalizationIsIdempotentWhenSpacesTouchRemovableTrailingSlashes() {
-        List<BannerPageTarget> once = BannerPageTargets.normalize(
-            List.of(new BannerPageTarget(BannerPageTargetKind.EXACT, "/help /"))
-        );
+        List<BannerPageTarget> once = BannerPageTargets.normalize(List.of(new BannerPageTarget(BannerPageTargetKind.EXACT, "/help /")));
 
         assertThat(once).containsExactly(new BannerPageTarget(BannerPageTargetKind.EXACT, "/help"));
         assertThat(BannerPageTargets.normalize(once)).isEqualTo(once);
@@ -200,8 +184,8 @@ class BannerPageTargetingTest {
             "[{\"kind\":\"EXACT\",\"path\":\"/help?topic=banners\"}]", "[{\"kind\":\"EXACT\",\"path\":\"/help#banners\"}]",
             "[{\"kind\":\"EXACT\",\"path\":\"/help//banners\"}]", "[{\"kind\":\"EXACT\",\"path\":\"/help/../admin\"}]",
             "[{\"kind\":\"SUBTREE\",\"path\":\"/\"}]", "[{\"kind\":\"SUBTREE\",\"path\":\"/ /\"}]",
-            "[{\"kind\":\"SUBTREE\",\"path\":\"/help/*\"}]",
-            "[{\"kind\":\"PARAMETERIZED\",\"path\":\"/studies\"}]", "[{\"kind\":\"PARAMETERIZED\",\"path\":\"/studies/[[study]]\"}]",
+            "[{\"kind\":\"SUBTREE\",\"path\":\"/help/*\"}]", "[{\"kind\":\"PARAMETERIZED\",\"path\":\"/studies\"}]",
+            "[{\"kind\":\"PARAMETERIZED\",\"path\":\"/studies/[[study]]\"}]",
             "[{\"kind\":\"PARAMETERIZED\",\"path\":\"/studies/[...study]\"}]",
             "[{\"kind\":\"PARAMETERIZED\",\"path\":\"/studies/[study=uuid]\"}]",
             "[{\"kind\":\"PARAMETERIZED\",\"path\":\"/studies/[study\"}]"}

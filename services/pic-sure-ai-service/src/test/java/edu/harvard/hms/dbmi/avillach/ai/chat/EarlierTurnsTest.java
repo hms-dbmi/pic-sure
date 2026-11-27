@@ -114,4 +114,22 @@ class EarlierTurnsTest {
         assertFalse(state.knownFacets.isKnown(new FacetSelection("study", "other")));
         assertFalse(state.conceptPaths.isKnown("\\demo\\sex\\"));
     }
+
+    @Test
+    void aMissUnderAFacetIsNotCarriedIntoLaterTurns() {
+        TurnState state = new TurnState(null);
+        ConversationTurn narrowed = new ConversationTurn(
+            "hi", "ok",
+            List.of(
+                new ConversationTurn.ToolOutput(
+                    ToolUseLoopService.SEARCH_CONCEPTS,
+                    "{\"search\":\"creatinine\",\"facets\":[{\"category\":\"study\",\"name\":\"demo\"}]}", "{\"concepts\":[],\"total\":0}"
+                )
+            ), null
+        );
+
+        EarlierTurns.learnInto(state, List.of(narrowed));
+
+        assertTrue(state.searches.splitUnmatched("creatinine").dropped().isEmpty());
+    }
 }

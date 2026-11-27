@@ -58,9 +58,7 @@ class BannerAuditTransactionTest {
         versionRepository.deleteAll();
         repository.deleteAll();
         reset(loggingClient);
-        allocatorRepository.saveAndFlush(
-            new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1)
-        );
+        allocatorRepository.saveAndFlush(new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1));
     }
 
     @Test
@@ -184,9 +182,8 @@ class BannerAuditTransactionTest {
         verify(loggingClient).send(event.capture());
         assertThat(event.getValue().getAction()).isEqualTo("banner.reordered");
         assertThat(event.getValue().getCaller()).isEqualTo("admin-id");
-        assertThat(event.getValue().getMetadata()).containsEntry(
-            "bannerUuids", List.of(second.uuid().toString(), first.uuid().toString(), arrival.uuid().toString())
-        );
+        assertThat(event.getValue().getMetadata())
+            .containsEntry("bannerUuids", List.of(second.uuid().toString(), first.uuid().toString(), arrival.uuid().toString()));
         assertThat(objectMapper.writeValueAsString(event.getValue())).doesNotContain("Committed banner");
     }
 

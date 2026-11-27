@@ -61,7 +61,7 @@ class ChatControllerCallerIdentityTest {
     private String chat(String authorization, String userId) throws Exception {
         MvcResult result = mockMvc.perform(
             post("/chat").contentType(MediaType.APPLICATION_JSON).content(BODY).header("Authorization", authorization)
-                .header("X-User-Id", userId)
+                .header("X-User-Id", userId).header("X-User-Privileges", "ASSISTED_SEARCH")
         ).andExpect(status().isOk()).andReturn();
         return result.getResponse().getContentAsString();
     }

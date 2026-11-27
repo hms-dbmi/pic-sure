@@ -27,7 +27,8 @@ public record TokenInspectionRequest(
     @Schema(
         implementation = Map.class,
         description = "Description of the request the token is used for, evaluated by the access rules as sent. The gateway sends "
-            + "\"Target Service\", the path within the application; an application may add \"query\" with the query body."
+            + "\"Target Service\", the path within the application, and \"Caller\" for a verified sibling service; an application may add "
+            + "\"query\" with the query body."
     ) JsonNode request
 ) {
 

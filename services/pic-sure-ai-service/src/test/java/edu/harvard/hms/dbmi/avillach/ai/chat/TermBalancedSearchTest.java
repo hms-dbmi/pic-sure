@@ -212,4 +212,40 @@ class TermBalancedSearchTest {
             throw new IllegalStateException(e);
         }
     }
+
+    @Test
+    void aTermWhoseMatchesAllRankBelowTheFetchedPagesIsSearchedOnItsOwn() throws Exception {
+        List<String> calls = newCalls();
+        String[] ageConcepts = new String[50];
+        for (int i = 0; i < ageConcepts.length; i++) {
+            ageConcepts[i] = concept("\\\\age\\\\" + i + "\\\\", "age");
+        }
+        String orPage = page(4000, "{\"age\":4000,\"creatinine\":40}", ageConcepts);
+        String creatinineOnly = page(40, "{\"creatinine\":40}", concept("\\\\labs\\\\creatinine\\\\", "creatinine"));
+        Function<String, ToolResult> search = arguments -> {
+            calls.add(arguments);
+            try {
+                JsonNode call = JSON.readTree(arguments);
+                boolean alone = call.path("terms").size() == 1 && "creatinine".equals(call.path("terms").get(0).asText());
+                return ToolResult.success(alone ? creatinineOnly : orPage);
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        };
+
+        JsonNode out = JSON.readTree(TermBalancedSearch.search("{\"search\":\"age | creatinine\"}", search).content());
+
+        assertTrue(out.path("concepts").toString().contains("creatinine"));
+        assertEquals(1 + TermBalancedSearch.MAX_EXTRA_PAGES + 1, calls.size());
+    }
+
+    @Test
+    void aTermThatIsOnTheFetchedPagesCostsNoExtraCall() throws Exception {
+        List<String> calls = newCalls();
+        String first = page(2, "{\"a\":1,\"b\":1}", concept("\\\\x\\\\", "a"), concept("\\\\y\\\\", "b"));
+
+        assertNotNull(TermBalancedSearch.search("{\"search\":\"a | b\"}", pages(calls, first)));
+
+        assertEquals(1, calls.size());
+    }
 }

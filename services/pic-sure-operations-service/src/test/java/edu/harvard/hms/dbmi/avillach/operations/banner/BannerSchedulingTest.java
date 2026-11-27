@@ -67,9 +67,7 @@ class BannerSchedulingTest {
         repository.deleteAll();
         clock.set(NOW);
         reset(loggingClient);
-        allocatorRepository.saveAndFlush(
-            new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1)
-        );
+        allocatorRepository.saveAndFlush(new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1));
     }
 
     @ParameterizedTest(name = "{0}")

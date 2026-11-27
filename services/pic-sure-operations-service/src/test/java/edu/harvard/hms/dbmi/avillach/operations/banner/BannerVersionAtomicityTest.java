@@ -46,9 +46,7 @@ class BannerVersionAtomicityTest {
     void cleanDatabase() {
         versionRepository.deleteAll();
         bannerRepository.deleteAll();
-        allocatorRepository.saveAndFlush(
-            new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1)
-        );
+        allocatorRepository.saveAndFlush(new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1));
     }
 
     @Test
@@ -105,9 +103,8 @@ class BannerVersionAtomicityTest {
         ManagementBannerDto published = service.publish(request("<p>Original</p>"), ADMIN);
         service.disable(published.uuid(), ADMIN);
         int nextPriority = allocatorRepository.findById(BannerPriorityAllocator.SINGLETON_ID).orElseThrow().getNextPriority();
-        doThrow(new IllegalStateException("source archive unavailable")).when(bannerRepository).saveAndFlush(
-            argThat(banner -> published.uuid().equals(banner.getUuid()) && banner.getStatus() == BannerStatus.ARCHIVED)
-        );
+        doThrow(new IllegalStateException("source archive unavailable")).when(bannerRepository)
+            .saveAndFlush(argThat(banner -> published.uuid().equals(banner.getUuid()) && banner.getStatus() == BannerStatus.ARCHIVED));
 
         assertThatThrownBy(() -> service.restore(published.uuid(), request("<p>Restored</p>"), ADMIN))
             .isInstanceOf(IllegalStateException.class).hasMessage("source archive unavailable");

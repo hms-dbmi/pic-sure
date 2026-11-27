@@ -19,11 +19,9 @@ class BannerPresentationHasherTest {
 
     @Test
     void applicationSerializationSettingsDoNotChangePersistedHashes() throws Exception {
-        BannerOccurrence banner = occurrence(request("<p>Exact  bytes</p>", " Notice ",
-            "[{\"kind\":\"EXACT\",\"path\":\"/help/\"}]"));
+        BannerOccurrence banner = occurrence(request("<p>Exact  bytes</p>", " Notice ", "[{\"kind\":\"EXACT\",\"path\":\"/help/\"}]"));
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
-            context.registerBean(ObjectMapper.class,
-                () -> new ObjectMapper().enable(SerializationFeature.WRITE_ENUMS_USING_INDEX));
+            context.registerBean(ObjectMapper.class, () -> new ObjectMapper().enable(SerializationFeature.WRITE_ENUMS_USING_INDEX));
             context.registerBean(BannerPresentationHasher.class);
             context.refresh();
             assertThat(context.getBean(ObjectMapper.class).writeValueAsString(BannerPageTargetKind.EXACT)).doesNotContain("EXACT");
@@ -78,12 +76,11 @@ class BannerPresentationHasherTest {
     @Test
     void hashExcludesScheduleAndPriority() throws Exception {
         BannerOccurrence original = occurrence(request("<p>Same HTML</p>", "Notice", "[{\"kind\":\"ALL\"}]"));
-        BannerOccurrence changedStart = occurrence(request("<p>Same HTML</p>", "Notice", "[{\"kind\":\"ALL\"}]"))
-            .setStartAt(Instant.parse("2026-08-28T12:00:00Z"));
-        BannerOccurrence changedEnd = occurrence(request("<p>Same HTML</p>", "Notice", "[{\"kind\":\"ALL\"}]"))
-            .setEndAt(Instant.parse("2026-08-29T12:00:00Z"));
-        BannerOccurrence changedPriority = occurrence(request("<p>Same HTML</p>", "Notice", "[{\"kind\":\"ALL\"}]"))
-            .setPriority(40);
+        BannerOccurrence changedStart =
+            occurrence(request("<p>Same HTML</p>", "Notice", "[{\"kind\":\"ALL\"}]")).setStartAt(Instant.parse("2026-08-28T12:00:00Z"));
+        BannerOccurrence changedEnd =
+            occurrence(request("<p>Same HTML</p>", "Notice", "[{\"kind\":\"ALL\"}]")).setEndAt(Instant.parse("2026-08-29T12:00:00Z"));
+        BannerOccurrence changedPriority = occurrence(request("<p>Same HTML</p>", "Notice", "[{\"kind\":\"ALL\"}]")).setPriority(40);
 
         assertThat(hasher.hash(changedStart)).isEqualTo(hasher.hash(original));
         assertThat(hasher.hash(changedEnd)).isEqualTo(hasher.hash(original));

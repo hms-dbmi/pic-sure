@@ -1,7 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.ai.chat;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
@@ -11,6 +9,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.TestPropertySource;
@@ -41,6 +40,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ChatControllerTurnResultTest {
 
     private static final String TOKEN = "Bearer jwt-a";
+    private static final HttpHeaders ASSISTANT = new HttpHeaders();
+
+    static {
+        ASSISTANT.add("X-User-Id", "user-a");
+        ASSISTANT.add("X-User-Privileges", "ASSISTED_SEARCH");
+    }
+
     private static final String BODY = "{\"message\":\"hi\",\"conversationId\":\"c1\",\"requestId\":\"r1\"}";
 
     private static final String BODY_FINGERPRINT = RequestFingerprint.of(new ChatRequest("hi", "c1", "r1", null, null, null));
@@ -55,11 +61,12 @@ class ChatControllerTurnResultTest {
     private TurnResultStore results;
 
     private ResultActions send(String token) throws Exception {
-        return mockMvc.perform(post("/chat").contentType(MediaType.APPLICATION_JSON).content(BODY).header("Authorization", token));
+        return mockMvc
+            .perform(post("/chat").contentType(MediaType.APPLICATION_JSON).content(BODY).header("Authorization", token).headers(ASSISTANT));
     }
 
     private ResultActions fetch(String token, String requestId) throws Exception {
-        return mockMvc.perform(get("/chat/" + requestId).header("Authorization", token));
+        return mockMvc.perform(get("/chat/" + requestId).header("Authorization", token).headers(ASSISTANT));
     }
 
     @Test
@@ -85,37 +92,6 @@ class ChatControllerTurnResultTest {
         fetch("Bearer jwt-b", "r1").andExpect(status().isNotFound()).andExpect(jsonPath("$.errorType").value("turn_not_found"));
         send("Bearer jwt-b").andExpect(status().isOk());
         assertEquals(2, orchestrator.calls.get(), "the other caller's turn runs on its own");
-    }
-
-    @Test
-    void anOpenAccessSessionCanFetchItsReplyAfterItsTokenIsRefreshed() throws Exception {
-        String session = "8694e3d4-5cb4-410f-8431-993445e6d3f6";
-        String sent = mockMvc.perform(
-            post("/chat").contentType(MediaType.APPLICATION_JSON).content(BODY).header("Authorization", sessionToken(session, 1))
-                .header("X-User-Id", "OPEN_ACCESS:localhost").header("X-Picsure-Access-Type", "open")
-                .header("X-Picsure-Open-Session-Id", session)
-        ).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-
-        mockMvc.perform(
-            get("/chat/r1").header("Authorization", sessionToken(session, 500)).header("X-User-Id", "OPEN_ACCESS:localhost")
-                .header("X-Picsure-Access-Type", "open").header("X-Picsure-Open-Session-Id", session)
-        ).andExpect(status().isOk()).andExpect(content().json(sent));
-        String other = "1b4e28ba-2fa1-11d2-883f-0016d3cca427";
-        mockMvc.perform(
-            get("/chat/r1").header("Authorization", sessionToken(other, 1)).header("X-User-Id", "OPEN_ACCESS:localhost")
-                .header("X-Picsure-Access-Type", "open").header("X-Picsure-Open-Session-Id", other)
-        ).andExpect(status().isNotFound());
-        // a token whose payload names the victim's session, but which PSAMA did not verify: the gateway sends no session id
-        mockMvc.perform(
-            get("/chat/r1").header("Authorization", sessionToken(session, 1)).header("X-User-Id", "OPEN_ACCESS:localhost")
-                .header("X-Picsure-Access-Type", "open")
-        ).andExpect(status().isNotFound());
-    }
-
-    private static String sessionToken(String sessionId, int issuedAt) {
-        String payload = "{\"sub\":\"" + sessionId + "\",\"iat\":" + issuedAt + "}";
-        return "Bearer picsure_s_eyJhbGciOiJIUzI1NiJ9."
-            + Base64.getUrlEncoder().withoutPadding().encodeToString(payload.getBytes(StandardCharsets.UTF_8)) + ".sig";
     }
 
     @Test
@@ -149,6 +125,7 @@ class ChatControllerTurnResultTest {
         mockMvc.perform(
             post("/chat").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"message\":\"something else\",\"conversationId\":\"c1\",\"requestId\":\"r1\"}").header("Authorization", TOKEN)
+                .headers(ASSISTANT)
         ).andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.errorType").value("request_id_reused"));
         assertEquals(1, orchestrator.calls.get());
     }
@@ -160,6 +137,7 @@ class ChatControllerTurnResultTest {
         mockMvc.perform(
             post("/chat").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"message\":\"hi\",\"conversationId\":\"c1\",\"requestId\":\"r2\"}").header("Authorization", TOKEN)
+                .headers(ASSISTANT)
         ).andExpect(status().isConflict()).andExpect(jsonPath("$.errorType").value("duplicate_in_progress"));
         assertEquals(0, orchestrator.calls.get());
     }

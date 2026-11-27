@@ -61,9 +61,7 @@ class BannerRestoreTest {
     void cleanDatabase() {
         versionRepository.deleteAll();
         repository.deleteAll();
-        allocatorRepository.saveAndFlush(
-            new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1)
-        );
+        allocatorRepository.saveAndFlush(new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1));
     }
 
     @Test
@@ -166,13 +164,12 @@ class BannerRestoreTest {
 
     @ParameterizedTest(name = "rejects a {0} occurrence")
     @MethodSource("rejectedOccurrences")
-    void rejectsIneligibleSourcesWithoutWriting(
-        String label, BannerStatus status, Instant startAt, Instant endAt
-    ) {
+    void rejectsIneligibleSourcesWithoutWriting(String label, BannerStatus status, Instant startAt, Instant endAt) {
         BannerOccurrence source = repository.saveAndFlush(banner(status, startAt, endAt, 7, label));
         int nextPriority = allocatorRepository.findById(BannerPriorityAllocator.SINGLETON_ID).orElseThrow().getNextPriority();
 
-        PicsureException exception = assertThrows(PicsureException.class, () -> service.restore(source.getUuid(), request(null, null), RESTORER));
+        PicsureException exception =
+            assertThrows(PicsureException.class, () -> service.restore(source.getUuid(), request(null, null), RESTORER));
 
         assertThat(exception.getStatus()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(repository.count()).isOne();
@@ -198,7 +195,8 @@ class BannerRestoreTest {
     void rejectsAnExplicitStartAtTheCurrentInstantWithoutChangingTheSourceOrAllocator() {
         BannerOccurrence source = repository.saveAndFlush(banner(BannerStatus.DISABLED, NOW.minusSeconds(600), null, 7, "Disabled"));
 
-        PicsureException exception = assertThrows(PicsureException.class, () -> service.restore(source.getUuid(), request(NOW, null), RESTORER));
+        PicsureException exception =
+            assertThrows(PicsureException.class, () -> service.restore(source.getUuid(), request(NOW, null), RESTORER));
 
         assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(repository.findById(source.getUuid()).orElseThrow().getStatus()).isEqualTo(BannerStatus.DISABLED);
@@ -217,12 +215,11 @@ class BannerRestoreTest {
 
     private static PublishBannerRequest request(Instant startAt, Instant endAt) {
         return new PublishBannerRequest(
-            "<p>Restored content</p>", " Restored notice ", BannerAppearance.PRIMARY, BannerIcon.INFORMATION, true,
-            BannerAudience.EVERYONE, BannerPlacement.SITE_TOP,
+            "<p>Restored content</p>", " Restored notice ", BannerAppearance.PRIMARY, BannerIcon.INFORMATION, true, BannerAudience.EVERYONE,
+            BannerPlacement.SITE_TOP,
             List.of(
                 new BannerPageTarget(BannerPageTargetKind.PARAMETERIZED, "/studies/[studyId]/"),
-                new BannerPageTarget(BannerPageTargetKind.EXACT, "/about"),
-                new BannerPageTarget(BannerPageTargetKind.EXACT, "/about")
+                new BannerPageTarget(BannerPageTargetKind.EXACT, "/about"), new BannerPageTarget(BannerPageTargetKind.EXACT, "/about")
             ), startAt, endAt
         );
     }

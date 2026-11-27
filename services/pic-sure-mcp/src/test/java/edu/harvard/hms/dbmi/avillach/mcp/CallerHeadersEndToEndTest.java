@@ -49,7 +49,8 @@ class CallerHeadersEndToEndTest {
     void toolSeesTheFourCallerHeaders() throws Exception {
         String response = RestClient.create("http://localhost:" + port).post().uri("/mcp").contentType(MediaType.APPLICATION_JSON)
             .header("Accept", "application/json, text/event-stream").header("Authorization", "Bearer caller-token")
-            .header("X-PICSURE-API-Key", "caller-key").header("X-Request-Id", "req-e2e").header("X-Forwarded-For", "203.0.113.7").body("""
+            .header("X-PICSURE-API-Key", "caller-key").header("X-Request-Id", "req-e2e").header("X-Forwarded-For", "203.0.113.7")
+            .header("X-User-Id", "user-e2e").header("X-User-Privileges", "PIC_SURE_MCP").body("""
                 {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"echo_caller_headers","arguments":{}}}""").retrieve()
             .body(String.class);
 

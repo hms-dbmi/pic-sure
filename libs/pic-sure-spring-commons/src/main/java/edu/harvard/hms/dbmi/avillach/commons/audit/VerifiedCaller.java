@@ -14,6 +14,15 @@ public final class VerifiedCaller {
     /** Name of the request attribute that carries the verified caller type. */
     public static final String ATTRIBUTE = VerifiedCaller.class.getName();
 
+    /** The caller type of {@code pic-sure-mcp}. */
+    public static final String MCP = "mcp";
+
+    /** The caller type of {@code pic-sure-ai-service}. */
+    public static final String AI_SERVICE = "ai-service";
+
+    /** Header carrying the shared secret {@code pic-sure-ai-service} presents to the gateway on its {@code /mcp} calls. */
+    public static final String AI_SERVICE_TOKEN_HEADER = "X-PIC-SURE-AI-TOKEN";
+
     private VerifiedCaller() {}
 
     /**

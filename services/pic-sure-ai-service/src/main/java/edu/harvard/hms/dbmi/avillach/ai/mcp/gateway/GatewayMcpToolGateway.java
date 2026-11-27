@@ -16,6 +16,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
 
 import edu.harvard.hms.dbmi.avillach.ai.chat.CallerContext;
@@ -23,6 +24,7 @@ import edu.harvard.hms.dbmi.avillach.ai.error.ErrorSummary;
 import edu.harvard.hms.dbmi.avillach.ai.mcp.McpToolGateway;
 import edu.harvard.hms.dbmi.avillach.ai.mcp.ToolDefinition;
 import edu.harvard.hms.dbmi.avillach.ai.mcp.ToolResult;
+import edu.harvard.hms.dbmi.avillach.commons.audit.VerifiedCaller;
 import edu.harvard.hms.dbmi.avillach.commons.request.RequestIdFilter;
 
 /**
@@ -37,6 +39,10 @@ import edu.harvard.hms.dbmi.avillach.commons.request.RequestIdFilter;
  * <p>The {@code initialize}/{@code notifications/initialized} handshake is done once, lazily, and not repeated after it succeeds --
  * {@code tools/list} and {@code tools/call} are then independent, per-call, caller-scoped requests. The server holds no per-caller state,
  * but the gateway introspects every {@code /mcp} request, so the handshake replays the triggering caller's token like any other call.
+ *
+ * <p>Every call also carries {@value #SERVICE_TOKEN_HEADER}. The gateway verifies it and then asks PSAMA whether the user may use the
+ * assistant ({@code ASSISTED_SEARCH}) instead of whether they may use {@code /mcp} ({@code PIC_SURE_MCP}), and {@code pic-sure-mcp} admits
+ * the call as {@code ai-service}. Without a valid token the same call needs {@code PIC_SURE_MCP} like any other client.
  */
 @Component
 @ConditionalOnProperty(prefix = "picsure.ai.mcp", name = "mode", havingValue = "gateway", matchIfMissing = true)
@@ -48,28 +54,42 @@ public class GatewayMcpToolGateway implements McpToolGateway {
     private static final MediaType EVENT_STREAM = MediaType.valueOf("text/event-stream");
     private static final String UNAVAILABLE = "The dictionary/query service is unavailable right now. Try again shortly.";
 
+    /** Header carrying the shared secret that tells the gateway a {@code /mcp} call comes from this service. */
+    static final String SERVICE_TOKEN_HEADER = VerifiedCaller.AI_SERVICE_TOKEN_HEADER;
+
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
+    private final String serviceToken;
     private volatile boolean initialized;
 
-    /** @param readTimeout without one the HTTP client waits forever, hanging the chat turn */
+    /**
+     * @param serviceToken the secret the gateway checks to admit this service to {@code /mcp} without the {@code PIC_SURE_MCP} privilege;
+     *        it must equal the gateway's {@code AI_SERVICE_TOKEN}. Required only when the assistant is enabled, because a disabled
+     *        assistant never calls the gateway
+     * @param assistantEnabled {@code picsure.ai.enabled}; when false a blank {@code gatewayUrl} or {@code serviceToken} does not stop the
+     *        service starting, because a disabled assistant never calls the gateway
+     * @param readTimeout without one the HTTP client waits forever, hanging the chat turn
+     */
     public GatewayMcpToolGateway(
-        @Value("${picsure.ai.mcp.gateway-url:}") String gatewayUrl, ObjectMapper objectMapper,
+        @Value("${picsure.ai.mcp.gateway-url:}") String gatewayUrl, @Value("${picsure.ai.mcp.service-token:}") String serviceToken,
+        @Value("${picsure.ai.enabled:false}") boolean assistantEnabled, ObjectMapper objectMapper,
         @Value("${picsure.ai.mcp.connect-timeout:5s}") Duration connectTimeout,
         @Value("${picsure.ai.mcp.read-timeout:20s}") Duration readTimeout
     ) {
-        requireNonBlank(gatewayUrl);
+        boolean urlBlank = gatewayUrl == null || gatewayUrl.isBlank();
+        boolean tokenBlank = serviceToken == null || serviceToken.isBlank();
+        if (assistantEnabled && urlBlank) {
+            throw new IllegalStateException("picsure.ai.mcp.gateway-url is required when picsure.ai.enabled=true and mcp.mode=gateway");
+        }
+        if (assistantEnabled && tokenBlank) {
+            throw new IllegalStateException("picsure.ai.mcp.service-token is required when picsure.ai.enabled=true and mcp.mode=gateway");
+        }
+        this.serviceToken = tokenBlank ? "" : serviceToken.trim();
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(connectTimeout);
         requestFactory.setReadTimeout(readTimeout);
-        this.restClient = RestClient.builder().baseUrl(gatewayUrl + "/mcp").requestFactory(requestFactory).build();
+        this.restClient = RestClient.builder().baseUrl((urlBlank ? "" : gatewayUrl) + "/mcp").requestFactory(requestFactory).build();
         this.objectMapper = objectMapper;
-    }
-
-    private static void requireNonBlank(String gatewayUrl) {
-        if (gatewayUrl == null || gatewayUrl.isBlank()) {
-            throw new IllegalStateException("picsure.ai.mcp.gateway-url is required when picsure.ai.mcp.mode=gateway");
-        }
     }
 
     @Override
@@ -161,13 +181,25 @@ public class GatewayMcpToolGateway implements McpToolGateway {
     }
 
     private JsonNode post(ObjectNode body, CallerContext caller) {
-        return restClient.post().contentType(MediaType.APPLICATION_JSON).accept(MediaType.APPLICATION_JSON, EVENT_STREAM)
-            .headers(headers -> {
-                if (caller != null) {
-                    caller.applyTo(headers);
-                    applyRequestId(headers, caller);
-                }
-            }).body(body).retrieve().body(JsonNode.class);
+        try {
+            return restClient.post().contentType(MediaType.APPLICATION_JSON).accept(MediaType.APPLICATION_JSON, EVENT_STREAM)
+                .headers(headers -> {
+                    if (!serviceToken.isEmpty()) {
+                        headers.set(SERVICE_TOKEN_HEADER, serviceToken);
+                    }
+                    if (caller != null) {
+                        caller.applyTo(headers);
+                        applyRequestId(headers, caller);
+                    }
+                }).body(body).retrieve().body(JsonNode.class);
+        } catch (HttpClientErrorException.Unauthorized e) {
+            // The model only ever sees "unavailable". A 401 is also what an expired user token gets, so name the credential only when the
+            // gateway's body says it rejected the service credential.
+            if (e.getResponseBodyAsString().contains("invalid_service_credential")) {
+                log.error("The gateway rejected the AI service credential; check that AI_SERVICE_TOKEN matches the gateway's");
+            }
+            throw e;
+        }
     }
 
     private static void applyRequestId(HttpHeaders headers, CallerContext caller) {

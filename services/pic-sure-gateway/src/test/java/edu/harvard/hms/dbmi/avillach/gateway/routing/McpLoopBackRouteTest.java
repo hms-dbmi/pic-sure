@@ -48,8 +48,8 @@ import edu.harvard.hms.dbmi.avillach.gateway.filter.McpCallerFilter;
  * {@code MCP_SERVICE_TOKEN} and {@code MCP_SERVICE_TOKEN_PREVIOUS} variables {@code application.yml} reads, so a mistyped key in that file
  * leaves the gateway with no secret and these tests fail. A request presenting the current or previous secret reaches the dictionary
  * service marked {@code X-Client-Type: mcp} without the secret, and is audited with caller {@code mcp}. A request presenting any other
- * value is refused before PSAMA or the dictionary service is called. A request to {@code /mcp} itself reaches the MCP service with its
- * {@code Authorization} API key and without the secret.
+ * value is refused before PSAMA or the dictionary service is called. A request to {@code /mcp} itself reaches the MCP service without the
+ * secret, and without an {@code Authorization} API key.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class McpLoopBackRouteTest {
@@ -173,7 +173,7 @@ class McpLoopBackRouteTest {
     }
 
     @Test
-    void theApiKeyReachesTheMcpServiceAndTheSecretDoesNot() {
+    void theApiKeyAndTheSecretDoNotReachTheMcpService() {
         HttpHeaders headers = new HttpHeaders();
         headers.set("Authorization", API_KEY);
         headers.set("Accept", "application/json, text/event-stream");
@@ -187,9 +187,7 @@ class McpLoopBackRouteTest {
 
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         mcpStub.verify(
-            1,
-            postRequestedFor(urlEqualTo("/mcp")).withHeader("Authorization", equalTo(API_KEY))
-                .withHeader(McpCallerFilter.TOKEN_HEADER, absent())
+            1, postRequestedFor(urlEqualTo("/mcp")).withHeader("Authorization", absent()).withHeader(McpCallerFilter.TOKEN_HEADER, absent())
         );
     }
 }
