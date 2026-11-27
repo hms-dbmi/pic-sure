@@ -37,7 +37,7 @@ function digest(run) {
     listFacets: toolNames.includes('list_facets'),
     facetedSearch,
     refused,
-    claimNoSearch: CLAIM.test(text) && !search && !facets && !check.hasQuery,
+    claimNoSearch: CLAIM.test(text) && !search && !facets && !check.hasQuery && !run.body?.search && !run.body?.facets?.length,
     // Older result files carry the previous "Chat turn end" line: iterations=, hitCap=, totalInputTokens=.
     iterations: num('(?:iterations|modelCalls)'),
     hitCap: /hitCap=true|stop=iteration_cap/.test(turn),
